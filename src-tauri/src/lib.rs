@@ -1,0 +1,349 @@
+//! IPC layer: thin #[tauri::command] handlers mapping the core Store to the
+//! API.md contract, plus app shell (tray, global shortcut, windows).
+//! No business logic lives here — that's instantnotes-core's job.
+
+use instantnotes_core::types::*;
+use instantnotes_core::{AppError, Store};
+use serde::Serialize;
+use std::sync::Mutex;
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::TrayIconBuilder;
+use tauri::{AppHandle, Emitter, Manager, State};
+
+struct AppState {
+    store: Mutex<Store>,
+}
+
+/// Serializable error per API.md §3.6 / §11.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CmdError {
+    code: String,
+    message: String,
+}
+
+impl From<AppError> for CmdError {
+    fn from(e: AppError) -> Self {
+        CmdError {
+            code: e.code().to_string(),
+            message: e.to_string(),
+        }
+    }
+}
+
+type CmdResult<T> = Result<T, CmdError>;
+
+fn locked<'a>(
+    state: &'a State<'_, AppState>,
+) -> Result<std::sync::MutexGuard<'a, Store>, CmdError> {
+    state.store.lock().map_err(|_| CmdError {
+        code: "STORAGE_ERROR".into(),
+        message: "internal state lock poisoned".into(),
+    })
+}
+
+fn emit_notes_changed(app: &AppHandle) {
+    let _ = app.emit("notes:changed", ());
+}
+
+fn emit_tags_changed(app: &AppHandle) {
+    let _ = app.emit("tags:changed", ());
+}
+
+// ---- note commands ----
+
+#[tauri::command]
+fn create_note(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    input: CreateNoteInput,
+) -> CmdResult<Note> {
+    let note = locked(&state)?.create_note(input)?;
+    emit_notes_changed(&app);
+    emit_tags_changed(&app);
+    Ok(note)
+}
+
+#[tauri::command]
+fn get_note(state: State<'_, AppState>, id: String, touch: Option<bool>) -> CmdResult<Note> {
+    Ok(locked(&state)?.get_note(&id, touch.unwrap_or(false))?)
+}
+
+#[tauri::command]
+fn update_note(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    id: String,
+    patch: UpdateNotePatch,
+) -> CmdResult<Note> {
+    let note = locked(&state)?.update_note(&id, patch)?;
+    emit_notes_changed(&app);
+    emit_tags_changed(&app);
+    Ok(note)
+}
+
+#[tauri::command]
+fn soft_delete_note(state: State<'_, AppState>, app: AppHandle, id: String) -> CmdResult<Note> {
+    let note = locked(&state)?.soft_delete_note(&id)?;
+    emit_notes_changed(&app);
+    Ok(note)
+}
+
+#[tauri::command]
+fn restore_note(state: State<'_, AppState>, app: AppHandle, id: String) -> CmdResult<Note> {
+    let note = locked(&state)?.restore_note(&id)?;
+    emit_notes_changed(&app);
+    Ok(note)
+}
+
+#[tauri::command]
+fn permanently_delete_note(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    id: String,
+    confirm: bool,
+) -> CmdResult<()> {
+    locked(&state)?.permanently_delete_note(&id, confirm)?;
+    emit_notes_changed(&app);
+    emit_tags_changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn list_notes(state: State<'_, AppState>, filter: Option<NoteFilter>) -> CmdResult<Vec<Note>> {
+    Ok(locked(&state)?.list_notes(filter.unwrap_or_default())?)
+}
+
+#[tauri::command]
+fn search_notes(
+    state: State<'_, AppState>,
+    text: String,
+    limit: Option<i64>,
+) -> CmdResult<Vec<SearchResult>> {
+    Ok(locked(&state)?.search_notes(&text, limit.unwrap_or(50))?)
+}
+
+// ---- tag commands ----
+
+#[tauri::command]
+fn list_tags(state: State<'_, AppState>) -> CmdResult<Vec<TagWithCount>> {
+    Ok(locked(&state)?.list_tags()?)
+}
+
+#[tauri::command]
+fn get_or_create_tag(state: State<'_, AppState>, app: AppHandle, name: String) -> CmdResult<Tag> {
+    let tag = locked(&state)?.get_or_create_tag(&name)?;
+    emit_tags_changed(&app);
+    Ok(tag)
+}
+
+#[tauri::command]
+fn update_tag(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    id: String,
+    name: Option<String>,
+    color: Option<String>,
+) -> CmdResult<Tag> {
+    let tag = locked(&state)?.update_tag(&id, name, color)?;
+    emit_tags_changed(&app);
+    Ok(tag)
+}
+
+#[tauri::command]
+fn delete_tag(state: State<'_, AppState>, app: AppHandle, id: String) -> CmdResult<()> {
+    locked(&state)?.delete_tag(&id)?;
+    emit_tags_changed(&app);
+    emit_notes_changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn add_tag_to_note(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    note_id: String,
+    name: String,
+) -> CmdResult<Tag> {
+    let tag = locked(&state)?.add_tag_to_note(&note_id, &name)?;
+    emit_tags_changed(&app);
+    emit_notes_changed(&app);
+    Ok(tag)
+}
+
+#[tauri::command]
+fn remove_tag_from_note(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    note_id: String,
+    tag_id: String,
+) -> CmdResult<()> {
+    locked(&state)?.remove_tag_from_note(&note_id, &tag_id)?;
+    emit_tags_changed(&app);
+    emit_notes_changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn tags_for_note(state: State<'_, AppState>, note_id: String) -> CmdResult<Vec<Tag>> {
+    Ok(locked(&state)?.tags_for_note(&note_id)?)
+}
+
+// ---- settings commands ----
+
+#[tauri::command]
+fn get_setting(state: State<'_, AppState>, key: String) -> CmdResult<Option<serde_json::Value>> {
+    Ok(locked(&state)?.get_setting(&key)?)
+}
+
+#[tauri::command]
+fn set_setting(
+    state: State<'_, AppState>,
+    key: String,
+    value: serde_json::Value,
+) -> CmdResult<()> {
+    Ok(locked(&state)?.set_setting(&key, value)?)
+}
+
+#[tauri::command]
+fn delete_setting(state: State<'_, AppState>, key: String) -> CmdResult<()> {
+    Ok(locked(&state)?.delete_setting(&key)?)
+}
+
+// ---- window commands ----
+
+#[tauri::command]
+fn hide_capture(app: AppHandle) {
+    hide_capture_window(&app);
+}
+
+#[tauri::command]
+fn open_library(app: AppHandle) {
+    show_library_window(&app);
+}
+
+// ---- window helpers ----
+
+fn show_capture_window(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("capture") {
+        let _ = w.center();
+        let _ = w.show();
+        let _ = w.set_focus();
+        // Frontend focuses the textarea and restores any preserved draft.
+        let _ = w.emit("capture:shown", ());
+    }
+}
+
+fn hide_capture_window(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("capture") {
+        let _ = w.hide();
+    }
+}
+
+fn toggle_capture_window(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("capture") {
+        if w.is_visible().unwrap_or(false) {
+            hide_capture_window(app);
+        } else {
+            show_capture_window(app);
+        }
+    }
+}
+
+fn show_library_window(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("library") {
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
+}
+
+// ---- app shell ----
+
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        toggle_capture_window(app);
+                    }
+                })
+                .build(),
+        )
+        .setup(|app| {
+            // Store: single writer over SQLite at the platform data dir.
+            let dir = app
+                .path()
+                .app_data_dir()
+                .expect("cannot resolve app data directory");
+            std::fs::create_dir_all(&dir)?;
+            let store = Store::open(&dir.join("instantnotes.db"))
+                .map_err(|e| format!("cannot open store: {e}"))?;
+            app.manage(AppState {
+                store: Mutex::new(store),
+            });
+
+            // Tray menu — the app's permanent presence.
+            let new_capture =
+                MenuItem::with_id(app, "new_capture", "New Capture\t⌥Space", true, None::<&str>)?;
+            let open_library_item =
+                MenuItem::with_id(app, "open_library", "Open Library", true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", "Quit InstantNotes", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&new_capture, &open_library_item, &quit])?;
+            TrayIconBuilder::with_id("main-tray")
+                .icon(app.default_window_icon().cloned().expect("window icon"))
+                .menu(&menu)
+                .show_menu_on_left_click(true)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "new_capture" => show_capture_window(app),
+                    "open_library" => show_library_window(app),
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .build(app)?;
+
+            // Global shortcut: ⌥Space toggles the capture panel.
+            use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
+            let shortcut = Shortcut::new(Some(Modifiers::ALT), Code::Space);
+            if let Err(e) = app.global_shortcut().register(shortcut) {
+                // Content-free log per SEC-001; conflict fallback UI is an M4 item.
+                eprintln!("global shortcut registration failed: {e}");
+            }
+
+            // Closing the library window hides it; the app lives in the tray.
+            if let Some(library) = app.get_webview_window("library") {
+                let handle = library.clone();
+                library.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = handle.hide();
+                    }
+                });
+            }
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            create_note,
+            get_note,
+            update_note,
+            soft_delete_note,
+            restore_note,
+            permanently_delete_note,
+            list_notes,
+            search_notes,
+            list_tags,
+            get_or_create_tag,
+            update_tag,
+            delete_tag,
+            add_tag_to_note,
+            remove_tag_from_note,
+            tags_for_note,
+            get_setting,
+            set_setting,
+            delete_setting,
+            hide_capture,
+            open_library
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
