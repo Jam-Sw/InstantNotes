@@ -4,6 +4,7 @@
   import { getVersion } from "@tauri-apps/api/app";
   import Editor from "$lib/components/Editor.svelte";
   import { library, type Section } from "$lib/stores/library.svelte";
+  import { updater } from "$lib/stores/updater.svelte";
 
   const sections: { id: Section; label: string }[] = [
     { id: "all", label: "All Notes" },
@@ -18,10 +19,12 @@
   onMount(() => {
     void library.init();
     void getVersion().then((v) => (appVersion = v));
+    updater.start();
     const flush = () => library.flushPendingEdits();
     window.addEventListener("blur", flush);
     window.addEventListener("keydown", onKeydown);
     return () => {
+      updater.stop();
       window.removeEventListener("blur", flush);
       window.removeEventListener("keydown", onKeydown);
     };
@@ -326,6 +329,33 @@
           <h2>
             InstantNotes
             {#if appVersion}<span class="version-badge">v{appVersion}</span>{/if}
+            {#if updater.status === "available"}
+              <button
+                class="update-pill"
+                title={`Update to v${updater.version}`}
+                onclick={() => updater.downloadAndInstall()}
+              >
+                Update available
+              </button>
+            {:else if updater.status === "downloading"}
+              <span class="update-pill passive">
+                Downloading{updater.progress != null
+                  ? ` ${Math.round(updater.progress * 100)}%`
+                  : "…"}
+              </span>
+            {:else if updater.status === "ready"}
+              <button class="update-pill" onclick={() => updater.restart()}>
+                Restart to update
+              </button>
+            {:else if updater.status === "error"}
+              <button
+                class="update-pill failed"
+                title={updater.error}
+                onclick={() => updater.downloadAndInstall()}
+              >
+                Update failed, retry
+              </button>
+            {/if}
           </h2>
           <p>Select a note, or press <kbd>⌥Space</kbd> anywhere to capture.</p>
           {#if library.error}<p class="error">{library.error}</p>{/if}
@@ -624,6 +654,30 @@
     font-weight: 300;
     font-style: italic;
     letter-spacing: 0.3px;
+  }
+  /* Sits beside the version badge; same shape, accent color marks action. */
+  .update-pill {
+    display: inline-block;
+    vertical-align: middle;
+    margin-left: 6px;
+    padding: 1px 7px;
+    border: 1px solid var(--accent);
+    border-radius: 99px;
+    color: var(--accent);
+    background: var(--accent-soft);
+    font-size: 10px;
+    font-weight: 400;
+    letter-spacing: 0.3px;
+    cursor: pointer;
+  }
+  .update-pill.passive {
+    cursor: default;
+    opacity: 0.8;
+  }
+  .update-pill.failed {
+    border-color: #d05656;
+    color: #d05656;
+    background: rgba(208, 86, 86, 0.08);
   }
   kbd {
     background: var(--bg-sidebar);
