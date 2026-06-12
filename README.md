@@ -61,22 +61,19 @@ Produces an `.app` bundle and `.dmg` under `src-tauri/target/release/bundle/`. W
 
 ### Release (with self-update)
 
-The app checks GitHub Releases for updates on launch and every 6 hours, via `latest.json` attached to the latest release. Cutting a release that existing installs can update to:
+The app checks GitHub Releases for updates on launch and every 6 hours, via `latest.json` attached to the latest release. Releases are built and published by CI:
 
 ```sh
 # 1. Bump the version in package.json, src-tauri/Cargo.toml, src-tauri/tauri.conf.json.
-# 2. Build with updater artifacts signed by the updater key (not Apple signing):
-TAURI_SIGNING_PRIVATE_KEY_PATH=~/.tauri/instantnotes.key npm run tauri build
-# 3. Generate the update manifest:
-./scripts/make-update-manifest.sh
-# 4. Publish: latest.json and InstantNotes.app.tar.gz are what the updater fetches.
-gh release create vX.Y.Z \
-  src-tauri/target/release/bundle/dmg/InstantNotes_X.Y.Z_aarch64.dmg \
-  src-tauri/target/release/bundle/macos/InstantNotes.app.tar.gz \
-  latest.json --title "InstantNotes vX.Y.Z" --notes "..."
+# 2. Tag and push; .github/workflows/release.yml does the rest.
+git tag vX.Y.Z && git push origin vX.Y.Z
+# 3. Review the draft release on GitHub and publish it. Publishing is what
+#    makes existing installs see the update.
 ```
 
-The updater verifies downloads against the minisign public key in `tauri.conf.json`; losing `~/.tauri/instantnotes.key` means future updates cannot be signed. Release downloads must be publicly reachable for the in-app check to work.
+CI signs the updater artifact with the minisign key stored in the repo secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, and the app verifies downloads against the matching public key in `tauri.conf.json`. If the secret is ever lost, generate a new keypair with `npm run tauri signer generate`, update both the secret and the pubkey, and ship one manual release so installs can cross over.
+
+For a fully local release without CI, build with `TAURI_SIGNING_PRIVATE_KEY` set, run `./scripts/make-update-manifest.sh`, and upload the dmg, `InstantNotes.app.tar.gz`, and `latest.json` with `gh release create`. Release downloads must be publicly reachable for the in-app check to work.
 
 ### Project structure
 
