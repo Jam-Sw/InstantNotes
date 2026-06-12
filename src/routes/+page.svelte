@@ -17,8 +17,97 @@
     void library.init();
     const flush = () => library.flushPendingEdits();
     window.addEventListener("blur", flush);
-    return () => window.removeEventListener("blur", flush);
+    window.addEventListener("keydown", onKeydown);
+    return () => {
+      window.removeEventListener("blur", flush);
+      window.removeEventListener("keydown", onKeydown);
+    };
   });
+
+  function rowClick(e: MouseEvent, id: string) {
+    if (e.metaKey || e.ctrlKey) {
+      void library.toggleInSelection(id);
+    } else if (e.shiftKey) {
+      void library.extendSelectionTo(id);
+    } else {
+      void library.select(id);
+    }
+  }
+
+  function isTypingTarget(t: EventTarget | null): t is HTMLElement {
+    return (
+      t instanceof HTMLElement &&
+      (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)
+    );
+  }
+
+  function onKeydown(e: KeyboardEvent) {
+    const mod = e.metaKey || e.ctrlKey;
+    if (mod && e.key === "n") {
+      e.preventDefault();
+      void library.newNote();
+      return;
+    }
+    if (isTypingTarget(e.target)) {
+      // Escape in the search field clears the search; everything else is typing.
+      if (
+        e.key === "Escape" &&
+        e.target instanceof HTMLInputElement &&
+        e.target.type === "search"
+      ) {
+        library.setSearch("");
+        e.target.blur();
+      }
+      return;
+    }
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        void library.moveSelection(1, e.shiftKey);
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        void library.moveSelection(-1, e.shiftKey);
+        break;
+      case "a":
+        if (mod) {
+          e.preventDefault();
+          void library.selectAllVisible();
+        }
+        break;
+      case "Backspace":
+        if (mod && library.multiSelected.size > 0) {
+          e.preventDefault();
+          void deleteSelection();
+        }
+        break;
+      case "Escape":
+        library.clearMultiSelect();
+        break;
+    }
+  }
+
+  async function deleteSelection() {
+    if (library.section === "trash") {
+      await confirmBulkDestroy();
+    } else {
+      await library.bulkDelete();
+    }
+  }
+
+  async function confirmBulkDestroy() {
+    const n = library.multiSelected.size;
+    const what = n === 1 ? "this note" : `these ${n} notes`;
+    if (window.confirm(`Permanently delete ${what}? This cannot be undone.`)) {
+      await library.bulkDestroy();
+    }
+  }
+
+  async function confirmEmptyTrash() {
+    if (window.confirm("Permanently delete all notes in the Trash? This cannot be undone.")) {
+      await library.emptyTrash();
+    }
+  }
 
   function formatDate(iso: string): string {
     const d = new Date(iso);
@@ -86,15 +175,20 @@
         value={library.searchText}
         oninput={(e) => library.setSearch(e.currentTarget.value)}
       />
-      <button class="new-note" title="New note" onclick={() => library.newNote()}>＋</button>
+      <button class="new-note" title="New note (⌘N)" onclick={() => library.newNote()}>＋</button>
     </div>
+    {#if library.section === "trash" && library.notes.length > 0 && !library.searchResults}
+      <div class="trash-bar">
+        <button class="action danger" onclick={confirmEmptyTrash}>Empty Trash</button>
+      </div>
+    {/if}
     <div class="note-list">
       {#if library.searchResults}
         {#each library.searchResults as hit (hit.noteId)}
           <button
             class="note-row"
-            class:selected={library.selected?.id === hit.noteId}
-            onclick={() => library.select(hit.noteId)}
+            class:selected={library.isSelected(hit.noteId)}
+            onclick={(e) => rowClick(e, hit.noteId)}
           >
             <div class="row-title">{hit.title}</div>
             <div class="row-preview">{hit.excerpt}</div>
@@ -107,8 +201,8 @@
         {#each library.notes as note (note.id)}
           <button
             class="note-row"
-            class:selected={library.selected?.id === note.id}
-            onclick={() => library.select(note.id)}
+            class:selected={library.isSelected(note.id)}
+            onclick={(e) => rowClick(e, note.id)}
           >
             <div class="row-title">
               {#if note.isPinned}<span class="pin">📌</span>{/if}
@@ -133,7 +227,35 @@
   </section>
 
   <section class="editor-pane">
-    {#if library.selected}
+    {#if library.multiSelected.size > 1}
+      {@const allPinned =
+        library.multiSelectedNotes.length > 0 &&
+        library.multiSelectedNotes.every((n) => n.isPinned)}
+      <div class="bulk-panel">
+        <div class="bulk-inner">
+          <h2>{library.multiSelected.size} notes selected</h2>
+          <div class="bulk-actions">
+            {#if library.section === "trash"}
+              <button class="action" onclick={() => library.bulkRestore()}>Restore</button>
+              <button class="action danger" onclick={confirmBulkDestroy}>Delete Forever</button>
+            {:else}
+              <button class="action" onclick={() => library.bulkSetPinned(!allPinned)}>
+                {allPinned ? "Unpin" : "Pin"}
+              </button>
+              <button
+                class="action"
+                onclick={() => library.bulkSetArchived(library.section !== "archived")}
+              >
+                {library.section === "archived" ? "Unarchive" : "Archive"}
+              </button>
+              <button class="action danger" onclick={() => library.bulkDelete()}>Delete</button>
+            {/if}
+          </div>
+          <p class="bulk-hint">⌘-click or ⇧-click to adjust · Esc to cancel</p>
+          {#if library.error}<p class="error">{library.error}</p>{/if}
+        </div>
+      </div>
+    {:else if library.selected}
       <div class="editor-toolbar">
         <input
           class="title-input"
@@ -285,6 +407,12 @@
   .new-note:hover {
     background: var(--bg-hover);
   }
+  .trash-bar {
+    display: flex;
+    justify-content: center;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+  }
   .note-list {
     flex: 1;
     overflow-y: auto;
@@ -420,6 +548,35 @@
   }
   .error {
     color: var(--danger);
+  }
+
+  .bulk-panel {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .bulk-inner {
+    text-align: center;
+  }
+  .bulk-inner h2 {
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+  }
+  .bulk-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+  }
+  .bulk-actions .action {
+    font-size: 13px;
+    padding: 6px 14px;
+  }
+  .bulk-hint {
+    margin-top: 14px;
+    color: var(--text-tertiary);
+    font-size: 12px;
   }
 
   .no-selection {
