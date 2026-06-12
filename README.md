@@ -16,13 +16,13 @@ InstantNotes is a desktop notes app built around fast capture and a focused libr
 
 InstantNotes runs on macOS (Apple Silicon). Download the latest `.dmg` from the [releases page](../../releases), open it, and drag InstantNotes to Applications.
 
-The app is not notarized, so macOS blocks the first launch. Right-click the app in Applications, choose Open, then Open again. After that it opens normally with a double-click.
-
-If macOS still refuses to open it, clear the quarantine flag:
+The app is not notarized, so macOS blocks the first launch with an "Apple could not verify" message. Clear the quarantine flag and it opens normally from then on:
 
 ```sh
 xattr -d com.apple.quarantine /Applications/InstantNotes.app
 ```
+
+Alternatively, after the blocked first launch, open System Settings, go to Privacy and Security, scroll down, and click "Open Anyway". On macOS 14 and earlier, right-click the app and choose Open instead. This is a first-install step only: the in-app updater applies later versions without any of it.
 
 To build from source instead, see [Development](#development).
 

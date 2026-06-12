@@ -41,9 +41,10 @@ jobs:
           releaseDraft: true
           includeUpdaterJson: true
           releaseBody: |
-            Apple Silicon only. The build is ad-hoc signed, not notarized.
+            Apple Silicon only. **Download the `.dmg`**, open it, drag InstantNotes to Applications. The other assets serve the in-app updater.
 
-            First launch: right-click InstantNotes.app, choose Open, then Open again.
-            Fallback: `xattr -d com.apple.quarantine /Applications/InstantNotes.app`
+            The app is not notarized, so macOS blocks the first launch. Run:
 
-            Existing installs update themselves from inside the app.
+            `xattr -d com.apple.quarantine /Applications/InstantNotes.app`
+
+            or use System Settings > Privacy & Security > "Open Anyway" after the blocked launch. First install only: existing installs update themselves from inside the app.
