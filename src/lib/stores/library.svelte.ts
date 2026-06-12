@@ -109,13 +109,17 @@ class LibraryStore {
 
   setSearch(text: string): void {
     this.searchText = text;
-    this.clearMultiSelect();
+    // Reset the multi-selection but keep the open note in the editor.
+    this.multiSelected = this.selected ? new Set([this.selected.id]) : new Set();
+    this.#anchorId = this.selected?.id ?? null;
+    this.#lastRangeEnd = this.#anchorId;
     void this.refresh();
   }
 
   async select(id: string): Promise<void> {
     this.multiSelected = new Set([id]);
     this.#anchorId = id;
+    this.#lastRangeEnd = id;
     await this.#open(id);
   }
 
@@ -151,11 +155,13 @@ class LibraryStore {
   async toggleInSelection(id: string): Promise<void> {
     this.multiSelected = toggleSelection(this.multiSelected, id);
     this.#anchorId = id;
+    this.#lastRangeEnd = id;
     await this.#syncEditorToSelection();
   }
 
   async extendSelectionTo(id: string): Promise<void> {
     this.multiSelected = rangeSelection(this.visibleIds, this.#anchorId, id);
+    this.#lastRangeEnd = id;
     await this.#syncEditorToSelection();
   }
 
@@ -166,20 +172,19 @@ class LibraryStore {
 
   /** Arrow-key movement; `extend` grows the range from the anchor. */
   async moveSelection(delta: number, extend = false): Promise<void> {
-    const current = extend
-      ? (this.#lastRangeEnd ?? this.selected?.id ?? null)
-      : (this.selected?.id ?? this.#anchorId);
-    const next = stepId(this.visibleIds, current ?? null, delta);
+    const current =
+      this.#lastRangeEnd ?? this.selected?.id ?? this.#anchorId;
+    const next = stepId(this.visibleIds, current, delta);
     if (!next) return;
     if (extend) {
-      this.#lastRangeEnd = next;
       await this.extendSelectionTo(next);
     } else {
-      this.#lastRangeEnd = null;
       await this.select(next);
     }
   }
 
+  // Active end of the selection: the last row clicked, toggled, or stepped to.
+  // Shift+arrow continues from here rather than from the anchor.
   #lastRangeEnd: string | null = null;
 
   clearMultiSelect(): void {
@@ -195,6 +200,7 @@ class LibraryStore {
     const ids = [...this.multiSelected];
     if (ids.length === 1) {
       this.#anchorId = ids[0];
+      this.#lastRangeEnd = ids[0];
       if (this.selected?.id !== ids[0]) await this.#open(ids[0]);
     } else {
       this.#saveBody.flush();
