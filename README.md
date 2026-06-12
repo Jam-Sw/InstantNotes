@@ -45,9 +45,9 @@ npm run dev
 ### Test
 
 ```sh
-cargo test          # Rust core tests
-npm test            # frontend tests (Vitest)
-npx svelte-check    # component type checks
+cargo test --manifest-path src-tauri/Cargo.toml  # Rust core tests
+npm run check                                      # type-check frontend (runs svelte-kit sync)
+npm test                                           # frontend unit tests (Vitest)
 ```
 
 ## Project Structure
