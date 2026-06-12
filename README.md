@@ -59,6 +59,25 @@ npm run tauri build
 
 Produces an `.app` bundle and `.dmg` under `src-tauri/target/release/bundle/`. Without an Apple Developer ID the bundle is ad-hoc signed and not notarized, so downloaded copies require the first-launch steps described under [Installation](#installation). Builds made locally on your own machine are not quarantined and open normally.
 
+### Release (with self-update)
+
+The app checks GitHub Releases for updates on launch and every 6 hours, via `latest.json` attached to the latest release. Cutting a release that existing installs can update to:
+
+```sh
+# 1. Bump the version in package.json, src-tauri/Cargo.toml, src-tauri/tauri.conf.json.
+# 2. Build with updater artifacts signed by the updater key (not Apple signing):
+TAURI_SIGNING_PRIVATE_KEY_PATH=~/.tauri/instantnotes.key npm run tauri build
+# 3. Generate the update manifest:
+./scripts/make-update-manifest.sh
+# 4. Publish: latest.json and InstantNotes.app.tar.gz are what the updater fetches.
+gh release create vX.Y.Z \
+  src-tauri/target/release/bundle/dmg/InstantNotes_X.Y.Z_aarch64.dmg \
+  src-tauri/target/release/bundle/macos/InstantNotes.app.tar.gz \
+  latest.json --title "InstantNotes vX.Y.Z" --notes "..."
+```
+
+The updater verifies downloads against the minisign public key in `tauri.conf.json`; losing `~/.tauri/instantnotes.key` means future updates cannot be signed. Release downloads must be publicly reachable for the in-app check to work.
+
 ### Project structure
 
 ```
