@@ -30,16 +30,44 @@ The app SHALL store notes, tags, settings, and search index data locally in SQLi
 - **AND** keeps a manually entered title unless the title is edited again
 
 ### Requirement: Library Organization
-The app SHALL provide a library window for browsing, editing, tagging, archiving, and deleting notes.
+The app SHALL provide a library window for browsing, editing, tagging, archiving, and deleting notes, with a sidebar offering exactly two sections: All Notes and Workspaces.
 
-#### Scenario: Filter by section
-- **WHEN** the user chooses All Notes, Pinned, Archived, or Trash
-- **THEN** the app lists only notes matching that section
+#### Scenario: Browse all notes
+- **WHEN** the user chooses All Notes
+- **THEN** the app lists every active note
+- **AND** pinned notes appear at the top
+
+#### Scenario: Filter by workspace
+- **WHEN** the user selects a workspace in the Workspaces section
+- **THEN** the app lists only notes collected in that workspace
+
+#### Scenario: Reach archived and trashed notes
+- **WHEN** the user opens the list filter in All Notes
+- **THEN** the app can show archived or trashed notes
+- **AND** no dedicated sidebar section is required
 
 #### Scenario: Manage tags
 - **WHEN** the user adds or removes a tag from a note
 - **THEN** the sidebar tag counts update
 - **AND** selecting a tag filters the note list to matching notes
+
+### Requirement: Workspaces
+The app SHALL let the user create named workspaces that collect notes and help organize them.
+
+#### Scenario: Create a workspace
+- **WHEN** the user creates a workspace with a name
+- **THEN** the workspace appears in the Workspaces section
+- **AND** shows a count of its notes
+
+#### Scenario: Collect notes in a workspace
+- **WHEN** the user adds a note to a workspace
+- **THEN** the workspace lists that note
+- **AND** a note may belong to more than one workspace
+
+#### Scenario: Delete a workspace
+- **WHEN** the user deletes a workspace
+- **THEN** the workspace is removed
+- **AND** its notes remain available in All Notes
 
 ### Requirement: Search
 The app SHALL provide full-text search over note title and body.
