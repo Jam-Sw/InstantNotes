@@ -1,0 +1,17 @@
+# macOS
+.DS_Store
+
+# Node
+node_modules/
+dist/
+build/
+
+# Rust / Tauri
+src-tauri/target/
+
+# SvelteKit generated files
+.svelte-kit/
+
+# Lock files (generated, noisy in diffs)
+package-lock.json
+src-tauri/Cargo.lock
