@@ -16,3 +16,6 @@ src-tauri/gen/
 # Lock files (generated, noisy in diffs)
 package-lock.json
 src-tauri/Cargo.lock
+
+# generated update manifest (scripts/make-update-manifest.sh)
+/latest.json
