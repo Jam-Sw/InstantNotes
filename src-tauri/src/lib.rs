@@ -6,7 +6,7 @@ use instantnotes_core::types::*;
 use instantnotes_core::{AppError, Store};
 use serde::Serialize;
 use std::sync::Mutex;
-use tauri::menu::{Menu, MenuItem};
+use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -222,6 +222,19 @@ fn open_library(app: AppHandle) {
     show_library_window(&app);
 }
 
+const REPO_URL: &str = "https://github.com/Jam-Sw/InstantNotes";
+
+/// Open a file, folder, or URL with the macOS default handler.
+fn open_with_system(target: &str) {
+    let _ = std::process::Command::new("open").arg(target).spawn();
+}
+
+fn open_data_folder(app: &AppHandle) {
+    if let Ok(dir) = app.path().app_data_dir() {
+        open_with_system(&dir.to_string_lossy());
+    }
+}
+
 // ---- window helpers ----
 
 fn show_capture_window(app: &AppHandle) {
@@ -288,8 +301,41 @@ pub fn run() {
                 MenuItem::with_id(app, "new_capture", "New Capture\t⌥Space", true, None::<&str>)?;
             let open_library_item =
                 MenuItem::with_id(app, "open_library", "Open Library", true, None::<&str>)?;
+
+            // Settings submenu: status and config live in the menu, not the window.
+            let about = PredefinedMenuItem::about(
+                app,
+                Some("About InstantNotes"),
+                Some(AboutMetadata {
+                    version: Some(env!("CARGO_PKG_VERSION").into()),
+                    website: Some(REPO_URL.into()),
+                    website_label: Some("Jam-Sw/InstantNotes".into()),
+                    ..Default::default()
+                }),
+            )?;
+            let repo =
+                MenuItem::with_id(app, "open_repo", "Repository on GitHub", true, None::<&str>)?;
+            let data_folder =
+                MenuItem::with_id(app, "open_data_dir", "Open Data Folder", true, None::<&str>)?;
+            let settings = Submenu::with_items(
+                app,
+                "Settings",
+                true,
+                &[&about, &PredefinedMenuItem::separator(app)?, &repo, &data_folder],
+            )?;
+
             let quit = MenuItem::with_id(app, "quit", "Quit InstantNotes", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&new_capture, &open_library_item, &quit])?;
+            let menu = Menu::with_items(
+                app,
+                &[
+                    &new_capture,
+                    &open_library_item,
+                    &PredefinedMenuItem::separator(app)?,
+                    &settings,
+                    &PredefinedMenuItem::separator(app)?,
+                    &quit,
+                ],
+            )?;
             TrayIconBuilder::with_id("main-tray")
                 .icon(app.default_window_icon().cloned().expect("window icon"))
                 .menu(&menu)
@@ -297,6 +343,8 @@ pub fn run() {
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "new_capture" => show_capture_window(app),
                     "open_library" => show_library_window(app),
+                    "open_repo" => open_with_system(REPO_URL),
+                    "open_data_dir" => open_data_folder(app),
                     "quit" => app.exit(0),
                     _ => {}
                 })

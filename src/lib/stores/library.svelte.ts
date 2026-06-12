@@ -170,17 +170,21 @@ class LibraryStore {
     await this.#syncEditorToSelection();
   }
 
-  /** Arrow-key movement; `extend` grows the range from the anchor. */
-  async moveSelection(delta: number, extend = false): Promise<void> {
+  /**
+   * Arrow-key movement; `extend` grows the range from the anchor.
+   * Returns the id the selection moved to so the view can reveal it.
+   */
+  async moveSelection(delta: number, extend = false): Promise<string | null> {
     const current =
       this.#lastRangeEnd ?? this.selected?.id ?? this.#anchorId;
     const next = stepId(this.visibleIds, current, delta);
-    if (!next) return;
+    if (!next) return null;
     if (extend) {
       await this.extendSelectionTo(next);
     } else {
       await this.select(next);
     }
+    return next;
   }
 
   // Active end of the selection: the last row clicked, toggled, or stepped to.

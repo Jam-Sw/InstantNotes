@@ -1,6 +1,7 @@
 <script lang="ts">
   // Library window: sidebar · note list · editor (three-pane).
   import { onMount } from "svelte";
+  import { getVersion } from "@tauri-apps/api/app";
   import Editor from "$lib/components/Editor.svelte";
   import { library, type Section } from "$lib/stores/library.svelte";
 
@@ -12,9 +13,11 @@
   ];
 
   let tagInput = $state("");
+  let appVersion = $state("");
 
   onMount(() => {
     void library.init();
+    void getVersion().then((v) => (appVersion = v));
     const flush = () => library.flushPendingEdits();
     window.addEventListener("blur", flush);
     window.addEventListener("keydown", onKeydown);
@@ -63,11 +66,11 @@
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault();
-        void library.moveSelection(1, e.shiftKey);
+        void moveAndReveal(1, e.shiftKey);
         break;
       case "ArrowUp":
         e.preventDefault();
-        void library.moveSelection(-1, e.shiftKey);
+        void moveAndReveal(-1, e.shiftKey);
         break;
       case "a":
         if (mod) {
@@ -85,6 +88,15 @@
         library.clearMultiSelect();
         break;
     }
+  }
+
+  // Arrow-key navigation must keep the active row visible in the list.
+  async function moveAndReveal(delta: number, extend: boolean) {
+    const id = await library.moveSelection(delta, extend);
+    if (!id) return;
+    document
+      .querySelector(`.note-row[data-note-id="${CSS.escape(id)}"]`)
+      ?.scrollIntoView({ block: "nearest" });
   }
 
   async function deleteSelection() {
@@ -187,6 +199,7 @@
         {#each library.searchResults as hit (hit.noteId)}
           <button
             class="note-row"
+            data-note-id={hit.noteId}
             class:selected={library.isSelected(hit.noteId)}
             onclick={(e) => rowClick(e, hit.noteId)}
           >
@@ -201,6 +214,7 @@
         {#each library.notes as note (note.id)}
           <button
             class="note-row"
+            data-note-id={note.id}
             class:selected={library.isSelected(note.id)}
             onclick={(e) => rowClick(e, note.id)}
           >
@@ -309,7 +323,10 @@
     {:else}
       <div class="no-selection">
         <div class="no-selection-inner">
-          <h2>InstantNotes</h2>
+          <h2>
+            InstantNotes
+            {#if appVersion}<span class="version-badge">v{appVersion}</span>{/if}
+          </h2>
           <p>Select a note, or press <kbd>⌥Space</kbd> anywhere to capture.</p>
           {#if library.error}<p class="error">{library.error}</p>{/if}
         </div>
@@ -592,6 +609,21 @@
   .no-selection-inner h2 {
     font-weight: 600;
     color: var(--text-secondary);
+  }
+  /* Orange marks beta builds. */
+  .version-badge {
+    display: inline-block;
+    vertical-align: middle;
+    margin-left: 6px;
+    padding: 1px 7px;
+    border: 1px solid #e8923a;
+    border-radius: 99px;
+    color: #e8923a;
+    background: rgba(232, 146, 58, 0.08);
+    font-size: 10px;
+    font-weight: 300;
+    font-style: italic;
+    letter-spacing: 0.3px;
   }
   kbd {
     background: var(--bg-sidebar);
