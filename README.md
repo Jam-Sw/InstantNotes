@@ -7,7 +7,8 @@ InstantNotes is a desktop notes app built around fast capture and a focused libr
 ## Features
 
 - **Instant capture**: a lightweight capture panel summoned from the system tray or via `Cmd+Shift+N`, with drafts preserved if dismissed
-- **Focused library**: a three-pane window for browsing, editing, tagging, pinning, archiving, and deleting notes
+- **Focused library**: a two-section sidebar (All Notes and Workspaces) over a note list and editor, with pinned notes floated to the top and a status filter for archived and trashed notes
+- **Workspaces**: named collections that group related notes; a note can live in many workspaces, and deleting a workspace never deletes its notes
 - **Full-text search**: SQLite FTS5 search over titles and bodies with ranked results, using plain-language queries with no search syntax to learn
 - **Tags, not folders**: lightweight labels, including tags extracted from `#inline` text
 - **Local and private**: all data stored locally in SQLite; note content never appears in logs or diagnostics

@@ -26,7 +26,7 @@ Core behavior is covered with Rust tests against SQLite. Frontend utilities are 
 Each public branch should contain one clear product step. Commit subjects stay short and concrete; bodies explain what changed in one or two natural sentences.
 
 ## Domain Context
-Notes are the canonical user data. Tags are lightweight labels, including tags extracted from `#inline` text. Search must support plain user input without exposing FTS syntax errors.
+Notes are the canonical user data. Tags are lightweight labels, including tags extracted from `#inline` text. Workspaces are named collections that group related notes; a note can belong to more than one, and deleting a workspace never deletes its notes. Search must support plain user input without exposing FTS syntax errors.
 
 ## Important Constraints
 - Notes are stored locally.
