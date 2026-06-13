@@ -15,7 +15,9 @@ export type ShareResult =
   | { ok: false; error: string }
   | { cancelled: true };
 
-const FILTERS = [{ name: "InstantNotes Theme", extensions: [THEME_FILE_EXT, "json"] }];
+// Native dialogs filter by simple extension; .intheme.json files are JSON, so
+// "json" is the right filter. The full .intheme.json name comes from defaultPath.
+const FILTERS = [{ name: "InstantNotes Theme (.intheme.json)", extensions: ["json"] }];
 
 /** Prompt for a destination and write the active (or given) theme to it. */
 export async function exportTheme(id?: string): Promise<ShareResult> {
