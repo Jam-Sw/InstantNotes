@@ -15,7 +15,7 @@ struct AppState {
 }
 
 /// Serializable error per API.md §3.6 / §11.
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 struct CmdError {
     code: String,
@@ -295,6 +295,28 @@ fn open_library(app: AppHandle) {
     show_library_window(&app);
 }
 
+// ---- theme file sharing ----
+// Thin byte I/O for portable `.intheme.json` theme files. The open/save dialog
+// runs in JS via the dialog plugin; Rust only reads/writes the chosen path, so
+// no broad filesystem capability is needed. Validation happens in the webview
+// before any token is applied.
+
+#[tauri::command]
+fn export_theme_file(path: String, contents: String) -> CmdResult<()> {
+    std::fs::write(&path, contents).map_err(|e| CmdError {
+        code: "STORAGE_ERROR".into(),
+        message: format!("could not write theme file: {e}"),
+    })
+}
+
+#[tauri::command]
+fn import_theme_file(path: String) -> CmdResult<String> {
+    std::fs::read_to_string(&path).map_err(|e| CmdError {
+        code: "STORAGE_ERROR".into(),
+        message: format!("could not read theme file: {e}"),
+    })
+}
+
 const REPO_URL: &str = "https://github.com/Jam-Sw/InstantNotes";
 
 /// Open a file, folder, or URL with the macOS default handler.
@@ -349,6 +371,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -472,8 +495,36 @@ pub fn run() {
             set_setting,
             delete_setting,
             hide_capture,
-            open_library
+            open_library,
+            export_theme_file,
+            import_theme_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{export_theme_file, import_theme_file};
+
+    #[test]
+    fn theme_file_round_trip() {
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!("instantnotes-theme-{}.intheme.json", std::process::id()));
+        let path_str = path.to_string_lossy().to_string();
+        let json = r#"{"id":"x","name":"X","version":1}"#.to_string();
+
+        export_theme_file(path_str.clone(), json.clone()).expect("write");
+        let read_back = import_theme_file(path_str.clone()).expect("read");
+        assert_eq!(read_back, json);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn import_missing_file_errors() {
+        let res = import_theme_file("/nonexistent/path/theme.intheme.json".into());
+        assert!(res.is_err());
+        assert_eq!(res.unwrap_err().code, "STORAGE_ERROR");
+    }
 }

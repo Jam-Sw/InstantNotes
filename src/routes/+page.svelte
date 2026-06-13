@@ -3,6 +3,7 @@
   import { onMount } from "svelte";
   import { getVersion } from "@tauri-apps/api/app";
   import Editor from "$lib/components/Editor.svelte";
+  import ThemePicker from "$lib/components/ThemePicker.svelte";
   import { library, type StatusFilter } from "$lib/stores/library.svelte";
   import { updater } from "$lib/stores/updater.svelte";
 
@@ -138,6 +139,11 @@
     return body.replace(/\s+/g, " ").trim().slice(0, 90);
   }
 
+  function wordCount(body: string): number {
+    const trimmed = body.trim();
+    return trimmed ? trimmed.split(/\s+/).length : 0;
+  }
+
   async function submitTag(e: Event) {
     e.preventDefault();
     await library.addTag(tagInput);
@@ -228,6 +234,9 @@
         <div class="empty-hint">Type #tag in a note</div>
       {/each}
     </nav>
+    <div class="sidebar-footer">
+      <ThemePicker />
+    </div>
   </aside>
 
   <section class="list-pane">
@@ -410,7 +419,12 @@
       </div>
       <div class="status-bar">
         <span>Edited {formatDate(library.selected.updatedAt)}</span>
-        {#if library.error}<span class="error">{library.error}</span>{/if}
+        {#if library.error}
+          <span class="error">{library.error}</span>
+        {:else}
+          {@const n = wordCount(library.selected.body)}
+          <span>{n} {n === 1 ? "word" : "words"}</span>
+        {/if}
       </div>
     {:else}
       <div class="no-selection">
@@ -468,6 +482,12 @@
     border-right: 1px solid var(--border);
     padding: 12px 8px;
     overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+  .sidebar-footer {
+    margin-top: auto;
+    padding-top: 8px;
   }
   .nav-item {
     display: flex;
@@ -475,7 +495,7 @@
     width: 100%;
     text-align: left;
     padding: 5px 10px;
-    border-radius: 6px;
+    border-radius: var(--radius);
     color: var(--text);
   }
   .nav-item:hover {
@@ -483,7 +503,7 @@
   }
   .nav-item.active {
     background: var(--accent-soft);
-    color: var(--accent);
+    color: var(--accent-text);
     font-weight: 500;
   }
   .tags-header {
@@ -493,6 +513,7 @@
     text-transform: uppercase;
     letter-spacing: 0.4px;
     color: var(--text-tertiary);
+    font-family: var(--font-meta);
   }
   .tag-name {
     overflow: hidden;
@@ -502,6 +523,7 @@
   .tag-count {
     color: var(--text-tertiary);
     font-size: 11px;
+    font-family: var(--font-meta);
   }
   .empty-hint {
     padding: 4px 10px;
@@ -567,7 +589,7 @@
     flex: 1;
     padding: 5px 9px;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius);
     background: var(--bg-input);
     outline: none;
   }
@@ -577,9 +599,9 @@
   .new-note {
     width: 28px;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius);
     font-size: 15px;
-    color: var(--accent);
+    color: var(--accent-text);
   }
   .new-note:hover {
     background: var(--bg-hover);
@@ -601,7 +623,7 @@
   }
   .filter-pill.active {
     background: var(--accent-soft);
-    color: var(--accent);
+    color: var(--accent-text);
     font-weight: 500;
   }
   .trash-bar {
@@ -649,6 +671,7 @@
     color: var(--text-tertiary);
     font-size: 11px;
     margin-top: 3px;
+    font-family: var(--font-meta);
   }
   .empty-state {
     padding: 32px 16px;
@@ -685,7 +708,7 @@
   }
   .action {
     padding: 4px 10px;
-    border-radius: 6px;
+    border-radius: var(--radius);
     border: 1px solid var(--border);
     color: var(--text-secondary);
     font-size: 12px;
@@ -751,6 +774,7 @@
     border-top: 1px solid var(--border);
     color: var(--text-tertiary);
     font-size: 11px;
+    font-family: var(--font-meta);
   }
   .error {
     color: var(--danger);
