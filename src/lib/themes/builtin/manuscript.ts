@@ -1,4 +1,4 @@
-// Manuscript — the default direction. Editorial, near-monochrome, warm ink on
+// Manuscript - the default direction. Editorial, near-monochrome, warm ink on
 // near-black; a sage accent and monospace metadata give it a typeset feel.
 // Light variant is warm "paper": off-white ground, ink text, deeper sage.
 

@@ -1,4 +1,4 @@
-// Paper Dark — warm sepia dark with a clay accent; the cozy, low-glare reading
+// Paper Dark - warm sepia dark with a clay accent; the cozy, low-glare reading
 // direction. Light variant is warm paper with the same clay, for a notebook
 // feel in daylight.
 

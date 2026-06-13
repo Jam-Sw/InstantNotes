@@ -1,4 +1,4 @@
-// Graphite — neutral, modern, blue accent. The closest to a conventional
+// Graphite - neutral, modern, blue accent. The closest to a conventional
 // macOS app: clean greys, a familiar system blue. Light variant is the clean
 // macOS-adjacent light the app originally shipped, recolored in blue.
 

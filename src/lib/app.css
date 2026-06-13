@@ -91,7 +91,7 @@ textarea {
   color: var(--text-tertiary);
 }
 
-/* Terminal theme flourishes — the non-tokenizable personality. Markup stays
+/* Terminal theme flourishes - the non-tokenizable personality. Markup stays
    theme-agnostic; these rules only switch on [data-theme="terminal"]. */
 [data-theme="terminal"] .tags-header {
   text-transform: uppercase;

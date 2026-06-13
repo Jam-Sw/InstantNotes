@@ -3,8 +3,8 @@
 ## Why
 The baseline UI shipped with functional styling and a note in `app.css` that the
 full visual language would land in M4. The design direction settled on four
-dark-first, near-monochrome themes — Manuscript, Graphite, Terminal, and Paper
-Dark — each with a light variant. Users also want to switch and share themes,
+dark-first, near-monochrome themes - Manuscript, Graphite, Terminal, and Paper
+Dark - each with a light variant. Users also want to switch and share themes,
 not just receive whatever ships. A theme should be a single portable file that
 "just works" when handed to another user. Alongside the visual language, a ⌘K
 command palette gives a fast, keyboard-first way to run actions and switch

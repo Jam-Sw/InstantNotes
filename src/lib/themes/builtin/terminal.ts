@@ -1,4 +1,4 @@
-// Terminal — phosphor green on near-black, monospace throughout, tight radius
+// Terminal - phosphor green on near-black, monospace throughout, tight radius
 // and dense spacing. The flourish block in app.css adds the blinking caret,
 // uppercase section labels, and the row prefix. Light variant keeps the green
 // signal on a high-contrast light ground.
