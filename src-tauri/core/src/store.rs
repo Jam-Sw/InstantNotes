@@ -79,6 +79,23 @@ CREATE TRIGGER notes_au AFTER UPDATE OF title, body ON notes BEGIN
   INSERT INTO notes_fts(rowid, title, body) VALUES (new.seq, new.title, new.body);
 END;
 "#,
+    // v2 — workspaces: named note collections, many-to-many like tags
+    r#"
+CREATE TABLE workspaces (
+  id         TEXT PRIMARY KEY,
+  name       TEXT NOT NULL COLLATE NOCASE UNIQUE,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE note_workspaces (
+  note_id      TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  created_at   TEXT NOT NULL,
+  PRIMARY KEY (note_id, workspace_id)
+);
+CREATE INDEX idx_note_workspaces_ws ON note_workspaces(workspace_id);
+"#,
 ];
 
 const NOTE_COLUMNS: &str = "id, title, body, created_at, updated_at, last_opened_at, \
@@ -123,6 +140,17 @@ fn row_to_tag(row: &rusqlite::Row<'_>) -> rusqlite::Result<Tag> {
         updated_at: row.get(4)?,
     })
 }
+
+fn row_to_workspace(row: &rusqlite::Row<'_>) -> rusqlite::Result<Workspace> {
+    Ok(Workspace {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        created_at: row.get(2)?,
+        updated_at: row.get(3)?,
+    })
+}
+
+const WORKSPACE_COLUMNS: &str = "id, name, created_at, updated_at";
 
 /// Get-or-create a tag inside an existing transaction/connection.
 fn tag_get_or_create(conn: &Connection, raw_name: &str) -> Result<Tag> {
@@ -409,6 +437,13 @@ impl Store {
             args.push(Box::new(i64::from(pinned)));
         }
 
+        if let Some(workspace_id) = &filter.workspace_id {
+            conditions.push(
+                "id IN (SELECT note_id FROM note_workspaces WHERE workspace_id = ?)".into(),
+            );
+            args.push(Box::new(workspace_id.clone()));
+        }
+
         if !filter.tag_ids.is_empty() {
             let placeholders = vec!["?"; filter.tag_ids.len()].join(", ");
             conditions.push(format!(
@@ -439,8 +474,12 @@ impl Store {
         let limit = filter.limit.unwrap_or(500).clamp(1, 5000);
         let offset = filter.offset.unwrap_or(0).max(0);
 
+        // Pinned notes float to the top of every live list; trash keeps
+        // plain recency order.
+        let pinned_first = if deleted { "" } else { "is_pinned DESC, " };
         let sql = format!(
-            "SELECT {NOTE_COLUMNS} FROM notes WHERE {} ORDER BY {order_column} {order_dir} \
+            "SELECT {NOTE_COLUMNS} FROM notes WHERE {} \
+             ORDER BY {pinned_first}{order_column} {order_dir} \
              LIMIT {limit} OFFSET {offset}",
             conditions.join(" AND ")
         );
@@ -588,6 +627,129 @@ impl Store {
              WHERE nt.note_id = ?1 ORDER BY t.name",
         )?;
         let rows = stmt.query_map(params![note_id], row_to_tag)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    // ---- workspaces ----
+
+    fn fetch_workspace(&self, id: &str) -> Result<Workspace> {
+        self.conn
+            .query_row(
+                &format!("SELECT {WORKSPACE_COLUMNS} FROM workspaces WHERE id = ?1"),
+                params![id],
+                row_to_workspace,
+            )
+            .optional()?
+            .ok_or_else(|| AppError::NotFound(format!("workspace {id} not found")))
+    }
+
+    pub fn get_or_create_workspace(&mut self, raw_name: &str) -> Result<Workspace> {
+        let name = domain::normalize_workspace_name(raw_name)
+            .ok_or_else(|| AppError::Validation("workspace name must not be empty".into()))?;
+        if let Some(ws) = self
+            .conn
+            .query_row(
+                &format!("SELECT {WORKSPACE_COLUMNS} FROM workspaces WHERE name = ?1"),
+                params![name],
+                row_to_workspace,
+            )
+            .optional()?
+        {
+            return Ok(ws);
+        }
+        let now = now_iso();
+        let id = new_id();
+        self.conn.execute(
+            "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES (?1, ?2, ?3, ?3)",
+            params![id, name, now],
+        )?;
+        Ok(Workspace {
+            id,
+            name,
+            created_at: now.clone(),
+            updated_at: now,
+        })
+    }
+
+    pub fn list_workspaces(&self) -> Result<Vec<WorkspaceWithCount>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT w.id, w.name, w.created_at, w.updated_at, \
+                    (SELECT COUNT(*) FROM note_workspaces nw \
+                       JOIN notes n ON n.id = nw.note_id \
+                      WHERE nw.workspace_id = w.id AND n.is_deleted = 0) AS note_count \
+             FROM workspaces w ORDER BY w.name COLLATE NOCASE",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(WorkspaceWithCount {
+                workspace: row_to_workspace(row)?,
+                note_count: row.get(4)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn rename_workspace(&mut self, id: &str, raw_name: &str) -> Result<Workspace> {
+        self.fetch_workspace(id)?;
+        let name = domain::normalize_workspace_name(raw_name)
+            .ok_or_else(|| AppError::Validation("workspace name must not be empty".into()))?;
+        let clash: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT id FROM workspaces WHERE name = ?1 AND id <> ?2",
+                params![name, id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if clash.is_some() {
+            return Err(AppError::Conflict(format!(
+                "a workspace named '{name}' already exists"
+            )));
+        }
+        self.conn.execute(
+            "UPDATE workspaces SET name = ?1, updated_at = ?2 WHERE id = ?3",
+            params![name, now_iso(), id],
+        )?;
+        self.fetch_workspace(id)
+    }
+
+    /// Removes the workspace and its memberships; notes are untouched.
+    pub fn delete_workspace(&mut self, id: &str) -> Result<()> {
+        let affected = self
+            .conn
+            .execute("DELETE FROM workspaces WHERE id = ?1", params![id])?;
+        if affected == 0 {
+            return Err(AppError::NotFound(format!("workspace {id} not found")));
+        }
+        Ok(())
+    }
+
+    /// Collect a note into a workspace (idempotent).
+    pub fn add_note_to_workspace(&mut self, note_id: &str, workspace_id: &str) -> Result<()> {
+        self.fetch_note(note_id)?;
+        self.fetch_workspace(workspace_id)?;
+        self.conn.execute(
+            "INSERT OR IGNORE INTO note_workspaces (note_id, workspace_id, created_at) \
+             VALUES (?1, ?2, ?3)",
+            params![note_id, workspace_id, now_iso()],
+        )?;
+        Ok(())
+    }
+
+    pub fn remove_note_from_workspace(&mut self, note_id: &str, workspace_id: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM note_workspaces WHERE note_id = ?1 AND workspace_id = ?2",
+            params![note_id, workspace_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn workspaces_for_note(&self, note_id: &str) -> Result<Vec<Workspace>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT w.id, w.name, w.created_at, w.updated_at \
+             FROM workspaces w JOIN note_workspaces nw ON nw.workspace_id = w.id \
+             WHERE nw.note_id = ?1 ORDER BY w.name COLLATE NOCASE",
+        )?;
+        let rows = stmt.query_map(params![note_id], row_to_workspace)?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 

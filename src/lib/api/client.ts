@@ -10,6 +10,8 @@ import type {
   Tag,
   TagWithCount,
   UpdateNotePatch,
+  Workspace,
+  WorkspaceWithCount,
 } from "./types";
 
 export class ApiError extends Error {
@@ -62,6 +64,22 @@ export const removeTagFromNote = (noteId: string, tagId: string) =>
   call<void>("remove_tag_from_note", { noteId, tagId });
 export const tagsForNote = (noteId: string) =>
   call<Tag[]>("tags_for_note", { noteId });
+
+// ---- workspaces ----
+export const listWorkspaces = () =>
+  call<WorkspaceWithCount[]>("list_workspaces");
+export const getOrCreateWorkspace = (name: string) =>
+  call<Workspace>("get_or_create_workspace", { name });
+export const renameWorkspace = (id: string, name: string) =>
+  call<Workspace>("rename_workspace", { id, name });
+export const deleteWorkspace = (id: string) =>
+  call<void>("delete_workspace", { id });
+export const addNoteToWorkspace = (noteId: string, workspaceId: string) =>
+  call<void>("add_note_to_workspace", { noteId, workspaceId });
+export const removeNoteFromWorkspace = (noteId: string, workspaceId: string) =>
+  call<void>("remove_note_from_workspace", { noteId, workspaceId });
+export const workspacesForNote = (noteId: string) =>
+  call<Workspace[]>("workspaces_for_note", { noteId });
 
 // ---- settings ----
 export const getSetting = <T>(key: string) =>

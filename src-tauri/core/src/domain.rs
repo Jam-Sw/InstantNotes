@@ -17,6 +17,18 @@ pub fn normalize_tag_name(raw: &str) -> Option<String> {
     }
 }
 
+/// Normalize a workspace name: trim and collapse repeated whitespace,
+/// preserving case (workspaces are display names, unlike lowercase tags).
+/// Returns `None` for empty results.
+pub fn normalize_workspace_name(raw: &str) -> Option<String> {
+    let collapsed = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.is_empty() {
+        None
+    } else {
+        Some(collapsed)
+    }
+}
+
 /// Extract inline `#tag` tokens from note body text. A tag starts with `#`
 /// at the start of the text or after whitespace, followed by one or more
 /// alphanumeric / `-` / `_` characters. Results are normalized and deduped,

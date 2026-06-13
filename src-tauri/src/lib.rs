@@ -50,6 +50,10 @@ fn emit_tags_changed(app: &AppHandle) {
     let _ = app.emit("tags:changed", ());
 }
 
+fn emit_workspaces_changed(app: &AppHandle) {
+    let _ = app.emit("workspaces:changed", ());
+}
+
 // ---- note commands ----
 
 #[tauri::command]
@@ -187,6 +191,75 @@ fn remove_tag_from_note(
 #[tauri::command]
 fn tags_for_note(state: State<'_, AppState>, note_id: String) -> CmdResult<Vec<Tag>> {
     Ok(locked(&state)?.tags_for_note(&note_id)?)
+}
+
+// ---- workspace commands ----
+
+#[tauri::command]
+fn list_workspaces(state: State<'_, AppState>) -> CmdResult<Vec<WorkspaceWithCount>> {
+    Ok(locked(&state)?.list_workspaces()?)
+}
+
+#[tauri::command]
+fn get_or_create_workspace(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    name: String,
+) -> CmdResult<Workspace> {
+    let ws = locked(&state)?.get_or_create_workspace(&name)?;
+    emit_workspaces_changed(&app);
+    Ok(ws)
+}
+
+#[tauri::command]
+fn rename_workspace(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    id: String,
+    name: String,
+) -> CmdResult<Workspace> {
+    let ws = locked(&state)?.rename_workspace(&id, &name)?;
+    emit_workspaces_changed(&app);
+    Ok(ws)
+}
+
+#[tauri::command]
+fn delete_workspace(state: State<'_, AppState>, app: AppHandle, id: String) -> CmdResult<()> {
+    locked(&state)?.delete_workspace(&id)?;
+    emit_workspaces_changed(&app);
+    emit_notes_changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn add_note_to_workspace(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    note_id: String,
+    workspace_id: String,
+) -> CmdResult<()> {
+    locked(&state)?.add_note_to_workspace(&note_id, &workspace_id)?;
+    emit_workspaces_changed(&app);
+    emit_notes_changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn remove_note_from_workspace(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    note_id: String,
+    workspace_id: String,
+) -> CmdResult<()> {
+    locked(&state)?.remove_note_from_workspace(&note_id, &workspace_id)?;
+    emit_workspaces_changed(&app);
+    emit_notes_changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn workspaces_for_note(state: State<'_, AppState>, note_id: String) -> CmdResult<Vec<Workspace>> {
+    Ok(locked(&state)?.workspaces_for_note(&note_id)?)
 }
 
 // ---- settings commands ----
@@ -388,6 +461,13 @@ pub fn run() {
             add_tag_to_note,
             remove_tag_from_note,
             tags_for_note,
+            list_workspaces,
+            get_or_create_workspace,
+            rename_workspace,
+            delete_workspace,
+            add_note_to_workspace,
+            remove_note_from_workspace,
+            workspaces_for_note,
             get_setting,
             set_setting,
             delete_setting,
