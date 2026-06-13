@@ -3,17 +3,18 @@
   import { onMount } from "svelte";
   import { getVersion } from "@tauri-apps/api/app";
   import Editor from "$lib/components/Editor.svelte";
-  import { library, type Section } from "$lib/stores/library.svelte";
+  import { library, type StatusFilter } from "$lib/stores/library.svelte";
   import { updater } from "$lib/stores/updater.svelte";
 
-  const sections: { id: Section; label: string }[] = [
-    { id: "all", label: "All Notes" },
-    { id: "pinned", label: "Pinned" },
+  const statusFilters: { id: StatusFilter; label: string }[] = [
+    { id: "active", label: "Active" },
     { id: "archived", label: "Archived" },
     { id: "trash", label: "Trash" },
   ];
 
   let tagInput = $state("");
+  let workspaceInput = $state("");
+  let newWorkspaceInput = $state("");
   let appVersion = $state("");
 
   onMount(() => {
@@ -103,7 +104,7 @@
   }
 
   async function deleteSelection() {
-    if (library.section === "trash") {
+    if (library.statusFilter === "trash") {
       await confirmBulkDestroy();
     } else {
       await library.bulkDelete();
@@ -143,6 +144,24 @@
     tagInput = "";
   }
 
+  async function submitWorkspace(e: Event) {
+    e.preventDefault();
+    await library.addSelectedToWorkspace(workspaceInput);
+    workspaceInput = "";
+  }
+
+  async function submitNewWorkspace(e: Event) {
+    e.preventDefault();
+    await library.createWorkspace(newWorkspaceInput);
+    newWorkspaceInput = "";
+  }
+
+  async function confirmDeleteWorkspace(id: string, name: string) {
+    if (window.confirm(`Delete workspace "${name}"? Its notes are kept.`)) {
+      await library.removeWorkspace(id);
+    }
+  }
+
   async function confirmDestroy() {
     if (window.confirm("Permanently delete this note? This cannot be undone.")) {
       await library.destroySelected();
@@ -153,15 +172,45 @@
 <div class="layout">
   <aside class="sidebar">
     <nav class="sections">
-      {#each sections as s (s.id)}
-        <button
-          class="nav-item"
-          class:active={library.section === s.id && !library.activeTagId}
-          onclick={() => library.setSection(s.id)}
-        >
-          {s.label}
-        </button>
+      <button
+        class="nav-item"
+        class:active={!library.activeWorkspaceId && !library.activeTagId}
+        onclick={() => library.selectWorkspace(null)}
+      >
+        All Notes
+      </button>
+    </nav>
+    <div class="tags-header">Workspaces</div>
+    <nav class="workspaces">
+      {#each library.workspaces as ws (ws.id)}
+        <div class="workspace-row">
+          <button
+            class="nav-item workspace-item"
+            class:active={library.activeWorkspaceId === ws.id}
+            onclick={() =>
+              library.selectWorkspace(library.activeWorkspaceId === ws.id ? null : ws.id)}
+          >
+            <span class="workspace-name">{ws.name}</span>
+            <span class="tag-count">{ws.noteCount}</span>
+          </button>
+          <button
+            class="workspace-delete"
+            title={`Delete workspace "${ws.name}" (notes are kept)`}
+            onclick={() => confirmDeleteWorkspace(ws.id, ws.name)}
+          >
+            ×
+          </button>
+        </div>
+      {:else}
+        <div class="empty-hint">Group notes by project or topic</div>
       {/each}
+      <form onsubmit={submitNewWorkspace}>
+        <input
+          class="workspace-new"
+          placeholder="＋ New workspace…"
+          bind:value={newWorkspaceInput}
+        />
+      </form>
     </nav>
     <div class="tags-header">Tags</div>
     <nav class="tags">
@@ -192,7 +241,20 @@
       />
       <button class="new-note" title="New note (⌘N)" onclick={() => library.newNote()}>＋</button>
     </div>
-    {#if library.section === "trash" && library.notes.length > 0 && !library.searchResults}
+    {#if !library.activeWorkspaceId && !library.activeTagId && !library.searchResults}
+      <div class="status-filter">
+        {#each statusFilters as f (f.id)}
+          <button
+            class="filter-pill"
+            class:active={library.statusFilter === f.id}
+            onclick={() => library.setStatusFilter(f.id)}
+          >
+            {f.label}
+          </button>
+        {/each}
+      </div>
+    {/if}
+    {#if library.statusFilter === "trash" && library.notes.length > 0 && !library.searchResults}
       <div class="trash-bar">
         <button class="action danger" onclick={confirmEmptyTrash}>Empty Trash</button>
       </div>
@@ -230,12 +292,14 @@
           </button>
         {:else}
           <div class="empty-state">
-            {#if library.section === "all"}
-              No notes yet. Press ⌥Space anywhere to capture your first thought.
-            {:else if library.section === "trash"}
+            {#if library.activeWorkspaceId}
+              No notes in this workspace yet. Open a note and add it here.
+            {:else if library.statusFilter === "trash"}
               Trash is empty.
+            {:else if library.statusFilter === "archived"}
+              Nothing archived yet.
             {:else}
-              Nothing here yet.
+              No notes yet. Press ⌥Space anywhere to capture your first thought.
             {/if}
           </div>
         {/each}
@@ -252,7 +316,7 @@
         <div class="bulk-inner">
           <h2>{library.multiSelected.size} notes selected</h2>
           <div class="bulk-actions">
-            {#if library.section === "trash"}
+            {#if library.statusFilter === "trash"}
               <button class="action" onclick={() => library.bulkRestore()}>Restore</button>
               <button class="action danger" onclick={confirmBulkDestroy}>Delete Forever</button>
             {:else}
@@ -261,9 +325,9 @@
               </button>
               <button
                 class="action"
-                onclick={() => library.bulkSetArchived(library.section !== "archived")}
+                onclick={() => library.bulkSetArchived(library.statusFilter !== "archived")}
               >
-                {library.section === "archived" ? "Unarchive" : "Archive"}
+                {library.statusFilter === "archived" ? "Unarchive" : "Archive"}
               </button>
               <button class="action danger" onclick={() => library.bulkDelete()}>Delete</button>
             {/if}
@@ -311,6 +375,31 @@
         <form onsubmit={submitTag}>
           <input class="tag-input" placeholder="Add tag…" bind:value={tagInput} />
         </form>
+        <span class="bar-divider"></span>
+        {#each library.selectedWorkspaces as ws (ws.id)}
+          <span class="chip workspace-chip">
+            {ws.name}
+            <button
+              class="chip-remove"
+              title="Remove from workspace"
+              onclick={() => library.removeSelectedFromWorkspace(ws.id)}
+              >×</button
+            >
+          </span>
+        {/each}
+        <form onsubmit={submitWorkspace}>
+          <input
+            class="tag-input"
+            placeholder="Add to workspace…"
+            list="workspace-names"
+            bind:value={workspaceInput}
+          />
+        </form>
+        <datalist id="workspace-names">
+          {#each library.workspaces as ws (ws.id)}
+            <option value={ws.name}></option>
+          {/each}
+        </datalist>
       </div>
       <div class="editor-body">
         <Editor
@@ -420,6 +509,47 @@
     font-size: 12px;
   }
 
+  /* workspaces */
+  .workspace-row {
+    display: flex;
+    align-items: center;
+  }
+  .workspace-row .nav-item {
+    min-width: 0;
+  }
+  .workspace-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .workspace-delete {
+    flex-shrink: 0;
+    width: 18px;
+    color: var(--text-tertiary);
+    font-size: 13px;
+    line-height: 1;
+    visibility: hidden;
+  }
+  .workspace-row:hover .workspace-delete {
+    visibility: visible;
+  }
+  .workspace-delete:hover {
+    color: var(--danger);
+  }
+  .workspace-new {
+    width: 100%;
+    margin-top: 2px;
+    padding: 4px 10px;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .workspace-new::placeholder {
+    color: var(--text-tertiary);
+  }
+
   /* list pane */
   .list-pane {
     border-right: 1px solid var(--border);
@@ -453,6 +583,26 @@
   }
   .new-note:hover {
     background: var(--bg-hover);
+  }
+  .status-filter {
+    display: flex;
+    gap: 4px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .filter-pill {
+    padding: 2px 10px;
+    border-radius: 99px;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+  .filter-pill:hover {
+    background: var(--bg-hover);
+  }
+  .filter-pill.active {
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 500;
   }
   .trash-bar {
     display: flex;
@@ -578,7 +728,16 @@
     outline: none;
     background: transparent;
     font-size: 12px;
-    width: 80px;
+    width: 110px;
+    color: var(--text-secondary);
+  }
+  .bar-divider {
+    width: 1px;
+    height: 14px;
+    background: var(--border);
+  }
+  .workspace-chip {
+    background: var(--bg-hover);
     color: var(--text-secondary);
   }
   .editor-body {

@@ -2,19 +2,25 @@
 // client; the store re-queries on core change events (single-writer model).
 
 import {
+  addNoteToWorkspace,
   addTagToNote,
   ApiError,
   createNote,
+  deleteWorkspace,
   getNote,
+  getOrCreateWorkspace,
   listNotes,
   listTags,
+  listWorkspaces,
   permanentlyDeleteNote,
+  removeNoteFromWorkspace,
   removeTagFromNote,
   restoreNote,
   searchNotes,
   softDeleteNote,
   tagsForNote,
   updateNote,
+  workspacesForNote,
 } from "$lib/api/client";
 import type {
   Note,
@@ -22,23 +28,30 @@ import type {
   SearchResult,
   Tag,
   TagWithCount,
+  Workspace,
+  WorkspaceWithCount,
 } from "$lib/api/types";
 import { debounce } from "$lib/debounce";
 import { friendlyMessage } from "$lib/errors";
 import { rangeSelection, stepId, toggleSelection } from "$lib/selection";
 import { listen } from "@tauri-apps/api/event";
 
-export type Section = "all" | "pinned" | "archived" | "trash";
+// Archived and trash live behind a list filter in All Notes, not as
+// top-level sections (two-section library: All Notes and Workspaces).
+export type StatusFilter = "active" | "archived" | "trash";
 
 class LibraryStore {
-  section = $state<Section>("all");
+  statusFilter = $state<StatusFilter>("active");
+  activeWorkspaceId = $state<string | null>(null);
   activeTagId = $state<string | null>(null);
   searchText = $state("");
   notes = $state<Note[]>([]);
   searchResults = $state<SearchResult[] | null>(null);
   tags = $state<TagWithCount[]>([]);
+  workspaces = $state<WorkspaceWithCount[]>([]);
   selected = $state<Note | null>(null);
   selectedTags = $state<Tag[]>([]);
+  selectedWorkspaces = $state<Workspace[]>([]);
   // Ids checked for bulk actions. Holds the open note's id on a plain click;
   // grows via cmd-click / shift-click. Size > 1 swaps the editor for the
   // bulk-actions panel.
@@ -54,16 +67,21 @@ class LibraryStore {
   }, 400);
 
   async init(): Promise<void> {
-    await Promise.all([this.refresh(), this.refreshTags()]);
+    await Promise.all([
+      this.refresh(),
+      this.refreshTags(),
+      this.refreshWorkspaces(),
+    ]);
     await listen("notes:changed", () => this.#refreshDebounced());
     await listen("tags:changed", () => void this.refreshTags());
+    await listen("workspaces:changed", () => void this.refreshWorkspaces());
   }
 
   #filter(): NoteFilter {
     const f: NoteFilter = {};
-    if (this.section === "pinned") f.isPinned = true;
-    if (this.section === "archived") f.isArchived = true;
-    if (this.section === "trash") f.isDeleted = true;
+    if (this.statusFilter === "archived") f.isArchived = true;
+    if (this.statusFilter === "trash") f.isDeleted = true;
+    if (this.activeWorkspaceId) f.workspaceId = this.activeWorkspaceId;
     if (this.activeTagId) f.tagIds = [this.activeTagId];
     return f;
   }
@@ -91,8 +109,32 @@ class LibraryStore {
     }
   }
 
-  setSection(section: Section): void {
-    this.section = section;
+  async refreshWorkspaces(): Promise<void> {
+    try {
+      this.workspaces = await listWorkspaces();
+      // Live list refresh when the active workspace's contents changed.
+      if (
+        this.activeWorkspaceId &&
+        !this.workspaces.some((w) => w.id === this.activeWorkspaceId)
+      ) {
+        this.selectWorkspace(null);
+      }
+    } catch (e) {
+      this.#fail(e);
+    }
+  }
+
+  setStatusFilter(filter: StatusFilter): void {
+    this.statusFilter = filter;
+    this.searchText = "";
+    this.clearMultiSelect();
+    void this.refresh();
+  }
+
+  /** Show All Notes (null) or one workspace's collected notes. */
+  selectWorkspace(workspaceId: string | null): void {
+    this.activeWorkspaceId = workspaceId;
+    this.statusFilter = "active";
     this.activeTagId = null;
     this.searchText = "";
     this.clearMultiSelect();
@@ -101,7 +143,8 @@ class LibraryStore {
 
   setTagFilter(tagId: string | null): void {
     this.activeTagId = tagId;
-    this.section = "all";
+    this.activeWorkspaceId = null;
+    this.statusFilter = "active";
     this.searchText = "";
     this.clearMultiSelect();
     void this.refresh();
@@ -128,7 +171,10 @@ class LibraryStore {
     this.#saveBody.flush();
     try {
       this.selected = await getNote(id, true);
-      this.selectedTags = await tagsForNote(id);
+      [this.selectedTags, this.selectedWorkspaces] = await Promise.all([
+        tagsForNote(id),
+        workspacesForNote(id),
+      ]);
       this.error = null;
     } catch (e) {
       this.#fail(e);
@@ -197,6 +243,7 @@ class LibraryStore {
     this.#lastRangeEnd = null;
     this.selected = null;
     this.selectedTags = [];
+    this.selectedWorkspaces = [];
   }
 
   /** Keep the editor pane consistent with how many notes are checked. */
@@ -210,6 +257,7 @@ class LibraryStore {
       this.#saveBody.flush();
       this.selected = null;
       this.selectedTags = [];
+      this.selectedWorkspaces = [];
     }
   }
 
@@ -267,8 +315,59 @@ class LibraryStore {
   async newNote(): Promise<void> {
     try {
       const note = await createNote({});
-      this.setSection("all");
+      // A note born inside a workspace joins it; the view stays put.
+      if (this.activeWorkspaceId) {
+        await addNoteToWorkspace(note.id, this.activeWorkspaceId);
+      }
+      this.statusFilter = "active";
+      this.activeTagId = null;
+      this.searchText = "";
+      void this.refresh();
       await this.select(note.id);
+    } catch (e) {
+      this.#fail(e);
+    }
+  }
+
+  // ---- workspaces ----
+
+  async createWorkspace(name: string): Promise<void> {
+    if (!name.trim()) return;
+    try {
+      const ws = await getOrCreateWorkspace(name);
+      this.selectWorkspace(ws.id);
+    } catch (e) {
+      this.#fail(e);
+    }
+  }
+
+  /** Delete a workspace; its notes are kept. */
+  async removeWorkspace(id: string): Promise<void> {
+    try {
+      await deleteWorkspace(id);
+      if (this.activeWorkspaceId === id) this.selectWorkspace(null);
+    } catch (e) {
+      this.#fail(e);
+    }
+  }
+
+  /** Collect the open note into a workspace by name (created if missing). */
+  async addSelectedToWorkspace(name: string): Promise<void> {
+    if (!this.selected || !name.trim()) return;
+    try {
+      const ws = await getOrCreateWorkspace(name);
+      await addNoteToWorkspace(this.selected.id, ws.id);
+      this.selectedWorkspaces = await workspacesForNote(this.selected.id);
+    } catch (e) {
+      this.#fail(e);
+    }
+  }
+
+  async removeSelectedFromWorkspace(workspaceId: string): Promise<void> {
+    if (!this.selected) return;
+    try {
+      await removeNoteFromWorkspace(this.selected.id, workspaceId);
+      this.selectedWorkspaces = await workspacesForNote(this.selected.id);
     } catch (e) {
       this.#fail(e);
     }

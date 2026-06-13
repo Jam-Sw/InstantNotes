@@ -1617,7 +1617,7 @@ dependencies = [
 
 [[package]]
 name = "instantnotes"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "instantnotes-core",
  "serde",
@@ -1631,7 +1631,7 @@ dependencies = [
 
 [[package]]
 name = "instantnotes-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "rusqlite",

@@ -38,6 +38,25 @@ pub struct TagWithCount {
     pub usage_count: i64,
 }
 
+/// Named collection of notes; a note may belong to many workspaces.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Workspace {
+    pub id: String,
+    pub name: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Workspace with live note count for the library sidebar.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceWithCount {
+    #[serde(flatten)]
+    pub workspace: Workspace,
+    pub note_count: i64,
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct CreateNoteInput {
@@ -60,6 +79,7 @@ pub struct UpdateNotePatch {
 pub struct NoteFilter {
     pub query: Option<String>,
     pub tag_ids: Vec<String>,
+    pub workspace_id: Option<String>,
     pub is_pinned: Option<bool>,
     pub is_archived: Option<bool>,
     pub is_deleted: Option<bool>,

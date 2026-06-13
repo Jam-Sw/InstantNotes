@@ -36,6 +36,17 @@ export interface TagWithCount extends Tag {
   usageCount: number;
 }
 
+export interface Workspace {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkspaceWithCount extends Workspace {
+  noteCount: number;
+}
+
 export interface CreateNoteInput {
   title?: string;
   body?: string;
@@ -52,6 +63,7 @@ export interface UpdateNotePatch {
 export interface NoteFilter {
   query?: string;
   tagIds?: string[];
+  workspaceId?: string;
   isPinned?: boolean;
   isArchived?: boolean;
   isDeleted?: boolean;

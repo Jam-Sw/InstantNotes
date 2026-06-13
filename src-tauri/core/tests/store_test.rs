@@ -529,3 +529,139 @@ fn notes_survive_reopen() {
 // keep AppError import used even if individual asserts change
 #[allow(dead_code)]
 fn _uses(_: AppError) {}
+
+// ---- workspaces ----
+
+#[test]
+fn get_or_create_workspace_is_idempotent_by_name() {
+    let mut s = store();
+    let a = s.get_or_create_workspace("  Project X  ").unwrap();
+    let b = s.get_or_create_workspace("Project X").unwrap();
+    assert_eq!(a.id, b.id);
+    assert_eq!(a.name, "Project X");
+}
+
+#[test]
+fn create_workspace_rejects_empty_name() {
+    let mut s = store();
+    let err = s.get_or_create_workspace("   ").unwrap_err();
+    assert!(matches!(err, AppError::Validation(_)));
+}
+
+#[test]
+fn list_workspaces_counts_exclude_deleted_notes() {
+    let mut s = store();
+    let ws = s.get_or_create_workspace("Inbox").unwrap();
+    let n1 = create(&mut s, "first");
+    let n2 = create(&mut s, "second");
+    s.add_note_to_workspace(&n1.id, &ws.id).unwrap();
+    s.add_note_to_workspace(&n2.id, &ws.id).unwrap();
+    s.soft_delete_note(&n2.id).unwrap();
+    let listed = s.list_workspaces().unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].note_count, 1);
+}
+
+#[test]
+fn rename_workspace_updates_name_and_rejects_clash() {
+    let mut s = store();
+    let a = s.get_or_create_workspace("Alpha").unwrap();
+    let _b = s.get_or_create_workspace("Beta").unwrap();
+    let renamed = s.rename_workspace(&a.id, "Gamma").unwrap();
+    assert_eq!(renamed.name, "Gamma");
+    let err = s.rename_workspace(&a.id, "Beta").unwrap_err();
+    assert!(matches!(err, AppError::Conflict(_)));
+    let err = s.rename_workspace("missing", "Any").unwrap_err();
+    assert!(matches!(err, AppError::NotFound(_)));
+}
+
+#[test]
+fn delete_workspace_keeps_notes() {
+    let mut s = store();
+    let ws = s.get_or_create_workspace("Doomed").unwrap();
+    let n = create(&mut s, "survivor");
+    s.add_note_to_workspace(&n.id, &ws.id).unwrap();
+    s.delete_workspace(&ws.id).unwrap();
+    assert!(s.list_workspaces().unwrap().is_empty());
+    assert_eq!(s.get_note(&n.id, false).unwrap().id, n.id);
+    let err = s.delete_workspace(&ws.id).unwrap_err();
+    assert!(matches!(err, AppError::NotFound(_)));
+}
+
+#[test]
+fn workspace_membership_roundtrip() {
+    let mut s = store();
+    let ws = s.get_or_create_workspace("Research").unwrap();
+    let n = create(&mut s, "a note");
+    s.add_note_to_workspace(&n.id, &ws.id).unwrap();
+    // idempotent
+    s.add_note_to_workspace(&n.id, &ws.id).unwrap();
+    let memberships = s.workspaces_for_note(&n.id).unwrap();
+    assert_eq!(memberships.len(), 1);
+    assert_eq!(memberships[0].name, "Research");
+    s.remove_note_from_workspace(&n.id, &ws.id).unwrap();
+    assert!(s.workspaces_for_note(&n.id).unwrap().is_empty());
+}
+
+#[test]
+fn add_note_to_missing_workspace_or_note_fails() {
+    let mut s = store();
+    let n = create(&mut s, "lonely");
+    let err = s.add_note_to_workspace(&n.id, "missing-ws").unwrap_err();
+    assert!(matches!(err, AppError::NotFound(_)));
+    let ws = s.get_or_create_workspace("Real").unwrap();
+    let err = s.add_note_to_workspace("missing-note", &ws.id).unwrap_err();
+    assert!(matches!(err, AppError::NotFound(_)));
+}
+
+#[test]
+fn list_notes_filters_by_workspace() {
+    let mut s = store();
+    let ws = s.get_or_create_workspace("Focus").unwrap();
+    let inside = create(&mut s, "inside note");
+    let _outside = create(&mut s, "outside note");
+    s.add_note_to_workspace(&inside.id, &ws.id).unwrap();
+    let filter = NoteFilter {
+        workspace_id: Some(ws.id.clone()),
+        ..Default::default()
+    };
+    let notes = s.list_notes(filter).unwrap();
+    assert_eq!(notes.len(), 1);
+    assert_eq!(notes[0].id, inside.id);
+}
+
+#[test]
+fn pinned_notes_float_to_top_of_list() {
+    let mut s = store();
+    let older = create(&mut s, "older but pinned");
+    let _newer = create(&mut s, "newer unpinned");
+    s.update_note(
+        &older.id,
+        UpdateNotePatch {
+            is_pinned: Some(true),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let notes = s.list_notes(NoteFilter::default()).unwrap();
+    assert_eq!(notes[0].id, older.id, "pinned note should sort first");
+}
+
+#[test]
+fn workspaces_survive_reopen() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("notes.db");
+    let (ws_id, note_id) = {
+        let mut s = Store::open(&path).unwrap();
+        let ws = s.get_or_create_workspace("Persistent").unwrap();
+        let n = create(&mut s, "kept note");
+        s.add_note_to_workspace(&n.id, &ws.id).unwrap();
+        (ws.id, n.id)
+    };
+    let s2 = Store::open(&path).unwrap();
+    let listed = s2.list_workspaces().unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].workspace.id, ws_id);
+    let members = s2.workspaces_for_note(&note_id).unwrap();
+    assert_eq!(members.len(), 1);
+}
