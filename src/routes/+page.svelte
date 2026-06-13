@@ -4,6 +4,7 @@
   import { getVersion } from "@tauri-apps/api/app";
   import Editor from "$lib/components/Editor.svelte";
   import ThemePicker from "$lib/components/ThemePicker.svelte";
+  import CommandPalette from "$lib/components/CommandPalette.svelte";
   import { library, type StatusFilter } from "$lib/stores/library.svelte";
   import { updater } from "$lib/stores/updater.svelte";
 
@@ -17,6 +18,7 @@
   let workspaceInput = $state("");
   let newWorkspaceInput = $state("");
   let appVersion = $state("");
+  let paletteOpen = $state(false);
 
   onMount(() => {
     void library.init();
@@ -51,6 +53,12 @@
 
   function onKeydown(e: KeyboardEvent) {
     const mod = e.metaKey || e.ctrlKey;
+    // ⌘K toggles the command palette from anywhere, including input fields.
+    if (mod && e.key === "k") {
+      e.preventDefault();
+      paletteOpen = !paletteOpen;
+      return;
+    }
     if (mod && e.key === "n") {
       e.preventDefault();
       void library.newNote();
@@ -461,12 +469,15 @@
             {/if}
           </h2>
           <p>Select a note, or press <kbd>⌥Space</kbd> anywhere to capture.</p>
+          <p class="hint-line">Press <kbd>⌘K</kbd> for commands and themes.</p>
           {#if library.error}<p class="error">{library.error}</p>{/if}
         </div>
       </div>
     {/if}
   </section>
 </div>
+
+<CommandPalette bind:open={paletteOpen} />
 
 <style>
   .layout {
@@ -823,6 +834,10 @@
     font-weight: 600;
     color: var(--text-secondary);
   }
+  .hint-line {
+    font-size: 12px;
+    opacity: 0.8;
+  }
   /* Orange marks beta builds. */
   .version-badge {
     display: inline-block;
@@ -867,7 +882,7 @@
     border: 1px solid var(--border);
     border-radius: 4px;
     padding: 1px 5px;
-    font-family: var(--font-ui);
+    font-family: var(--font-meta);
     font-size: 11px;
   }
 </style>

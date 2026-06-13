@@ -37,21 +37,23 @@ class ThemeStore {
     return this.mode;
   }
 
-  /** Read system preference + persisted settings, then apply. Idempotent. */
+  /** Read system preference + persisted settings, then apply. Safe to call
+   *  again (e.g. on capture:shown) to pick up changes made in another window. */
   async init(): Promise<void> {
-    if (this.#initialized) {
-      this.#apply();
-      return;
+    if (!this.#initialized) {
+      this.#initialized = true;
+      const mq = window.matchMedia("(prefers-color-scheme: dark)");
+      this.systemDark = mq.matches;
+      mq.addEventListener("change", (e) => {
+        this.systemDark = e.matches;
+        if (this.mode === "auto") this.#apply();
+      });
     }
-    this.#initialized = true;
+    await this.#load();
+    this.#apply();
+  }
 
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    this.systemDark = mq.matches;
-    mq.addEventListener("change", (e) => {
-      this.systemDark = e.matches;
-      if (this.mode === "auto") this.#apply();
-    });
-
+  async #load(): Promise<void> {
     try {
       const [active, mode, custom] = await Promise.all([
         getSetting<string>(KEY_ACTIVE),
@@ -69,7 +71,6 @@ class ThemeStore {
     } catch {
       // Settings are best-effort; fall back to the default theme silently.
     }
-    this.#apply();
   }
 
   #apply(): void {

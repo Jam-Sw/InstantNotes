@@ -12,6 +12,7 @@
     setSetting,
   } from "$lib/api/client";
   import { debounce } from "$lib/debounce";
+  import { theme } from "$lib/stores/theme.svelte";
 
   const DRAFT_KEY = "capture.draft";
 
@@ -32,8 +33,11 @@
   );
 
   onMount(() => {
+    void theme.init();
     void restoreDraft();
     const unlisten = listen("capture:shown", () => {
+      // Re-read the theme: it may have changed in the library while hidden.
+      void theme.init();
       void restoreDraft();
       textarea?.focus();
     });
@@ -153,9 +157,11 @@
     outline: none;
     background: transparent;
     padding: 14px 16px 6px;
+    font-family: var(--font-body);
     font-size: 15px;
     line-height: 1.45;
     color: var(--text);
+    caret-color: var(--accent-text);
   }
   textarea::placeholder {
     color: var(--text-tertiary);
@@ -190,13 +196,14 @@
     color: var(--text-tertiary);
     font-size: 11px;
     flex-shrink: 0;
+    font-family: var(--font-meta);
   }
   kbd {
     background: var(--bg-sidebar);
     border: 1px solid var(--border);
     border-radius: 4px;
     padding: 0 4px;
-    font-family: var(--font-ui);
+    font-family: var(--font-meta);
     font-size: 10px;
   }
   .error {
