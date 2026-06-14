@@ -61,6 +61,12 @@ export function buildCommands(): Command[] {
       group: "Theme",
       run: () => theme.toggleLightDark(),
     },
+    {
+      id: "theme.auto",
+      title: "Appearance: match system",
+      group: "Theme",
+      run: () => theme.setMode("auto"),
+    },
     { id: "theme.import", title: "Import theme…", group: "Theme", run: () => void importTheme() },
     { id: "theme.export", title: "Export current theme…", group: "Theme", run: () => void exportTheme() },
   );

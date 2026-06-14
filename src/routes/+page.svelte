@@ -3,7 +3,6 @@
   import { onMount } from "svelte";
   import { getVersion } from "@tauri-apps/api/app";
   import Editor from "$lib/components/Editor.svelte";
-  import ThemePicker from "$lib/components/ThemePicker.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
   import { library, type StatusFilter } from "$lib/stores/library.svelte";
   import { updater } from "$lib/stores/updater.svelte";
@@ -242,9 +241,6 @@
         <div class="empty-hint">Type #tag in a note</div>
       {/each}
     </nav>
-    <div class="sidebar-footer">
-      <ThemePicker />
-    </div>
   </aside>
 
   <section class="list-pane">
@@ -493,12 +489,6 @@
     border-right: 1px solid var(--border);
     padding: 12px 8px;
     overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-  }
-  .sidebar-footer {
-    margin-top: auto;
-    padding-top: 8px;
   }
   .nav-item {
     display: flex;
