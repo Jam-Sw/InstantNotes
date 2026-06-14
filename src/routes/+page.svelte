@@ -3,6 +3,8 @@
   import { onMount } from "svelte";
   import { getVersion } from "@tauri-apps/api/app";
   import Editor from "$lib/components/Editor.svelte";
+  import ThemePicker from "$lib/components/ThemePicker.svelte";
+  import CommandPalette from "$lib/components/CommandPalette.svelte";
   import { library, type StatusFilter } from "$lib/stores/library.svelte";
   import { updater } from "$lib/stores/updater.svelte";
 
@@ -16,6 +18,7 @@
   let workspaceInput = $state("");
   let newWorkspaceInput = $state("");
   let appVersion = $state("");
+  let paletteOpen = $state(false);
 
   onMount(() => {
     void library.init();
@@ -50,6 +53,12 @@
 
   function onKeydown(e: KeyboardEvent) {
     const mod = e.metaKey || e.ctrlKey;
+    // ⌘K toggles the command palette from anywhere, including input fields.
+    if (mod && e.key === "k") {
+      e.preventDefault();
+      paletteOpen = !paletteOpen;
+      return;
+    }
     if (mod && e.key === "n") {
       e.preventDefault();
       void library.newNote();
@@ -136,6 +145,11 @@
 
   function preview(body: string): string {
     return body.replace(/\s+/g, " ").trim().slice(0, 90);
+  }
+
+  function wordCount(body: string): number {
+    const trimmed = body.trim();
+    return trimmed ? trimmed.split(/\s+/).length : 0;
   }
 
   async function submitTag(e: Event) {
@@ -228,6 +242,9 @@
         <div class="empty-hint">Type #tag in a note</div>
       {/each}
     </nav>
+    <div class="sidebar-footer">
+      <ThemePicker />
+    </div>
   </aside>
 
   <section class="list-pane">
@@ -410,7 +427,12 @@
       </div>
       <div class="status-bar">
         <span>Edited {formatDate(library.selected.updatedAt)}</span>
-        {#if library.error}<span class="error">{library.error}</span>{/if}
+        {#if library.error}
+          <span class="error">{library.error}</span>
+        {:else}
+          {@const n = wordCount(library.selected.body)}
+          <span>{n} {n === 1 ? "word" : "words"}</span>
+        {/if}
       </div>
     {:else}
       <div class="no-selection">
@@ -447,12 +469,15 @@
             {/if}
           </h2>
           <p>Select a note, or press <kbd>⌥Space</kbd> anywhere to capture.</p>
+          <p class="hint-line">Press <kbd>⌘K</kbd> for commands and themes.</p>
           {#if library.error}<p class="error">{library.error}</p>{/if}
         </div>
       </div>
     {/if}
   </section>
 </div>
+
+<CommandPalette bind:open={paletteOpen} />
 
 <style>
   .layout {
@@ -468,6 +493,12 @@
     border-right: 1px solid var(--border);
     padding: 12px 8px;
     overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+  .sidebar-footer {
+    margin-top: auto;
+    padding-top: 8px;
   }
   .nav-item {
     display: flex;
@@ -475,7 +506,7 @@
     width: 100%;
     text-align: left;
     padding: 5px 10px;
-    border-radius: 6px;
+    border-radius: var(--radius);
     color: var(--text);
   }
   .nav-item:hover {
@@ -483,7 +514,7 @@
   }
   .nav-item.active {
     background: var(--accent-soft);
-    color: var(--accent);
+    color: var(--accent-text);
     font-weight: 500;
   }
   .tags-header {
@@ -493,6 +524,7 @@
     text-transform: uppercase;
     letter-spacing: 0.4px;
     color: var(--text-tertiary);
+    font-family: var(--font-meta);
   }
   .tag-name {
     overflow: hidden;
@@ -502,6 +534,7 @@
   .tag-count {
     color: var(--text-tertiary);
     font-size: 11px;
+    font-family: var(--font-meta);
   }
   .empty-hint {
     padding: 4px 10px;
@@ -567,7 +600,7 @@
     flex: 1;
     padding: 5px 9px;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius);
     background: var(--bg-input);
     outline: none;
   }
@@ -577,9 +610,9 @@
   .new-note {
     width: 28px;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius);
     font-size: 15px;
-    color: var(--accent);
+    color: var(--accent-text);
   }
   .new-note:hover {
     background: var(--bg-hover);
@@ -601,7 +634,7 @@
   }
   .filter-pill.active {
     background: var(--accent-soft);
-    color: var(--accent);
+    color: var(--accent-text);
     font-weight: 500;
   }
   .trash-bar {
@@ -649,6 +682,7 @@
     color: var(--text-tertiary);
     font-size: 11px;
     margin-top: 3px;
+    font-family: var(--font-meta);
   }
   .empty-state {
     padding: 32px 16px;
@@ -685,7 +719,7 @@
   }
   .action {
     padding: 4px 10px;
-    border-radius: 6px;
+    border-radius: var(--radius);
     border: 1px solid var(--border);
     color: var(--text-secondary);
     font-size: 12px;
@@ -751,6 +785,7 @@
     border-top: 1px solid var(--border);
     color: var(--text-tertiary);
     font-size: 11px;
+    font-family: var(--font-meta);
   }
   .error {
     color: var(--danger);
@@ -799,6 +834,10 @@
     font-weight: 600;
     color: var(--text-secondary);
   }
+  .hint-line {
+    font-size: 12px;
+    opacity: 0.8;
+  }
   /* Orange marks beta builds. */
   .version-badge {
     display: inline-block;
@@ -843,7 +882,7 @@
     border: 1px solid var(--border);
     border-radius: 4px;
     padding: 1px 5px;
-    font-family: var(--font-ui);
+    font-family: var(--font-meta);
     font-size: 11px;
   }
 </style>

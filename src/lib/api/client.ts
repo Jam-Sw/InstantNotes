@@ -92,3 +92,10 @@ export const deleteSetting = (key: string) =>
 // ---- windows ----
 export const hideCapture = () => call<void>("hide_capture");
 export const openLibrary = () => call<void>("open_library");
+
+// ---- theme files ----
+// Byte I/O for portable .intheme.json files; the open/save dialog runs in JS.
+export const exportThemeFile = (path: string, contents: string) =>
+  call<void>("export_theme_file", { path, contents });
+export const importThemeFile = (path: string) =>
+  call<string>("import_theme_file", { path });

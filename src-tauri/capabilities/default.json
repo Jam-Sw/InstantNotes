@@ -4,6 +4,7 @@
   "description": "Library and capture windows: app IPC + events only. No network, no shell, no opener.",
   "windows": ["library", "capture"],
   "permissions": [
-    "core:default"
+    "core:default",
+    "dialog:default"
   ]
 }
