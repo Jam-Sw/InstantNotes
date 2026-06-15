@@ -330,6 +330,67 @@ fn open_data_folder(app: &AppHandle) {
     }
 }
 
+// ---- icon cache refresh ----
+// macOS caches an app's icon per bundle path (LaunchServices + iconservicesd).
+// The in-app updater swaps the bundle in place at the same path and identifier,
+// so without a nudge the Dock/Finder keep showing the icon cached for the old
+// build. We record the version that last launched and, when it changes, ask
+// macOS to re-read the bundle once.
+
+/// True when the icon cache should be refreshed: the recorded last-launched
+/// version is missing (pre-marker install or first launch) or differs from the
+/// running version. Pure so it can be unit-tested without a real bundle.
+fn icon_refresh_needed(previous: Option<&str>, current: &str) -> bool {
+    previous != Some(current)
+}
+
+/// Record the running version next to the database and, when it changed since
+/// the last launch, refresh the macOS icon cache. A no-op on the happy path
+/// (same version) and in dev builds (no `.app` bundle).
+fn refresh_icon_cache_if_updated(data_dir: &std::path::Path) {
+    let current = env!("CARGO_PKG_VERSION");
+    let marker = data_dir.join(".last_version");
+    let stored = std::fs::read_to_string(&marker).ok();
+    let previous = stored.as_deref().map(str::trim);
+    if !icon_refresh_needed(previous, current) {
+        return;
+    }
+    let _ = std::fs::write(&marker, current);
+    #[cfg(target_os = "macos")]
+    if let Some(bundle) = current_app_bundle() {
+        refresh_macos_icon(bundle);
+    }
+}
+
+/// Path to the running `.app` bundle, or `None` in a dev build where the
+/// executable is not inside a `*.app/Contents/MacOS/` layout.
+#[cfg(target_os = "macos")]
+fn current_app_bundle() -> Option<std::path::PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let bundle = exe.parent()?.parent()?.parent()?; // MacOS -> Contents -> .app
+    if bundle.extension()?.to_str()? == "app" {
+        Some(bundle.to_path_buf())
+    } else {
+        None
+    }
+}
+
+/// Nudge macOS to re-read the bundle's icon: re-register with LaunchServices,
+/// bump the bundle mtime (part of the icon cache key), then relaunch the Dock.
+/// Runs off the main thread; every step is best-effort.
+#[cfg(target_os = "macos")]
+fn refresh_macos_icon(bundle: std::path::PathBuf) {
+    std::thread::spawn(move || {
+        const LSREGISTER: &str = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
+        let _ = std::process::Command::new(LSREGISTER)
+            .arg("-f")
+            .arg(&bundle)
+            .status();
+        let _ = std::process::Command::new("touch").arg(&bundle).status();
+        let _ = std::process::Command::new("killall").arg("Dock").status();
+    });
+}
+
 // ---- window helpers ----
 
 fn show_capture_window(app: &AppHandle) {
@@ -394,6 +455,9 @@ pub fn run() {
                 store: Mutex::new(store),
             });
 
+            // After an in-place update, refresh the cached app icon once.
+            refresh_icon_cache_if_updated(&dir);
+
             // Tray menu — the app's permanent presence.
             let new_capture =
                 MenuItem::with_id(app, "new_capture", "New Capture\t⌥Space", true, None::<&str>)?;
@@ -411,6 +475,8 @@ pub fn run() {
                     ..Default::default()
                 }),
             )?;
+            let check_updates =
+                MenuItem::with_id(app, "check_updates", "Check for Updates…", true, None::<&str>)?;
             let repo =
                 MenuItem::with_id(app, "open_repo", "Repository on GitHub", true, None::<&str>)?;
             let data_folder =
@@ -419,7 +485,13 @@ pub fn run() {
                 app,
                 "Settings",
                 true,
-                &[&about, &PredefinedMenuItem::separator(app)?, &repo, &data_folder],
+                &[
+                    &about,
+                    &check_updates,
+                    &PredefinedMenuItem::separator(app)?,
+                    &repo,
+                    &data_folder,
+                ],
             )?;
 
             let quit = MenuItem::with_id(app, "quit", "Quit InstantNotes", true, None::<&str>)?;
@@ -441,6 +513,10 @@ pub fn run() {
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "new_capture" => show_capture_window(app),
                     "open_library" => show_library_window(app),
+                    "check_updates" => {
+                        show_library_window(app);
+                        let _ = app.emit("updater:check", ());
+                    }
                     "open_repo" => open_with_system(REPO_URL),
                     "open_data_dir" => open_data_folder(app),
                     "quit" => app.exit(0),
@@ -505,7 +581,17 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{export_theme_file, import_theme_file};
+    use super::{export_theme_file, icon_refresh_needed, import_theme_file};
+
+    #[test]
+    fn icon_refresh_when_version_changed_or_unknown() {
+        // First launch / upgrade from a build that never wrote the marker.
+        assert!(icon_refresh_needed(None, "0.5.3"));
+        // In-place update from an older recorded version.
+        assert!(icon_refresh_needed(Some("0.5.2"), "0.5.3"));
+        // Same version relaunch: nothing to refresh.
+        assert!(!icon_refresh_needed(Some("0.5.3"), "0.5.3"));
+    }
 
     #[test]
     fn theme_file_round_trip() {
