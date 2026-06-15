@@ -58,12 +58,16 @@ class LibraryStore {
   multiSelected = $state<Set<string>>(new Set());
   error = $state<string | null>(null);
   loading = $state(false);
+  // True while a body edit is queued or in flight, for the save indicator.
+  saving = $state(false);
 
   #anchorId: string | null = null;
 
   #refreshDebounced = debounce(() => void this.refresh(), 50);
   #saveBody = debounce((id: string, body: string) => {
-    void this.#applyUpdate(id, { body });
+    void this.#applyUpdate(id, { body }).finally(() => {
+      this.saving = false;
+    });
   }, 400);
 
   async init(): Promise<void> {
@@ -377,6 +381,7 @@ class LibraryStore {
     if (!this.selected) return;
     // Optimistic local state; persistence is debounced.
     this.selected.body = body;
+    this.saving = true;
     this.#saveBody(this.selected.id, body);
   }
 
@@ -404,6 +409,7 @@ class LibraryStore {
   async deleteSelected(): Promise<void> {
     if (!this.selected) return;
     this.#saveBody.cancel();
+    this.saving = false;
     try {
       await softDeleteNote(this.selected.id);
       this.clearMultiSelect();

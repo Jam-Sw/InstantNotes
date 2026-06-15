@@ -69,7 +69,7 @@ textarea {
 /* CodeMirror */
 .cm-editor {
   height: 100%;
-  font-size: calc(14px * var(--density));
+  font-size: calc(14px * var(--density) * var(--editor-zoom, 1));
   background: transparent;
 }
 .cm-editor.cm-focused {

@@ -8,6 +8,8 @@
   import UpdatePanel from "$lib/components/UpdatePanel.svelte";
   import { library, type StatusFilter } from "$lib/stores/library.svelte";
   import { updater } from "$lib/stores/updater.svelte";
+  import { editorPrefs } from "$lib/stores/editor.svelte";
+  import type { FormatKind } from "$lib/markdown-format";
 
   const statusFilters: { id: StatusFilter; label: string }[] = [
     { id: "active", label: "Active" },
@@ -21,9 +23,11 @@
   let appVersion = $state("");
   let paletteOpen = $state(false);
   let updatePanelOpen = $state(false);
+  let editorRef = $state<{ applyFormat: (k: FormatKind) => void; focus: () => void }>();
 
   onMount(() => {
     void library.init();
+    void editorPrefs.init();
     void getVersion().then((v) => (appVersion = v));
     updater.start();
     // Tray "Check for Updates…" opens the panel and runs a manual check.
@@ -71,6 +75,21 @@
     if (mod && e.key === "n") {
       e.preventDefault();
       void library.newNote();
+      return;
+    }
+    if (mod && (e.key === "=" || e.key === "+")) {
+      e.preventDefault();
+      editorPrefs.zoomIn();
+      return;
+    }
+    if (mod && e.key === "-") {
+      e.preventDefault();
+      editorPrefs.zoomOut();
+      return;
+    }
+    if (mod && e.key === "0") {
+      e.preventDefault();
+      editorPrefs.resetZoom();
       return;
     }
     if (isTypingTarget(e.target)) {
@@ -374,6 +393,15 @@
           {:else}
             <button
               class="action"
+              class:active={editorPrefs.toolbarOpen}
+              title="Formatting tools"
+              aria-pressed={editorPrefs.toolbarOpen}
+              onclick={() => editorPrefs.toggleToolbar()}
+            >
+              Aa
+            </button>
+            <button
+              class="action"
               title={library.selected.isPinned ? "Unpin" : "Pin"}
               onclick={() => library.togglePinned()}
             >
@@ -424,15 +452,35 @@
           {/each}
         </datalist>
       </div>
-      <div class="editor-body">
+      {#if editorPrefs.toolbarOpen}
+        <div class="format-bar">
+          <button class="fmt" title="Bold (⌘B)" onclick={() => editorRef?.applyFormat("bold")}><b>B</b></button>
+          <button class="fmt" title="Italic (⌘I)" onclick={() => editorRef?.applyFormat("italic")}><i>I</i></button>
+          <button class="fmt" title="Strikethrough" onclick={() => editorRef?.applyFormat("strike")}><s>S</s></button>
+          <button class="fmt" title="Code (⌘E)" onclick={() => editorRef?.applyFormat("code")}>&lt;/&gt;</button>
+          <button class="fmt" title="Blockquote" onclick={() => editorRef?.applyFormat("quote")}>”</button>
+          <button class="fmt" title="Bulleted list" onclick={() => editorRef?.applyFormat("list")}>•</button>
+          <button class="fmt" title="Link (⌘⇧K)" onclick={() => editorRef?.applyFormat("link")}>🔗</button>
+          <span class="fmt-divider"></span>
+          <button class="fmt" title="Zoom out (⌘-)" onclick={() => editorPrefs.zoomOut()}>A−</button>
+          <button class="fmt zoom-reset" title="Reset zoom (⌘0)" onclick={() => editorPrefs.resetZoom()}>
+            {Math.round(editorPrefs.zoom * 100)}%
+          </button>
+          <button class="fmt" title="Zoom in (⌘+)" onclick={() => editorPrefs.zoomIn()}>A+</button>
+        </div>
+      {/if}
+      <div class="editor-body" style="--editor-zoom: {editorPrefs.zoom}">
         <Editor
+          bind:this={editorRef}
           value={library.selected.body}
           placeholder="Start writing… use #tags to organize"
           onchange={(v) => library.editBody(v)}
         />
       </div>
       <div class="status-bar">
-        <span>Edited {formatDate(library.selected.updatedAt)}</span>
+        <span class="save-state" class:saving={library.saving}>
+          {library.saving ? "Saving…" : `Saved · ${formatDate(library.selected.updatedAt)}`}
+        </span>
         {#if library.error}
           <span class="error">{library.error}</span>
         {:else}
@@ -730,6 +778,47 @@
   }
   .action.danger {
     color: var(--danger);
+  }
+  .action.active {
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    border-color: var(--accent);
+  }
+
+  /* format toolbar (toggled by the Aa action) */
+  .format-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .fmt {
+    min-width: 26px;
+    height: 24px;
+    padding: 0 6px;
+    border-radius: var(--radius);
+    border: 1px solid transparent;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-family: var(--font-meta);
+  }
+  .fmt:hover {
+    background: var(--bg-hover);
+  }
+  .fmt.zoom-reset {
+    min-width: 44px;
+  }
+  .fmt-divider {
+    width: 1px;
+    height: 16px;
+    margin: 0 4px;
+    background: var(--border);
+  }
+  .save-state.saving {
+    color: var(--text-secondary);
+    font-style: italic;
   }
   .tag-bar {
     display: flex;
