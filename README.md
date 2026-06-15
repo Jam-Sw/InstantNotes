@@ -62,15 +62,19 @@ Produces an `.app` bundle and `.dmg` under `src-tauri/target/release/bundle/`. W
 
 ### Release (with self-update)
 
-The app checks GitHub Releases for updates on launch and every 6 hours, via `latest.json` attached to the latest release. Releases are built and published by CI:
+The app checks GitHub Releases for updates on launch and every 6 hours, via `latest.json` attached to the latest release. Each release's "What's new" text - shown in the in-app update panel and on the GitHub release - comes from the matching `CHANGELOG.md` section. Releases are built, signed, and published by CI:
 
 ```sh
-# 1. Bump the version in package.json, src-tauri/Cargo.toml, src-tauri/tauri.conf.json.
-# 2. Tag and push; .github/workflows/release.yml does the rest.
+# 1. Add a "## [X.Y.Z]" section to CHANGELOG.md describing the release.
+# 2. Bump every version file in lockstep:
+npm run bump X.Y.Z
+# 3. Commit, tag, and push; .github/workflows/release.yml builds, signs, and
+#    publishes the release on a successful build (no draft step to forget).
+git commit -am "chore: bump version to X.Y.Z"
 git tag vX.Y.Z && git push origin vX.Y.Z
-# 3. Review the draft release on GitHub and publish it. Publishing is what
-#    makes existing installs see the update.
 ```
+
+`npm run bump` updates package.json, src-tauri/tauri.conf.json, src-tauri/Cargo.toml, and src-tauri/Cargo.lock together (the `instantnotes-core` crate versions independently). Pushing a `v*` tag is the deliberate ship gate.
 
 CI signs the updater artifact with the minisign key stored in the repo secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, and the app verifies downloads against the matching public key in `tauri.conf.json`. If the secret is ever lost, generate a new keypair with `npm run tauri signer generate`, update both the secret and the pubkey, and ship one manual release so installs can cross over.
 

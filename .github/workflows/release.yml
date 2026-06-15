@@ -30,6 +30,30 @@ jobs:
 
       - run: npm ci
 
+      # Release notes = the CHANGELOG section for this tag. tauri-action writes
+      # this into both the GitHub release body and latest.json's "notes", so the
+      # in-app updater shows real "What's new" text, not install boilerplate.
+      - name: Extract release notes
+        id: notes
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          notes="$(awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" {grab=1; next}
+            grab && /^## \[/ {exit}
+            grab {print}
+          ' CHANGELOG.md)"
+          if [ -z "$(printf '%s' "$notes" | tr -d '[:space:]')" ]; then
+            notes="Maintenance release. See the commit history for details."
+          fi
+          {
+            echo "body<<__NOTES_EOF__"
+            printf '%s\n' "$notes"
+            echo ""
+            echo "---"
+            echo "First install: download the \`.dmg\`, open it, and drag InstantNotes to Applications. macOS blocks the first launch of this unnotarized build — run \`xattr -d com.apple.quarantine /Applications/InstantNotes.app\` or use System Settings > Privacy & Security > \"Open Anyway\". Existing installs update in place from inside the app."
+            echo "__NOTES_EOF__"
+          } >> "$GITHUB_OUTPUT"
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -38,13 +62,8 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "InstantNotes ${{ github.ref_name }}"
-          releaseDraft: true
+          # Publish on a successful build so a forgotten draft can't silently
+          # block delivery. Pushing a v* tag is the deliberate ship gate.
+          releaseDraft: false
           includeUpdaterJson: true
-          releaseBody: |
-            Apple Silicon only. **Download the `.dmg`**, open it, drag InstantNotes to Applications. The other assets serve the in-app updater.
-
-            The app is not notarized, so macOS blocks the first launch. Run:
-
-            `xattr -d com.apple.quarantine /Applications/InstantNotes.app`
-
-            or use System Settings > Privacy & Security > "Open Anyway" after the blocked launch. First install only: existing installs update themselves from inside the app.
+          releaseBody: ${{ steps.notes.outputs.body }}

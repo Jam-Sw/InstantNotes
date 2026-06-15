@@ -2,8 +2,10 @@
   // Library window: sidebar · note list · editor (three-pane).
   import { onMount } from "svelte";
   import { getVersion } from "@tauri-apps/api/app";
+  import { listen } from "@tauri-apps/api/event";
   import Editor from "$lib/components/Editor.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
+  import UpdatePanel from "$lib/components/UpdatePanel.svelte";
   import { library, type StatusFilter } from "$lib/stores/library.svelte";
   import { updater } from "$lib/stores/updater.svelte";
 
@@ -18,16 +20,24 @@
   let newWorkspaceInput = $state("");
   let appVersion = $state("");
   let paletteOpen = $state(false);
+  let updatePanelOpen = $state(false);
 
   onMount(() => {
     void library.init();
     void getVersion().then((v) => (appVersion = v));
     updater.start();
+    // Tray "Check for Updates…" opens the panel and runs a manual check.
+    let unlistenCheck: (() => void) | undefined;
+    void listen("updater:check", () => {
+      updatePanelOpen = true;
+      void updater.checkNow({ manual: true });
+    }).then((un) => (unlistenCheck = un));
     const flush = () => library.flushPendingEdits();
     window.addEventListener("blur", flush);
     window.addEventListener("keydown", onKeydown);
     return () => {
       updater.stop();
+      unlistenCheck?.();
       window.removeEventListener("blur", flush);
       window.removeEventListener("keydown", onKeydown);
     };
@@ -439,8 +449,8 @@
             {#if updater.status === "available"}
               <button
                 class="update-pill"
-                title={`Update to v${updater.version}`}
-                onclick={() => updater.downloadAndInstall()}
+                title={`Update available: v${updater.version}`}
+                onclick={() => (updatePanelOpen = true)}
               >
                 Update available
               </button>
@@ -451,16 +461,16 @@
                   : "…"}
               </span>
             {:else if updater.status === "ready"}
-              <button class="update-pill" onclick={() => updater.restart()}>
+              <button class="update-pill" onclick={() => (updatePanelOpen = true)}>
                 Restart to update
               </button>
             {:else if updater.status === "error"}
               <button
                 class="update-pill failed"
                 title={updater.error}
-                onclick={() => updater.downloadAndInstall()}
+                onclick={() => (updatePanelOpen = true)}
               >
-                Update failed, retry
+                Update failed
               </button>
             {/if}
           </h2>
@@ -474,6 +484,7 @@
 </div>
 
 <CommandPalette bind:open={paletteOpen} />
+<UpdatePanel bind:open={updatePanelOpen} currentVersion={appVersion} />
 
 <style>
   .layout {
