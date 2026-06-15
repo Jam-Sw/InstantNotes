@@ -9,9 +9,20 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-06-15
+
 ### Added
+- Live markdown styling in the note editor: bold, italic, strikethrough, inline
+  and fenced code, blockquotes, lists, and links are styled as you type with the
+  markers kept visible. Tags are unaffected: `#` stays a tag, never a heading.
+- A format toolbar (toggled by the "Aa" button) with bold, italic, strikethrough,
+  code, quote, list, and link actions, plus Cmd-B / Cmd-I / Cmd-E / Cmd-Shift-K
+  shortcuts, so you can stylize text without knowing markdown.
+- Editor zoom with Cmd-+ / Cmd-- / Cmd-0 and on-screen controls, persisted across
+  restarts along with the toolbar state.
 - In-app update panel showing the current and target version, release notes, and
   download progress, plus a "Check for Updates…" item in the tray Settings menu.
+- A Saving / Saved indicator in the editor status bar.
 - `npm run bump <x.y.z>` keeps the version in package.json, tauri.conf.json,
   Cargo.toml, and Cargo.lock in lockstep.
 

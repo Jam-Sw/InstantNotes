@@ -1,6 +1,6 @@
 {
   "name": "instantnotes",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "InstantNotes — instant capture, organized knowledge",
   "type": "module",
   "scripts": {
