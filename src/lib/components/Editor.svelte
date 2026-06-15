@@ -14,6 +14,10 @@
   } from "@codemirror/view";
   import { EditorState, RangeSetBuilder } from "@codemirror/state";
   import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
+  import { markdown } from "@codemirror/lang-markdown";
+  import { syntaxHighlighting } from "@codemirror/language";
+  import { markdownHighlight } from "$lib/markdown-highlight";
+  import { formatEdit, type FormatKind, type Sel } from "$lib/markdown-format";
 
   let {
     value = "",
@@ -67,7 +71,17 @@
         doc: value,
         extensions: [
           history(),
+          // Formatting shortcuts take precedence over the defaults. Cmd-K is the
+          // command palette (handled at the window level), so link uses Cmd-Shift-K.
+          keymap.of([
+            { key: "Mod-b", run: () => { applyFormat("bold"); return true; } },
+            { key: "Mod-i", run: () => { applyFormat("italic"); return true; } },
+            { key: "Mod-e", run: () => { applyFormat("code"); return true; } },
+            { key: "Mod-Shift-k", run: () => { applyFormat("link"); return true; } },
+          ]),
           keymap.of([...defaultKeymap, ...historyKeymap]),
+          markdown(),
+          syntaxHighlighting(markdownHighlight),
           EditorView.lineWrapping,
           cmPlaceholder(placeholder),
           tagHighlighter,
@@ -97,6 +111,20 @@
 
   export function focus() {
     view?.focus();
+  }
+
+  // Apply a formatting action to the current selection. Flows out through
+  // onchange like any user edit, so it stays undoable and auto-saved.
+  export function applyFormat(kind: FormatKind) {
+    if (!view) return;
+    const main = view.state.selection.main;
+    const sel: Sel = { from: main.from, to: main.to };
+    const edit = formatEdit(view.state.doc.toString(), sel, kind);
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: edit.text },
+      selection: { anchor: edit.selection.from, head: edit.selection.to },
+    });
+    view.focus();
   }
 </script>
 
