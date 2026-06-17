@@ -36,7 +36,10 @@ describe("themeToVars", () => {
   });
 
   it("emits new metric vars with defaults when not set by the theme", () => {
-    const vars = themeToVars(manuscript, "dark");
+    // Built-in themes now set their own elevation/typography, so use a bare
+    // theme that omits the optional metrics to exercise the default fallback.
+    const bare: Theme = { ...manuscript, metrics: { radius: "8px", density: 1.15 } };
+    const vars = themeToVars(bare, "dark");
     expect(vars["--radius-lg"]).toBe("calc(8px + 4px)");
     expect(vars["--shadow"]).toMatch(/^0 \d/);
     expect(vars["--shadow-lg"]).toMatch(/^0 \d/);

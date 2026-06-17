@@ -11,7 +11,14 @@ export const graphite: Theme = {
   version: 1,
   appearance: "dual",
   fonts: { ui: SANS_STACK, mono: MONO_STACK, body: "ui", meta: "ui" },
-  metrics: { radius: "8px", density: 1.0 },
+  metrics: {
+    radius: "8px",
+    density: 1.0,
+    // macOS-native: default leading/tracking, with a soft neutral elevation on
+    // overlays in the spirit of system sheets and menus.
+    shadow: "0 1px 3px rgba(0, 0, 0, 0.10)",
+    shadowLg: "0 12px 40px rgba(0, 0, 0, 0.24)",
+  },
   // Tahoe glass: ask macOS for the sidebar vibrancy material. The bgSidebar
   // tokens carry alpha so the material shows through; off macOS they fall back
   // to a near-solid panel over bg.

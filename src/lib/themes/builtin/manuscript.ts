@@ -12,7 +12,16 @@ export const manuscript: Theme = {
   version: 1,
   appearance: "dual",
   fonts: { ui: SANS_STACK, mono: MONO_STACK, body: "ui", meta: "mono" },
-  metrics: { radius: "8px", density: 1.15 },
+  metrics: {
+    radius: "8px",
+    density: 1.15,
+    // Editorial: airy line-height and a touch of negative tracking for a
+    // typeset feel; warm, soft, deep elevation on overlays.
+    leading: "1.6",
+    tracking: "-0.01em",
+    shadow: "0 1px 4px rgba(34, 26, 16, 0.12)",
+    shadowLg: "0 20px 56px rgba(34, 26, 16, 0.34)",
+  },
   dark: {
     bg: "#161617",
     bgSidebar: "#1c1c1d",

@@ -12,7 +12,15 @@ export const paperDark: Theme = {
   version: 1,
   appearance: "dual",
   fonts: { ui: SANS_STACK, mono: MONO_STACK, body: "ui", meta: "ui" },
-  metrics: { radius: "8px", density: 1.0 },
+  metrics: {
+    radius: "8px",
+    density: 1.0,
+    // Cozy reading: loose line-height for long-form, and warm low-glare
+    // shadows that lift overlays without a cold edge.
+    leading: "1.65",
+    shadow: "0 2px 8px rgba(14, 9, 4, 0.40)",
+    shadowLg: "0 20px 52px rgba(8, 5, 2, 0.55)",
+  },
   dark: {
     bg: "#1c1a17",
     bgSidebar: "#22201c",

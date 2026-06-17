@@ -10,7 +10,16 @@ export const twilight: Theme = {
   version: 1,
   appearance: "dual",
   fonts: { ui: SANS_STACK, mono: MONO_STACK, body: "ui", meta: "ui" },
-  metrics: { radius: "6px", density: 1.0 },
+  metrics: {
+    radius: "6px",
+    density: 1.0,
+    // Luxurious and modern: a hint of extra leading, softly rounded overlays,
+    // and a deep indigo-tinted drop shadow for dramatic elevation.
+    leading: "1.55",
+    radiusLg: "14px",
+    shadow: "0 2px 10px rgba(18, 14, 40, 0.40)",
+    shadowLg: "0 24px 64px rgba(10, 6, 28, 0.60)",
+  },
   // Tahoe glass: native macOS sidebar vibrancy, tinted by the indigo bgSidebar
   // alpha. Falls back to a near-solid panel off macOS.
   material: "sidebar",
