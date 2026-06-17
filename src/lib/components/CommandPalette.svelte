@@ -151,7 +151,7 @@
             onmousemove={() => (active = i)}
           >
             <span class="cmd-title">
-              {#if cmd.icon}<span class="cmd-icon" aria-hidden="true">{cmd.icon()}</span>{/if}{#if cmd.parent && cmd.parent !== currentParent}<span class="cmd-parent">{findCommand(commands, cmd.parent)?.title}</span><span class="cmd-crumb" aria-hidden="true">&rsaquo;</span>{/if}{cmd.title}
+              {#if cmd.icon}<span class="cmd-icon" aria-hidden="true">{cmd.icon()}</span>{/if}{#if cmd.prefix}<span class="cmd-parent">{cmd.prefix}</span><span class="cmd-crumb" aria-hidden="true">&rsaquo;</span>{/if}{#if cmd.parent && cmd.parent !== currentParent}<span class="cmd-parent">{findCommand(commands, cmd.parent)?.title}</span><span class="cmd-crumb" aria-hidden="true">&rsaquo;</span>{/if}{cmd.title}
             </span>
             <span class="cmd-meta">
               {#if cmd.isActive?.()}
@@ -187,8 +187,8 @@
     flex-direction: column;
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: calc(var(--radius) + 4px);
-    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.4);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
     overflow: hidden;
   }
   .back-btn {

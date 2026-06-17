@@ -78,8 +78,18 @@ export interface ThemeFonts {
 export interface ThemeMetrics {
   /** Corner radius as a CSS length, e.g. "8px". */
   radius: string;
+  /** Explicit large-element radius (modals, dialogs). Defaults to radius + 4px. */
+  radiusLg?: string;
   /** Unitless multiplier applied to key paddings and base text size. */
   density: number;
+  /** Small ambient box-shadow (cards, inputs). Defaults to a subtle dark lift. */
+  shadow?: string;
+  /** Large modal/overlay box-shadow. Defaults to a deep drop shadow. */
+  shadowLg?: string;
+  /** Line-height for body/editor text, e.g. "1.5" or "1.75". Defaults to "1.5". */
+  leading?: string;
+  /** Letter-spacing for body/editor text, e.g. "0" or "-0.01em". Defaults to "0". */
+  tracking?: string;
 }
 
 export interface Theme {

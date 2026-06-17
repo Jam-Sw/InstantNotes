@@ -5,8 +5,8 @@ import { manuscript } from "./manuscript";
 import { graphite } from "./graphite";
 import { terminal } from "./terminal";
 import { paperDark } from "./paper-dark";
-
-export const BUILTIN_THEMES: Theme[] = [manuscript, graphite, terminal, paperDark];
+import { twilight } from "./twilight"; //
+export const BUILTIN_THEMES: Theme[] = [manuscript, graphite, terminal, paperDark, twilight];
 
 /** The theme applied on first run and when a persisted id is missing. */
 export const DEFAULT_THEME_ID = manuscript.id;

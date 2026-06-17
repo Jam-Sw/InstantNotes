@@ -35,6 +35,35 @@ describe("themeToVars", () => {
     expect(vars["--density"]).toBe("1.15");
   });
 
+  it("emits new metric vars with defaults when not set by the theme", () => {
+    const vars = themeToVars(manuscript, "dark");
+    expect(vars["--radius-lg"]).toBe("calc(8px + 4px)");
+    expect(vars["--shadow"]).toMatch(/^0 \d/);
+    expect(vars["--shadow-lg"]).toMatch(/^0 \d/);
+    expect(vars["--leading"]).toBe("1.5");
+    expect(vars["--tracking"]).toBe("0");
+  });
+
+  it("uses explicit metric overrides when provided", () => {
+    const custom: typeof manuscript = {
+      ...manuscript,
+      metrics: {
+        ...manuscript.metrics,
+        radiusLg: "16px",
+        shadow: "none",
+        shadowLg: "0 24px 64px rgba(0,0,0,0.6)",
+        leading: "1.7",
+        tracking: "-0.01em",
+      },
+    };
+    const vars = themeToVars(custom, "dark");
+    expect(vars["--radius-lg"]).toBe("16px");
+    expect(vars["--shadow"]).toBe("none");
+    expect(vars["--shadow-lg"]).toBe("0 24px 64px rgba(0,0,0,0.6)");
+    expect(vars["--leading"]).toBe("1.7");
+    expect(vars["--tracking"]).toBe("-0.01em");
+  });
+
   it("uses mono for body when the theme says so", () => {
     const vars = themeToVars(terminal, "dark");
     expect(vars["--font-body"]).toBe(terminal.fonts.mono);

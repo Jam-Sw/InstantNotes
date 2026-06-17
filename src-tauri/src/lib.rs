@@ -6,7 +6,7 @@ use instantnotes_core::types::*;
 use instantnotes_core::{AppError, Store};
 use serde::Serialize;
 use std::sync::Mutex;
-use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::menu::{Menu, MenuBuilder, MenuItem, PredefinedMenuItem, Submenu, SubmenuBuilder};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
@@ -384,6 +384,38 @@ fn import_theme_file(path: String) -> CmdResult<String> {
     })
 }
 
+// ---- note export ----
+
+fn validate_export_path(path: &str) -> CmdResult<()> {
+    let p = std::path::Path::new(path);
+    if !p.is_absolute() {
+        return Err(CmdError {
+            code: "STORAGE_ERROR".into(),
+            message: "export path must be absolute".into(),
+        });
+    }
+    let is_allowed = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "md" | "txt"));
+    if !is_allowed {
+        return Err(CmdError {
+            code: "STORAGE_ERROR".into(),
+            message: "export file must have a .md or .txt extension".into(),
+        });
+    }
+    Ok(())
+}
+
+#[tauri::command(async)]
+fn export_note_file(path: String, contents: String) -> CmdResult<()> {
+    validate_export_path(&path)?;
+    std::fs::write(&path, contents).map_err(|e| CmdError {
+        code: "STORAGE_ERROR".into(),
+        message: format!("could not write export file: {e}"),
+    })
+}
+
 const REPO_URL: &str = "https://github.com/Jam-Sw/InstantNotes";
 
 fn open_data_folder(app: &AppHandle) {
@@ -491,6 +523,13 @@ fn show_library_window(app: &AppHandle) {
     }
 }
 
+// ---- utility commands ----
+
+#[tauri::command]
+fn open_url(app: AppHandle, url: String) {
+    let _ = app.opener().open_url(&url, None::<&str>);
+}
+
 // ---- app shell ----
 
 pub fn run() {
@@ -548,6 +587,76 @@ pub fn run() {
             // After an in-place update, refresh the cached app icon once.
             refresh_icon_cache_if_updated(&dir);
 
+            // macOS app menu bar. The Edit submenu is required for Cut/Copy/Paste
+            // to work in the WebView.
+            let settings_item = MenuItem::with_id(
+                app,
+                "settings",
+                "Settings…",
+                true,
+                Some("CmdOrCtrl+,"),
+            )?;
+            let app_submenu = SubmenuBuilder::new(app, "InstantNotes")
+                .about(None)
+                .separator()
+                .item(&settings_item)
+                .separator()
+                .services()
+                .separator()
+                .hide()
+                .hide_others()
+                .show_all()
+                .separator()
+                .quit()
+                .build()?;
+            let new_note_item = MenuItem::with_id(
+                app,
+                "new_note",
+                "New Note",
+                true,
+                Some("CmdOrCtrl+N"),
+            )?;
+            let export_item = MenuItem::with_id(
+                app,
+                "export_note",
+                "Export Note As…",
+                true,
+                None::<&str>,
+            )?;
+            let file_submenu = SubmenuBuilder::new(app, "File")
+                .item(&new_note_item)
+                .separator()
+                .item(&export_item)
+                .build()?;
+            let edit_submenu = SubmenuBuilder::new(app, "Edit")
+                .undo()
+                .redo()
+                .separator()
+                .cut()
+                .copy()
+                .paste()
+                .select_all()
+                .build()?;
+            let app_menu = MenuBuilder::new(app)
+                .items(&[&app_submenu, &file_submenu, &edit_submenu])
+                .build()?;
+            app.set_menu(app_menu)?;
+            app.on_menu_event(|app, event| match event.id().as_ref() {
+                "settings" => {
+                    show_library_window(app);
+                    let _ = app.emit("settings:open", ());
+                }
+                "new_note" => {
+                    show_library_window(app);
+                    let _ = app.emit("menu:new-note", ());
+                }
+                "export_note" => {
+                    show_library_window(app);
+                    let _ = app.emit("menu:export-note", ());
+                }
+                _ => {}
+            });
+
             // Tray menu - the app's permanent presence. Dev builds use ⌥⇧Space so
             // they never fight an installed release for the system-wide ⌥Space hotkey.
             let capture_accel = if cfg!(debug_assertions) {
@@ -560,17 +669,8 @@ pub fn run() {
             let open_library_item =
                 MenuItem::with_id(app, "open_library", "Open Library", true, None::<&str>)?;
 
-            // Settings submenu: status and config live in the menu, not the window.
-            let about = PredefinedMenuItem::about(
-                app,
-                Some("About InstantNotes"),
-                Some(AboutMetadata {
-                    version: Some(env!("CARGO_PKG_VERSION").into()),
-                    website: Some(REPO_URL.into()),
-                    website_label: Some("Jam-Sw/InstantNotes".into()),
-                    ..Default::default()
-                }),
-            )?;
+            let about =
+                PredefinedMenuItem::about(app, Some("About InstantNotes"), None)?;
             let check_updates =
                 MenuItem::with_id(app, "check_updates", "Check for Updates…", true, None::<&str>)?;
             let repo =
@@ -697,7 +797,9 @@ pub fn run() {
             open_library,
             set_window_vibrancy,
             export_theme_file,
-            import_theme_file
+            import_theme_file,
+            export_note_file,
+            open_url
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

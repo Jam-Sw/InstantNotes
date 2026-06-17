@@ -181,8 +181,8 @@
     padding: 20px 22px;
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: calc(var(--radius) + 4px);
-    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.4);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
     outline: none;
   }
   .dialog h2 {
@@ -218,8 +218,8 @@
     width: 40px;
     height: 40px;
     border-radius: 11px;
-    background: linear-gradient(155deg, #9ccdb8 0%, #6f9c8a 100%);
-    box-shadow: 0 4px 12px rgba(134, 184, 163, 0.3);
+    background: linear-gradient(155deg, var(--accent-text) 0%, var(--accent) 100%);
+    box-shadow: 0 4px 12px var(--accent-soft);
   }
   .app-meta {
     flex: 1;
@@ -298,7 +298,7 @@
     background: var(--bg-sidebar);
     border: 1px solid var(--border);
     border-radius: 9px;
-    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.5);
+    box-shadow: var(--shadow-lg);
     overflow: hidden;
     z-index: 1;
   }

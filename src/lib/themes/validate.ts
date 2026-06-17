@@ -26,6 +26,10 @@ const COLOR_RE =
 const FONT_RE = /^[\w\s,"'().\-]+$/;
 const LENGTH_RE = /^\d+(\.\d+)?(px|rem|em)$/;
 const ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
+// Leading: unitless number (1.5) or number with units (24px, 1.5em).
+const LEADING_RE = /^\d+(\.\d+)?(px|rem|em|%)?$/;
+// Tracking: 0, or a signed CSS length (e.g. -0.01em, 0.5px).
+const TRACKING_RE = /^-?\d+(\.\d+)?(px|rem|em|ch)$|^0$/;
 
 function hasForbidden(value: string): boolean {
   const lower = value.toLowerCase();
@@ -47,6 +51,20 @@ function isFontList(value: unknown): value is string {
 
 function isLength(value: unknown): value is string {
   return typeof value === "string" && !hasForbidden(value) && LENGTH_RE.test(value.trim());
+}
+
+// Shadow is a complex CSS value; we accept anything without injection vectors
+// and under a reasonable length cap (multiple layered shadows are valid CSS).
+function isShadow(value: unknown): value is string {
+  return typeof value === "string" && value.length <= 300 && !hasForbidden(value);
+}
+
+function isLeading(value: unknown): value is string {
+  return typeof value === "string" && !hasForbidden(value) && LEADING_RE.test(value.trim());
+}
+
+function isTracking(value: unknown): value is string {
+  return typeof value === "string" && !hasForbidden(value) && TRACKING_RE.test(value.trim());
 }
 
 function isFontSlot(value: unknown): value is FontSlot {
@@ -99,8 +117,23 @@ export function validateTheme(input: unknown): ValidationResult {
   const metrics = t.metrics as Record<string, unknown> | undefined;
   if (!metrics || typeof metrics !== "object") return { ok: false, error: "Theme metrics are missing." };
   if (!isLength(metrics.radius)) return { ok: false, error: "Theme radius is invalid." };
+  if (metrics.radiusLg !== undefined && !isLength(metrics.radiusLg)) {
+    return { ok: false, error: "Theme radiusLg is invalid." };
+  }
   if (typeof metrics.density !== "number" || !(metrics.density >= 0.5 && metrics.density <= 2)) {
     return { ok: false, error: "Theme density must be a number between 0.5 and 2." };
+  }
+  if (metrics.shadow !== undefined && !isShadow(metrics.shadow)) {
+    return { ok: false, error: "Theme shadow is invalid." };
+  }
+  if (metrics.shadowLg !== undefined && !isShadow(metrics.shadowLg)) {
+    return { ok: false, error: "Theme shadowLg is invalid." };
+  }
+  if (metrics.leading !== undefined && !isLeading(metrics.leading)) {
+    return { ok: false, error: "Theme leading is invalid." };
+  }
+  if (metrics.tracking !== undefined && !isTracking(metrics.tracking)) {
+    return { ok: false, error: "Theme tracking is invalid." };
   }
 
   let dark: TokenSet | undefined;
@@ -131,7 +164,15 @@ export function validateTheme(input: unknown): ValidationResult {
       body: fonts.body,
       meta: fonts.meta,
     },
-    metrics: { radius: (metrics.radius as string).trim(), density: metrics.density },
+    metrics: {
+      radius: (metrics.radius as string).trim(),
+      ...(metrics.radiusLg !== undefined && { radiusLg: (metrics.radiusLg as string).trim() }),
+      density: metrics.density as number,
+      ...(metrics.shadow !== undefined && { shadow: (metrics.shadow as string).trim() }),
+      ...(metrics.shadowLg !== undefined && { shadowLg: (metrics.shadowLg as string).trim() }),
+      ...(metrics.leading !== undefined && { leading: (metrics.leading as string).trim() }),
+      ...(metrics.tracking !== undefined && { tracking: (metrics.tracking as string).trim() }),
+    },
     material: t.material as ThemeMaterial | undefined,
     dark,
     light,

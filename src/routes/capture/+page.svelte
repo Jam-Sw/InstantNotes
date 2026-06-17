@@ -146,7 +146,7 @@
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 12px;
-    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-lg);
     overflow: hidden;
   }
 

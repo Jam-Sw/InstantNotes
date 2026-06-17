@@ -22,6 +22,9 @@ export interface Command {
   // Optional leading glyph, rendered before the title. A function so it can
   // reflect live state (e.g. a sun/moon that tracks the current variant).
   icon?: () => string;
+  // Static breadcrumb prefix shown before the title (e.g. the selected note's
+  // name on note-scoped actions). Purely visual — no tree/folder behaviour.
+  prefix?: string;
   // When true, running this leaf leaves the palette open so the user can keep
   // applying siblings (e.g. cycling themes to preview them live), regardless of
   // whether it was run from inside its folder or matched from a search.

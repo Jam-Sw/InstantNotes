@@ -9,27 +9,35 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Added
-- The Graphite theme can now use the native macOS vibrancy material: on macOS
-  its sidebar becomes a real translucent "Liquid Glass" panel that picks up
-  what is behind the window, for a look at home on Tahoe. Every other theme is
-  untouched and stays fully opaque.
-
-### Changed
-- Graphite has been repaletted to Apple's system colors (the macOS system blue
-  accent and the system gray scale) with a slightly rounder corner radius, so
-  it reads as a native macOS app even with the glass turned off.
-
 ## [0.6.2] - 2026-06-17
 
 ### Added
+- Creating a new note while a tag is selected in the sidebar now pre-applies
+  that tag to the note, and the tag filter stays active so the note appears in
+  the current view.
 - Command palette search now reaches into sub-menus: searching for a theme by
   name (e.g. "graphite") surfaces it directly as a "Themes" child you can apply
   in one click, without opening the theme picker first.
+- The Graphite and Twilight themes now use a native macOS vibrancy material: on
+  macOS their sidebar becomes a real translucent "Liquid Glass" panel that picks
+  up what is behind the window, for a look at home on Tahoe. Every other theme
+  is untouched and stays fully opaque.
+  - WYSIWYG preview mode: closing the Aa toolbar now hides markdown syntax markers
+  and renders formatting in place - bold text looks bold, italic looks italic,
+  bullet points show as real bullets, and blockquotes indent with a left border.
+  The note stays fully editable. Opening Aa switches back to source mode so you
+  can see and edit the markers directly. Backspace at the start of a bullet or
+  blockquote cleanly removes the block marker and converts the line to plain text.
+  - Note-scoped actions in the command palette (pin, archive, delete) now show the
+  note title as a breadcrumb prefix - "breakfast plan 2027 > Pin note" - so it is
+  always clear which note the action will affect.
 
 ### Changed
 - Picking a theme in the command palette now applies it instantly and leaves the
   palette open, so you can arrow through the list and preview each theme live.
+- Graphite has been repaletted to Apple's system colors (the macOS system blue
+  accent and the system gray scale) with a slightly rounder corner radius, so
+  it reads as a native macOS app even with the glass turned off.
 
 ### Fixed
 - Keyboard navigation in the command palette: the arrow keys no longer skip
