@@ -35,7 +35,7 @@ describe("filterCommands", () => {
   const commands = [
     cmd("a", "New note"),
     cmd("b", "Pin note"),
-    cmd("c", "Switch theme: Manuscript"),
+    cmd("c", "Switch theme"),
     cmd("d", "Toggle light / dark"),
   ];
 

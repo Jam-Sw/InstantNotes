@@ -4,22 +4,29 @@
   // labels stay current). Keyboard: ↑/↓ move, ↵ runs, Esc closes.
   import {
     buildCommands,
+    buildThemeCommands,
     filterCommands,
     recentCommands,
     recordRecent,
     type Command,
   } from "$lib/commands";
+  import { theme } from "$lib/stores/theme.svelte";
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
 
   let query = $state("");
   let active = $state(0);
+  let view = $state<"root" | "theme">("root");
   let commands = $state<Command[]>([]);
+  let themeCommands = $state<Command[]>([]);
   let input = $state<HTMLInputElement>();
 
   // Empty query shows recents first (if any), then everything; otherwise the
   // ranked fuzzy results.
   const results = $derived.by(() => {
+    if (view === "theme") {
+      return query.trim() ? filterCommands(themeCommands, query) : themeCommands;
+    }
     if (query.trim()) return filterCommands(commands, query);
     const recents = recentCommands(commands);
     const seen = new Set(recents.map((c) => c.id));
@@ -30,8 +37,10 @@
   $effect(() => {
     if (open) {
       commands = buildCommands();
+      themeCommands = buildThemeCommands();
       query = "";
       active = 0;
+      view = "root";
       queueMicrotask(() => input?.focus());
     }
   });
@@ -42,6 +51,13 @@
   });
 
   function run(cmd: Command) {
+    if (cmd.id === "theme.switch") {
+      view = "theme";
+      query = "";
+      active = 0;
+      return;
+    }
+    if (view === "theme") recordRecent("theme.switch");
     open = false;
     recordRecent(cmd.id);
     void cmd.run();
@@ -65,7 +81,13 @@
         break;
       case "Escape":
         e.preventDefault();
-        open = false;
+        if (view !== "root") {
+          view = "root";
+          query = "";
+          active = 0;
+        } else {
+          open = false;
+        }
         break;
     }
   }
@@ -89,12 +111,17 @@
     onkeydown={onKeydown}
   >
     <div class="palette" role="dialog" aria-modal="true" aria-label="Command palette" tabindex="-1">
+      {#if view === "theme"}
+        <button class="back-btn" onclick={() => { view = "root"; query = ""; active = 0; }}>
+          ← Themes
+        </button>
+      {/if}
       <input
         bind:this={input}
         bind:value={query}
         class="cmd-input"
         type="text"
-        placeholder="Type a command…"
+        placeholder={view === "theme" ? "Search themes…" : "Type a command…"}
         aria-label="Command"
         onkeydown={onKeydown}
       />
@@ -109,6 +136,9 @@
           >
             <span class="cmd-title">{cmd.title}</span>
             <span class="cmd-meta">
+              {#if view === "theme" && cmd.id === `theme.set.${theme.activeId}`}
+                <span class="theme-check">&#10003;</span>
+              {/if}
               {#if cmd.shortcut}<kbd>{cmd.shortcut}</kbd>{/if}
               <span class="cmd-group">{cmd.group}</span>
             </span>
@@ -142,6 +172,26 @@
     border-radius: calc(var(--radius) + 4px);
     box-shadow: 0 18px 50px rgba(0, 0, 0, 0.4);
     overflow: hidden;
+  }
+  .back-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 16px;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    text-align: left;
+  }
+  .back-btn:hover {
+    color: var(--text-secondary);
+  }
+  .theme-check {
+    color: var(--accent-text);
+    font-size: 13px;
   }
   .cmd-input {
     border: none;
