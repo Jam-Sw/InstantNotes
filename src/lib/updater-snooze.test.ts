@@ -12,7 +12,7 @@ describe("snoozeDeadline", () => {
     expect(snoozeDeadline("week", now)).toBe(now + 7 * DAY_MS);
   });
 
-  it("returns null for 'launch' — session-only, no persisted deadline", () => {
+  it("returns null for 'launch' - session-only, no persisted deadline", () => {
     expect(snoozeDeadline("launch", now)).toBeNull();
   });
 });

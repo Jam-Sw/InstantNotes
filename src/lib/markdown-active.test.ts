@@ -31,7 +31,7 @@ describe("activeMarks", () => {
     expect(marksAt("run `npm` now", 6)).toEqual({ ...NO_MARKS, code: true });
   });
 
-  it("lights strikethrough — proving GFM parsing is on", () => {
+  it("lights strikethrough - proving GFM parsing is on", () => {
     expect(marksAt("~~gone~~ here", 4)).toEqual({ ...NO_MARKS, strike: true });
   });
 
@@ -52,7 +52,7 @@ describe("activeMarks", () => {
   });
 
   it("lights italic across a selection that covers it", () => {
-    // "a *cap* b" — select the inner word "cap" (indices 3..6).
+    // "a *cap* b" - select the inner word "cap" (indices 3..6).
     expect(marksAt("a *cap* b", 3, 6)).toEqual({ ...NO_MARKS, italic: true });
   });
 });

@@ -3,7 +3,7 @@
 //
 // Why this exists: the app hides to the tray on window-close (lib.rs:606) and
 // uses tauri-plugin-single-instance (lib.rs:465). So a plain `tauri dev` re-run
-// does NOT start fresh — single-instance detects the still-alive tray instance
+// does NOT start fresh - single-instance detects the still-alive tray instance
 // and just re-surfaces its window. That window is the webview from the FIRST
 // launch: frozen on the frontend it loaded then, with its HMR socket pointing at
 // a Vite server that has since died. Result: edits never show, no matter how

@@ -353,7 +353,7 @@ fn open_data_folder(app: &AppHandle) {
     if let Ok(dir) = app.path().app_data_dir() {
         // Via the opener plugin rather than a raw `open` subprocess, so it stays
         // on Tauri's permission-checked path. Called only from Rust with our own
-        // data directory — never a webview-supplied path.
+        // data directory - never a webview-supplied path.
         let _ = app.opener().open_path(dir.to_string_lossy(), None::<&str>);
     }
 }
@@ -460,7 +460,7 @@ pub fn run() {
     tauri::Builder::default()
         // Single-instance MUST be the first plugin. A second launch (e.g. opening
         // the app while it already lives in the tray) is routed into this callback
-        // and surfaces the running window, instead of starting a rival process —
+        // and surfaces the running window, instead of starting a rival process -
         // which would otherwise mean two trays and two writers on one database.
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             show_library_window(app);
@@ -494,7 +494,7 @@ pub fn run() {
             std::fs::create_dir_all(&dir)?;
             // Dev builds can point at an existing database via INSTANTNOTES_DB_PATH
             // (e.g. the installed release's notes), so `npm run tauri:dev` works on
-            // your real notes — one shared file, no copies. Release never sets the
+            // your real notes - one shared file, no copies. Release never sets the
             // env, so it keeps using this identity's own database.
             let db_path = std::env::var_os("INSTANTNOTES_DB_PATH")
                 .map(std::path::PathBuf::from)
@@ -511,7 +511,7 @@ pub fn run() {
             // After an in-place update, refresh the cached app icon once.
             refresh_icon_cache_if_updated(&dir);
 
-            // Tray menu — the app's permanent presence. Dev builds use ⌥⇧Space so
+            // Tray menu - the app's permanent presence. Dev builds use ⌥⇧Space so
             // they never fight an installed release for the system-wide ⌥Space hotkey.
             let capture_accel = if cfg!(debug_assertions) {
                 "New Capture\t⌥⇧Space"
@@ -590,7 +590,7 @@ pub fn run() {
                 .build(app)?;
 
             // Global shortcut: ⌥Space toggles the capture panel. In dev builds use
-            // ⌥⇧Space instead — the system-wide ⌥Space is exclusive, so a dev build
+            // ⌥⇧Space instead - the system-wide ⌥Space is exclusive, so a dev build
             // and an installed release (same hotkey) would otherwise silently collide.
             use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
             let shortcut = if cfg!(debug_assertions) {

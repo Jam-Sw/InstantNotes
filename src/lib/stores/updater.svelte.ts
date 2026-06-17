@@ -40,7 +40,7 @@ class UpdaterStore {
   #timer: ReturnType<typeof setInterval> | null = null;
   // Persisted epoch-ms deadline for a snoozed reminder; null when not snoozed.
   #snoozeUntil: number | null = null;
-  // "On next launch" — suppress for this process only, never persisted.
+  // "On next launch" - suppress for this process only, never persisted.
   #suppressThisSession = false;
   #snoozeLoaded = false;
 
@@ -162,7 +162,7 @@ class UpdaterStore {
       if (Date.now() < until) {
         this.#snoozeUntil = until;
       } else {
-        // Lapsed — drop the stale deadline so it can't suppress forever.
+        // Lapsed - drop the stale deadline so it can't suppress forever.
         void deleteSetting(KEY_SNOOZE);
       }
     } catch {

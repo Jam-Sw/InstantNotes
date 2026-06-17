@@ -53,7 +53,7 @@ function mark(name: string, marks: ActiveMarks): void {
 
 /**
  * Marks active at the current selection. Resolves the syntax tree at both
- * selection ends, from both sides, and unions every enclosing mark — so a caret
+ * selection ends, from both sides, and unions every enclosing mark - so a caret
  * just inside a span, or a selection that exactly covers one, both register.
  */
 export function activeMarks(state: EditorState): ActiveMarks {

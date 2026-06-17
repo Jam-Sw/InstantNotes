@@ -8,7 +8,7 @@ export const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * When a reminder snoozed at `now` should next surface. `"launch"` has no fixed
- * deadline — it suppresses for the session only — so it returns null.
+ * deadline - it suppresses for the session only - so it returns null.
  */
 export function snoozeDeadline(kind: SnoozeKind, now: number): number | null {
   switch (kind) {
