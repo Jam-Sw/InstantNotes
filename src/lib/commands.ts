@@ -16,6 +16,16 @@ export {
   recordRecent,
 } from "$lib/command-filter";
 
+/** Theme-specific commands for the palette sub-view. */
+export function buildThemeCommands(): Command[] {
+  return theme.allThemes.map((t) => ({
+    id: `theme.set.${t.id}`,
+    title: t.name,
+    group: "Theme",
+    run: () => theme.setTheme(t.id),
+  }));
+}
+
 /** Build the current command set. Reads store state, so call on palette open. */
 export function buildCommands(): Command[] {
   const commands: Command[] = [
@@ -46,15 +56,13 @@ export function buildCommands(): Command[] {
     );
   }
 
-  for (const t of theme.allThemes) {
-    commands.push({
-      id: `theme.set.${t.id}`,
-      title: `Switch theme: ${t.name}`,
-      group: "Theme",
-      run: () => theme.setTheme(t.id),
-    });
-  }
   commands.push(
+    {
+      id: "theme.switch",
+      title: "Switch theme",
+      group: "Theme",
+      run: () => {},
+    },
     {
       id: "theme.toggle",
       title: "Toggle light / dark",

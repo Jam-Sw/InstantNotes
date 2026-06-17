@@ -9,6 +9,7 @@ use std::sync::Mutex;
 use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_opener::OpenerExt;
 
 struct AppState {
     store: Mutex<Store>,
@@ -56,7 +57,7 @@ fn emit_workspaces_changed(app: &AppHandle) {
 
 // ---- note commands ----
 
-#[tauri::command]
+#[tauri::command(async)]
 fn create_note(
     state: State<'_, AppState>,
     app: AppHandle,
@@ -68,12 +69,12 @@ fn create_note(
     Ok(note)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_note(state: State<'_, AppState>, id: String, touch: Option<bool>) -> CmdResult<Note> {
     Ok(locked(&state)?.get_note(&id, touch.unwrap_or(false))?)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn update_note(
     state: State<'_, AppState>,
     app: AppHandle,
@@ -86,21 +87,21 @@ fn update_note(
     Ok(note)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn soft_delete_note(state: State<'_, AppState>, app: AppHandle, id: String) -> CmdResult<Note> {
     let note = locked(&state)?.soft_delete_note(&id)?;
     emit_notes_changed(&app);
     Ok(note)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn restore_note(state: State<'_, AppState>, app: AppHandle, id: String) -> CmdResult<Note> {
     let note = locked(&state)?.restore_note(&id)?;
     emit_notes_changed(&app);
     Ok(note)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn permanently_delete_note(
     state: State<'_, AppState>,
     app: AppHandle,
@@ -113,12 +114,12 @@ fn permanently_delete_note(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn list_notes(state: State<'_, AppState>, filter: Option<NoteFilter>) -> CmdResult<Vec<Note>> {
     Ok(locked(&state)?.list_notes(filter.unwrap_or_default())?)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn search_notes(
     state: State<'_, AppState>,
     text: String,
@@ -129,19 +130,19 @@ fn search_notes(
 
 // ---- tag commands ----
 
-#[tauri::command]
+#[tauri::command(async)]
 fn list_tags(state: State<'_, AppState>) -> CmdResult<Vec<TagWithCount>> {
     Ok(locked(&state)?.list_tags()?)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_or_create_tag(state: State<'_, AppState>, app: AppHandle, name: String) -> CmdResult<Tag> {
     let tag = locked(&state)?.get_or_create_tag(&name)?;
     emit_tags_changed(&app);
     Ok(tag)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn update_tag(
     state: State<'_, AppState>,
     app: AppHandle,
@@ -154,7 +155,7 @@ fn update_tag(
     Ok(tag)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn delete_tag(state: State<'_, AppState>, app: AppHandle, id: String) -> CmdResult<()> {
     locked(&state)?.delete_tag(&id)?;
     emit_tags_changed(&app);
@@ -162,7 +163,7 @@ fn delete_tag(state: State<'_, AppState>, app: AppHandle, id: String) -> CmdResu
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn add_tag_to_note(
     state: State<'_, AppState>,
     app: AppHandle,
@@ -175,7 +176,7 @@ fn add_tag_to_note(
     Ok(tag)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn remove_tag_from_note(
     state: State<'_, AppState>,
     app: AppHandle,
@@ -188,19 +189,19 @@ fn remove_tag_from_note(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn tags_for_note(state: State<'_, AppState>, note_id: String) -> CmdResult<Vec<Tag>> {
     Ok(locked(&state)?.tags_for_note(&note_id)?)
 }
 
 // ---- workspace commands ----
 
-#[tauri::command]
+#[tauri::command(async)]
 fn list_workspaces(state: State<'_, AppState>) -> CmdResult<Vec<WorkspaceWithCount>> {
     Ok(locked(&state)?.list_workspaces()?)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_or_create_workspace(
     state: State<'_, AppState>,
     app: AppHandle,
@@ -211,7 +212,7 @@ fn get_or_create_workspace(
     Ok(ws)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn rename_workspace(
     state: State<'_, AppState>,
     app: AppHandle,
@@ -223,7 +224,7 @@ fn rename_workspace(
     Ok(ws)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn delete_workspace(state: State<'_, AppState>, app: AppHandle, id: String) -> CmdResult<()> {
     locked(&state)?.delete_workspace(&id)?;
     emit_workspaces_changed(&app);
@@ -231,7 +232,7 @@ fn delete_workspace(state: State<'_, AppState>, app: AppHandle, id: String) -> C
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn add_note_to_workspace(
     state: State<'_, AppState>,
     app: AppHandle,
@@ -244,7 +245,7 @@ fn add_note_to_workspace(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn remove_note_from_workspace(
     state: State<'_, AppState>,
     app: AppHandle,
@@ -257,19 +258,19 @@ fn remove_note_from_workspace(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn workspaces_for_note(state: State<'_, AppState>, note_id: String) -> CmdResult<Vec<Workspace>> {
     Ok(locked(&state)?.workspaces_for_note(&note_id)?)
 }
 
 // ---- settings commands ----
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_setting(state: State<'_, AppState>, key: String) -> CmdResult<Option<serde_json::Value>> {
     Ok(locked(&state)?.get_setting(&key)?)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn set_setting(
     state: State<'_, AppState>,
     key: String,
@@ -278,13 +279,15 @@ fn set_setting(
     Ok(locked(&state)?.set_setting(&key, value)?)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn delete_setting(state: State<'_, AppState>, key: String) -> CmdResult<()> {
     Ok(locked(&state)?.delete_setting(&key)?)
 }
 
 // ---- window commands ----
 
+// Window show/hide is instant and main-thread-friendly, so these stay synchronous
+// (unlike the data/IO commands, which run async to keep off the UI thread).
 #[tauri::command]
 fn hide_capture(app: AppHandle) {
     hide_capture_window(&app);
@@ -301,16 +304,43 @@ fn open_library(app: AppHandle) {
 // no broad filesystem capability is needed. Validation happens in the webview
 // before any token is applied.
 
-#[tauri::command]
+/// Reject anything that isn't an absolute path to a `.json` file. The path is
+/// chosen by the user through a native save/open dialog but arrives here from the
+/// webview, so this guard keeps the command from becoming a way to read or write
+/// arbitrary files anywhere on disk.
+fn validate_theme_path(path: &str) -> CmdResult<()> {
+    let p = std::path::Path::new(path);
+    if !p.is_absolute() {
+        return Err(CmdError {
+            code: "STORAGE_ERROR".into(),
+            message: "theme path must be absolute".into(),
+        });
+    }
+    let is_json = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("json"));
+    if !is_json {
+        return Err(CmdError {
+            code: "STORAGE_ERROR".into(),
+            message: "theme file must have a .json extension".into(),
+        });
+    }
+    Ok(())
+}
+
+#[tauri::command(async)]
 fn export_theme_file(path: String, contents: String) -> CmdResult<()> {
+    validate_theme_path(&path)?;
     std::fs::write(&path, contents).map_err(|e| CmdError {
         code: "STORAGE_ERROR".into(),
         message: format!("could not write theme file: {e}"),
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn import_theme_file(path: String) -> CmdResult<String> {
+    validate_theme_path(&path)?;
     std::fs::read_to_string(&path).map_err(|e| CmdError {
         code: "STORAGE_ERROR".into(),
         message: format!("could not read theme file: {e}"),
@@ -319,14 +349,12 @@ fn import_theme_file(path: String) -> CmdResult<String> {
 
 const REPO_URL: &str = "https://github.com/Jam-Sw/InstantNotes";
 
-/// Open a file, folder, or URL with the macOS default handler.
-fn open_with_system(target: &str) {
-    let _ = std::process::Command::new("open").arg(target).spawn();
-}
-
 fn open_data_folder(app: &AppHandle) {
     if let Ok(dir) = app.path().app_data_dir() {
-        open_with_system(&dir.to_string_lossy());
+        // Via the opener plugin rather than a raw `open` subprocess, so it stays
+        // on Tauri's permission-checked path. Called only from Rust with our own
+        // data directory - never a webview-supplied path.
+        let _ = app.opener().open_path(dir.to_string_lossy(), None::<&str>);
     }
 }
 
@@ -430,6 +458,21 @@ fn show_library_window(app: &AppHandle) {
 
 pub fn run() {
     tauri::Builder::default()
+        // Single-instance MUST be the first plugin. A second launch (e.g. opening
+        // the app while it already lives in the tray) is routed into this callback
+        // and surfaces the running window, instead of starting a rival process -
+        // which would otherwise mean two trays and two writers on one database.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            show_library_window(app);
+            // Dev: a re-run of `npm run tauri:dev` is routed here instead of spawning
+            // a fresh process, so reload the webview to pick up the latest frontend
+            // rather than leaving the window frozen on the build it first loaded.
+            #[cfg(debug_assertions)]
+            if let Some(w) = app.get_webview_window("library") {
+                let _ = w.eval("window.location.reload()");
+            }
+        }))
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
@@ -449,7 +492,17 @@ pub fn run() {
                 .app_data_dir()
                 .expect("cannot resolve app data directory");
             std::fs::create_dir_all(&dir)?;
-            let store = Store::open(&dir.join("instantnotes.db"))
+            // Dev builds can point at an existing database via INSTANTNOTES_DB_PATH
+            // (e.g. the installed release's notes), so `npm run tauri:dev` works on
+            // your real notes - one shared file, no copies. Release never sets the
+            // env, so it keeps using this identity's own database.
+            let db_path = std::env::var_os("INSTANTNOTES_DB_PATH")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| dir.join("instantnotes.db"));
+            if let Some(parent) = db_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let store = Store::open(&db_path)
                 .map_err(|e| format!("cannot open store: {e}"))?;
             app.manage(AppState {
                 store: Mutex::new(store),
@@ -458,9 +511,15 @@ pub fn run() {
             // After an in-place update, refresh the cached app icon once.
             refresh_icon_cache_if_updated(&dir);
 
-            // Tray menu — the app's permanent presence.
+            // Tray menu - the app's permanent presence. Dev builds use ⌥⇧Space so
+            // they never fight an installed release for the system-wide ⌥Space hotkey.
+            let capture_accel = if cfg!(debug_assertions) {
+                "New Capture\t⌥⇧Space"
+            } else {
+                "New Capture\t⌥Space"
+            };
             let new_capture =
-                MenuItem::with_id(app, "new_capture", "New Capture\t⌥Space", true, None::<&str>)?;
+                MenuItem::with_id(app, "new_capture", capture_accel, true, None::<&str>)?;
             let open_library_item =
                 MenuItem::with_id(app, "open_library", "Open Library", true, None::<&str>)?;
 
@@ -507,7 +566,11 @@ pub fn run() {
                 ],
             )?;
             TrayIconBuilder::with_id("main-tray")
-                .icon(app.default_window_icon().cloned().expect("window icon"))
+                // A monochrome template image: macOS tints it for the light/dark
+                // menu bar automatically, instead of showing the full-color app
+                // icon (which looks pasted-in and never adapts).
+                .icon(tauri::include_image!("icons/tray.png"))
+                .icon_as_template(true)
                 .menu(&menu)
                 .show_menu_on_left_click(true)
                 .on_menu_event(|app, event| match event.id.as_ref() {
@@ -517,30 +580,53 @@ pub fn run() {
                         show_library_window(app);
                         let _ = app.emit("updater:check", ());
                     }
-                    "open_repo" => open_with_system(REPO_URL),
+                    "open_repo" => {
+                        let _ = app.opener().open_url(REPO_URL, None::<&str>);
+                    }
                     "open_data_dir" => open_data_folder(app),
                     "quit" => app.exit(0),
                     _ => {}
                 })
                 .build(app)?;
 
-            // Global shortcut: ⌥Space toggles the capture panel.
+            // Global shortcut: ⌥Space toggles the capture panel. In dev builds use
+            // ⌥⇧Space instead - the system-wide ⌥Space is exclusive, so a dev build
+            // and an installed release (same hotkey) would otherwise silently collide.
             use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
-            let shortcut = Shortcut::new(Some(Modifiers::ALT), Code::Space);
+            let shortcut = if cfg!(debug_assertions) {
+                Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::Space)
+            } else {
+                Shortcut::new(Some(Modifiers::ALT), Code::Space)
+            };
             if let Err(e) = app.global_shortcut().register(shortcut) {
                 // Content-free log per SEC-001; conflict fallback UI is an M4 item.
                 eprintln!("global shortcut registration failed: {e}");
             }
 
-            // Closing the library window hides it; the app lives in the tray.
             if let Some(library) = app.get_webview_window("library") {
-                let handle = library.clone();
-                library.on_window_event(move |event| {
-                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                        api.prevent_close();
-                        let _ = handle.hide();
-                    }
-                });
+                #[cfg(not(debug_assertions))]
+                {
+                    // Release: hide to tray -- the app lives in the menu bar.
+                    let handle = library.clone();
+                    library.on_window_event(move |event| {
+                        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                            api.prevent_close();
+                            let _ = handle.hide();
+                        }
+                    });
+                }
+                #[cfg(debug_assertions)]
+                {
+                    // Dev: quit on close. Hide-to-tray creates zombie processes
+                    // that trap single-instance re-launches in stale webviews.
+                    let handle = library.app_handle().clone();
+                    library.on_window_event(move |event| {
+                        if let tauri::WindowEvent::CloseRequested { .. } = event {
+                            handle.exit(0);
+                        }
+                    });
+                    let _ = library.set_focus();
+                }
             }
             Ok(())
         })
@@ -612,5 +698,14 @@ mod tests {
         let res = import_theme_file("/nonexistent/path/theme.intheme.json".into());
         assert!(res.is_err());
         assert_eq!(res.unwrap_err().code, "STORAGE_ERROR");
+    }
+
+    #[test]
+    fn theme_path_validation_rejects_non_absolute_and_non_json() {
+        // Relative path → rejected before any filesystem access.
+        assert!(export_theme_file("relative/theme.json".into(), "{}".into()).is_err());
+        assert!(import_theme_file("relative/theme.json".into()).is_err());
+        // Absolute but not a .json file → rejected.
+        assert!(import_theme_file("/tmp/not-a-theme.txt".into()).is_err());
     }
 }

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "InstantNotes Dev",
+  "identifier": "com.instantnotes.dev",
+  "app": {
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' ipc: http://ipc.localhost http://localhost:1420 ws://localhost:1420 ws://localhost:1421"
+    },
+    "windows": [
+      {
+        "label": "library",
+        "title": "InstantNotes (dev)",
+        "url": "/",
+        "width": 980,
+        "height": 640,
+        "minWidth": 720,
+        "minHeight": 480,
+        "visible": true,
+        "incognito": true
+      },
+      {
+        "label": "capture",
+        "title": "InstantNotes Capture (dev)",
+        "url": "/capture",
+        "width": 560,
+        "height": 160,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visibleOnAllWorkspaces": true,
+        "center": true,
+        "visible": false,
+        "closable": false,
+        "incognito": true
+      }
+    ]
+  }
+}

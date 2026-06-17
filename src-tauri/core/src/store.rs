@@ -217,12 +217,25 @@ fn fts_match_expr(text: &str) -> Option<String> {
 }
 
 impl Store {
-    /// Open (creating if needed) the database: WAL mode, foreign keys on,
-    /// quick integrity check, migrations applied.
+    /// Open (creating if needed) the database: WAL mode, a 5s busy timeout,
+    /// synchronous=NORMAL, foreign keys on, quick integrity check, migrations
+    /// applied.
     pub fn open(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)
             .map_err(|e| AppError::Storage(format!("cannot open database: {e}")))?;
+        // Wait for a competing writer instead of failing immediately with
+        // SQLITE_BUSY. The same file is legitimately opened by more than one
+        // process (a dev build alongside the installed release, or a second
+        // launch), so a writer can briefly hold the lock; without a timeout that
+        // surfaces to the user as a hard "database is locked" error.
+        conn.busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(|e| AppError::Storage(format!("cannot set busy timeout: {e}")))?;
         conn.query_row("PRAGMA journal_mode = WAL", [], |r| r.get::<_, String>(0))?;
+        // NORMAL is the standard, crash-safe pairing with WAL: fsync at
+        // checkpoints rather than on every commit. Safe against app crashes; only
+        // an OS crash or power loss can drop commits still sitting in the WAL.
+        conn.pragma_update(None, "synchronous", "NORMAL")
+            .map_err(|e| AppError::Storage(format!("cannot set synchronous mode: {e}")))?;
         Self::init(conn)
     }
 
@@ -788,5 +801,39 @@ impl Store {
         self.conn
             .execute("DELETE FROM settings WHERE key = ?1", params![key])?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod pragma_tests {
+    use super::Store;
+    use tempfile::tempdir;
+
+    /// `open` must configure the on-disk database for safe concurrent access:
+    /// WAL journaling, a non-zero busy timeout (so a competing writer is waited
+    /// for rather than failing with SQLITE_BUSY), and synchronous=NORMAL.
+    #[test]
+    fn open_sets_concurrency_pragmas() {
+        let dir = tempdir().unwrap();
+        let store = Store::open(&dir.path().join("concurrency.db")).unwrap();
+
+        let journal: String = store
+            .conn
+            .query_row("PRAGMA journal_mode", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(journal.to_lowercase(), "wal");
+
+        let busy_timeout: i64 = store
+            .conn
+            .query_row("PRAGMA busy_timeout", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(busy_timeout, 5000);
+
+        // 1 == NORMAL
+        let synchronous: i64 = store
+            .conn
+            .query_row("PRAGMA synchronous", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(synchronous, 1);
     }
 }

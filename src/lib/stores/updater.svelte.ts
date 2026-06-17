@@ -7,6 +7,10 @@
 
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
+import { getSetting, setSetting, deleteSetting } from "$lib/api/client";
+import { snoozeDeadline, type SnoozeKind } from "$lib/updater-snooze";
+
+export type { SnoozeKind } from "$lib/updater-snooze";
 
 export type UpdateStatus =
   | "idle"
@@ -18,6 +22,7 @@ export type UpdateStatus =
   | "error";
 
 const RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const KEY_SNOOZE = "updater.snoozeUntil";
 
 class UpdaterStore {
   status = $state<UpdateStatus>("idle");
@@ -33,12 +38,19 @@ class UpdaterStore {
 
   #update: Update | null = null;
   #timer: ReturnType<typeof setInterval> | null = null;
+  // Persisted epoch-ms deadline for a snoozed reminder; null when not snoozed.
+  #snoozeUntil: number | null = null;
+  // "On next launch" - suppress for this process only, never persisted.
+  #suppressThisSession = false;
+  #snoozeLoaded = false;
 
   /** Check once now, then every RECHECK_INTERVAL_MS while running. */
   start() {
     if (this.#timer) return;
-    void this.checkNow();
     this.#timer = setInterval(() => void this.checkNow(), RECHECK_INTERVAL_MS);
+    // Honor a persisted snooze before the first check so "remind me later"
+    // carries across launches.
+    void this.#loadSnooze().then(() => this.checkNow());
   }
 
   stop() {
@@ -58,6 +70,9 @@ class UpdaterStore {
     const manual = opts.manual ?? false;
     // Never interrupt a download or a pending restart.
     if (this.status === "downloading" || this.status === "ready") return;
+    // A manual check (tray "Check for Updates…") always runs; automatic checks
+    // stay quiet while the reminder is snoozed.
+    if (!manual && this.#isSnoozed()) return;
     this.status = "checking";
     this.error = null;
     try {
@@ -112,6 +127,47 @@ class UpdaterStore {
   async restart() {
     if (this.status !== "ready") return;
     await relaunch();
+  }
+
+  /**
+   * Snooze the "update available" reminder. Automatic checks stay quiet until
+   * the deadline (or, for "on next launch", until the app restarts). The
+   * pending update is kept, so it re-surfaces once the snooze lapses.
+   */
+  snooze(kind: SnoozeKind) {
+    const until = snoozeDeadline(kind, Date.now());
+    this.#snoozeUntil = until;
+    if (until != null) {
+      this.#suppressThisSession = false;
+      void setSetting(KEY_SNOOZE, until);
+    } else {
+      // Session-only: don't persist a deadline.
+      this.#suppressThisSession = true;
+      void deleteSetting(KEY_SNOOZE);
+    }
+    if (this.status === "available") this.status = "idle";
+  }
+
+  #isSnoozed(): boolean {
+    if (this.#suppressThisSession) return true;
+    return this.#snoozeUntil != null && Date.now() < this.#snoozeUntil;
+  }
+
+  async #loadSnooze() {
+    if (this.#snoozeLoaded) return;
+    this.#snoozeLoaded = true;
+    try {
+      const until = await getSetting<number>(KEY_SNOOZE);
+      if (typeof until !== "number") return;
+      if (Date.now() < until) {
+        this.#snoozeUntil = until;
+      } else {
+        // Lapsed - drop the stale deadline so it can't suppress forever.
+        void deleteSetting(KEY_SNOOZE);
+      }
+    } catch {
+      // Settings are best-effort; default to not snoozed.
+    }
   }
 
   /** Clear a transient result (up-to-date / error) so the indicator hides. */
