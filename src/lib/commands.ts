@@ -14,14 +14,21 @@ export {
   filterCommands,
   recentCommands,
   recordRecent,
+  childrenOf,
+  hasChildren,
+  findCommand,
+  resolveActivation,
 } from "$lib/command-filter";
 
-/** Theme-specific commands for the palette sub-view. */
+/** One leaf per installed theme, parented to the "themes" folder command. */
 export function buildThemeCommands(): Command[] {
   return theme.allThemes.map((t) => ({
     id: `theme.set.${t.id}`,
     title: t.name,
     group: "Theme",
+    parent: "themes",
+    isActive: () => theme.activeId === t.id,
+    keepOpenAfterRun: true,
     run: () => theme.setTheme(t.id),
   }));
 }
@@ -57,18 +64,27 @@ export function buildCommands(): Command[] {
   }
 
   commands.push(
+    // Folder: has children (the theme leaves below), so the palette descends
+    // into it on run rather than calling this no-op.
     {
-      id: "theme.switch",
-      title: "Switch theme",
+      id: "themes",
+      title: "Themes",
       group: "Theme",
       run: () => {},
     },
+    // Listed before the theme leaves so it sits at the top of the sub-view, and
+    // flagged emphasis + an icon so it reads as a mode switch, not a theme.
     {
       id: "theme.toggle",
       title: "Toggle light / dark",
       group: "Theme",
+      parent: "themes",
+      emphasis: true,
+      icon: () => (theme.resolvedVariant === "dark" ? "☾" : "☀"),
+      keepOpenAfterRun: true,
       run: () => theme.toggleLightDark(),
     },
+    ...buildThemeCommands(),
     {
       id: "theme.auto",
       title: "Appearance: match system",
