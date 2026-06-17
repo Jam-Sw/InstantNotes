@@ -603,19 +603,30 @@ pub fn run() {
                 eprintln!("global shortcut registration failed: {e}");
             }
 
-            // Closing the library window hides it; the app lives in the tray.
             if let Some(library) = app.get_webview_window("library") {
-                let handle = library.clone();
-                library.on_window_event(move |event| {
-                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                        api.prevent_close();
-                        let _ = handle.hide();
-                    }
-                });
-                // Dev builds pop the window to the front on launch, so it's obvious
-                // which window is the dev build (vs. an installed release).
+                #[cfg(not(debug_assertions))]
+                {
+                    // Release: hide to tray -- the app lives in the menu bar.
+                    let handle = library.clone();
+                    library.on_window_event(move |event| {
+                        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                            api.prevent_close();
+                            let _ = handle.hide();
+                        }
+                    });
+                }
                 #[cfg(debug_assertions)]
-                let _ = library.set_focus();
+                {
+                    // Dev: quit on close. Hide-to-tray creates zombie processes
+                    // that trap single-instance re-launches in stale webviews.
+                    let handle = library.app_handle().clone();
+                    library.on_window_event(move |event| {
+                        if let tauri::WindowEvent::CloseRequested { .. } = event {
+                            handle.exit(0);
+                        }
+                    });
+                    let _ = library.set_focus();
+                }
             }
             Ok(())
         })
