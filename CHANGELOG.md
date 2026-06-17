@@ -9,6 +9,24 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-06-16
+
+### Added
+- A theme picker in the command palette: press ⌘K, choose "Switch theme", and
+  browse every theme in a searchable list with the active one checked.
+- The format toolbar now highlights the styles your cursor is inside, so you can
+  see at a glance whether the text is bold, italic, a list, a quote, and so on.
+- "Remind me later" options when an update is available: snooze the reminder until
+  tomorrow, next week, or the next launch instead of acting on it right away.
+
+### Changed
+- Opening InstantNotes while it is already running now brings the existing window
+  to the front instead of starting a second copy.
+- Notes, search, and saves run off the main thread, so the window stays responsive
+  even while the database is busy.
+- The menu-bar tray icon is now a monochrome template that matches a light or dark
+  menu bar.
+
 ## [0.6.0] - 2026-06-15
 
 ### Added
