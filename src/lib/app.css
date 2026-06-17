@@ -32,6 +32,12 @@
 
 * {
   box-sizing: border-box;
+  /* No persistent scrollbar gutter; trackpad/wheel scrolling stays native and smooth. */
+  scrollbar-width: none;
+}
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 html,

@@ -14,19 +14,22 @@
   } from "@codemirror/view";
   import { EditorState, RangeSetBuilder } from "@codemirror/state";
   import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
-  import { markdown } from "@codemirror/lang-markdown";
+  import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
   import { syntaxHighlighting } from "@codemirror/language";
   import { markdownHighlight } from "$lib/markdown-highlight";
   import { formatEdit, type FormatKind, type Sel } from "$lib/markdown-format";
+  import { activeMarks, type ActiveMarks } from "$lib/markdown-active";
 
   let {
     value = "",
     placeholder = "",
     onchange,
+    onactive,
   }: {
     value?: string;
     placeholder?: string;
     onchange?: (v: string) => void;
+    onactive?: (marks: ActiveMarks) => void;
   } = $props();
 
   let container: HTMLDivElement;
@@ -80,7 +83,9 @@
             { key: "Mod-Shift-k", run: () => { applyFormat("link"); return true; } },
           ]),
           keymap.of([...defaultKeymap, ...historyKeymap]),
-          markdown(),
+          // GFM base so ~~strikethrough~~ parses (the highlight + active-state
+          // detection both rely on Strikethrough nodes existing).
+          markdown({ base: markdownLanguage }),
           syntaxHighlighting(markdownHighlight),
           EditorView.lineWrapping,
           cmPlaceholder(placeholder),
@@ -89,11 +94,18 @@
             if (u.docChanged && !applyingExternal) {
               onchange?.(u.state.doc.toString());
             }
+            // Keep the toolbar's active states in sync with what the caret or
+            // selection sits inside.
+            if (u.docChanged || u.selectionSet) {
+              onactive?.(activeMarks(u.state));
+            }
           }),
         ],
       }),
       parent: container,
     });
+    // Seed the toolbar before the first edit or selection change.
+    onactive?.(activeMarks(view.state));
     return () => view?.destroy();
   });
 

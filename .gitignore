@@ -19,3 +19,6 @@ src-tauri/Cargo.lock
 
 # generated update manifest (scripts/make-update-manifest.sh)
 /latest.json
+
+# local-only reference files
+.hermes_guide.md

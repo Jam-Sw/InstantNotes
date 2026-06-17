@@ -3,7 +3,7 @@
   // version, release notes, and progress — so the user always knows exactly
   // what is changing. Opened by the update pill or the tray "Check for
   // Updates…" item. Reads the `updater` store; all transitions live there.
-  import { updater } from "$lib/stores/updater.svelte";
+  import { updater, type SnoozeKind } from "$lib/stores/updater.svelte";
 
   let { open = $bindable(false), currentVersion = "" }: {
     open?: boolean;
@@ -11,14 +11,25 @@
   } = $props();
 
   let panel = $state<HTMLDivElement>();
+  let laterOpen = $state(false);
 
   // Focus the dialog when it opens so Escape and the buttons are reachable.
   $effect(() => {
-    if (open) queueMicrotask(() => panel?.focus());
+    if (open) {
+      laterOpen = false;
+      queueMicrotask(() => panel?.focus());
+    }
   });
 
   function close() {
     updater.dismiss();
+    open = false;
+  }
+
+  // Pick a reminder cadence: snooze the update, then close the dialog.
+  function snooze(kind: SnoozeKind) {
+    updater.snooze(kind);
+    laterOpen = false;
     open = false;
   }
 
@@ -56,21 +67,56 @@
         <h2>Checking for updates…</h2>
         <p class="muted">Looking for a newer release of InstantNotes.</p>
       {:else if updater.status === "available"}
-        <h2>Update available</h2>
-        <p class="version-line">
-          <span class="from">v{installed}</span>
-          <span class="arrow">→</span>
-          <span class="to">v{updater.version}</span>
-        </p>
+        <div class="update-header">
+          <span class="app-glyph" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15201b" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h10" /><path d="M7 12h10" /><path d="M7 17h6" /></svg>
+          </span>
+          <div class="app-meta">
+            <div class="app-name">InstantNotes</div>
+            <div class="app-sub">A newer version is ready to install.</div>
+          </div>
+          <div class="ver-chips" aria-label={`Update from version ${installed} to ${updater.version}`}>
+            <span class="ver from">{installed}</span>
+            <svg class="ver-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13" /><path d="M13 6l6 6-6 6" /></svg>
+            <span class="ver to">{updater.version}</span>
+          </div>
+        </div>
         {#if updater.notes}
           <div class="notes-label">What's new</div>
           <pre class="notes">{updater.notes}</pre>
         {/if}
-        <div class="actions">
-          <button class="btn primary" onclick={() => updater.downloadAndInstall()}>
-            Download &amp; Install
-          </button>
-          <button class="btn" onclick={close}>Later</button>
+        <div class="update-footer">
+          <div class="auto-meta">Auto-update on<br />checked just now</div>
+          <div class="footer-actions">
+            <div class="later-wrap">
+              {#if laterOpen}
+                <div class="later-menu" role="menu">
+                  <div class="later-head">Remind me</div>
+                  <button class="later-item" role="menuitem" onclick={() => snooze("tomorrow")}>
+                    Tomorrow
+                  </button>
+                  <button class="later-item" role="menuitem" onclick={() => snooze("week")}>
+                    Next week
+                  </button>
+                  <button class="later-item" role="menuitem" onclick={() => snooze("launch")}>
+                    On next launch
+                  </button>
+                </div>
+              {/if}
+              <button
+                class="btn later-btn"
+                aria-haspopup="menu"
+                aria-expanded={laterOpen}
+                onclick={() => (laterOpen = !laterOpen)}
+              >
+                Later
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6" /></svg>
+              </button>
+            </div>
+            <button class="btn primary" onclick={() => updater.downloadAndInstall()}>
+              Download &amp; Install
+            </button>
+          </div>
         </div>
       {:else if updater.status === "downloading"}
         <h2>Downloading update…</h2>
@@ -128,7 +174,7 @@
     background: rgba(0, 0, 0, 0.32);
   }
   .dialog {
-    width: min(460px, 90vw);
+    width: min(468px, 92vw);
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -157,15 +203,124 @@
     font-size: 14px;
     color: var(--text);
   }
-  .version-line .from {
-    color: var(--text-tertiary);
+
+  /* Polished "available" state: identity header + version-jump chips. */
+  .update-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
-  .version-line .arrow {
-    color: var(--text-tertiary);
+  .app-glyph {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 11px;
+    background: linear-gradient(155deg, #9ccdb8 0%, #6f9c8a 100%);
+    box-shadow: 0 4px 12px rgba(134, 184, 163, 0.3);
   }
-  .version-line .to {
-    color: var(--accent);
+  .app-meta {
+    flex: 1;
+    min-width: 0;
+  }
+  .app-name {
+    font-size: 16px;
+    font-weight: 660;
+    letter-spacing: -0.01em;
+    color: var(--text);
+  }
+  .app-sub {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+  }
+  .ver-chips {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex: none;
+    font-family: var(--font-meta);
+    font-size: 12px;
+  }
+  .ver {
+    border-radius: 99px;
+    padding: 2px 9px;
+  }
+  .ver.from {
+    color: var(--text-tertiary);
+    background: var(--bg-sidebar);
+    border: 1px solid var(--border);
+  }
+  .ver.to {
+    color: var(--accent-text);
+    background: var(--accent-soft);
+    border: 1px solid var(--accent);
     font-weight: 600;
+  }
+  .ver-arrow {
+    color: var(--text-tertiary);
+  }
+
+  /* Footer: auto-update meta on the left, Later ▾ menu + primary on the right. */
+  .update-footer {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 2px;
+  }
+  .auto-meta {
+    font-family: var(--font-meta);
+    font-size: 10.5px;
+    line-height: 1.5;
+    color: var(--text-tertiary);
+  }
+  .footer-actions {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+  }
+  .later-wrap {
+    position: relative;
+  }
+  .later-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .later-menu {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 0;
+    width: 188px;
+    padding: 4px;
+    background: var(--bg-sidebar);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+    z-index: 1;
+  }
+  .later-head {
+    padding: 6px 10px 4px;
+    font-family: var(--font-meta);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .later-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 7px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: var(--text);
+  }
+  .later-item:hover {
+    background: var(--bg-hover);
   }
   .notes-label {
     font-size: 11px;

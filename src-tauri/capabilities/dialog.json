@@ -1,0 +1,9 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "library-dialog",
+  "description": "Library window only: native open/save dialogs for importing and exporting theme files. The capture window never opens dialogs, so it is not granted this.",
+  "windows": ["library"],
+  "permissions": [
+    "dialog:default"
+  ]
+}
