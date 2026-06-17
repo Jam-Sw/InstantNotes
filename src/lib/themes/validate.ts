@@ -6,9 +6,11 @@
 
 import {
   TOKEN_KEYS,
+  MATERIAL_KEYS,
   type Theme,
   type TokenSet,
   type FontSlot,
+  type ThemeMaterial,
 } from "./types";
 
 export type ValidationResult =
@@ -83,6 +85,9 @@ export function validateTheme(input: unknown): ValidationResult {
   if (t.appearance !== "dual" && t.appearance !== "dark" && t.appearance !== "light") {
     return { ok: false, error: "Theme appearance is invalid." };
   }
+  if (t.material !== undefined && !MATERIAL_KEYS.includes(t.material as ThemeMaterial)) {
+    return { ok: false, error: "Theme material is invalid." };
+  }
 
   const fonts = t.fonts as Record<string, unknown> | undefined;
   if (!fonts || typeof fonts !== "object") return { ok: false, error: "Theme fonts are missing." };
@@ -127,6 +132,7 @@ export function validateTheme(input: unknown): ValidationResult {
       meta: fonts.meta,
     },
     metrics: { radius: (metrics.radius as string).trim(), density: metrics.density },
+    material: t.material as ThemeMaterial | undefined,
     dark,
     light,
   };

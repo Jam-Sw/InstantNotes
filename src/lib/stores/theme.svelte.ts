@@ -3,7 +3,7 @@
 // writes tokens to :root via apply. Persists to the existing settings KV so
 // the choice survives restarts and is shared with the capture window.
 
-import { getSetting, setSetting } from "$lib/api/client";
+import { getSetting, setSetting, setWindowVibrancy } from "$lib/api/client";
 import { applyTheme } from "$lib/themes/apply";
 import { BUILTIN_THEMES, DEFAULT_THEME_ID } from "$lib/themes/builtin";
 import { validateTheme } from "$lib/themes/validate";
@@ -75,6 +75,25 @@ class ThemeStore {
 
   #apply(): void {
     applyTheme(this.activeTheme, this.resolvedVariant);
+    void this.#syncVibrancy();
+  }
+
+  /** Ask the OS to render (or clear) the active theme's window material, and
+   *  mark the document so the CSS can go translucent. Only the library window
+   *  owns vibrancy; the capture panel has its own transparent styling. If the
+   *  native call is unavailable (browser dev, non-macOS, older OS) the document
+   *  stays opaque so nothing looks broken. */
+  async #syncVibrancy(): Promise<void> {
+    if (location.pathname.startsWith("/capture")) return;
+    const material = this.activeTheme.material ?? null;
+    try {
+      await setWindowVibrancy(material);
+    } catch {
+      delete document.documentElement.dataset.vibrancy;
+      return;
+    }
+    if (material) document.documentElement.dataset.vibrancy = material;
+    else delete document.documentElement.dataset.vibrancy;
   }
 
   setTheme(id: string): void {

@@ -9,7 +9,35 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- The Graphite theme can now use the native macOS vibrancy material: on macOS
+  its sidebar becomes a real translucent "Liquid Glass" panel that picks up
+  what is behind the window, for a look at home on Tahoe. Every other theme is
+  untouched and stays fully opaque.
+
+### Changed
+- Graphite has been repaletted to Apple's system colors (the macOS system blue
+  accent and the system gray scale) with a slightly rounder corner radius, so
+  it reads as a native macOS app even with the glass turned off.
+
+## [0.6.2] - 2026-06-17
+
+### Added
+- Command palette search now reaches into sub-menus: searching for a theme by
+  name (e.g. "graphite") surfaces it directly as a "Themes" child you can apply
+  in one click, without opening the theme picker first.
+
+### Changed
+- Picking a theme in the command palette now applies it instantly and leaves the
+  palette open, so you can arrow through the list and preview each theme live.
+
+### Fixed
+- Keyboard navigation in the command palette: the arrow keys no longer skip
+  every other entry, and Enter and Escape now behave correctly in the theme
+  picker (Escape steps back to the command list instead of closing the palette).
+
 ## [0.6.1] - 2026-06-16
+
 
 ### Added
 - A theme picker in the command palette: press ⌘K, choose "Switch theme", and

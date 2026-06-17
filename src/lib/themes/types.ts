@@ -46,6 +46,19 @@ export const TOKEN_VAR: Record<TokenKey, string> = {
   tag: "--tag",
 };
 
+/** Native macOS vibrancy materials a theme may request behind the window. Each
+ *  maps to an NSVisualEffectMaterial in the Rust layer; a no-op off macOS. */
+export const MATERIAL_KEYS = [
+  "sidebar",
+  "under-window",
+  "header",
+  "menu",
+  "popover",
+  "hud",
+] as const;
+
+export type ThemeMaterial = (typeof MATERIAL_KEYS)[number];
+
 export type Variant = "light" | "dark";
 
 /** Whether a font slot resolves to the theme's UI font or its mono font. */
@@ -78,6 +91,10 @@ export interface Theme {
   appearance: "dual" | "dark" | "light";
   fonts: ThemeFonts;
   metrics: ThemeMetrics;
+  /** Optional native macOS window material. When set, the app makes the sidebar
+   *  translucent and asks the OS to render this vibrancy behind it; omit for a
+   *  flat, fully opaque theme. */
+  material?: ThemeMaterial;
   dark?: TokenSet;
   light?: TokenSet;
 }

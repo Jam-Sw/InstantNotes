@@ -92,6 +92,10 @@ export const deleteSetting = (key: string) =>
 // ---- windows ----
 export const hideCapture = () => call<void>("hide_capture");
 export const openLibrary = () => call<void>("open_library");
+// Apply (or clear, with null) a native macOS vibrancy material on the library
+// window. A no-op off macOS; the material string is one of theme MATERIAL_KEYS.
+export const setWindowVibrancy = (material: string | null) =>
+  call<void>("set_window_vibrancy", { material });
 
 // ---- theme files ----
 // Byte I/O for portable .intheme.json files; the open/save dialog runs in JS.

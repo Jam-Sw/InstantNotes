@@ -12,9 +12,13 @@ export const graphite: Theme = {
   appearance: "dual",
   fonts: { ui: SANS_STACK, mono: MONO_STACK, body: "ui", meta: "ui" },
   metrics: { radius: "8px", density: 1.0 },
+  // Tahoe glass: ask macOS for the sidebar vibrancy material. The bgSidebar
+  // tokens carry alpha so the material shows through; off macOS they fall back
+  // to a near-solid panel over bg.
+  material: "sidebar",
   dark: {
     bg: "#1d1d1f",
-    bgSidebar: "#252527",
+    bgSidebar: "rgba(37, 37, 39, 0.55)",
     bgHover: "#2d2d30",
     bgActive: "#38383b",
     bgInput: "#252527",
@@ -30,7 +34,7 @@ export const graphite: Theme = {
   },
   light: {
     bg: "#ffffff",
-    bgSidebar: "#f5f5f7",
+    bgSidebar: "rgba(245, 245, 247, 0.6)",
     bgHover: "#ececee",
     bgActive: "#e3e3e6",
     bgInput: "#ffffff",

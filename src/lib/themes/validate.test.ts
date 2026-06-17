@@ -71,6 +71,19 @@ describe("validateTheme", () => {
     expect(ok.ok).toBe(true);
   });
 
+  it("accepts a known vibrancy material and rejects an unknown one", () => {
+    const ok = validateTheme({ ...manuscript, material: "sidebar" });
+    expect(ok.ok).toBe(true);
+    if (ok.ok) expect(ok.theme.material).toBe("sidebar");
+    expect(validateTheme({ ...manuscript, material: "bogus" }).ok).toBe(false);
+  });
+
+  it("treats a missing material as a valid, opaque theme", () => {
+    const r = validateTheme({ ...manuscript, material: undefined });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.theme.material).toBeUndefined();
+  });
+
   it("reports invalid JSON for parseTheme", () => {
     const r = parseTheme("{ not json");
     expect(r.ok).toBe(false);

@@ -27,6 +27,11 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-plugin-dialog = "2"
 
+# Native macOS window materials (Liquid Glass / vibrancy). macOS-only; the app
+# ships for Apple Silicon, but the cfg keeps non-macOS builds honest.
+[target."cfg(target_os = \"macos\")".dependencies]
+window-vibrancy = "0.6"
+
 # Smaller, faster release binaries (Tauri's recommended profile). Lives in the
 # workspace root manifest so it applies to the whole workspace.
 [profile.release]

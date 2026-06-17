@@ -298,6 +298,43 @@ fn open_library(app: AppHandle) {
     show_library_window(&app);
 }
 
+/// Apply a native macOS vibrancy material to the library window, or clear it when
+/// `material` is None/unknown. Vibrancy is the closest a webview app gets to the
+/// Tahoe "Liquid Glass" look; it requires the always-transparent window and a
+/// translucent surface above it (the theme's sidebar token). A no-op off macOS.
+#[tauri::command]
+fn set_window_vibrancy(app: AppHandle, material: Option<String>) {
+    #[cfg(target_os = "macos")]
+    {
+        use window_vibrancy::{apply_vibrancy, clear_vibrancy, NSVisualEffectMaterial};
+        let Some(win) = app.get_webview_window("library") else {
+            return;
+        };
+        // Any known material applies; None or an unknown string clears.
+        let chosen = material.as_deref().and_then(|m| match m {
+            "sidebar" => Some(NSVisualEffectMaterial::Sidebar),
+            "under-window" => Some(NSVisualEffectMaterial::UnderWindowBackground),
+            "header" => Some(NSVisualEffectMaterial::HeaderView),
+            "menu" => Some(NSVisualEffectMaterial::Menu),
+            "popover" => Some(NSVisualEffectMaterial::Popover),
+            "hud" => Some(NSVisualEffectMaterial::HudWindow),
+            _ => None,
+        });
+        match chosen {
+            Some(m) => {
+                let _ = apply_vibrancy(&win, m, None, None);
+            }
+            None => {
+                let _ = clear_vibrancy(&win);
+            }
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, material);
+    }
+}
+
 // ---- theme file sharing ----
 // Thin byte I/O for portable `.intheme.json` theme files. The open/save dialog
 // runs in JS via the dialog plugin; Rust only reads/writes the chosen path, so
@@ -658,6 +695,7 @@ pub fn run() {
             delete_setting,
             hide_capture,
             open_library,
+            set_window_vibrancy,
             export_theme_file,
             import_theme_file
         ])
