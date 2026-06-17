@@ -5,6 +5,8 @@
   import { onMount } from "svelte";
   import { getVersion } from "@tauri-apps/api/app";
   import { listen } from "@tauri-apps/api/event";
+  import { save } from "@tauri-apps/plugin-dialog";
+  import { exportNoteFile } from "$lib/api/client";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import NoteList from "$lib/components/NoteList.svelte";
   import NoteEditor from "$lib/components/NoteEditor.svelte";
@@ -12,6 +14,7 @@
   import WelcomeScreen from "$lib/components/WelcomeScreen.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
   import UpdatePanel from "$lib/components/UpdatePanel.svelte";
+  import SettingsView from "$lib/components/SettingsView.svelte";
   import { library } from "$lib/stores/library.svelte";
   import { updater } from "$lib/stores/updater.svelte";
   import { editorPrefs } from "$lib/stores/editor.svelte";
@@ -19,6 +22,7 @@
   let appVersion = $state("");
   let paletteOpen = $state(false);
   let updatePanelOpen = $state(false);
+  let settingsOpen = $state(false);
 
   onMount(() => {
     void library.init();
@@ -31,12 +35,33 @@
       updatePanelOpen = true;
       void updater.checkNow({ manual: true });
     }).then((un) => (unlistenCheck = un));
+
+    // Menu bar events.
+    let unlistenSettings: (() => void) | undefined;
+    void listen("settings:open", () => {
+      settingsOpen = true;
+    }).then((un) => (unlistenSettings = un));
+
+    let unlistenNewNote: (() => void) | undefined;
+    void listen("menu:new-note", () => {
+      settingsOpen = false;
+      void library.newNote();
+    }).then((un) => (unlistenNewNote = un));
+
+    let unlistenExport: (() => void) | undefined;
+    void listen("menu:export-note", () => {
+      void exportSelectedNote();
+    }).then((un) => (unlistenExport = un));
+
     const flush = () => library.flushPendingEdits();
     window.addEventListener("blur", flush);
     window.addEventListener("keydown", onKeydown);
     return () => {
       updater.stop();
       unlistenCheck?.();
+      unlistenSettings?.();
+      unlistenNewNote?.();
+      unlistenExport?.();
       window.removeEventListener("blur", flush);
       window.removeEventListener("keydown", onKeydown);
     };
@@ -55,11 +80,6 @@
     if (mod && e.key === "k") {
       e.preventDefault();
       paletteOpen = !paletteOpen;
-      return;
-    }
-    if (mod && e.key === "n") {
-      e.preventDefault();
-      void library.newNote();
       return;
     }
     if (mod && (e.key === "=" || e.key === "+")) {
@@ -111,7 +131,7 @@
         }
         break;
       case "Escape":
-        library.clearMultiSelect();
+        if (!settingsOpen) library.clearMultiSelect();
         break;
     }
   }
@@ -133,6 +153,19 @@
     }
   }
 
+  async function exportSelectedNote() {
+    const note = library.selected;
+    if (!note) return;
+    await library.flushPendingEdits();
+    const filename = (note.title || "Untitled").replace(/[/\\?%*:|"<>]/g, "-");
+    const path = await save({
+      defaultPath: `${filename}.md`,
+      filters: [{ name: "Markdown", extensions: ["md"] }],
+    });
+    if (!path) return;
+    await exportNoteFile(path, note.body);
+  }
+
   async function confirmBulkDestroy() {
     const n = library.multiSelected.size;
     const what = n === 1 ? "this note" : `these ${n} notes`;
@@ -142,19 +175,23 @@
   }
 </script>
 
-<div class="layout">
-  <Sidebar />
-  <NoteList />
-  <section class="editor-pane">
-    {#if library.multiSelected.size > 1}
-      <BulkActions />
-    {:else if library.selected}
-      <NoteEditor />
-    {:else}
-      <WelcomeScreen {appVersion} onShowUpdate={() => (updatePanelOpen = true)} />
-    {/if}
-  </section>
-</div>
+{#if settingsOpen}
+  <SettingsView {appVersion} onBack={() => (settingsOpen = false)} />
+{:else}
+  <div class="layout">
+    <Sidebar />
+    <NoteList />
+    <section class="editor-pane">
+      {#if library.multiSelected.size > 1}
+        <BulkActions />
+      {:else if library.selected}
+        <NoteEditor />
+      {:else}
+        <WelcomeScreen {appVersion} onShowUpdate={() => (updatePanelOpen = true)} />
+      {/if}
+    </section>
+  </div>
+{/if}
 
 <CommandPalette bind:open={paletteOpen} />
 <UpdatePanel bind:open={updatePanelOpen} currentVersion={appVersion} />

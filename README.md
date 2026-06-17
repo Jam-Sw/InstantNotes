@@ -10,6 +10,7 @@ InstantNotes is a desktop notes app built around fast capture and a focused libr
 - **Focused library**: a two-section sidebar (All Notes and Workspaces) over a note list and editor, with pinned notes floated to the top and a status filter for archived and trashed notes
 - **Workspaces**: named collections that group related notes; a note can live in many workspaces, and deleting a workspace never deletes its notes
 - **Full-text search**: SQLite FTS5 search over titles and bodies with ranked results, using plain-language queries with no search syntax to learn
+- **Command palette**: a `Cmd+K` palette for running actions and switching themes, with arrow-key navigation and recents; search reaches into sub-menus (typing a theme name jumps straight to it), and the Themes sub-menu applies each theme live so you can preview as you arrow through
 - **Tags, not folders**: lightweight labels, including tags extracted from `#inline` text
 - **Local and private**: all data stored locally in SQLite; note content never appears in logs or diagnostics
 

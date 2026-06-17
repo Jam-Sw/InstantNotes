@@ -19,15 +19,18 @@
   import { markdownHighlight } from "$lib/markdown-highlight";
   import { formatEdit, type FormatKind, type Sel } from "$lib/markdown-format";
   import { activeMarks, type ActiveMarks } from "$lib/markdown-active";
+  import { wysiwygExtension, wysiwygTheme, setPreviewMode } from "$lib/wysiwyg";
 
   let {
     value = "",
     placeholder = "",
+    previewMode = false,
     onchange,
     onactive,
   }: {
     value?: string;
     placeholder?: string;
+    previewMode?: boolean;
     onchange?: (v: string) => void;
     onactive?: (marks: ActiveMarks) => void;
   } = $props();
@@ -90,6 +93,8 @@
           EditorView.lineWrapping,
           cmPlaceholder(placeholder),
           tagHighlighter,
+          ...wysiwygExtension(),
+          wysiwygTheme,
           EditorView.updateListener.of((u) => {
             if (u.docChanged && !applyingExternal) {
               onchange?.(u.state.doc.toString());
@@ -118,6 +123,14 @@
         changes: { from: 0, to: view.state.doc.length, insert: next },
       });
       applyingExternal = false;
+    }
+  });
+
+  $effect(() => {
+    // Sync preview mode into CM6 whenever the Aa toolbar toggles.
+    const mode = previewMode;
+    if (view) {
+      view.dispatch({ effects: setPreviewMode.of(mode) });
     }
   });
 

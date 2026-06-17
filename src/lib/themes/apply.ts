@@ -36,7 +36,12 @@ export function themeToVars(theme: Theme, variant: Variant): Record<string, stri
   vars["--font-body"] = theme.fonts.body === "mono" ? theme.fonts.mono : theme.fonts.ui;
   vars["--font-meta"] = theme.fonts.meta === "mono" ? theme.fonts.mono : theme.fonts.ui;
   vars["--radius"] = theme.metrics.radius;
+  vars["--radius-lg"] = theme.metrics.radiusLg ?? `calc(${theme.metrics.radius} + 4px)`;
   vars["--density"] = String(theme.metrics.density);
+  vars["--shadow"] = theme.metrics.shadow ?? "0 2px 8px rgba(0, 0, 0, 0.12)";
+  vars["--shadow-lg"] = theme.metrics.shadowLg ?? "0 18px 50px rgba(0, 0, 0, 0.4)";
+  vars["--leading"] = theme.metrics.leading ?? "1.5";
+  vars["--tracking"] = theme.metrics.tracking ?? "0";
   return vars;
 }
 

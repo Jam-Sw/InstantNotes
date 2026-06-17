@@ -13,7 +13,17 @@ export const terminal: Theme = {
   version: 1,
   appearance: "dual",
   fonts: { ui: SANS_STACK, mono: MONO_STACK, body: "mono", meta: "mono" },
-  metrics: { radius: "4px", density: 0.82 },
+  metrics: {
+    radius: "4px",
+    density: 0.82,
+    // Flat and dense: tight line-height, slight mono tracking, no ambient lift,
+    // a hard tight drop on overlays, and modals that stay as sharp as buttons.
+    leading: "1.3",
+    tracking: "0.02em",
+    shadow: "none",
+    shadowLg: "0 8px 24px rgba(0, 0, 0, 0.65)",
+    radiusLg: "4px",
+  },
   dark: {
     bg: "#0c0c0e",
     bgSidebar: "#111113",

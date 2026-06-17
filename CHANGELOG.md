@@ -9,6 +9,53 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-06-17
+
+### Added
+- Native macOS menu bar (InstantNotes / File / Edit) with working Cut, Copy,
+  and Paste, an in-place Settings view with an About tab, and a native About
+  panel on the tray icon.
+- Note export via File > Export Note As: save any note as a `.md` or `.txt`
+  file to a location you choose.
+- Creating a new note while a tag is selected in the sidebar now pre-applies
+  that tag to the note, and the tag filter stays active so the note appears in
+  the current view.
+- WYSIWYG preview mode: closing the Aa toolbar now hides markdown syntax
+  markers and renders formatting in place - bold text looks bold, italic looks
+  italic, bullet points show as real bullets, and blockquotes indent with a
+  left border. The note stays fully editable. Opening Aa switches back to
+  source mode so you can see and edit the markers directly. Backspace at the
+  start of a bullet or blockquote cleanly removes the block marker and converts
+  the line to plain text.
+- Command palette search now reaches into sub-menus: searching for a theme by
+  name (e.g. "graphite") surfaces it directly as a "Themes" child you can
+  apply in one click, without opening the theme picker first.
+- Note-scoped actions in the command palette (pin, archive, delete) now show
+  the note title as a breadcrumb prefix - "breakfast plan 2027 > Pin note" -
+  so it is always clear which note the action will affect.
+- The Graphite and Twilight themes now use a native macOS vibrancy material: on
+  macOS their sidebar becomes a real translucent "Liquid Glass" panel that
+  picks up what is behind the window, for a look at home on Tahoe. Every other
+  theme is untouched and stays fully opaque.
+
+### Changed
+- Picking a theme in the command palette now applies it instantly and leaves
+  the palette open, so you can arrow through the list and preview each theme
+  live.
+- Graphite has been repaletted to Apple's system colors (the macOS system blue
+  accent and the system gray scale) with a slightly rounder corner radius, so
+  it reads as a native macOS app even with the glass turned off.
+- Each built-in theme now has its own typography and elevation: editor
+  line-height and letter-spacing tuned to character (airy for Manuscript and
+  Paper Dark, tight and dense for Terminal) plus overlay shadows and corner
+  radii to match (flat and sharp for Terminal, a deep indigo glow for
+  Twilight).
+
+### Fixed
+- Keyboard navigation in the command palette: the arrow keys no longer skip
+  every other entry, and Enter and Escape now behave correctly in the theme
+  picker (Escape steps back to the command list instead of closing the palette).
+
 ## [0.6.1] - 2026-06-16
 
 ### Added

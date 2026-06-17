@@ -4,43 +4,52 @@
   // labels stay current). Keyboard: ↑/↓ move, ↵ runs, Esc closes.
   import {
     buildCommands,
-    buildThemeCommands,
     filterCommands,
     recentCommands,
     recordRecent,
+    childrenOf,
+    findCommand,
+    resolveActivation,
     type Command,
   } from "$lib/commands";
-  import { theme } from "$lib/stores/theme.svelte";
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
 
   let query = $state("");
   let active = $state(0);
-  let view = $state<"root" | "theme">("root");
+  // Which folder we are inside; null is the top level. Back-navigation and
+  // breadcrumbs are derived from the commands' own parent pointers, so no
+  // per-view enum or navigation stack is needed.
+  let currentParent = $state<string | null>(null);
   let commands = $state<Command[]>([]);
-  let themeCommands = $state<Command[]>([]);
   let input = $state<HTMLInputElement>();
 
-  // Empty query shows recents first (if any), then everything; otherwise the
-  // ranked fuzzy results.
+  // The folder command we are inside, if any (for the back button + placeholder).
+  const folder = $derived(findCommand(commands, currentParent));
+
+  // Empty query shows the current level (recents first at the top level);
+  // otherwise the ranked fuzzy results over the current search scope.
   const results = $derived.by(() => {
-    if (view === "theme") {
-      return query.trim() ? filterCommands(themeCommands, query) : themeCommands;
+    if (query.trim()) {
+      // Search the whole tree at the top level, the open folder's children when
+      // inside one. Leaves matched outside their folder show a breadcrumb.
+      const scope = currentParent === null ? commands : childrenOf(commands, currentParent);
+      return filterCommands(scope, query);
     }
-    if (query.trim()) return filterCommands(commands, query);
+    const level = childrenOf(commands, currentParent);
+    if (currentParent !== null) return level;
     const recents = recentCommands(commands);
     const seen = new Set(recents.map((c) => c.id));
-    return [...recents, ...commands.filter((c) => !seen.has(c.id))];
+    return [...recents, ...level.filter((c) => !seen.has(c.id))];
   });
 
   // Reset and focus whenever the palette opens.
   $effect(() => {
     if (open) {
       commands = buildCommands();
-      themeCommands = buildThemeCommands();
       query = "";
       active = 0;
-      view = "root";
+      currentParent = null;
       queueMicrotask(() => input?.focus());
     }
   });
@@ -50,17 +59,29 @@
     if (active >= results.length) active = Math.max(0, results.length - 1);
   });
 
+  function descend(id: string) {
+    currentParent = id;
+    query = "";
+    active = 0;
+  }
+
+  function goUp() {
+    currentParent = findCommand(commands, currentParent)?.parent ?? null;
+    query = "";
+    active = 0;
+  }
+
   function run(cmd: Command) {
-    if (cmd.id === "theme.switch") {
-      view = "theme";
-      query = "";
-      active = 0;
+    const action = resolveActivation(commands, cmd);
+    if (action.kind === "descend") {
+      descend(action.parent);
       return;
     }
-    if (view === "theme") recordRecent("theme.switch");
-    open = false;
+    // keepOpen is a property of the command (value pickers like themes set it),
+    // so applying one stays open whether reached from its folder or a search.
     recordRecent(cmd.id);
     void cmd.run();
+    if (!action.keepOpen) open = false;
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -81,13 +102,8 @@
         break;
       case "Escape":
         e.preventDefault();
-        if (view !== "root") {
-          view = "root";
-          query = "";
-          active = 0;
-        } else {
-          open = false;
-        }
+        if (currentParent !== null) goUp();
+        else open = false;
         break;
     }
   }
@@ -111,9 +127,9 @@
     onkeydown={onKeydown}
   >
     <div class="palette" role="dialog" aria-modal="true" aria-label="Command palette" tabindex="-1">
-      {#if view === "theme"}
-        <button class="back-btn" onclick={() => { view = "root"; query = ""; active = 0; }}>
-          ← Themes
+      {#if folder}
+        <button class="back-btn" onclick={goUp}>
+          ← {folder.title}
         </button>
       {/if}
       <input
@@ -121,26 +137,28 @@
         bind:value={query}
         class="cmd-input"
         type="text"
-        placeholder={view === "theme" ? "Search themes…" : "Type a command…"}
+        placeholder={folder ? `Search ${folder.title.toLowerCase()}…` : "Type a command…"}
         aria-label="Command"
-        onkeydown={onKeydown}
       />
       <div class="cmd-list">
         {#each results as cmd, i (cmd.id)}
           <button
             class="cmd-row"
             class:active={i === active}
+            class:emphasis={cmd.emphasis}
             data-index={i}
             onclick={() => run(cmd)}
             onmousemove={() => (active = i)}
           >
-            <span class="cmd-title">{cmd.title}</span>
+            <span class="cmd-title">
+              {#if cmd.icon}<span class="cmd-icon" aria-hidden="true">{cmd.icon()}</span>{/if}{#if cmd.prefix}<span class="cmd-parent">{cmd.prefix}</span><span class="cmd-crumb" aria-hidden="true">&rsaquo;</span>{/if}{#if cmd.parent && cmd.parent !== currentParent}<span class="cmd-parent">{findCommand(commands, cmd.parent)?.title}</span><span class="cmd-crumb" aria-hidden="true">&rsaquo;</span>{/if}{cmd.title}
+            </span>
             <span class="cmd-meta">
-              {#if view === "theme" && cmd.id === `theme.set.${theme.activeId}`}
+              {#if cmd.isActive?.()}
                 <span class="theme-check">&#10003;</span>
               {/if}
               {#if cmd.shortcut}<kbd>{cmd.shortcut}</kbd>{/if}
-              <span class="cmd-group">{cmd.group}</span>
+              {#if !(cmd.parent && cmd.parent !== currentParent)}<span class="cmd-group">{cmd.group}</span>{/if}
             </span>
           </button>
         {:else}
@@ -169,8 +187,8 @@
     flex-direction: column;
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: calc(var(--radius) + 4px);
-    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.4);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
     overflow: hidden;
   }
   .back-btn {
@@ -224,10 +242,31 @@
     background: var(--accent-soft);
     color: var(--accent-text);
   }
+  /* The light/dark toggle is an action, not a theme: give it an accent border,
+     bolder label, and a little breathing room below to part it from the list. */
+  .cmd-row.emphasis {
+    border: 1px solid var(--accent);
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .cmd-row.emphasis.active {
+    border-color: transparent;
+  }
+  .cmd-icon {
+    margin-right: 8px;
+    color: var(--accent-text);
+  }
   .cmd-title {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .cmd-parent {
+    color: var(--text-tertiary);
+  }
+  .cmd-crumb {
+    margin: 0 6px;
+    color: var(--text-tertiary);
   }
   .cmd-meta {
     display: flex;

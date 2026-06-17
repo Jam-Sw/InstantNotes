@@ -318,13 +318,17 @@ class LibraryStore {
 
   async newNote(): Promise<void> {
     try {
-      const note = await createNote({});
+      const activeTag = this.activeTagId
+        ? this.tags.find((t) => t.id === this.activeTagId)
+        : null;
+
+      const note = await createNote(activeTag ? { tags: [activeTag.name] } : {});
       // A note born inside a workspace joins it; the view stays put.
       if (this.activeWorkspaceId) {
         await addNoteToWorkspace(note.id, this.activeWorkspaceId);
       }
       this.statusFilter = "active";
-      this.activeTagId = null;
+      if (!activeTag) this.activeTagId = null;
       this.searchText = "";
       void this.refresh();
       await this.select(note.id);

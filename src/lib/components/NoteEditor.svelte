@@ -113,6 +113,7 @@
       bind:this={editorRef}
       value={library.selected.body}
       placeholder="Start writing… use #tags to organize"
+      previewMode={!editorPrefs.toolbarOpen}
       onchange={(v) => library.editBody(v)}
       onactive={(a) => (active = a)}
     />

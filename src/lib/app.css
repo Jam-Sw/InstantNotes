@@ -26,8 +26,13 @@
   --danger: #d98a7a;
   --tag: #9ccdb8;
   --radius: 8px;
+  --radius-lg: calc(var(--radius) + 4px);
   /* Unitless multiplier applied via calc() to base text size and key paddings. */
   --density: 1.15;
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  --shadow-lg: 0 18px 50px rgba(0, 0, 0, 0.4);
+  --leading: 1.5;
+  --tracking: 0;
 }
 
 * {
@@ -84,10 +89,12 @@ textarea {
 .cm-editor .cm-content {
   font-family: var(--font-body);
   caret-color: var(--accent-text);
-  padding: 12px 0;
+  padding: calc(12px * var(--density)) 0;
+  line-height: var(--leading);
+  letter-spacing: var(--tracking);
 }
 .cm-editor .cm-line {
-  padding: 0 16px;
+  padding: 0 calc(16px * var(--density));
 }
 .cm-tag {
   color: var(--tag);
@@ -95,6 +102,20 @@ textarea {
 }
 .cm-editor .cm-placeholder {
   color: var(--text-tertiary);
+}
+
+/* Native macOS vibrancy. Set by the theme store on the library window only when
+   the active theme requests a material AND the OS actually applied it. The body
+   goes transparent so the window material shows behind the translucent sidebar
+   (its --bg-sidebar token carries the alpha); the note list and editor stay
+   opaque so dense text keeps full contrast. Off by default, so every other
+   theme renders exactly as before. */
+html[data-vibrancy] body {
+  background: transparent;
+}
+html[data-vibrancy] .list-pane,
+html[data-vibrancy] .editor-pane {
+  background: var(--bg);
 }
 
 /* Terminal theme flourishes - the non-tokenizable personality. Markup stays
