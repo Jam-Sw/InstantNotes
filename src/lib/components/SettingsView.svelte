@@ -1,6 +1,13 @@
 <script lang="ts">
+  // In-place settings, navigated like a small wiki: a landing grid of category
+  // cards, each opening a focused sub-page with a breadcrumb back to the grid.
+  // Escape steps back to the grid first, then closes the whole view.
   import { onMount } from "svelte";
   import { openUrl } from "$lib/api/client";
+  import { contexting } from "$lib/stores/contexting.svelte";
+  import { renderTemplate, TEMPLATE_VARS } from "$lib/contexting-format";
+  import { library } from "$lib/stores/library.svelte";
+  import type { Note, Tag } from "$lib/api/types";
 
   let {
     appVersion,
@@ -10,14 +17,37 @@
     onBack: () => void;
   } = $props();
 
-  type Tab = "about" | "default-new-tab";
-  let activeTab = $state<Tab>("about");
+  type Page = "home" | "about" | "contexting";
+  let page = $state<Page>("home");
+
+  const CATEGORIES: { id: Page; title: string; desc: string }[] = [
+    { id: "about", title: "About", desc: "Version, platform, and project links." },
+    { id: "contexting", title: "Contexting", desc: "Shape what copying a note hands to other tools and AI." },
+  ];
+
+  const TITLES: Record<Page, string> = { home: "Settings", about: "About", contexting: "Contexting" };
+
+  // Live preview for the copy template, using the open note or a sample stand-in.
+  const SAMPLE_NOTE: Pick<Note, "title" | "body" | "updatedAt"> = {
+    title: "Sample note",
+    body: "The quick brown fox.",
+    updatedAt: new Date().toISOString(),
+  };
+  const SAMPLE_TAGS: Pick<Tag, "name">[] = [{ name: "example" }];
+
+  const preview = $derived.by(() => {
+    const note = library.selected;
+    const tags = note ? library.selectedTags : SAMPLE_TAGS;
+    return renderTemplate(contexting.copyTemplate, note ?? SAMPLE_NOTE, tags);
+  });
 
   onMount(() => {
+    void contexting.init();
     function onKeydown(e: KeyboardEvent) {
       if (e.key === "Escape") {
         e.preventDefault();
-        onBack();
+        if (page !== "home") page = "home";
+        else onBack();
       }
     }
     window.addEventListener("keydown", onKeydown);
@@ -25,96 +55,114 @@
   });
 </script>
 
-<div class="settings-layout">
-  <aside class="settings-sidebar">
-    <button class="back-btn" onclick={onBack}>
-      <span class="back-arrow">&#8592;</span> Back
-    </button>
-    <div class="settings-label">Settings</div>
-    <nav class="settings-nav">
-      <button
-        class="nav-item"
-        class:active={activeTab === "about"}
-        onclick={() => (activeTab = "about")}
-      >
-        About
+<div class="settings-root">
+  <header class="settings-head">
+    {#if page === "home"}
+      <button class="back-btn" onclick={onBack}>
+        <span class="back-arrow">&#8592;</span> Back
       </button>
-      <button
-        class="nav-item"
-        class:active={activeTab === "default-new-tab"}
-        onclick={() => (activeTab = "default-new-tab")}
-      >
-        Default New Tab
+      <h1 class="settings-title">Settings</h1>
+    {:else}
+      <button class="back-btn" onclick={() => (page = "home")}>
+        <span class="back-arrow">&#8249;</span> Back
       </button>
-    </nav>
-  </aside>
-
-  <main class="settings-content">
-    {#if activeTab === "about"}
-      <div class="about-pane">
-        <img class="app-icon" src="/app-icon.png" alt="InstantNotes" />
-        <h1 class="app-name">InstantNotes</h1>
-        {#if appVersion}
-          <span class="version-badge">v{appVersion}</span>
-        {/if}
-        <p class="tagline">Instant capture, organized knowledge.</p>
-
-        <div class="about-details">
-          <div class="detail-row">
-            <span class="detail-key">Version</span>
-            <span class="detail-val">{appVersion || "—"}</span>
-          </div>
-          <hr />
-          <div class="detail-row">
-            <span class="detail-key">Platform</span>
-            <span class="detail-val">macOS &middot; Apple Silicon</span>
-          </div>
-          <hr />
-          <div class="detail-row">
-            <span class="detail-key">Source</span>
-            <button
-              class="detail-link"
-              onclick={() => openUrl("https://github.com/Jam-Sw/InstantNotes")}
-            >
-              GitHub &#8599;
-            </button>
-          </div>
-        </div>
-      </div>
-
-    {:else if activeTab === "default-new-tab"}
-      <div class="newtab-pane">
-        <h2>Default New Tab</h2>
-        <p class="section-hint">
-          Configure what happens when you create a new note.
-        </p>
-        <div class="placeholder-card">
-          <p>Options for default content, templates, and focus behavior will appear here.</p>
-        </div>
-      </div>
+      <nav class="crumb" aria-label="Breadcrumb">
+        <button class="crumb-link" onclick={() => (page = "home")}>Settings</button>
+        <span class="crumb-sep" aria-hidden="true">&rsaquo;</span>
+        <span class="crumb-current">{TITLES[page]}</span>
+      </nav>
     {/if}
-  </main>
+  </header>
+
+  {#if page === "home"}
+    <div class="settings-grid">
+      {#each CATEGORIES as cat (cat.id)}
+        <button class="settings-card" onclick={() => (page = cat.id)}>
+          <span class="card-title">{cat.title}</span>
+          <span class="card-desc">{cat.desc}</span>
+        </button>
+      {/each}
+    </div>
+  {:else}
+    <main class="settings-content">
+      {#if page === "about"}
+        <div class="about-pane">
+          <img class="app-icon" src="/app-icon.png" alt="InstantNotes" />
+          <h1 class="app-name">InstantNotes</h1>
+          {#if appVersion}
+            <span class="version-badge">v{appVersion}</span>
+          {/if}
+          <p class="tagline">Instant capture, organized knowledge.</p>
+
+          <div class="about-details">
+            <div class="detail-row">
+              <span class="detail-key">Version</span>
+              <span class="detail-val">{appVersion || "-"}</span>
+            </div>
+            <hr />
+            <div class="detail-row">
+              <span class="detail-key">Platform</span>
+              <span class="detail-val">macOS &middot; Apple Silicon</span>
+            </div>
+            <hr />
+            <div class="detail-row">
+              <span class="detail-key">Source</span>
+              <button
+                class="detail-link"
+                onclick={() => openUrl("https://github.com/Jam-Sw/InstantNotes")}
+              >
+                GitHub &#8599;
+              </button>
+            </div>
+          </div>
+        </div>
+      {:else if page === "contexting"}
+        <div class="contexting-pane">
+          <h2>Contexting</h2>
+          <p class="section-hint">
+            The template behind "Copy note as context" in the ⌘K palette. Wrap the note
+            however a tool or model expects; this is the seed for InstantNotes' AI features.
+          </p>
+
+          <label class="field-label" for="ctx-template">Template</label>
+          <textarea
+            id="ctx-template"
+            class="ctx-textarea"
+            spellcheck="false"
+            value={contexting.copyTemplate}
+            oninput={(e) => contexting.setTemplate(e.currentTarget.value)}
+          ></textarea>
+
+          <div class="ctx-vars">
+            {#each TEMPLATE_VARS as v}
+              <code class="ctx-var">{v}</code>
+            {/each}
+          </div>
+
+          <span class="field-label">Preview</span>
+          <pre class="ctx-preview">{preview}</pre>
+        </div>
+      {/if}
+    </main>
+  {/if}
 </div>
 
 <style>
-  .settings-layout {
-    display: grid;
-    grid-template-columns: 200px 1fr;
+  .settings-root {
+    display: flex;
+    flex-direction: column;
     height: 100vh;
     overflow: hidden;
     background: var(--bg);
   }
 
-  /* ---- sidebar ---- */
-  .settings-sidebar {
-    background: var(--bg-sidebar);
-    border-right: 1px solid var(--border);
-    padding: 12px 8px;
+  /* ---- header / breadcrumb ---- */
+  .settings-head {
     display: flex;
-    flex-direction: column;
-    gap: 4px;
-    min-height: 0;
-    overflow-y: auto;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
   }
   .back-btn {
     display: flex;
@@ -132,41 +180,78 @@
   .back-arrow {
     font-size: 14px;
   }
-  .settings-label {
-    margin: 12px 10px 4px;
-    font-size: 11px;
+  .settings-title {
+    font-size: 13px;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    color: var(--text-tertiary);
-    font-family: var(--font-meta);
-  }
-  .nav-item {
-    display: block;
-    width: 100%;
-    text-align: left;
-    padding: 5px 10px;
-    border-radius: var(--radius);
     color: var(--text);
+    margin: 0;
     font-family: var(--font-ui);
   }
-  .nav-item:hover {
-    background: var(--bg-hover);
+  .crumb {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-family: var(--font-ui);
   }
-  .nav-item.active {
-    background: var(--accent-soft);
-    color: var(--accent-text);
+  .crumb-link {
+    color: var(--accent);
+  }
+  .crumb-link:hover {
+    text-decoration: underline;
+  }
+  .crumb-sep {
+    color: var(--text-tertiary);
+  }
+  .crumb-current {
+    color: var(--text);
     font-weight: 500;
   }
 
-  /* ---- content ---- */
-  .settings-content {
-    padding: 40px;
-    overflow-y: auto;
+  /* ---- landing grid ---- */
+  .settings-grid {
+    flex: 1;
     min-height: 0;
+    overflow-y: auto;
+    padding: 24px;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    align-content: start;
+  }
+  .settings-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    text-align: left;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-sidebar);
+  }
+  .settings-card:hover {
+    background: var(--bg-hover);
+  }
+  .card-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    font-family: var(--font-ui);
+  }
+  .card-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
   }
 
-  /* about tab */
+  /* ---- sub-page content ---- */
+  .settings-content {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 32px 40px;
+  }
+
+  /* about */
   .about-pane {
     max-width: 400px;
     margin: 0 auto;
@@ -244,11 +329,11 @@
     margin: 0;
   }
 
-  /* default new tab */
-  .newtab-pane {
-    max-width: 480px;
+  /* contexting */
+  .contexting-pane {
+    max-width: 560px;
   }
-  .newtab-pane h2 {
+  .contexting-pane h2 {
     font-size: 18px;
     font-weight: 600;
     color: var(--text);
@@ -257,14 +342,62 @@
   .section-hint {
     color: var(--text-secondary);
     font-size: 13px;
-    margin-bottom: 20px;
+    margin: 0 0 20px;
   }
-  .placeholder-card {
-    background: var(--bg-sidebar);
+  .field-label {
+    display: block;
+    margin: 16px 0 6px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--text-tertiary);
+    font-family: var(--font-meta);
+  }
+  .ctx-textarea {
+    width: 100%;
+    min-height: 120px;
+    resize: vertical;
+    padding: 10px 12px;
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 20px;
-    color: var(--text-tertiary);
+    background: var(--bg-input);
+    color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 13px;
+    line-height: 1.5;
+  }
+  .ctx-textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .ctx-vars {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .ctx-var {
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--bg-active);
+    color: var(--text-secondary);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+  }
+  .ctx-preview {
+    margin: 0;
+    max-height: 200px;
+    overflow: auto;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-sidebar);
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    line-height: 1.5;
   }
 </style>
