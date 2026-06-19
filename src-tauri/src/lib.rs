@@ -335,6 +335,24 @@ fn set_window_vibrancy(app: AppHandle, material: Option<String>) {
     }
 }
 
+/// Match the native library window's theme (titlebar and traffic-light treatment)
+/// to the in-app light/dark variant. Tauri maps this to the window's OS appearance,
+/// so the chrome follows the active theme instead of the launch-time system setting.
+/// An unknown variant is a no-op; the borderless capture window has no native chrome
+/// and is left alone.
+#[tauri::command]
+fn set_window_theme(app: AppHandle, variant: String) {
+    use tauri::Theme;
+    let theme = match variant.as_str() {
+        "light" => Theme::Light,
+        "dark" => Theme::Dark,
+        _ => return,
+    };
+    if let Some(win) = app.get_webview_window("library") {
+        let _ = win.set_theme(Some(theme));
+    }
+}
+
 // ---- theme file sharing ----
 // Thin byte I/O for portable `.intheme.json` theme files. The open/save dialog
 // runs in JS via the dialog plugin; Rust only reads/writes the chosen path, so
@@ -796,6 +814,7 @@ pub fn run() {
             hide_capture,
             open_library,
             set_window_vibrancy,
+            set_window_theme,
             export_theme_file,
             import_theme_file,
             export_note_file,
