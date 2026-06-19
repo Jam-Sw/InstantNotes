@@ -151,7 +151,7 @@
             onmousemove={() => (active = i)}
           >
             <span class="cmd-title">
-              {#if cmd.icon}<span class="cmd-icon" aria-hidden="true">{cmd.icon()}</span>{/if}{#if cmd.prefix}<span class="cmd-parent">{cmd.prefix}</span><span class="cmd-crumb" aria-hidden="true">&rsaquo;</span>{/if}{#if cmd.parent && cmd.parent !== currentParent}<span class="cmd-parent">{findCommand(commands, cmd.parent)?.title}</span><span class="cmd-crumb" aria-hidden="true">&rsaquo;</span>{/if}{cmd.title}
+              {#if cmd.icon}<span class="cmd-icon" aria-hidden="true">{cmd.icon()}</span>{/if}{#if cmd.prefix}<span class="cmd-parent">{cmd.prefix}</span><span class="cmd-crumb" aria-hidden="true">&rsaquo;</span>{/if}{#if cmd.parent && cmd.parent !== currentParent}<span class="cmd-parent">{findCommand(commands, cmd.parent)?.title}</span><span class="cmd-crumb" aria-hidden="true">&rsaquo;</span>{/if}<span class="cmd-action">{cmd.title}</span>
             </span>
             <span class="cmd-meta">
               {#if cmd.isActive?.()}
@@ -255,18 +255,34 @@
   .cmd-icon {
     margin-right: 8px;
     color: var(--accent-text);
+    flex-shrink: 0;
   }
+  /* A flex row so the action label keeps its width while a long note-title
+     prefix takes its own ellipsis instead of clipping the whole line. */
   .cmd-title {
+    display: flex;
+    align-items: baseline;
+    min-width: 0;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
   .cmd-parent {
     color: var(--text-tertiary);
+    max-width: 16ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex-shrink: 1;
   }
   .cmd-crumb {
     margin: 0 6px;
     color: var(--text-tertiary);
+    flex-shrink: 0;
+  }
+  .cmd-action {
+    flex-shrink: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .cmd-meta {
     display: flex;
