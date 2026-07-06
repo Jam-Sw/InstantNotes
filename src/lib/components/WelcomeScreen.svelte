@@ -1,6 +1,7 @@
 <script lang="ts">
   import { library } from "$lib/stores/library.svelte";
   import { updater } from "$lib/stores/updater.svelte";
+  import { captureShortcut, modKey } from "$lib/platform";
 
   let { appVersion, onShowUpdate }: { appVersion: string; onShowUpdate: () => void } =
     $props();
@@ -39,8 +40,8 @@
         </button>
       {/if}
     </h2>
-    <p>Select a note, or press <kbd>⌥Space</kbd> anywhere to capture.</p>
-    <p class="hint-line">Press <kbd>⌘K</kbd> for commands and themes.</p>
+    <p>Select a note, or press <kbd>{captureShortcut}</kbd> anywhere to capture.</p>
+    <p class="hint-line">Press <kbd>{modKey}K</kbd> for commands and themes.</p>
     {#if library.error}<p class="error">{library.error}</p>{/if}
   </div>
 </div>

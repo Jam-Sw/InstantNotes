@@ -1,6 +1,7 @@
 <script lang="ts">
   import { library, type StatusFilter } from "$lib/stores/library.svelte";
   import { formatDate, preview } from "$lib/format";
+  import { captureShortcut, modKey } from "$lib/platform";
 
   const statusFilters: { id: StatusFilter; label: string }[] = [
     { id: "active", label: "Active" },
@@ -34,7 +35,7 @@
       value={library.searchText}
       oninput={(e) => library.setSearch(e.currentTarget.value)}
     />
-    <button class="new-note" title="New note (⌘N)" onclick={() => library.newNote()}>＋</button>
+    <button class="new-note" title={`New note (${modKey}N)`} onclick={() => library.newNote()}>＋</button>
   </div>
   {#if !library.activeWorkspaceId && !library.activeTagId && !library.searchResults}
     <div class="status-filter">
@@ -94,7 +95,7 @@
           {:else if library.statusFilter === "archived"}
             Nothing archived yet.
           {:else}
-            No notes yet. Press ⌥Space anywhere to capture your first thought.
+            No notes yet. Press {captureShortcut} anywhere to capture your first thought.
           {/if}
         </div>
       {/each}

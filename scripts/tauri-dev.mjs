@@ -38,33 +38,48 @@ function killPid(pid, label) {
   }
 }
 
-// 1) Kill any running dev binary by PID (never signal this script itself).
-for (const line of sh("ps -axo pid=,args=").split("\n")) {
-  if (
-    line.includes("target/debug/instantnotes") &&
-    !line.includes("tauri-dev.mjs") &&
-    !line.includes("node ")
-  ) {
-    killPid(line.trim().split(/\s+/)[0], "stale dev instance");
+// 1 + 2) Stale-process cleanup needs ps/lsof, so it runs on macOS and Linux
+// only. On Windows the single-instance plugin still reloads the surviving
+// webview (lib.rs), so a re-run is stale-frontend-safe, just not force-fresh.
+if (process.platform !== "win32") {
+  // 1) Kill any running dev binary by PID (never signal this script itself).
+  for (const line of sh("ps -axo pid=,args=").split("\n")) {
+    if (
+      line.includes("target/debug/instantnotes") &&
+      !line.includes("tauri-dev.mjs") &&
+      !line.includes("node ")
+    ) {
+      killPid(line.trim().split(/\s+/)[0], "stale dev instance");
+    }
   }
+
+  // 2) Free the Vite dev port so a fresh server is used (not a stale one).
+  const onPort = sh("lsof -ti tcp:1420").trim();
+  if (onPort) for (const pid of onPort.split("\n")) killPid(pid, "stale dev server on :1420");
 }
 
-// 2) Free the Vite dev port so a fresh server is used (not a stale one).
-const onPort = sh("lsof -ti tcp:1420").trim();
-if (onPort) for (const pid of onPort.split("\n")) killPid(pid, "stale dev server on :1420");
+// 3) Launch fresh, pointed at the real notes DB (the installed app's
+// app_data_dir for this platform, matching Tauri's path resolver).
+const appDataRoot =
+  process.platform === "darwin"
+    ? join(homedir(), "Library", "Application Support")
+    : process.platform === "win32"
+      ? (process.env.APPDATA ?? join(homedir(), "AppData", "Roaming"))
+      : (process.env.XDG_DATA_HOME ?? join(homedir(), ".local", "share"));
+const dbPath = join(appDataRoot, "com.instantnotes.app", "instantnotes.db");
 
-// 3) Launch fresh, pointed at the real notes DB.
-const dbPath = join(
-  homedir(),
-  "Library/Application Support/com.instantnotes.app/instantnotes.db",
-);
-const tauriBin = existsSync("node_modules/.bin/tauri")
-  ? "node_modules/.bin/tauri"
-  : "tauri";
+const binName = process.platform === "win32" ? "tauri.cmd" : "tauri";
+const localBin = join("node_modules", ".bin", binName);
+const tauriBin = existsSync(localBin) ? localBin : binName;
 
 const child = spawn(
   tauriBin,
   ["dev", "--config", "src-tauri/tauri.dev.conf.json"],
-  { stdio: "inherit", env: { ...process.env, INSTANTNOTES_DB_PATH: dbPath } },
+  {
+    stdio: "inherit",
+    env: { ...process.env, INSTANTNOTES_DB_PATH: dbPath },
+    // .cmd shims only execute through a shell.
+    shell: process.platform === "win32",
+  },
 );
 child.on("exit", (code) => process.exit(code ?? 0));

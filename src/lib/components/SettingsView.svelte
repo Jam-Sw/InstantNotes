@@ -4,6 +4,7 @@
   // Escape steps back to the grid first, then closes the whole view.
   import { onMount } from "svelte";
   import { openUrl } from "$lib/api/client";
+  import { modKey } from "$lib/platform";
   import { contexting } from "$lib/stores/contexting.svelte";
   import { renderTemplate, TEMPLATE_VARS } from "$lib/contexting-format";
   import { library } from "$lib/stores/library.svelte";
@@ -120,7 +121,7 @@
         <div class="contexting-pane">
           <h2>Contexting</h2>
           <p class="section-hint">
-            The template behind "Copy note as context" in the ⌘K palette. Wrap the note
+            The template behind "Copy note as context" in the {modKey}K palette. Wrap the note
             however a tool or model expects; this is the seed for InstantNotes' AI features.
           </p>
 
