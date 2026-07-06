@@ -4,11 +4,11 @@
    Themes live as data in src/lib/themes/; do not hard-code palettes here. */
 
 :root {
-  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
-  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   /* Resolved font slots (theme decides whether each is ui or mono). */
   --font-body: var(--font-ui);
-  --font-meta: ui-monospace, "SF Mono", Menlo, monospace;
+  --font-meta: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 
   --bg: #161617;
   --bg-sidebar: #1c1c1d;

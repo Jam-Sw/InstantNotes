@@ -5,8 +5,10 @@
 
 import { library } from "$lib/stores/library.svelte";
 import { theme } from "$lib/stores/theme.svelte";
+import { contexting } from "$lib/stores/contexting.svelte";
 import { exportTheme, importTheme } from "$lib/themes/share";
 import { BODY_FONTS } from "$lib/themes/fonts";
+import { modKey } from "$lib/platform";
 import type { Command } from "$lib/command-filter";
 
 export type { Command } from "$lib/command-filter";
@@ -60,7 +62,7 @@ export function buildThemeCommands(): Command[] {
 /** Build the current command set. Reads store state, so call on palette open. */
 export function buildCommands(): Command[] {
   const commands: Command[] = [
-    { id: "note.new", title: "New note", group: "Notes", shortcut: "⌘N", run: () => library.newNote() },
+    { id: "note.new", title: "New note", group: "Notes", shortcut: `${modKey}N`, run: () => library.newNote() },
   ];
 
   if (library.selected) {
@@ -87,6 +89,18 @@ export function buildCommands(): Command[] {
         group: "Notes",
         prefix: notePrefix,
         run: () => (n.isDeleted ? library.restoreSelected() : library.deleteSelected()),
+      },
+      {
+        id: "note.copyContext",
+        title: "Copy note as context",
+        group: "Notes",
+        prefix: notePrefix,
+        run: async () => {
+          library.flushPendingEdits();
+          const note = library.selected;
+          if (!note) return;
+          await navigator.clipboard.writeText(contexting.render(note, library.selectedTags));
+        },
       },
     );
   }

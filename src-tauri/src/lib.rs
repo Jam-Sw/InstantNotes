@@ -335,6 +335,24 @@ fn set_window_vibrancy(app: AppHandle, material: Option<String>) {
     }
 }
 
+/// Match the native library window's theme (titlebar and traffic-light treatment)
+/// to the in-app light/dark variant. Tauri maps this to the window's OS appearance,
+/// so the chrome follows the active theme instead of the launch-time system setting.
+/// An unknown variant is a no-op; the borderless capture window has no native chrome
+/// and is left alone.
+#[tauri::command]
+fn set_window_theme(app: AppHandle, variant: String) {
+    use tauri::Theme;
+    let theme = match variant.as_str() {
+        "light" => Theme::Light,
+        "dark" => Theme::Dark,
+        _ => return,
+    };
+    if let Some(win) = app.get_webview_window("library") {
+        let _ = win.set_theme(Some(theme));
+    }
+}
+
 // ---- theme file sharing ----
 // Thin byte I/O for portable `.intheme.json` theme files. The open/save dialog
 // runs in JS via the dialog plugin; Rust only reads/writes the chosen path, so
@@ -587,8 +605,11 @@ pub fn run() {
             // After an in-place update, refresh the cached app icon once.
             refresh_icon_cache_if_updated(&dir);
 
-            // macOS app menu bar. The Edit submenu is required for Cut/Copy/Paste
-            // to work in the WebView.
+            // App menu bar. The Edit submenu is required for Cut/Copy/Paste to
+            // work in the WebView on every platform. The application submenu
+            // (Services, Hide, Hide Others) is a macOS convention with no
+            // Windows/Linux equivalent, so off macOS its Settings and Quit
+            // entries live in the File submenu instead.
             let settings_item = MenuItem::with_id(
                 app,
                 "settings",
@@ -596,6 +617,7 @@ pub fn run() {
                 true,
                 Some("CmdOrCtrl+,"),
             )?;
+            #[cfg(target_os = "macos")]
             let app_submenu = SubmenuBuilder::new(app, "InstantNotes")
                 .about(None)
                 .separator()
@@ -623,11 +645,19 @@ pub fn run() {
                 true,
                 None::<&str>,
             )?;
-            let file_submenu = SubmenuBuilder::new(app, "File")
-                .item(&new_note_item)
-                .separator()
-                .item(&export_item)
-                .build()?;
+            let file_submenu = {
+                let builder = SubmenuBuilder::new(app, "File")
+                    .item(&new_note_item)
+                    .separator()
+                    .item(&export_item);
+                #[cfg(not(target_os = "macos"))]
+                let builder = builder
+                    .separator()
+                    .item(&settings_item)
+                    .separator()
+                    .quit();
+                builder.build()?
+            };
             let edit_submenu = SubmenuBuilder::new(app, "Edit")
                 .undo()
                 .redo()
@@ -637,8 +667,13 @@ pub fn run() {
                 .paste()
                 .select_all()
                 .build()?;
+            #[cfg(target_os = "macos")]
             let app_menu = MenuBuilder::new(app)
                 .items(&[&app_submenu, &file_submenu, &edit_submenu])
+                .build()?;
+            #[cfg(not(target_os = "macos"))]
+            let app_menu = MenuBuilder::new(app)
+                .items(&[&file_submenu, &edit_submenu])
                 .build()?;
             app.set_menu(app_menu)?;
             app.on_menu_event(|app, event| match event.id().as_ref() {
@@ -659,7 +694,11 @@ pub fn run() {
 
             // Tray menu - the app's permanent presence. Dev builds use ⌥⇧Space so
             // they never fight an installed release for the system-wide ⌥Space hotkey.
-            let capture_accel = if cfg!(debug_assertions) {
+            // The tab-separated hint only renders reliably in the macOS status
+            // menu; other platforms surface the hotkey in the welcome screen.
+            let capture_accel = if !cfg!(target_os = "macos") {
+                "New Capture"
+            } else if cfg!(debug_assertions) {
                 "New Capture\t⌥⇧Space"
             } else {
                 "New Capture\t⌥Space"
@@ -726,14 +765,25 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // Global shortcut: ⌥Space toggles the capture panel. In dev builds use
-            // ⌥⇧Space instead - the system-wide ⌥Space is exclusive, so a dev build
-            // and an installed release (same hotkey) would otherwise silently collide.
+            // Global shortcut: ⌥Space toggles the capture panel on macOS. Windows
+            // reserves plain Alt+Space for the system window menu, so Windows and
+            // Linux use Ctrl+Shift+Space. In dev builds add one more modifier -
+            // the hotkey is exclusive, so a dev build and an installed release
+            // (same hotkey) would otherwise silently collide.
             use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
-            let shortcut = if cfg!(debug_assertions) {
-                Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::Space)
+            let shortcut = if cfg!(target_os = "macos") {
+                if cfg!(debug_assertions) {
+                    Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::Space)
+                } else {
+                    Shortcut::new(Some(Modifiers::ALT), Code::Space)
+                }
+            } else if cfg!(debug_assertions) {
+                Shortcut::new(
+                    Some(Modifiers::CONTROL | Modifiers::SHIFT | Modifiers::ALT),
+                    Code::Space,
+                )
             } else {
-                Shortcut::new(Some(Modifiers::ALT), Code::Space)
+                Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Space)
             };
             if let Err(e) = app.global_shortcut().register(shortcut) {
                 // Content-free log per SEC-001; conflict fallback UI is an M4 item.
@@ -796,6 +846,7 @@ pub fn run() {
             hide_capture,
             open_library,
             set_window_vibrancy,
+            set_window_theme,
             export_theme_file,
             import_theme_file,
             export_note_file,

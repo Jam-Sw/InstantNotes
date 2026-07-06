@@ -1,5 +1,6 @@
 <script lang="ts">
   import { library } from "$lib/stores/library.svelte";
+  import { isMac } from "$lib/platform";
 
   const allPinned = $derived(
     library.multiSelectedNotes.length > 0 &&
@@ -35,7 +36,7 @@
         <button class="action danger" onclick={() => library.bulkDelete()}>Delete</button>
       {/if}
     </div>
-    <p class="bulk-hint">⌘-click or ⇧-click to adjust · Esc to cancel</p>
+    <p class="bulk-hint">{isMac ? "⌘" : "Ctrl"}-click or {isMac ? "⇧" : "Shift"}-click to adjust · Esc to cancel</p>
     {#if library.error}<p class="error">{library.error}</p>{/if}
   </div>
 </div>

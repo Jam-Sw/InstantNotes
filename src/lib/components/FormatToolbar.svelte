@@ -1,5 +1,6 @@
 <script lang="ts">
   import { editorPrefs } from "$lib/stores/editor.svelte";
+  import { modKey, shiftKey } from "$lib/platform";
   import type { FormatKind } from "$lib/markdown-format";
   import type { ActiveMarks } from "$lib/markdown-active";
 
@@ -11,14 +12,14 @@
   <div class="fmt-group">
     <button
       class="fmt"
-      title="Bold (⌘B)"
+      title={`Bold (${modKey}B)`}
       aria-label="Bold"
       aria-pressed={active.bold}
       onclick={() => onFormat("bold")}
     ><span class="fmt-b">B</span></button>
     <button
       class="fmt"
-      title="Italic (⌘I)"
+      title={`Italic (${modKey}I)`}
       aria-label="Italic"
       aria-pressed={active.italic}
       onclick={() => onFormat("italic")}
@@ -34,7 +35,7 @@
   <div class="fmt-group">
     <button
       class="fmt"
-      title="Code (⌘E)"
+      title={`Code (${modKey}E)`}
       aria-label="Code"
       aria-pressed={active.code}
       onclick={() => onFormat("code")}
@@ -61,7 +62,7 @@
     </button>
     <button
       class="fmt"
-      title="Link (⌘⇧K)"
+      title={`Link (${modKey}${shiftKey}K)`}
       aria-label="Link"
       onclick={() => onFormat("link")}
     >
@@ -69,11 +70,11 @@
     </button>
   </div>
   <div class="fmt-group zoom-group">
-    <button class="fmt zoom-step" title="Zoom out (⌘−)" onclick={() => editorPrefs.zoomOut()}>A−</button>
-    <button class="fmt zoom-reset" title="Reset zoom (⌘0)" onclick={() => editorPrefs.resetZoom()}>
+    <button class="fmt zoom-step" title={`Zoom out (${modKey}−)`} onclick={() => editorPrefs.zoomOut()}>A−</button>
+    <button class="fmt zoom-reset" title={`Reset zoom (${modKey}0)`} onclick={() => editorPrefs.resetZoom()}>
       {Math.round(editorPrefs.zoom * 100)}%
     </button>
-    <button class="fmt zoom-step" title="Zoom in (⌘+)" onclick={() => editorPrefs.zoomIn()}>A+</button>
+    <button class="fmt zoom-step" title={`Zoom in (${modKey}+)`} onclick={() => editorPrefs.zoomIn()}>A+</button>
   </div>
 </div>
 

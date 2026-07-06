@@ -18,6 +18,7 @@
   import { library } from "$lib/stores/library.svelte";
   import { updater } from "$lib/stores/updater.svelte";
   import { editorPrefs } from "$lib/stores/editor.svelte";
+  import { contexting } from "$lib/stores/contexting.svelte";
 
   let appVersion = $state("");
   let paletteOpen = $state(false);
@@ -27,6 +28,7 @@
   onMount(() => {
     void library.init();
     void editorPrefs.init();
+    void contexting.init();
     void getVersion().then((v) => (appVersion = v));
     updater.start();
     // Tray "Check for Updates…" opens the panel and runs a manual check.

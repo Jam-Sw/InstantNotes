@@ -1,6 +1,6 @@
-#!/usr/bin/env node
 // Bump the app version in every file that must stay in lockstep, in one shot,
-// so a release can never ship with the manifests disagreeing.
+// so a release can never ship with the manifests disagreeing. Run via
+// `npm run bump` (no shebang: Windows vitest cannot parse the file with one).
 //
 //   npm run bump 0.6.0
 //

@@ -3,6 +3,9 @@
   "version": "0.6.2",
   "description": "InstantNotes — instant capture, organized knowledge",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",

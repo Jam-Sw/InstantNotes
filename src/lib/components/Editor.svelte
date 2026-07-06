@@ -20,6 +20,7 @@
   import { formatEdit, type FormatKind, type Sel } from "$lib/markdown-format";
   import { activeMarks, type ActiveMarks } from "$lib/markdown-active";
   import { wysiwygExtension, wysiwygTheme, setPreviewMode } from "$lib/wysiwyg";
+  import { listIndentChanges } from "$lib/list-indent";
 
   let {
     value = "",
@@ -84,6 +85,12 @@
             { key: "Mod-i", run: () => { applyFormat("italic"); return true; } },
             { key: "Mod-e", run: () => { applyFormat("code"); return true; } },
             { key: "Mod-Shift-k", run: () => { applyFormat("link"); return true; } },
+          ]),
+          // Tab nests a list item (and Shift-Tab un-nests it). On a non-list line
+          // both return false so the default Tab handling is untouched.
+          keymap.of([
+            { key: "Tab", run: (v) => applyListIndent(v, false) },
+            { key: "Shift-Tab", run: (v) => applyListIndent(v, true) },
           ]),
           keymap.of([...defaultKeymap, ...historyKeymap]),
           // GFM base so ~~strikethrough~~ parses (the highlight + active-state
@@ -150,6 +157,18 @@
       selection: { anchor: edit.selection.from, head: edit.selection.to },
     });
     view.focus();
+  }
+
+  // Nest (outdent = false) or un-nest (outdent = true) the list lines the
+  // selection touches. Returns false when nothing is an indentable list line so
+  // CodeMirror falls back to its default Tab handling. CM remaps the selection
+  // through the line-anchored changes, so the caret stays with its text.
+  function applyListIndent(v: EditorView, outdent: boolean): boolean {
+    const { from, to } = v.state.selection.main;
+    const changes = listIndentChanges(v.state.doc.toString(), from, to, outdent);
+    if (changes.length === 0) return false;
+    v.dispatch({ changes, scrollIntoView: true });
+    return true;
   }
 </script>
 

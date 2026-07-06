@@ -1,5 +1,8 @@
-# Push a v* tag and GitHub builds, signs, and publishes the release,
-# including the latest.json manifest the in-app updater polls.
+# Push a v* tag and GitHub builds every platform and assembles a draft release,
+# including the latest.json manifest the in-app updater polls. The three matrix
+# jobs upload into one draft; tauri-action merges each platform into latest.json,
+# so the draft must stay unpublished until all jobs finish. Publish after the
+# smoke test to ship.
 # Requires repo secrets: TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
 name: Release
 
@@ -12,8 +15,15 @@ permissions:
 
 jobs:
   release:
-    # macos-latest runners are arm64; we ship Apple Silicon only.
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macos-latest runners are arm64; macOS ships Apple Silicon only.
+          - platform: macos-latest
+          - platform: ubuntu-22.04
+          - platform: windows-latest
+    runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
 
@@ -28,6 +38,12 @@ jobs:
         with:
           workspaces: src-tauri
 
+      - name: Install Tauri system dependencies (Linux)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
       - run: npm ci
 
       # Release notes = the CHANGELOG section for this tag. tauri-action writes
@@ -35,6 +51,7 @@ jobs:
       # in-app updater shows real "What's new" text, not install boilerplate.
       - name: Extract release notes
         id: notes
+        shell: bash
         run: |
           version="${GITHUB_REF_NAME#v}"
           notes="$(awk -v v="$version" '
@@ -50,7 +67,13 @@ jobs:
             printf '%s\n' "$notes"
             echo ""
             echo "---"
-            echo "First install: download the \`.dmg\`, open it, and drag InstantNotes to Applications. macOS blocks the first launch of this unnotarized build — run \`xattr -d com.apple.quarantine /Applications/InstantNotes.app\` or use System Settings > Privacy & Security > \"Open Anyway\". Existing installs update in place from inside the app."
+            echo "First install on macOS: download the \`.dmg\`, open it, and drag InstantNotes to Applications. macOS blocks the first launch of this unnotarized build: run \`xattr -d com.apple.quarantine /Applications/InstantNotes.app\` or use System Settings > Privacy & Security > \"Open Anyway\"."
+            echo ""
+            echo "First install on Windows: download and run the \`-setup.exe\` installer. SmartScreen flags the unsigned build: click \"More info\", then \"Run anyway\"."
+            echo ""
+            echo "First install on Linux: download the \`.AppImage\`, make it executable (\`chmod +x\`), and run it."
+            echo ""
+            echo "Existing installs update in place from inside the app."
             echo "__NOTES_EOF__"
           } >> "$GITHUB_OUTPUT"
 
@@ -62,8 +85,10 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "InstantNotes ${{ github.ref_name }}"
-          # Publish on a successful build so a forgotten draft can't silently
-          # block delivery. Pushing a v* tag is the deliberate ship gate.
-          releaseDraft: false
+          # Draft while the matrix assembles: publishing early would expose a
+          # latest.json missing the platforms still building. Publishing the
+          # smoke-tested draft is the ship gate.
+          releaseDraft: true
           includeUpdaterJson: true
+          updaterJsonPreferNsis: true
           releaseBody: ${{ steps.notes.outputs.body }}

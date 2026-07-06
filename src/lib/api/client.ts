@@ -97,6 +97,10 @@ export const openUrl = (url: string) => call<void>("open_url", { url });
 // window. A no-op off macOS; the material string is one of theme MATERIAL_KEYS.
 export const setWindowVibrancy = (material: string | null) =>
   call<void>("set_window_vibrancy", { material });
+// Match the native library window theme (titlebar / traffic-light treatment) to
+// the in-app variant. A no-op off macOS; the capture window is left alone.
+export const setWindowTheme = (variant: "light" | "dark") =>
+  call<void>("set_window_theme", { variant });
 
 // ---- theme files ----
 // Byte I/O for portable .intheme.json files; the open/save dialog runs in JS.

@@ -1,9 +1,11 @@
-// Shared font stacks for built-in themes. Matches the baseline stacks the app
-// shipped with so the default look is unchanged when no custom font is set.
+// Shared font stacks for built-in themes. Apple faces lead so the macOS look is
+// unchanged; Segoe UI (Windows) and Noto Sans (common on Linux) follow so the
+// other platforms resolve to their native UI face instead of a generic fallback.
 
 export const SANS_STACK =
-  '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif';
-export const MONO_STACK = 'ui-monospace, "SF Mono", Menlo, monospace';
+  '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif';
+export const MONO_STACK =
+  'ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace';
 
 /** Curated list of macOS body fonts the user can pick at runtime. Each entry
  *  overrides --font-body independently of the active theme. */
