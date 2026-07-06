@@ -9,6 +9,26 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-06
+
+### Added
+- Windows and Linux support: InstantNotes now ships an installer for Windows
+  (x64) and an AppImage for Linux (x64) alongside the macOS build, all with
+  in-app updates. On Windows and Linux the capture panel is summoned with
+  `Ctrl+Shift+Space`, Settings and Quit live in the File menu, and shortcut
+  labels show `Ctrl+` combinations instead of mac glyphs.
+- Settings is now a small wiki: a landing grid of category cards opening
+  focused sub-pages with a breadcrumb back, including the new Contexting page.
+- Contexting: a template that shapes what "Copy note as context" hands to
+  other tools and AI models, with a live preview.
+- List editing: Tab and Shift+Tab nest and un-nest list items in the editor.
+- The native window titlebar follows the in-app light or dark theme instead of
+  the launch-time system setting.
+
+### Fixed
+- Command palette rows keep the action label readable when a note title is
+  long.
+
 ## [0.6.2] - 2026-06-17
 
 ### Added
