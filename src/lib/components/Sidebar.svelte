@@ -1,8 +1,19 @@
 <script lang="ts">
   import { library } from "$lib/stores/library.svelte";
+  import { ApiError, deleteTag, updateTag } from "$lib/api/client";
+  import { friendlyMessage } from "$lib/errors";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
+  import { toasts } from "$lib/stores/toasts.svelte";
+  import TagRow from "$lib/components/TagRow.svelte";
+  import ContextMenu from "$lib/components/ContextMenu.svelte";
+  import type { TagWithCount } from "$lib/api/types";
 
   let newWorkspaceInput = $state("");
+  let tagsHeader = $state<HTMLDivElement>();
+  // Tag management lives behind a context menu (right-click / Shift+F10) and
+  // double-click-to-rename, so tag rows carry no resting chrome at all.
+  let renamingTagId = $state<string | null>(null);
+  let tagMenu = $state<{ x: number; y: number; tag: TagWithCount } | null>(null);
 
   async function submitNewWorkspace(e: Event) {
     e.preventDefault();
@@ -18,6 +29,54 @@
       tone: "danger",
     });
     if (ok) await library.removeWorkspace(id);
+  }
+
+  // The tag keeps its id across a rename, so an active filter on it stays
+  // valid without any extra bookkeeping here.
+  async function renameTag(
+    tag: TagWithCount,
+    name: string,
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
+    try {
+      await updateTag(tag.id, name);
+      await Promise.all([library.refreshTags(), library.refresh()]);
+      return { ok: true };
+    } catch (e) {
+      const message =
+        e instanceof ApiError ? friendlyMessage(e.code, e.message) : friendlyMessage("");
+      return { ok: false, message };
+    }
+  }
+
+  async function confirmDeleteTag(tag: TagWithCount): Promise<void> {
+    const notes = `${tag.usageCount} note${tag.usageCount === 1 ? "" : "s"}`;
+    const ok = await confirmDialog.ask({
+      title: `Delete tag "#${tag.name}"?`,
+      body: `It will be removed from ${notes}; the notes are kept.`,
+      confirmLabel: "Delete Tag",
+      tone: "danger",
+    });
+    if (ok) await deleteTagRow(tag);
+  }
+
+  async function deleteTagRow(tag: TagWithCount): Promise<void> {
+    // Point the filter away from the tag before it disappears, so the note
+    // list is never left querying a tag id that no longer exists.
+    if (library.activeTagId === tag.id) {
+      library.setTagFilter(null);
+    }
+    try {
+      await deleteTag(tag.id);
+    } catch (e) {
+      // The refresh below re-syncs the list, but the user completed a
+      // two-step confirm; a failure must say so rather than vanish.
+      const message =
+        e instanceof ApiError ? friendlyMessage(e.code, e.message) : friendlyMessage("");
+      toasts.show(`Couldn't delete #${tag.name}. ${message}`);
+    }
+    await Promise.all([library.refreshTags(), library.refresh()]);
+    // The row that held focus is gone; land somewhere stable nearby.
+    queueMicrotask(() => tagsHeader?.focus());
   }
 </script>
 
@@ -63,23 +122,38 @@
       />
     </form>
   </nav>
-  <div class="tags-header">Tags</div>
+  <div class="tags-header" bind:this={tagsHeader} tabindex="-1">Tags</div>
   <nav class="tags">
     {#each library.tags.filter((t) => t.usageCount > 0) as tag (tag.id)}
-      <button
-        class="nav-item tag-item"
-        class:active={library.activeTagId === tag.id}
-        onclick={() =>
+      <TagRow
+        {tag}
+        active={library.activeTagId === tag.id}
+        editing={renamingTagId === tag.id}
+        onSelect={() =>
           library.setTagFilter(library.activeTagId === tag.id ? null : tag.id)}
-      >
-        <span class="tag-name">#{tag.name}</span>
-        <span class="tag-count">{tag.usageCount}</span>
-      </button>
+        onStartRename={() => (renamingTagId = tag.id)}
+        onRename={(name) => renameTag(tag, name)}
+        onDoneRename={() => (renamingTagId = null)}
+        onMenu={(x, y) => (tagMenu = { x, y, tag })}
+      />
     {:else}
       <div class="empty-hint">Type #tag in a note</div>
     {/each}
   </nav>
 </aside>
+
+{#if tagMenu}
+  {@const menuTag = tagMenu.tag}
+  <ContextMenu
+    x={tagMenu.x}
+    y={tagMenu.y}
+    items={[
+      { label: "Rename Tag", run: () => (renamingTagId = menuTag.id) },
+      { label: "Delete Tag", danger: true, run: () => void confirmDeleteTag(menuTag) },
+    ]}
+    onclose={() => (tagMenu = null)}
+  />
+{/if}
 
 <style>
   /* sidebar */
@@ -115,11 +189,6 @@
     letter-spacing: 0.4px;
     color: var(--text-tertiary);
     font-family: var(--font-meta);
-  }
-  .tag-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
   .tag-count {
     color: var(--text-tertiary);
