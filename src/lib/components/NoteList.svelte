@@ -2,6 +2,7 @@
   import { library, type StatusFilter } from "$lib/stores/library.svelte";
   import { formatDate, preview } from "$lib/format";
   import { captureShortcut, modKey } from "$lib/platform";
+  import { confirmDialog } from "$lib/stores/confirm.svelte";
 
   const statusFilters: { id: StatusFilter; label: string }[] = [
     { id: "active", label: "Active" },
@@ -20,9 +21,13 @@
   }
 
   async function confirmEmptyTrash() {
-    if (window.confirm("Permanently delete all notes in the Trash? This cannot be undone.")) {
-      await library.emptyTrash();
-    }
+    const ok = await confirmDialog.ask({
+      title: "Empty the Trash?",
+      body: "All notes in Trash will be permanently deleted. This action cannot be undone.",
+      confirmLabel: "Empty Trash",
+      tone: "danger",
+    });
+    if (ok) await library.emptyTrash();
   }
 </script>
 

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { library } from "$lib/stores/library.svelte";
   import { isMac } from "$lib/platform";
+  import { confirmDialog } from "$lib/stores/confirm.svelte";
 
   const allPinned = $derived(
     library.multiSelectedNotes.length > 0 &&
@@ -8,11 +9,18 @@
   );
 
   async function confirmBulkDestroy() {
-    const n = library.multiSelected.size;
-    const what = n === 1 ? "this note" : `these ${n} notes`;
-    if (window.confirm(`Permanently delete ${what}? This cannot be undone.`)) {
-      await library.bulkDestroy();
-    }
+    // Snapshot the ids when the dialog opens: the selection could otherwise
+    // drift while it is up, and the confirm must act on what it named.
+    const ids = [...library.multiSelected];
+    if (ids.length === 0) return;
+    const what = ids.length === 1 ? "this note" : `these ${ids.length} notes`;
+    const ok = await confirmDialog.ask({
+      title: `Delete ${what} permanently?`,
+      body: "This action cannot be undone.",
+      confirmLabel: "Delete Forever",
+      tone: "danger",
+    });
+    if (ok) await library.destroyNotes(ids);
   }
 </script>
 

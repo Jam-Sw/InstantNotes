@@ -1,5 +1,6 @@
 <script lang="ts">
   import { library } from "$lib/stores/library.svelte";
+  import { confirmDialog } from "$lib/stores/confirm.svelte";
 
   let newWorkspaceInput = $state("");
 
@@ -10,9 +11,13 @@
   }
 
   async function confirmDeleteWorkspace(id: string, name: string) {
-    if (window.confirm(`Delete workspace "${name}"? Its notes are kept.`)) {
-      await library.removeWorkspace(id);
-    }
+    const ok = await confirmDialog.ask({
+      title: `Delete workspace "${name}"?`,
+      body: "Its notes are kept; only the workspace is removed.",
+      confirmLabel: "Delete Workspace",
+      tone: "danger",
+    });
+    if (ok) await library.removeWorkspace(id);
   }
 </script>
 

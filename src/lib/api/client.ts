@@ -112,3 +112,12 @@ export const importThemeFile = (path: string) =>
 // ---- note export ----
 export const exportNoteFile = (path: string, contents: string) =>
   call<void>("export_note_file", { path, contents });
+
+// ---- app lifecycle ----
+// Answer to "app:quit-requested": pending edits are flushed, exit for real now.
+export const quitApp = () => call<void>("quit_app");
+// Label of the capture shortcut when startup registration failed, else null.
+// A command rather than an event alone: the failure happens before the library
+// webview has listeners attached, so an event would be lost.
+export const getShortcutFailure = () =>
+  call<string | null>("get_shortcut_failure");

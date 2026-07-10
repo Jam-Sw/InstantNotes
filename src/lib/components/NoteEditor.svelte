@@ -3,6 +3,7 @@
   import FormatToolbar from "$lib/components/FormatToolbar.svelte";
   import { library } from "$lib/stores/library.svelte";
   import { editorPrefs } from "$lib/stores/editor.svelte";
+  import { confirmDialog } from "$lib/stores/confirm.svelte";
   import { formatDate, wordCount } from "$lib/format";
   import type { FormatKind } from "$lib/markdown-format";
   import { NO_MARKS, type ActiveMarks } from "$lib/markdown-active";
@@ -25,9 +26,17 @@
   }
 
   async function confirmDestroy() {
-    if (window.confirm("Permanently delete this note? This cannot be undone.")) {
-      await library.destroySelected();
-    }
+    // Snapshot the id when the dialog opens: the selection could otherwise
+    // drift while it is up, and the confirm must act on the note it named.
+    const id = library.selected?.id;
+    if (!id) return;
+    const ok = await confirmDialog.ask({
+      title: "Delete this note permanently?",
+      body: "This action cannot be undone.",
+      confirmLabel: "Delete Forever",
+      tone: "danger",
+    });
+    if (ok) await library.destroyNotes([id]);
   }
 </script>
 
@@ -119,8 +128,12 @@
     />
   </div>
   <div class="status-bar">
-    <span class="save-state" class:saving={library.saving}>
-      {#if library.saving}<span class="save-dot"></span>Saving…{:else}Saved · {formatDate(library.selected.updatedAt)}{/if}
+    <span
+      class="save-state"
+      class:saving={library.saveState === "saving"}
+      class:failed={library.saveState === "failed"}
+    >
+      {#if library.saveState === "saving"}<span class="save-dot"></span>Saving…{:else if library.saveState === "failed"}Not saved{:else}Saved · {formatDate(library.selected.updatedAt)}{/if}
     </span>
     {#if library.error}
       <span class="error">{library.error}</span>
@@ -175,6 +188,11 @@
     align-items: center;
     color: var(--text-secondary);
     font-style: italic;
+  }
+  /* Retries exhausted; the edit stays queued and flushes keep attempting it. */
+  .save-state.failed {
+    color: var(--danger);
+    font-weight: 500;
   }
   .save-dot {
     width: 6px;

@@ -6,7 +6,7 @@
   import { getVersion } from "@tauri-apps/api/app";
   import { listen } from "@tauri-apps/api/event";
   import { save } from "@tauri-apps/plugin-dialog";
-  import { exportNoteFile } from "$lib/api/client";
+  import { exportNoteFile, quitApp } from "$lib/api/client";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import NoteList from "$lib/components/NoteList.svelte";
   import NoteEditor from "$lib/components/NoteEditor.svelte";
@@ -15,10 +15,13 @@
   import CommandPalette from "$lib/components/CommandPalette.svelte";
   import UpdatePanel from "$lib/components/UpdatePanel.svelte";
   import SettingsView from "$lib/components/SettingsView.svelte";
+  import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
+  import Toast from "$lib/components/Toast.svelte";
   import { library } from "$lib/stores/library.svelte";
   import { updater } from "$lib/stores/updater.svelte";
   import { editorPrefs } from "$lib/stores/editor.svelte";
   import { contexting } from "$lib/stores/contexting.svelte";
+  import { confirmDialog } from "$lib/stores/confirm.svelte";
 
   let appVersion = $state("");
   let paletteOpen = $state(false);
@@ -55,7 +58,15 @@
       void exportSelectedNote();
     }).then((un) => (unlistenExport = un));
 
-    const flush = () => library.flushPendingEdits();
+    // Quit handshake: persist the debounced edit, then tell Rust to exit for
+    // real. If this webview is hung the Rust-side fallback exits anyway.
+    let unlistenQuit: (() => void) | undefined;
+    void listen("app:quit-requested", async () => {
+      await library.flushPendingEdits();
+      await quitApp();
+    }).then((un) => (unlistenQuit = un));
+
+    const flush = () => void library.flushPendingEdits();
     window.addEventListener("blur", flush);
     window.addEventListener("keydown", onKeydown);
     return () => {
@@ -64,6 +75,7 @@
       unlistenSettings?.();
       unlistenNewNote?.();
       unlistenExport?.();
+      unlistenQuit?.();
       window.removeEventListener("blur", flush);
       window.removeEventListener("keydown", onKeydown);
     };
@@ -77,6 +89,10 @@
   }
 
   function onKeydown(e: KeyboardEvent) {
+    // The confirm dialog stops propagation itself, but that only covers keys
+    // dispatched through it; this guard catches the rest (focus on body after
+    // an invoker unmounted) so nothing moves under an open modal.
+    if (confirmDialog.request) return;
     const mod = e.metaKey || e.ctrlKey;
     // ⌘K toggles the command palette from anywhere, including input fields.
     if (mod && e.key === "k") {
@@ -169,11 +185,19 @@
   }
 
   async function confirmBulkDestroy() {
-    const n = library.multiSelected.size;
-    const what = n === 1 ? "this note" : `these ${n} notes`;
-    if (window.confirm(`Permanently delete ${what}? This cannot be undone.`)) {
-      await library.bulkDestroy();
-    }
+    // Snapshot the ids when the dialog opens: the selection could otherwise
+    // drift while it is up (menu events, cross-window refreshes) and the
+    // confirm would destroy whatever is selected at resolve time instead.
+    const ids = [...library.multiSelected];
+    if (ids.length === 0) return;
+    const what = ids.length === 1 ? "this note" : `these ${ids.length} notes`;
+    const ok = await confirmDialog.ask({
+      title: `Delete ${what} permanently?`,
+      body: "This action cannot be undone.",
+      confirmLabel: "Delete Forever",
+      tone: "danger",
+    });
+    if (ok) await library.destroyNotes(ids);
   }
 </script>
 
@@ -197,6 +221,8 @@
 
 <CommandPalette bind:open={paletteOpen} />
 <UpdatePanel bind:open={updatePanelOpen} currentVersion={appVersion} />
+<ConfirmDialog />
+<Toast />
 
 <style>
   .layout {
