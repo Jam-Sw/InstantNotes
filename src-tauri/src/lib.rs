@@ -5,10 +5,12 @@
 use instantnotes_core::types::*;
 use instantnotes_core::{AppError, Store};
 use serde::Serialize;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use tauri::menu::{Menu, MenuBuilder, MenuItem, PredefinedMenuItem, Submenu, SubmenuBuilder};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tauri_plugin_opener::OpenerExt;
 
 struct AppState {
@@ -271,11 +273,7 @@ fn get_setting(state: State<'_, AppState>, key: String) -> CmdResult<Option<serd
 }
 
 #[tauri::command(async)]
-fn set_setting(
-    state: State<'_, AppState>,
-    key: String,
-    value: serde_json::Value,
-) -> CmdResult<()> {
+fn set_setting(state: State<'_, AppState>, key: String, value: serde_json::Value) -> CmdResult<()> {
     Ok(locked(&state)?.set_setting(&key, value)?)
 }
 
@@ -548,6 +546,58 @@ fn open_url(app: AppHandle, url: String) {
     let _ = app.opener().open_url(&url, None::<&str>);
 }
 
+// ---- quit handshake ----
+// Body edits are debounced in the webview, so exiting the process directly
+// would drop the tail of whatever was just typed. Every quit path (menu, tray,
+// Dock) instead emits "app:quit-requested"; the library window flushes its
+// pending edits and answers with the quit_app command, which really exits.
+
+/// True once the frontend flushed and called quit_app, or once the fallback
+/// gave up waiting. ExitRequested lets the exit proceed only when this is set,
+/// so the flush handshake runs at most once per quit.
+static QUIT_READY: AtomicBool = AtomicBool::new(false);
+
+/// How long a quit waits for the webview flush before exiting anyway.
+const QUIT_FLUSH_GRACE_MS: u64 = 800;
+
+/// Ask the webviews to flush, then exit. The fallback timer exists because
+/// quit must not block forever on a dead webview: if the frontend never
+/// answers with quit_app, exit anyway after the grace period.
+fn request_quit(app: &AppHandle) {
+    let _ = app.emit("app:quit-requested", ());
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(QUIT_FLUSH_GRACE_MS));
+        // swap keeps the fallback and quit_app from racing: whichever runs
+        // first marks the handshake done and the other becomes a no-op.
+        if !QUIT_READY.swap(true, Ordering::AcqRel) {
+            handle.exit(0);
+        }
+    });
+}
+
+/// Final leg of the handshake: the library webview has flushed pending edits.
+#[tauri::command]
+fn quit_app(app: AppHandle) {
+    QUIT_READY.store(true, Ordering::Release);
+    app.exit(0);
+}
+
+// ---- shortcut status ----
+
+/// Set once at startup when global-shortcut registration failed (another app
+/// owns the hotkey). Queryable because the "shortcut:failed" event fires
+/// before the library webview has listeners attached, so an event alone
+/// would be lost.
+struct ShortcutStatus {
+    failed: Option<String>,
+}
+
+#[tauri::command]
+fn get_shortcut_failure(state: State<'_, ShortcutStatus>) -> Option<String> {
+    state.failed.clone()
+}
+
 // ---- app shell ----
 
 pub fn run() {
@@ -596,11 +646,25 @@ pub fn run() {
             if let Some(parent) = db_path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
-            let store = Store::open(&db_path)
-                .map_err(|e| format!("cannot open store: {e}"))?;
+            let (store, recovered) =
+                Store::open_or_recover(&db_path).map_err(|e| format!("cannot open store: {e}"))?;
             app.manage(AppState {
                 store: Mutex::new(store),
             });
+            if recovered {
+                // Non-blocking on purpose: setup must finish (single-instance
+                // handshake, window creation) whether or not the user has
+                // acknowledged the dialog.
+                app.dialog()
+                    .message(
+                        "Your notes library could not be read, so a fresh one was \
+                         started. The unreadable file was kept next to it with a \
+                         \".corrupt\" suffix in case its contents can be recovered.",
+                    )
+                    .title("Library recovered")
+                    .kind(MessageDialogKind::Warning)
+                    .show(|_| {});
+            }
 
             // After an in-place update, refresh the cached app icon once.
             refresh_icon_cache_if_updated(&dir);
@@ -610,13 +674,13 @@ pub fn run() {
             // (Services, Hide, Hide Others) is a macOS convention with no
             // Windows/Linux equivalent, so off macOS its Settings and Quit
             // entries live in the File submenu instead.
-            let settings_item = MenuItem::with_id(
-                app,
-                "settings",
-                "Settings…",
-                true,
-                Some("CmdOrCtrl+,"),
-            )?;
+            let settings_item =
+                MenuItem::with_id(app, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?;
+            // Custom Quit instead of PredefinedMenuItem::quit(): the predefined
+            // item exits the process directly, skipping the flush handshake, so
+            // ⌘Q would drop the tail of whatever was being typed.
+            let quit_item =
+                MenuItem::with_id(app, "quit", "Quit InstantNotes", true, Some("CmdOrCtrl+Q"))?;
             #[cfg(target_os = "macos")]
             let app_submenu = SubmenuBuilder::new(app, "InstantNotes")
                 .about(None)
@@ -629,22 +693,12 @@ pub fn run() {
                 .hide_others()
                 .show_all()
                 .separator()
-                .quit()
+                .item(&quit_item)
                 .build()?;
-            let new_note_item = MenuItem::with_id(
-                app,
-                "new_note",
-                "New Note",
-                true,
-                Some("CmdOrCtrl+N"),
-            )?;
-            let export_item = MenuItem::with_id(
-                app,
-                "export_note",
-                "Export Note As…",
-                true,
-                None::<&str>,
-            )?;
+            let new_note_item =
+                MenuItem::with_id(app, "new_note", "New Note", true, Some("CmdOrCtrl+N"))?;
+            let export_item =
+                MenuItem::with_id(app, "export_note", "Export Note As…", true, None::<&str>)?;
             let file_submenu = {
                 let builder = SubmenuBuilder::new(app, "File")
                     .item(&new_note_item)
@@ -655,7 +709,7 @@ pub fn run() {
                     .separator()
                     .item(&settings_item)
                     .separator()
-                    .quit();
+                    .item(&quit_item);
                 builder.build()?
             };
             let edit_submenu = SubmenuBuilder::new(app, "Edit")
@@ -689,6 +743,7 @@ pub fn run() {
                     show_library_window(app);
                     let _ = app.emit("menu:export-note", ());
                 }
+                "quit" => request_quit(app),
                 _ => {}
             });
 
@@ -708,10 +763,14 @@ pub fn run() {
             let open_library_item =
                 MenuItem::with_id(app, "open_library", "Open Library", true, None::<&str>)?;
 
-            let about =
-                PredefinedMenuItem::about(app, Some("About InstantNotes"), None)?;
-            let check_updates =
-                MenuItem::with_id(app, "check_updates", "Check for Updates…", true, None::<&str>)?;
+            let about = PredefinedMenuItem::about(app, Some("About InstantNotes"), None)?;
+            let check_updates = MenuItem::with_id(
+                app,
+                "check_updates",
+                "Check for Updates…",
+                true,
+                None::<&str>,
+            )?;
             let repo =
                 MenuItem::with_id(app, "open_repo", "Repository on GitHub", true, None::<&str>)?;
             let data_folder =
@@ -760,7 +819,9 @@ pub fn run() {
                         let _ = app.opener().open_url(REPO_URL, None::<&str>);
                     }
                     "open_data_dir" => open_data_folder(app),
-                    "quit" => app.exit(0),
+                    // Through the flush handshake, never a direct exit; see
+                    // the quit handshake section.
+                    "quit" => request_quit(app),
                     _ => {}
                 })
                 .build(app)?;
@@ -785,10 +846,31 @@ pub fn run() {
             } else {
                 Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Space)
             };
-            if let Err(e) = app.global_shortcut().register(shortcut) {
-                // Content-free log per SEC-001; conflict fallback UI is an M4 item.
+            // Human-readable label for the conflict notice; mirrors the
+            // registration matrix above and captureShortcut in platform.ts.
+            let shortcut_label = if cfg!(target_os = "macos") {
+                if cfg!(debug_assertions) {
+                    "⌥⇧Space"
+                } else {
+                    "⌥Space"
+                }
+            } else if cfg!(debug_assertions) {
+                "Ctrl+Shift+Alt+Space"
+            } else {
+                "Ctrl+Shift+Space"
+            };
+            let shortcut_failure = app.global_shortcut().register(shortcut).err().map(|e| {
+                // Content-free log per SEC-001; the welcome screen surfaces
+                // the conflict to the user.
                 eprintln!("global shortcut registration failed: {e}");
+                shortcut_label.to_string()
+            });
+            if let Some(label) = &shortcut_failure {
+                let _ = app.emit("shortcut:failed", label.clone());
             }
+            app.manage(ShortcutStatus {
+                failed: shortcut_failure,
+            });
 
             if let Some(library) = app.get_webview_window("library") {
                 #[cfg(not(debug_assertions))]
@@ -850,10 +932,32 @@ pub fn run() {
             export_theme_file,
             import_theme_file,
             export_note_file,
-            open_url
+            open_url,
+            quit_app,
+            get_shortcut_failure
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let tauri::RunEvent::ExitRequested { code, api, .. } = event {
+                // The updater's relaunch (request_restart) drives this exit
+                // with RESTART_EXIT_CODE and latches restart-on-exit inside
+                // Tauri. Preventing it would leave that latch set with no
+                // exit coming, stranding the freshly installed update, so
+                // the restart passes through untouched; updater.restart()
+                // flushes pending edits before it ever calls relaunch.
+                if code == Some(tauri::RESTART_EXIT_CODE) {
+                    return;
+                }
+                // Exit paths that bypass the menu and tray (macOS Dock quit):
+                // hold the exit, run the same flush handshake, and rely on
+                // the same dead-webview fallback.
+                if !QUIT_READY.load(Ordering::Acquire) {
+                    api.prevent_exit();
+                    request_quit(app);
+                }
+            }
+        });
 }
 
 #[cfg(test)]
@@ -873,7 +977,10 @@ mod tests {
     #[test]
     fn theme_file_round_trip() {
         let dir = std::env::temp_dir();
-        let path = dir.join(format!("instantnotes-theme-{}.intheme.json", std::process::id()));
+        let path = dir.join(format!(
+            "instantnotes-theme-{}.intheme.json",
+            std::process::id()
+        ));
         let path_str = path.to_string_lossy().to_string();
         let json = r#"{"id":"x","name":"X","version":1}"#.to_string();
 
