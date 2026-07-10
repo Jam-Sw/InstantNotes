@@ -502,6 +502,93 @@ fn search_special_characters_do_not_error() {
     }
 }
 
+#[test]
+fn search_excerpt_brackets_the_matched_term_with_sentinels() {
+    let mut s = store();
+    create(&mut s, "Travel checklist\npassport tickets sunscreen");
+    let hits = s.search_notes("passport", 10).unwrap();
+    assert_eq!(hits.len(), 1);
+    let excerpt = &hits[0].excerpt;
+    let start = excerpt
+        .find('\u{1}')
+        .unwrap_or_else(|| panic!("missing start sentinel in {excerpt:?}"));
+    let end = excerpt
+        .find('\u{2}')
+        .unwrap_or_else(|| panic!("missing end sentinel in {excerpt:?}"));
+    assert!(
+        start < end,
+        "start sentinel should precede end: {excerpt:?}"
+    );
+    let hit_text = &excerpt[start + '\u{1}'.len_utf8()..end];
+    assert_eq!(hit_text.to_lowercase(), "passport");
+}
+
+#[test]
+fn search_excerpt_marks_every_term_in_a_multi_word_query() {
+    let mut s = store();
+    create(
+        &mut s,
+        "Travel checklist\npassport tickets sunscreen and a boarding pass",
+    );
+    let hits = s.search_notes("passport tickets", 10).unwrap();
+    assert_eq!(hits.len(), 1);
+    let excerpt = &hits[0].excerpt;
+    assert_eq!(
+        excerpt.matches('\u{1}').count(),
+        2,
+        "expected both query terms marked: {excerpt:?}"
+    );
+    assert_eq!(excerpt.matches('\u{2}').count(), 2);
+}
+
+#[test]
+fn search_excerpt_sentinels_are_always_balanced() {
+    let mut s = store();
+    create(
+        &mut s,
+        "brainstorming session notes: more brainstorming, then a brainstorming recap",
+    );
+    let hits = s.search_notes("brainstorming", 10).unwrap();
+    assert_eq!(hits.len(), 1);
+    let excerpt = &hits[0].excerpt;
+    let starts = excerpt.matches('\u{1}').count();
+    let ends = excerpt.matches('\u{2}').count();
+    assert!(starts > 0, "expected at least one match: {excerpt:?}");
+    assert_eq!(starts, ends, "sentinels should be balanced: {excerpt:?}");
+}
+
+#[test]
+fn search_title_matches_are_bracketed_with_sentinels() {
+    let mut s = store();
+    create(&mut s, "Travel checklist\npassport tickets sunscreen");
+    let hits = s.search_notes("travel", 10).unwrap();
+    assert_eq!(hits.len(), 1);
+    let title = &hits[0].title;
+    let start = title
+        .find('\u{1}')
+        .unwrap_or_else(|| panic!("missing start sentinel in {title:?}"));
+    let end = title
+        .find('\u{2}')
+        .unwrap_or_else(|| panic!("missing end sentinel in {title:?}"));
+    assert!(start < end, "start sentinel should precede end: {title:?}");
+    let hit_text = &title[start + '\u{1}'.len_utf8()..end];
+    assert_eq!(hit_text.to_lowercase(), "travel");
+}
+
+#[test]
+fn search_title_without_a_match_carries_no_sentinels() {
+    let mut s = store();
+    create(&mut s, "Travel checklist\npassport tickets sunscreen");
+    let hits = s.search_notes("passport", 10).unwrap();
+    assert_eq!(hits.len(), 1);
+    assert!(
+        !hits[0].title.contains('\u{1}') && !hits[0].title.contains('\u{2}'),
+        "unmatched title should be marker-free: {:?}",
+        hits[0].title
+    );
+    assert_eq!(hits[0].title, "Travel checklist");
+}
+
 // ---- tags ----
 
 #[test]

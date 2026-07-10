@@ -2,6 +2,7 @@
   import { library, type StatusFilter } from "$lib/stores/library.svelte";
   import { formatDate, preview } from "$lib/format";
   import { captureShortcut, modKey } from "$lib/platform";
+  import { parseHighlightSegments } from "$lib/highlight";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
 
   const statusFilters: { id: StatusFilter; label: string }[] = [
@@ -69,8 +70,8 @@
           class:selected={library.isSelected(hit.noteId)}
           onclick={(e) => rowClick(e, hit.noteId)}
         >
-          <div class="row-title">{hit.title}</div>
-          <div class="row-preview">{hit.excerpt}</div>
+          <div class="row-title">{#each parseHighlightSegments(hit.title) as seg, i (i)}{#if seg.hit}<mark>{seg.text}</mark>{:else}{seg.text}{/if}{/each}</div>
+          <div class="row-preview">{#each parseHighlightSegments(hit.excerpt) as seg, i (i)}{#if seg.hit}<mark>{seg.text}</mark>{:else}{seg.text}{/if}{/each}</div>
           <div class="row-date">{formatDate(hit.updatedAt)}</div>
         </button>
       {:else}
@@ -204,6 +205,16 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* Reset UA mark styling (yellow bg, black text) so a search hit reads as
+     a subtle emphasis in both themes, matching pill/tag styling elsewhere. */
+  .row-title mark,
+  .row-preview mark {
+    background: var(--accent-soft);
+    color: inherit;
+    font-weight: inherit;
+    border-radius: 4px;
+    padding: 0 1px;
   }
   .row-date {
     color: var(--text-tertiary);

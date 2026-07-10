@@ -642,13 +642,25 @@ impl Store {
 
     /// Full-text search over title+body. Always excludes deleted notes;
     /// excludes archived notes. Special characters in `text` must not error.
+    /// Title and excerpt matches are bracketed with U+0001 (start) / U+0002
+    /// (end) sentinels rather than HTML: both are control characters a user
+    /// can never type, so the frontend can split on them unambiguously to
+    /// highlight hits as plain-text segments (see `highlight.ts`).
     pub fn search_notes(&self, text: &str, limit: i64) -> Result<Vec<SearchResult>> {
         let Some(match_expr) = fts_match_expr(text) else {
             return Ok(Vec::new());
         };
         let limit = limit.clamp(1, 500);
         let mut stmt = self.conn.prepare(
-            "SELECT n.id, n.title, snippet(notes_fts, 1, '', '', '…', 12), \
+            // 16 tokens, not the FTS5 default 15 or the prior 12: the list
+            // row is single-line and CSS-truncated regardless, so a wider
+            // window costs nothing visually and gives multi-word queries
+            // enough room for more than one matched term to land together.
+            // highlight() (not snippet()) for the title: titles are short, so
+            // the full column with markers is what the row renders anyway. A
+            // query matching only the title still shows why the note hit.
+            "SELECT n.id, highlight(notes_fts, 0, '\u{1}', '\u{2}'), \
+                    snippet(notes_fts, 1, '\u{1}', '\u{2}', '…', 16), \
                     bm25(notes_fts), n.updated_at \
              FROM notes_fts \
              JOIN notes n ON n.seq = notes_fts.rowid \
