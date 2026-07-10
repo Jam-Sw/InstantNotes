@@ -7,10 +7,12 @@ use crate::error::{AppError, Result};
 use crate::types::*;
 use chrono::{SecondsFormat, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
-const MIGRATIONS: &[&str] = &[
+/// Ordered schema migrations; user_version tracks how many have run. Public so
+/// tests can build fixtures at a historical schema version.
+pub const MIGRATIONS: &[&str] = &[
     // v1 — initial schema
     r#"
 CREATE TABLE notes (
@@ -230,13 +232,41 @@ impl Store {
         // surfaces to the user as a hard "database is locked" error.
         conn.busy_timeout(std::time::Duration::from_secs(5))
             .map_err(|e| AppError::Storage(format!("cannot set busy timeout: {e}")))?;
-        conn.query_row("PRAGMA journal_mode = WAL", [], |r| r.get::<_, String>(0))?;
+        // A filesystem that refuses WAL (some network mounts) leaves the
+        // connection silently in rollback mode, defeating the crash-safety this
+        // app relies on; treat that as an unusable storage location.
+        let journal_mode: String = conn.query_row("PRAGMA journal_mode = WAL", [], |r| r.get(0))?;
+        if !journal_mode.eq_ignore_ascii_case("wal") {
+            return Err(AppError::Storage(format!(
+                "storage location does not support WAL journaling (got '{journal_mode}')"
+            )));
+        }
         // NORMAL is the standard, crash-safe pairing with WAL: fsync at
         // checkpoints rather than on every commit. Safe against app crashes; only
         // an OS crash or power loss can drop commits still sitting in the WAL.
         conn.pragma_update(None, "synchronous", "NORMAL")
             .map_err(|e| AppError::Storage(format!("cannot set synchronous mode: {e}")))?;
+        // Snapshot an existing library before it is migrated so a failed or
+        // buggy migration is always recoverable.
+        Self::backup_before_migration(path, &conn)?;
         Self::init(conn)
+    }
+
+    /// Open the store, recovering from a corrupt database file by setting it
+    /// aside and starting fresh. The returned bool is true only when recovery
+    /// happened. Non-corruption failures (permissions, a WAL-hostile mount)
+    /// propagate unchanged so a transient or fixable problem never discards
+    /// good data.
+    pub fn open_or_recover(path: &Path) -> Result<(Self, bool)> {
+        match Self::open(path) {
+            Ok(store) => Ok((store, false)),
+            Err(e) if e.is_corruption() => {
+                Self::move_corrupt_aside(path)?;
+                let store = Self::open(path)?;
+                Ok((store, true))
+            }
+            Err(e) => Err(e),
+        }
     }
 
     /// In-memory store for tests that don't need restart semantics.
@@ -250,7 +280,7 @@ impl Store {
         conn.pragma_update(None, "foreign_keys", "ON")?;
         let check: String = conn.query_row("PRAGMA quick_check", [], |r| r.get(0))?;
         if check != "ok" {
-            return Err(AppError::Storage(format!(
+            return Err(AppError::Corruption(format!(
                 "database integrity check failed: {check}"
             )));
         }
@@ -263,6 +293,16 @@ impl Store {
         let current: i64 = self
             .conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        // A user_version past the last known migration means this file was
+        // written by a newer build; its schema is unknown to us, so refuse
+        // rather than run queries that assume the older shape.
+        if current > MIGRATIONS.len() as i64 {
+            return Err(AppError::Migration(format!(
+                "database schema v{current} was created by a newer version of \
+                 the app (this build knows up to v{})",
+                MIGRATIONS.len()
+            )));
+        }
         for (idx, sql) in MIGRATIONS.iter().enumerate() {
             let target = (idx + 1) as i64;
             if target <= current {
@@ -278,6 +318,70 @@ impl Store {
                 .map_err(|e| AppError::Migration(e.to_string()))?;
             tx.commit()
                 .map_err(|e| AppError::Migration(e.to_string()))?;
+        }
+        Ok(())
+    }
+
+    /// Copy an existing library aside before migrating it. Runs only for a file
+    /// that already carries a schema older than the current one (0 < v < len);
+    /// a brand-new file has nothing to lose and a current file is not migrated.
+    /// A backup failure fails the open rather than migrating without a net.
+    fn backup_before_migration(path: &Path, conn: &Connection) -> Result<()> {
+        let current: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        if current <= 0 || current >= MIGRATIONS.len() as i64 {
+            return Ok(());
+        }
+        let mut backup = path.as_os_str().to_os_string();
+        backup.push(format!(".backup-v{current}"));
+        let backup_path = PathBuf::from(backup);
+        // VACUUM INTO refuses to overwrite; clear any leftover from a prior
+        // interrupted attempt first.
+        if backup_path.exists() {
+            std::fs::remove_file(&backup_path)
+                .map_err(|e| AppError::Storage(format!("cannot clear stale backup: {e}")))?;
+        }
+        // The path is interpolated as a SQL string literal, so double any single
+        // quotes it contains.
+        let escaped = backup_path.to_string_lossy().replace('\'', "''");
+        conn.execute_batch(&format!("VACUUM INTO '{escaped}'"))
+            .map_err(|e| match AppError::from(e) {
+                // A corrupt source keeps its classification so open_or_recover
+                // can still set the file aside instead of giving up.
+                AppError::Corruption(msg) => {
+                    AppError::Corruption(format!("pre-migration backup failed: {msg}"))
+                }
+                other => AppError::Storage(format!("pre-migration backup failed: {other}")),
+            })?;
+        Ok(())
+    }
+
+    /// Rename a corrupt database and its WAL/SHM siblings to a free
+    /// ".corrupt-N" suffix so a fresh store can be created at the same path
+    /// without clobbering the salvaged file.
+    fn move_corrupt_aside(path: &Path) -> Result<()> {
+        let mut n = 1;
+        let target = loop {
+            let mut candidate = path.as_os_str().to_os_string();
+            candidate.push(format!(".corrupt-{n}"));
+            let candidate = PathBuf::from(candidate);
+            if !candidate.exists() {
+                break candidate;
+            }
+            n += 1;
+        };
+        std::fs::rename(path, &target)
+            .map_err(|e| AppError::Storage(format!("cannot set corrupt database aside: {e}")))?;
+        // WAL/SHM belong to the corrupt file; move them out of the way too so
+        // the fresh database starts clean. They may be absent.
+        for ext in ["-wal", "-shm"] {
+            let mut sibling = path.as_os_str().to_os_string();
+            sibling.push(ext);
+            let sibling = PathBuf::from(sibling);
+            if sibling.exists() {
+                let mut sibling_target = target.as_os_str().to_os_string();
+                sibling_target.push(ext);
+                let _ = std::fs::rename(&sibling, PathBuf::from(sibling_target));
+            }
         }
         Ok(())
     }
@@ -338,7 +442,16 @@ impl Store {
 
     pub fn update_note(&mut self, id: &str, patch: UpdateNotePatch) -> Result<Note> {
         // Ensure existence first for a clean NOT_FOUND.
-        self.fetch_note(id)?;
+        let existing = self.fetch_note(id)?;
+        // An empty patch is a no-op: skip the UPDATE so version and updated_at
+        // are not bumped and recency-sorted lists keep their order.
+        if patch.title.is_none()
+            && patch.body.is_none()
+            && patch.is_pinned.is_none()
+            && patch.is_archived.is_none()
+        {
+            return Ok(existing);
+        }
         let title_is_auto: bool = self
             .conn
             .query_row(
@@ -382,9 +495,33 @@ impl Store {
             ],
         )?;
         if let Some(body) = &patch.body {
+            // Reconcile inline tags with the new body: attach the tags it now
+            // mentions, then detach any inline-sourced edge whose #token is
+            // gone so removing a tag chip is not undone by the next save.
+            // Manual edges are pinned and never touched by a body edit.
+            let mut kept_ids: Vec<String> = Vec::new();
             for name in domain::extract_inline_tags(body) {
                 let tag = tag_get_or_create(&tx, &name)?;
                 attach_tag(&tx, id, &tag.id, "inline")?;
+                kept_ids.push(tag.id);
+            }
+            if kept_ids.is_empty() {
+                tx.execute(
+                    "DELETE FROM note_tags WHERE note_id = ?1 AND source = 'inline'",
+                    params![id],
+                )?;
+            } else {
+                let placeholders = vec!["?"; kept_ids.len()].join(", ");
+                let sql = format!(
+                    "DELETE FROM note_tags WHERE note_id = ? AND source = 'inline' \
+                     AND tag_id NOT IN ({placeholders})"
+                );
+                let mut args: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(kept_ids.len() + 1);
+                args.push(&id);
+                for tag_id in &kept_ids {
+                    args.push(tag_id);
+                }
+                tx.execute(&sql, rusqlite::params_from_iter(args))?;
             }
         }
         tx.commit()?;
@@ -451,9 +588,8 @@ impl Store {
         }
 
         if let Some(workspace_id) = &filter.workspace_id {
-            conditions.push(
-                "id IN (SELECT note_id FROM note_workspaces WHERE workspace_id = ?)".into(),
-            );
+            conditions
+                .push("id IN (SELECT note_id FROM note_workspaces WHERE workspace_id = ?)".into());
             args.push(Box::new(workspace_id.clone()));
         }
 
@@ -622,6 +758,14 @@ impl Store {
         self.fetch_note(note_id)?;
         let tag = tag_get_or_create(&self.conn, name)?;
         attach_tag(&self.conn, note_id, &tag.id, "manual")?;
+        // attach_tag is INSERT OR IGNORE, so an edge already present as 'inline'
+        // keeps that source. An explicit add is a pin, so promote it to
+        // 'manual' and inline reconciliation will no longer detach it.
+        self.conn.execute(
+            "UPDATE note_tags SET source = 'manual' \
+             WHERE note_id = ?1 AND tag_id = ?2 AND source = 'inline'",
+            params![note_id, tag.id],
+        )?;
         Ok(tag)
     }
 

@@ -1,6 +1,7 @@
 //! Integration tests against real SQLite (tempfile / in-memory).
 //! Synthetic fixtures only, per TEST_PLAN.md §5.
 
+use instantnotes_core::store::MIGRATIONS;
 use instantnotes_core::types::*;
 use instantnotes_core::{AppError, Store};
 
@@ -126,6 +127,100 @@ fn update_body_attaches_new_inline_tags() {
         .map(|t| t.name)
         .collect();
     assert!(names.contains(&"newtag".to_string()));
+}
+
+#[test]
+fn removing_inline_token_detaches_tag_but_keeps_tag_row() {
+    let mut s = store();
+    let n = create(&mut s, "notes on #alpha and #beta");
+    s.update_note(
+        &n.id,
+        UpdateNotePatch {
+            body: Some("notes on #beta only".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let names: Vec<String> = s
+        .tags_for_note(&n.id)
+        .unwrap()
+        .into_iter()
+        .map(|t| t.name)
+        .collect();
+    assert_eq!(names, vec!["beta".to_string()]);
+    // The tag itself survives, just unused.
+    let alpha = s
+        .list_tags()
+        .unwrap()
+        .into_iter()
+        .find(|t| t.tag.name == "alpha")
+        .expect("alpha tag row should survive detachment");
+    assert_eq!(alpha.usage_count, 0);
+
+    // A body with no tokens at all clears every inline edge.
+    s.update_note(
+        &n.id,
+        UpdateNotePatch {
+            body: Some("no tags anymore".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert!(s.tags_for_note(&n.id).unwrap().is_empty());
+}
+
+#[test]
+fn manually_added_tag_survives_body_edits() {
+    let mut s = store();
+    let n = create(&mut s, "plain body");
+    s.add_tag_to_note(&n.id, "pinned").unwrap();
+    s.update_note(
+        &n.id,
+        UpdateNotePatch {
+            body: Some("edited body, still no tokens".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let names: Vec<String> = s
+        .tags_for_note(&n.id)
+        .unwrap()
+        .into_iter()
+        .map(|t| t.name)
+        .collect();
+    assert_eq!(names, vec!["pinned".to_string()]);
+}
+
+#[test]
+fn explicit_add_promotes_inline_tag_past_token_removal() {
+    let mut s = store();
+    let n = create(&mut s, "working on #keeper today");
+    // The explicit add pins the already-inline tag against body edits.
+    s.add_tag_to_note(&n.id, "keeper").unwrap();
+    s.update_note(
+        &n.id,
+        UpdateNotePatch {
+            body: Some("token removed from body".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let names: Vec<String> = s
+        .tags_for_note(&n.id)
+        .unwrap()
+        .into_iter()
+        .map(|t| t.name)
+        .collect();
+    assert_eq!(names, vec!["keeper".to_string()]);
+}
+
+#[test]
+fn empty_patch_does_not_bump_version_or_updated_at() {
+    let mut s = store();
+    let n = create(&mut s, "leave me alone");
+    let u = s.update_note(&n.id, UpdateNotePatch::default()).unwrap();
+    assert_eq!(u.version, n.version);
+    assert_eq!(u.updated_at, n.updated_at);
 }
 
 #[test]
@@ -456,7 +551,9 @@ fn rename_tag_normalizes_and_conflicts_error() {
     let _b = s.get_or_create_tag("beta").unwrap();
     let renamed = s.update_tag(&a.id, Some("#Gamma".into()), None).unwrap();
     assert_eq!(renamed.name, "gamma");
-    let err = s.update_tag(&renamed.id, Some("beta".into()), None).unwrap_err();
+    let err = s
+        .update_tag(&renamed.id, Some("beta".into()), None)
+        .unwrap_err();
     assert_eq!(err.code(), "CONFLICT");
 }
 
@@ -524,6 +621,67 @@ fn notes_survive_reopen() {
         .map(|t| t.name)
         .collect();
     assert_eq!(names, vec!["idea".to_string()]);
+}
+
+// ---- migrations / recovery ----
+
+#[test]
+fn migrate_refuses_user_version_above_known_migrations() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("future.db");
+    // A file stamped by a newer build: valid but with a schema version this
+    // build has never heard of.
+    {
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.pragma_update(None, "user_version", (MIGRATIONS.len() + 1) as i64)
+            .unwrap();
+    }
+    let err = match Store::open(&path) {
+        Ok(_) => panic!("open should refuse a future schema version"),
+        Err(e) => e,
+    };
+    assert_eq!(err.code(), "MIGRATION_ERROR");
+}
+
+#[test]
+fn open_migrates_v1_schema_and_leaves_backup() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("legacy.db");
+    // v1 fixture: only the first migration applied, user_version pinned at 1,
+    // exactly as an older build would have left the file.
+    {
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute_batch(MIGRATIONS[0]).unwrap();
+        conn.pragma_update(None, "user_version", 1).unwrap();
+    }
+    let mut s = Store::open(&path).unwrap();
+    // The v2 migration ran: workspaces (added in v2) is usable.
+    s.get_or_create_workspace("Migrated").unwrap();
+    assert_eq!(s.list_workspaces().unwrap().len(), 1);
+    // And the pre-migration snapshot sits next to the database.
+    let backup = dir.path().join("legacy.db.backup-v1");
+    assert!(
+        backup.exists(),
+        "expected pre-migration backup at {backup:?}"
+    );
+}
+
+#[test]
+fn open_or_recover_sets_corrupt_file_aside_and_starts_fresh() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("garbage.db");
+    std::fs::write(&path, b"\x7f not a sqlite database \x00\x01\x02garbage").unwrap();
+    assert!(
+        Store::open(&path).is_err(),
+        "garbage must not open normally"
+    );
+
+    let (mut s, recovered) = Store::open_or_recover(&path).unwrap();
+    assert!(recovered);
+    let n = create(&mut s, "fresh start");
+    assert_eq!(s.get_note(&n.id, false).unwrap().id, n.id);
+    // The unreadable original was set aside, not destroyed.
+    assert!(dir.path().join("garbage.db.corrupt-1").exists());
 }
 
 // keep AppError import used even if individual asserts change

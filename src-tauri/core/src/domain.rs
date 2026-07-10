@@ -143,7 +143,10 @@ mod tests {
 
     #[test]
     fn hash_mid_word_is_not_a_tag() {
-        assert_eq!(extract_inline_tags("the C#language a#b"), Vec::<String>::new());
+        assert_eq!(
+            extract_inline_tags("the C#language a#b"),
+            Vec::<String>::new()
+        );
     }
 
     #[test]
@@ -175,7 +178,10 @@ mod tests {
 
     #[test]
     fn title_strips_tag_hashes_keeping_words() {
-        assert_eq!(derive_title("call sam #q3-budget now"), "call sam q3-budget now");
+        assert_eq!(
+            derive_title("call sam #q3-budget now"),
+            "call sam q3-budget now"
+        );
     }
 
     #[test]
