@@ -20,6 +20,8 @@
   import { library } from "$lib/stores/library.svelte";
   import { updater } from "$lib/stores/updater.svelte";
   import { editorPrefs } from "$lib/stores/editor.svelte";
+  import { sidebar } from "$lib/stores/sidebar.svelte";
+  import { linkPrefs as linkPrefsStore } from "$lib/stores/links.svelte";
   import { contexting } from "$lib/stores/contexting.svelte";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
 
@@ -31,6 +33,8 @@
   onMount(() => {
     void library.init();
     void editorPrefs.init();
+    void sidebar.init();
+    void linkPrefsStore.init();
     void contexting.init();
     void getVersion().then((v) => (appVersion = v));
     updater.start();
@@ -115,6 +119,12 @@
       editorPrefs.resetZoom();
       return;
     }
+    // ⌘\ toggles the sidebar from anywhere, including input fields.
+    if (mod && e.key === "\\") {
+      e.preventDefault();
+      sidebar.toggle();
+      return;
+    }
     if (isTypingTarget(e.target)) {
       // Escape in the search field clears the search; everything else is typing.
       if (
@@ -184,6 +194,37 @@
     await exportNoteFile(path, note.body);
   }
 
+  // Sidebar resize: pointer capture keeps the gesture on the handle even when
+  // the pointer outruns it; width persists once at release, not per move.
+  let draggingSidebar = $state(false);
+
+  function startSidebarDrag(e: PointerEvent) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const handle = e.currentTarget as HTMLElement;
+    handle.setPointerCapture(e.pointerId);
+    draggingSidebar = true;
+    const startX = e.clientX;
+    const startWidth = sidebar.width;
+    const move = (ev: PointerEvent) => sidebar.setWidth(startWidth + ev.clientX - startX);
+    const up = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+      draggingSidebar = false;
+      sidebar.commitWidth();
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+  }
+
+  function onHandleKeydown(e: KeyboardEvent) {
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault();
+      sidebar.setWidth(sidebar.width + (e.key === "ArrowLeft" ? -10 : 10));
+      sidebar.commitWidth();
+    }
+  }
+
   async function confirmBulkDestroy() {
     // Snapshot the ids when the dialog opens: the selection could otherwise
     // drift while it is up (menu events, cross-window refreshes) and the
@@ -204,8 +245,34 @@
 {#if settingsOpen}
   <SettingsView {appVersion} onBack={() => (settingsOpen = false)} />
 {:else}
-  <div class="layout">
-    <Sidebar />
+  <div
+    class="layout"
+    style:grid-template-columns={sidebar.collapsed
+      ? "280px 1fr"
+      : `${sidebar.width}px 280px 1fr`}
+  >
+    {#if !sidebar.collapsed}
+      <Sidebar />
+      <!-- Sits on the sidebar/list border; drag resizes, double-click resets,
+           arrows nudge. Collapse/expand lives on ⌘\ and the command palette.
+           WAI-ARIA window-splitter: a focusable separator with arrow-key
+           resizing is the canonical widget, which the a11y lint doesn't know. -->
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <div
+        class="sidebar-handle"
+        class:dragging={draggingSidebar}
+        style:left="{sidebar.width - 3}px"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize sidebar"
+        aria-valuenow={sidebar.width}
+        tabindex="0"
+        onpointerdown={startSidebarDrag}
+        ondblclick={() => sidebar.resetWidth()}
+        onkeydown={onHandleKeydown}
+      ></div>
+    {/if}
     <NoteList />
     <section class="editor-pane">
       {#if library.multiSelected.size > 1}
@@ -227,12 +294,31 @@
 <style>
   .layout {
     display: grid;
-    grid-template-columns: 190px 280px 1fr;
+    /* Columns come from inline style: the sidebar column is drag-resizable
+       and drops out entirely when collapsed (⌘\). */
     /* Pin the single row to the viewport so each pane scrolls internally
        instead of growing the row and clipping content below the fold. */
     grid-template-rows: minmax(0, 1fr);
     height: 100vh;
     overflow: hidden;
+    position: relative;
+  }
+
+  /* Invisible 6px hit strip straddling the sidebar border. The border itself
+     stays the visual affordance; the strip only tints while engaged. */
+  .sidebar-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 6px;
+    cursor: col-resize;
+    z-index: 10;
+  }
+  .sidebar-handle:hover,
+  .sidebar-handle.dragging,
+  .sidebar-handle:focus-visible {
+    background: var(--accent-soft);
+    outline: none;
   }
 
   .editor-pane {

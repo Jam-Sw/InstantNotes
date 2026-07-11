@@ -4,6 +4,7 @@
 // of its own. Pure filtering/ranking lives in command-filter.ts.
 
 import { library } from "$lib/stores/library.svelte";
+import { sidebar } from "$lib/stores/sidebar.svelte";
 import { theme } from "$lib/stores/theme.svelte";
 import { contexting } from "$lib/stores/contexting.svelte";
 import { exportTheme, importTheme } from "$lib/themes/share";
@@ -63,6 +64,13 @@ export function buildThemeCommands(): Command[] {
 export function buildCommands(): Command[] {
   const commands: Command[] = [
     { id: "note.new", title: "New note", group: "Notes", shortcut: `${modKey}N`, run: () => library.newNote() },
+    {
+      id: "view.sidebar",
+      title: sidebar.collapsed ? "Show sidebar" : "Hide sidebar",
+      group: "View",
+      shortcut: `${modKey}\\`,
+      run: () => sidebar.toggle(),
+    },
   ];
 
   if (library.selected) {
