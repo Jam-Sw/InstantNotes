@@ -24,7 +24,13 @@ jobs:
           node-version: 22
           cache: npm
 
-      - uses: dtolnay/rust-toolchain@stable
+      # Must match rust-toolchain.toml; @stable would export RUSTUP_TOOLCHAIN and
+      # override the pin, building CI on a different compiler than local.
+      # components must be listed explicitly: the action installs a minimal
+      # profile, and the clippy/fmt steps below die without them.
+      - uses: dtolnay/rust-toolchain@1.91.1
+        with:
+          components: clippy, rustfmt
 
       - uses: swatinem/rust-cache@v2
         with:
@@ -43,5 +49,11 @@ jobs:
       - run: npm test
 
       - run: cargo test --workspace --manifest-path src-tauri/Cargo.toml
+
+      # Lint gate: deny clippy warnings and enforce rustfmt so style and common
+      # bug patterns can't merge. Same src-tauri workspace as the cargo test above.
+      - run: cargo clippy --workspace --all-targets --manifest-path src-tauri/Cargo.toml -- -D warnings
+
+      - run: cargo fmt --all --check --manifest-path src-tauri/Cargo.toml
 
       - run: npm run tauri -- build --no-bundle
