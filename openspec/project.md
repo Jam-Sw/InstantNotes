@@ -36,6 +36,9 @@ Core behavior is covered with Rust tests against SQLite. Frontend utilities are 
 ### Git Workflow
 Each public branch should contain one clear product step. Commit subjects stay short and concrete; bodies explain what changed in one or two natural sentences.
 
+### Change Proposals
+Active OpenSpec change proposals live in `openspec/changes/`. Once a change has shipped, its folder moves to `openspec/changes/archive/` so the active list only shows work in flight. The canonical IPC and storage contracts are documented in `docs/API.md` and `docs/DATA_MODEL.md`.
+
 ## Domain Context
 Notes are the canonical user data. Tags are lightweight labels, including tags extracted from `#inline` text. Workspaces are named collections that group related notes; a note can belong to more than one, and deleting a workspace never deletes its notes. Search must support plain user input without exposing FTS syntax errors.
 
