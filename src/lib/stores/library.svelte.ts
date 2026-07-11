@@ -38,8 +38,8 @@ import type {
 } from "$lib/api/types";
 import { debounce } from "$lib/debounce";
 import { friendlyMessage } from "$lib/errors";
-import { rangeSelection, stepId, toggleSelection } from "$lib/selection";
 import { SaveQueue, type SaveState } from "$lib/stores/library/save-queue.svelte";
+import { SelectionModel } from "$lib/stores/library/selection.svelte";
 import { toasts } from "$lib/stores/toasts.svelte";
 import { listen } from "@tauri-apps/api/event";
 
@@ -80,11 +80,16 @@ class LibraryStore {
   selected = $state<Note | null>(null);
   selectedTags = $state<Tag[]>([]);
   selectedWorkspaces = $state<Workspace[]>([]);
-  // Ids checked for bulk actions. Holds the open note's id on a plain click;
-  // grows via cmd-click / shift-click. Size > 1 swaps the editor for the
-  // bulk-actions panel.
-  multiSelected = $state<Set<string>>(new Set());
   error = $state<string | null>(null);
+
+  // Ids checked for bulk actions (the open note's id on a plain click; grows
+  // via cmd-click / shift-click). Size > 1 swaps the editor for the bulk panel.
+  // The set and its anchor/cursor live in a composed model; the store keeps the
+  // open-note state and the editor-sync orchestration.
+  #selection = new SelectionModel(() => this.visibleIds);
+  get multiSelected(): ReadonlySet<string> {
+    return this.#selection.ids;
+  }
 
   // Body persistence (debounce, retry, flush) lives in its own single-writer
   // unit; the store composes one and delegates. A confirmed write updates the
@@ -102,7 +107,6 @@ class LibraryStore {
     onError: (e) => this.#fail(e),
   });
 
-  #anchorId: string | null = null;
   #initialized = false;
 
   #refreshDebounced = debounce(() => void this.refresh(), 50);
@@ -321,11 +325,8 @@ class LibraryStore {
   setSearch(text: string): void {
     this.searchText = text;
     // Reset the multi-selection but keep the open note in the editor.
-    this.multiSelected = this.selected
-      ? new Set([this.selected.id])
-      : new Set();
-    this.#anchorId = this.selected?.id ?? null;
-    this.#lastRangeEnd = this.#anchorId;
+    const openId = this.selected?.id ?? null;
+    this.#selection.reset(openId ? [openId] : [], openId);
     if (text.trim()) {
       this.#searchRefresh();
     } else {
@@ -337,9 +338,7 @@ class LibraryStore {
   }
 
   async select(id: string): Promise<void> {
-    this.multiSelected = new Set([id]);
-    this.#anchorId = id;
-    this.#lastRangeEnd = id;
+    this.#selection.reset([id], id);
     await this.#open(id);
   }
 
@@ -385,20 +384,17 @@ class LibraryStore {
   }
 
   async toggleInSelection(id: string): Promise<void> {
-    this.multiSelected = toggleSelection(this.multiSelected, id);
-    this.#anchorId = id;
-    this.#lastRangeEnd = id;
+    this.#selection.toggle(id);
     await this.#syncEditorToSelection();
   }
 
   async extendSelectionTo(id: string): Promise<void> {
-    this.multiSelected = rangeSelection(this.visibleIds, this.#anchorId, id);
-    this.#lastRangeEnd = id;
+    this.#selection.extendTo(id);
     await this.#syncEditorToSelection();
   }
 
   async selectAllVisible(): Promise<void> {
-    this.multiSelected = new Set(this.visibleIds);
+    this.#selection.selectAll();
     await this.#syncEditorToSelection();
   }
 
@@ -407,8 +403,7 @@ class LibraryStore {
    * Returns the id the selection moved to so the view can reveal it.
    */
   async moveSelection(delta: number, extend = false): Promise<string | null> {
-    const current = this.#lastRangeEnd ?? this.selected?.id ?? this.#anchorId;
-    const next = stepId(this.visibleIds, current, delta);
+    const next = this.#selection.step(delta, this.selected?.id ?? null);
     if (!next) return null;
     if (extend) {
       await this.extendSelectionTo(next);
@@ -418,14 +413,8 @@ class LibraryStore {
     return next;
   }
 
-  // Active end of the selection: the last row clicked, toggled, or stepped to.
-  // Shift+arrow continues from here rather than from the anchor.
-  #lastRangeEnd: string | null = null;
-
   clearMultiSelect(): void {
-    this.multiSelected = new Set();
-    this.#anchorId = null;
-    this.#lastRangeEnd = null;
+    this.#selection.clear();
     this.selected = null;
     this.selectedTags = [];
     this.selectedWorkspaces = [];
@@ -435,8 +424,7 @@ class LibraryStore {
   async #syncEditorToSelection(): Promise<void> {
     const ids = [...this.multiSelected];
     if (ids.length === 1) {
-      this.#anchorId = ids[0];
-      this.#lastRangeEnd = ids[0];
+      this.#selection.setActive(ids[0]);
       if (this.selected?.id !== ids[0]) await this.#open(ids[0]);
     } else {
       this.#saveQueue.flushDebounce();
