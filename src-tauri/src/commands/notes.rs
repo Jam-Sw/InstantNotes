@@ -74,3 +74,56 @@ pub fn search_notes(
     Ok(locked(&state)?.search_notes(&text, limit.unwrap_or(50))?)
 }
 
+// ---- bulk commands ----
+// One transaction and one change event for a whole multi-select, instead of
+// one round trip per note.
+
+#[tauri::command(async)]
+pub fn set_notes_flags(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    ids: Vec<String>,
+    is_pinned: Option<bool>,
+    is_archived: Option<bool>,
+) -> CmdResult<()> {
+    locked(&state)?.set_notes_flags(&ids, is_pinned, is_archived)?;
+    emit_notes_changed(&app);
+    emit_tags_changed(&app);
+    Ok(())
+}
+
+#[tauri::command(async)]
+pub fn soft_delete_notes(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    ids: Vec<String>,
+) -> CmdResult<()> {
+    locked(&state)?.soft_delete_notes(&ids)?;
+    emit_notes_changed(&app);
+    Ok(())
+}
+
+#[tauri::command(async)]
+pub fn restore_notes(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    ids: Vec<String>,
+) -> CmdResult<()> {
+    locked(&state)?.restore_notes(&ids)?;
+    emit_notes_changed(&app);
+    Ok(())
+}
+
+#[tauri::command(async)]
+pub fn destroy_notes(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    ids: Vec<String>,
+    confirm: bool,
+) -> CmdResult<()> {
+    locked(&state)?.destroy_notes(&ids, confirm)?;
+    emit_notes_changed(&app);
+    emit_tags_changed(&app);
+    Ok(())
+}
+

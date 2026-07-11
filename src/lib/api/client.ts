@@ -55,6 +55,23 @@ export const listNotes = (filter: NoteFilter = {}) =>
 export const searchNotes = (text: string, limit = 50) =>
   call<SearchResult[]>("search_notes", { text, limit });
 
+// Bulk variants: one transaction and one change event for a whole multi-select.
+export const setNotesFlags = (
+  ids: string[],
+  flags: { isPinned?: boolean; isArchived?: boolean },
+) =>
+  call<void>("set_notes_flags", {
+    ids,
+    isPinned: flags.isPinned ?? null,
+    isArchived: flags.isArchived ?? null,
+  });
+export const softDeleteNotes = (ids: string[]) =>
+  call<void>("soft_delete_notes", { ids });
+export const restoreNotes = (ids: string[]) =>
+  call<void>("restore_notes", { ids });
+export const destroyNotes = (ids: string[], confirm: boolean) =>
+  call<void>("destroy_notes", { ids, confirm });
+
 // ---- tags ----
 export const listTags = () => call<TagWithCount[]>("list_tags");
 export const getOrCreateTag = (name: string) =>

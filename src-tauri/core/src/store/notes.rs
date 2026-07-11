@@ -295,4 +295,100 @@ impl Store {
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
+
+    // ---- bulk operations ----
+    // One statement over an id set, so a multi-select action is a single
+    // transaction and a single change event instead of one per note.
+
+    fn id_placeholders(ids: &[String]) -> String {
+        vec!["?"; ids.len()].join(", ")
+    }
+
+    /// Set pin and/or archive flags on many notes at once. `None` leaves a
+    /// flag untouched.
+    pub fn set_notes_flags(
+        &mut self,
+        ids: &[String],
+        is_pinned: Option<bool>,
+        is_archived: Option<bool>,
+    ) -> Result<()> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+        let now = now_iso();
+        let pinned = is_pinned.map(i64::from);
+        let archived = is_archived.map(i64::from);
+        let sql = format!(
+            "UPDATE notes SET \
+               is_pinned = COALESCE(?, is_pinned), \
+               is_archived = COALESCE(?, is_archived), \
+               updated_at = ? \
+             WHERE id IN ({})",
+            Self::id_placeholders(ids)
+        );
+        let mut args: Vec<&dyn rusqlite::ToSql> = vec![&pinned, &archived, &now];
+        for id in ids {
+            args.push(id);
+        }
+        self.conn.execute(&sql, rusqlite::params_from_iter(args))?;
+        Ok(())
+    }
+
+    /// Move many notes to trash at once.
+    pub fn soft_delete_notes(&mut self, ids: &[String]) -> Result<()> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+        let now = now_iso();
+        let sql = format!(
+            "UPDATE notes SET is_deleted = 1, deleted_at = ?, updated_at = ? \
+             WHERE id IN ({})",
+            Self::id_placeholders(ids)
+        );
+        let mut args: Vec<&dyn rusqlite::ToSql> = vec![&now, &now];
+        for id in ids {
+            args.push(id);
+        }
+        self.conn.execute(&sql, rusqlite::params_from_iter(args))?;
+        Ok(())
+    }
+
+    /// Restore many trashed notes at once.
+    pub fn restore_notes(&mut self, ids: &[String]) -> Result<()> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+        let now = now_iso();
+        let sql = format!(
+            "UPDATE notes SET is_deleted = 0, deleted_at = NULL, updated_at = ? \
+             WHERE id IN ({})",
+            Self::id_placeholders(ids)
+        );
+        let mut args: Vec<&dyn rusqlite::ToSql> = vec![&now];
+        for id in ids {
+            args.push(id);
+        }
+        self.conn.execute(&sql, rusqlite::params_from_iter(args))?;
+        Ok(())
+    }
+
+    /// Permanently delete many notes at once. Requires `confirm == true`
+    /// (VALIDATION_ERROR otherwise); cascades clear tag and workspace edges.
+    pub fn destroy_notes(&mut self, ids: &[String], confirm: bool) -> Result<()> {
+        if !confirm {
+            return Err(AppError::Validation(
+                "permanent deletion requires confirmation".into(),
+            ));
+        }
+        if ids.is_empty() {
+            return Ok(());
+        }
+        let sql = format!(
+            "DELETE FROM notes WHERE id IN ({})",
+            Self::id_placeholders(ids)
+        );
+        let args: Vec<&dyn rusqlite::ToSql> = ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+        self.conn.execute(&sql, rusqlite::params_from_iter(args))?;
+        Ok(())
+    }
 }

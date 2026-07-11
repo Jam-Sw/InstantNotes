@@ -1052,3 +1052,40 @@ fn workspaces_survive_reopen() {
     let members = s2.workspaces_for_note(&note_id).unwrap();
     assert_eq!(members.len(), 1);
 }
+
+#[test]
+fn bulk_soft_delete_then_restore_roundtrip() {
+    let mut s = store();
+    let a = create(&mut s, "a");
+    let b = create(&mut s, "b");
+    let ids = vec![a.id.clone(), b.id.clone()];
+    s.soft_delete_notes(&ids).unwrap();
+    assert!(s.get_note(&a.id, false).unwrap().is_deleted);
+    assert!(s.get_note(&b.id, false).unwrap().is_deleted);
+    s.restore_notes(&ids).unwrap();
+    assert!(!s.get_note(&a.id, false).unwrap().is_deleted);
+    assert!(!s.get_note(&b.id, false).unwrap().is_deleted);
+}
+
+#[test]
+fn bulk_set_flags_updates_all() {
+    let mut s = store();
+    let a = create(&mut s, "a");
+    let b = create(&mut s, "b");
+    let ids = vec![a.id.clone(), b.id.clone()];
+    s.set_notes_flags(&ids, Some(true), None).unwrap();
+    assert!(s.get_note(&a.id, false).unwrap().is_pinned);
+    assert!(s.get_note(&b.id, false).unwrap().is_pinned);
+    assert!(!s.get_note(&a.id, false).unwrap().is_archived);
+}
+
+#[test]
+fn bulk_destroy_requires_confirm() {
+    let mut s = store();
+    let a = create(&mut s, "a");
+    let ids = vec![a.id.clone()];
+    assert!(s.destroy_notes(&ids, false).is_err());
+    assert!(s.get_note(&a.id, false).is_ok());
+    s.destroy_notes(&ids, true).unwrap();
+    assert!(s.get_note(&a.id, false).is_err());
+}

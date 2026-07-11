@@ -16,6 +16,7 @@ import {
   ApiError,
   createNote,
   deleteWorkspace,
+  destroyNotes,
   getNote,
   getOrCreateWorkspace,
   listNotes,
@@ -26,6 +27,7 @@ import {
   renameWorkspace,
   searchNotes,
   softDeleteNote,
+  softDeleteNotes,
   tagsForNote,
   updateNote,
   workspacesForNote,
@@ -53,8 +55,12 @@ vi.mock("$lib/api/client", () => {
     getNote: vi.fn(),
     updateNote: vi.fn(),
     softDeleteNote: vi.fn(),
+    softDeleteNotes: vi.fn(),
     restoreNote: vi.fn(),
+    restoreNotes: vi.fn(),
+    setNotesFlags: vi.fn(),
     permanentlyDeleteNote: vi.fn(),
+    destroyNotes: vi.fn(),
     listNotes: vi.fn(),
     searchNotes: vi.fn(),
     listTags: vi.fn(),
@@ -86,7 +92,9 @@ const mockListWorkspaces = vi.mocked(listWorkspaces);
 const mockTagsForNote = vi.mocked(tagsForNote);
 const mockWorkspacesForNote = vi.mocked(workspacesForNote);
 const mockPermanentlyDeleteNote = vi.mocked(permanentlyDeleteNote);
+const mockDestroyNotes = vi.mocked(destroyNotes);
 const mockSoftDeleteNote = vi.mocked(softDeleteNote);
+const mockSoftDeleteNotes = vi.mocked(softDeleteNotes);
 const mockDeleteWorkspace = vi.mocked(deleteWorkspace);
 const mockRenameWorkspace = vi.mocked(renameWorkspace);
 const mockGetOrCreateWorkspace = vi.mocked(getOrCreateWorkspace);
@@ -158,7 +166,11 @@ beforeEach(() => {
   mockTagsForNote.mockReset().mockResolvedValue([]);
   mockWorkspacesForNote.mockReset().mockResolvedValue([]);
   mockPermanentlyDeleteNote.mockReset();
+  mockDestroyNotes.mockReset();
+  mockDestroyNotes.mockResolvedValue(undefined);
   mockSoftDeleteNote.mockReset();
+  mockSoftDeleteNotes.mockReset();
+  mockSoftDeleteNotes.mockResolvedValue(undefined);
   mockDeleteWorkspace.mockReset();
   mockRenameWorkspace.mockReset();
   mockGetOrCreateWorkspace.mockReset();
@@ -305,7 +317,6 @@ describe("destroy paths drop queued edits (regression: fixed 2026-07-08)", () =>
   it("bulkDestroy cancels the pending debounce so no write is ever attempted", async () => {
     const library = await load();
     await selectNote(library, "n1");
-    mockPermanentlyDeleteNote.mockResolvedValue(undefined);
 
     library.editBody("about to be destroyed");
     await library.bulkDestroy();
@@ -315,14 +326,13 @@ describe("destroy paths drop queued edits (regression: fixed 2026-07-08)", () =>
     await vi.advanceTimersByTimeAsync(3000);
 
     expect(mockUpdateNote).not.toHaveBeenCalled();
-    expect(mockPermanentlyDeleteNote).toHaveBeenCalledWith("n1", true);
+    expect(mockDestroyNotes).toHaveBeenCalledWith(["n1"], true);
   });
 
   it("emptyTrash cancels queued edits for every trashed note before destroying them", async () => {
     const library = await load();
     await selectNote(library, "n1");
     mockListNotes.mockResolvedValueOnce([mkNote("n1"), mkNote("n2")]);
-    mockPermanentlyDeleteNote.mockResolvedValue(undefined);
 
     library.editBody("in the trash");
     await library.emptyTrash();
@@ -330,14 +340,12 @@ describe("destroy paths drop queued edits (regression: fixed 2026-07-08)", () =>
     await vi.advanceTimersByTimeAsync(3000);
 
     expect(mockUpdateNote).not.toHaveBeenCalled();
-    expect(mockPermanentlyDeleteNote).toHaveBeenCalledWith("n1", true);
-    expect(mockPermanentlyDeleteNote).toHaveBeenCalledWith("n2", true);
+    expect(mockDestroyNotes).toHaveBeenCalledWith(["n1", "n2"], true);
   });
 
   it("destroySelected cancels the open note's queued edit", async () => {
     const library = await load();
     await selectNote(library, "n1");
-    mockPermanentlyDeleteNote.mockResolvedValue(undefined);
 
     library.editBody("open note, about to be destroyed");
     await library.destroySelected();
@@ -345,7 +353,7 @@ describe("destroy paths drop queued edits (regression: fixed 2026-07-08)", () =>
     await vi.advanceTimersByTimeAsync(3000);
 
     expect(mockUpdateNote).not.toHaveBeenCalled();
-    expect(mockPermanentlyDeleteNote).toHaveBeenCalledWith("n1", true);
+    expect(mockDestroyNotes).toHaveBeenCalledWith(["n1"], true);
   });
 
   it("control: without a destroy, the same queued edit does reach updateNote", async () => {
@@ -393,7 +401,7 @@ describe("soft delete flushes queued edits (Undo restores the last keystrokes)",
     mockUpdateNote.mockResolvedValue(
       mkNote("n1", { body: "unsaved bulk edit" }),
     );
-    mockSoftDeleteNote.mockResolvedValue(mkNote("n1", { isDeleted: true }));
+    mockSoftDeleteNotes.mockResolvedValue(undefined);
 
     library.editBody("unsaved bulk edit");
     await library.bulkDelete();
@@ -401,7 +409,7 @@ describe("soft delete flushes queued edits (Undo restores the last keystrokes)",
     expect(mockUpdateNote).toHaveBeenCalledWith("n1", {
       body: "unsaved bulk edit",
     });
-    expect(mockSoftDeleteNote).toHaveBeenCalledWith("n1");
+    expect(mockSoftDeleteNotes).toHaveBeenCalledWith(["n1"]);
     await vi.advanceTimersByTimeAsync(3000);
     expect(mockUpdateNote).toHaveBeenCalledTimes(1);
   });

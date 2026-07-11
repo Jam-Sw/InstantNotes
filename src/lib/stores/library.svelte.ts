@@ -13,13 +13,16 @@ import {
   listTags,
   listWorkspaces,
   listWorkspaceTags,
-  permanentlyDeleteNote,
   removeNoteFromWorkspace,
   removeTagFromNote,
   renameWorkspace,
   restoreNote,
   searchNotes,
   softDeleteNote,
+  softDeleteNotes,
+  restoreNotes,
+  setNotesFlags,
+  destroyNotes as destroyNotesCmd,
   tagsForNote,
   updateNote,
   workspacesForNote,
@@ -449,12 +452,12 @@ class LibraryStore {
   // ---- bulk actions ----
 
   async bulkSetPinned(isPinned: boolean): Promise<void> {
-    await this.#bulk((id) => updateNote(id, { isPinned }).then(() => {}));
+    await this.#bulk((ids) => setNotesFlags(ids, { isPinned }));
     this.clearMultiSelect();
   }
 
   async bulkSetArchived(isArchived: boolean): Promise<void> {
-    await this.#bulk((id) => updateNote(id, { isArchived }).then(() => {}));
+    await this.#bulk((ids) => setNotesFlags(ids, { isArchived }));
     this.clearMultiSelect();
   }
 
@@ -465,7 +468,7 @@ class LibraryStore {
     this.#saveBody.cancel();
     await this.#flushIds(ids);
     this.#dropQueued(...ids);
-    await this.#bulk((id) => softDeleteNote(id).then(() => {}));
+    await this.#bulk((sel) => softDeleteNotes(sel));
     this.clearMultiSelect();
     if (ids.length > 0) {
       const label = ids.length === 1 ? "1 note" : `${ids.length} notes`;
@@ -477,7 +480,7 @@ class LibraryStore {
   }
 
   async bulkRestore(): Promise<void> {
-    await this.#bulk((id) => restoreNote(id).then(() => {}));
+    await this.#bulk((ids) => restoreNotes(ids));
     this.clearMultiSelect();
   }
 
@@ -499,9 +502,7 @@ class LibraryStore {
     this.#saveBody.cancel();
     this.#dropQueued(...ids);
     try {
-      for (const id of ids) {
-        await permanentlyDeleteNote(id, true);
-      }
+      await destroyNotesCmd(ids, true);
       this.error = null;
     } catch (e) {
       this.#fail(e);
@@ -514,9 +515,10 @@ class LibraryStore {
       const trashed = await listNotes({ isDeleted: true });
       this.#saveBody.cancel();
       this.#dropQueued(...trashed.map((n) => n.id));
-      for (const note of trashed) {
-        await permanentlyDeleteNote(note.id, true);
-      }
+      await destroyNotesCmd(
+        trashed.map((n) => n.id),
+        true,
+      );
       this.clearMultiSelect();
       if (trashed.length > 0) toasts.show("Trash emptied");
     } catch (e) {
@@ -524,11 +526,9 @@ class LibraryStore {
     }
   }
 
-  async #bulk(op: (id: string) => Promise<void>): Promise<void> {
+  async #bulk(op: (ids: string[]) => Promise<void>): Promise<void> {
     try {
-      for (const id of this.multiSelected) {
-        await op(id);
-      }
+      await op([...this.multiSelected]);
       this.error = null;
     } catch (e) {
       this.#fail(e);
