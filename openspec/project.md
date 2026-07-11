@@ -3,6 +3,17 @@
 ## Purpose
 InstantNotes is a macOS desktop notes app built around fast capture and a focused library. The app should let a user save a thought from anywhere, then organize and retrieve it without forcing a folder system.
 
+## Product Thesis
+InstantNotes exists to close open loops (the Zeigarnik effect: unfinished intentions stay resident in the head until they are parked in a trusted system). Every stage of the roadmap serves one of three promises:
+
+1. **Capture is discharge.** Writing the thought down must cost less than carrying it. The capture path stays under the reflex threshold; a feature that adds a decision at capture time is rejected on those grounds.
+2. **Trust is release.** The mind only lets go if retrieval is guaranteed. Data solidity work (save queues, undo fidelity, race protection) is this promise stated in engineering.
+3. **Resurfacing is closure.** A parked loop must come back at the right moment, concrete enough to act on. Notes already carry the data for this (`updatedAt`, `lastOpenedAt`, spaces, tags); the graph and local-AI stages build on it.
+
+The target is **powerful, not simple**: simplicity through frictionless apparent complexity. The app helps, never hinders, never confuses, never overcomplicates. A growing library must not read as clutter; it should feel satisfying and be useful by default. The success metric is inverted from engagement: the system works when the user stops re-checking it.
+
+Anti-goal: InstantNotes is not a task manager. Dates, checkboxes, and notifications belong to other tools; our thirds of the loop are trusted parking, clarifying, and resurfacing. New features are tested against one question: does this close loops or create them?
+
 ## Tech Stack
 - Tauri 2 desktop shell
 - Rust core for persistence, search, and command handling
