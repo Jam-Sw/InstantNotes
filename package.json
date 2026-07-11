@@ -1,6 +1,6 @@
 {
   "name": "instantnotes",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "InstantNotes — instant capture, organized knowledge",
   "type": "module",
   "engines": {

@@ -9,6 +9,37 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- Search results highlight what matched, in both the note title and the
+  excerpt.
+- The command palette opens notes: press the palette shortcut and see your
+  five most recent notes, or type to search everything without leaving the
+  keyboard.
+- Rename or delete a tag right in the sidebar: right-click it (or press
+  Shift+F10) for options, or double-click the tag to rename it in place.
+
+### Changed
+- Deleting is calmer: moving notes to the Trash shows an Undo toast instead
+  of interrupting you, and permanent deletions ask in a proper in-app dialog
+  instead of a system popup.
+- The quick capture panel closes when you click elsewhere (your draft is
+  kept), shows a brief "Saved" confirmation, and Cmd+Enter (Ctrl+Enter on
+  Windows) saves and opens the library.
+
+### Fixed
+- Quitting can no longer lose your last moments of typing: every quit path
+  saves pending edits first, and a note whose save failed says "Not saved"
+  instead of pretending otherwise.
+- Removing a #tag from a note's text now actually removes that tag from the
+  note.
+- If the notes database is ever corrupted, the app sets it aside and starts
+  fresh instead of failing to launch, and tells you what happened. The
+  database is also backed up automatically before any update that changes
+  its format.
+- Typing quickly in search can no longer show results for an older query.
+- If another app owns the capture shortcut, the welcome screen now says so
+  instead of the shortcut silently doing nothing.
+
 ## [0.7.0] - 2026-07-06
 
 ### Added
