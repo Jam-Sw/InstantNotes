@@ -549,6 +549,10 @@ class LibraryStore {
         await addNoteToWorkspace(note.id, this.activeWorkspaceId);
       }
       this.statusFilter = "active";
+      // A brand-new note can never match the Revisit filter (it is neither
+      // old nor forgotten), so leaving the mode on would hide the note the
+      // user just asked for. Exit it, exactly like trash and archived above.
+      this.revisitMode = false;
       if (!activeTag) this.activeTagId = null;
       this.searchText = "";
       void this.refresh();

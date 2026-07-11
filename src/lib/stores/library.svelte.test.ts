@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addNoteToWorkspace,
   ApiError,
+  createNote,
   deleteWorkspace,
   getNote,
   getOrCreateWorkspace,
@@ -75,6 +76,7 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(),
 }));
 
+const mockCreateNote = vi.mocked(createNote);
 const mockGetNote = vi.mocked(getNote);
 const mockUpdateNote = vi.mocked(updateNote);
 const mockListNotes = vi.mocked(listNotes);
@@ -148,6 +150,7 @@ beforeEach(() => {
   vi.resetModules();
   vi.useFakeTimers();
 
+  mockCreateNote.mockReset();
   mockGetNote.mockReset();
   mockUpdateNote.mockReset();
   mockListNotes.mockReset().mockResolvedValue([]);
@@ -763,6 +766,18 @@ describe("revisit mode (open-loop resurfacing)", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(library.revisitCount).toBe(1);
     expect(library.notes.map((n) => n.id)).toEqual(["n2"]);
+  });
+
+  it("creating a note exits revisit mode, like it exits trash", async () => {
+    const library = await load();
+    mockCreateNote.mockResolvedValue(mkNote("new1"));
+    mockGetNote.mockResolvedValue(mkNote("new1"));
+    library.selectRevisit();
+    await library.newNote();
+    // A brand-new note can never match the Revisit filter; staying in the
+    // mode would hide the note the user just asked for.
+    expect(library.revisitMode).toBe(false);
+    await vi.advanceTimersByTimeAsync(0);
   });
 
   it("leaves revisit mode when any other view is selected", async () => {
