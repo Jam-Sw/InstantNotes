@@ -37,6 +37,12 @@ import type {
   WorkspaceWithCount,
 } from "$lib/api/types";
 import { debounce } from "$lib/debounce";
+import {
+  withMapEntry,
+  withoutMapKeys,
+  withSetEntry,
+  withoutSetEntries,
+} from "$lib/reactive-collections";
 import { friendlyMessage } from "$lib/errors";
 import { rangeSelection, stepId, toggleSelection } from "$lib/selection";
 import { toasts } from "$lib/stores/toasts.svelte";
@@ -226,6 +232,8 @@ class LibraryStore {
   }
 
   setStatusFilter(filter: StatusFilter): void {
+    // Status (All / Archived / Trash) composes with the active space or tag,
+    // so it clears revisit and search but keeps the space/tag scope.
     this.statusFilter = filter;
     this.revisitMode = false;
     this.searchText = "";
@@ -233,41 +241,40 @@ class LibraryStore {
     void this.refresh();
   }
 
-  /** Show All Notes (null) or one workspace's collected notes. */
-  selectWorkspace(workspaceId: string | null): void {
-    this.activeWorkspaceId = workspaceId;
-    this.revisitMode = false;
+  /**
+   * Clear every primary filter dimension so a caller can set exactly one.
+   * The space, tag, and revisit views are mutually exclusive; each entry
+   * point resets the rest, drops any scoped tag, and clears search and the
+   * multi-selection before choosing its own dimension.
+   */
+  #resetForNavigation(): void {
+    this.activeWorkspaceId = null;
+    this.activeTagId = null;
     this.scopedTagId = null;
     this.workspaceTags = [];
+    this.revisitMode = false;
     this.statusFilter = "active";
-    this.activeTagId = null;
     this.searchText = "";
     this.clearMultiSelect();
+  }
+
+  /** Show All Notes (null) or one workspace's collected notes. */
+  selectWorkspace(workspaceId: string | null): void {
+    this.#resetForNavigation();
+    this.activeWorkspaceId = workspaceId;
     void this.refresh();
   }
 
   /** Show the open loops: capture-born notes never opened in the library. */
   selectRevisit(): void {
+    this.#resetForNavigation();
     this.revisitMode = true;
-    this.activeWorkspaceId = null;
-    this.activeTagId = null;
-    this.scopedTagId = null;
-    this.workspaceTags = [];
-    this.statusFilter = "active";
-    this.searchText = "";
-    this.clearMultiSelect();
     void this.refresh();
   }
 
   setTagFilter(tagId: string | null): void {
+    this.#resetForNavigation();
     this.activeTagId = tagId;
-    this.activeWorkspaceId = null;
-    this.revisitMode = false;
-    this.scopedTagId = null;
-    this.workspaceTags = [];
-    this.statusFilter = "active";
-    this.searchText = "";
-    this.clearMultiSelect();
     void this.refresh();
   }
 
@@ -681,7 +688,7 @@ class LibraryStore {
     // Optimistic local state; persistence is debounced. The note is dirty
     // from this moment until a write of this (or a newer) body succeeds.
     this.selected.body = body;
-    this.#unsaved = new Map(this.#unsaved).set(this.selected.id, body);
+    this.#unsaved = withMapEntry(this.#unsaved, this.selected.id, body);
     this.#saveBody(this.selected.id, body);
   }
 
@@ -816,14 +823,10 @@ class LibraryStore {
       // Confirmed on disk. Clear the queue entry unless a newer edit
       // superseded the body this write carried.
       if (this.#unsaved.get(id) === body) {
-        const unsaved = new Map(this.#unsaved);
-        unsaved.delete(id);
-        this.#unsaved = unsaved;
+        this.#unsaved = withoutMapKeys(this.#unsaved, [id]);
       }
       if (this.#failed.has(id)) {
-        const failed = new Set(this.#failed);
-        failed.delete(id);
-        this.#failed = failed;
+        this.#failed = withoutSetEntries(this.#failed, [id]);
       }
       if (this.selected?.id === id) {
         // Keep local body if user kept typing past this save.
@@ -844,7 +847,7 @@ class LibraryStore {
         }, SAVE_RETRY_MS);
         this.#retryTimers.set(id, timer);
       } else {
-        this.#failed = new Set(this.#failed).add(id);
+        this.#failed = withSetEntry(this.#failed, id);
         this.#fail(e);
       }
     }
@@ -860,15 +863,9 @@ class LibraryStore {
 
   /** Forget queued edits for notes that are being discarded. */
   #dropQueued(...ids: string[]): void {
-    const unsaved = new Map(this.#unsaved);
-    const failed = new Set(this.#failed);
-    for (const id of ids) {
-      unsaved.delete(id);
-      failed.delete(id);
-      this.#clearRetryTimer(id);
-    }
-    this.#unsaved = unsaved;
-    this.#failed = failed;
+    this.#unsaved = withoutMapKeys(this.#unsaved, ids);
+    this.#failed = withoutSetEntries(this.#failed, ids);
+    for (const id of ids) this.#clearRetryTimer(id);
   }
 
   /**
