@@ -14,9 +14,6 @@ pub struct Note {
     pub is_archived: bool,
     pub is_deleted: bool,
     pub deleted_at: Option<String>,
-    pub sync_state: String,
-    pub version: i64,
-    pub last_synced_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -26,8 +26,6 @@ fn create_sets_defaults_per_data_model() {
     let n = create(&mut s, "Buy milk and coffee");
     assert!(!n.id.is_empty());
     assert_eq!(n.title, "Buy milk and coffee");
-    assert_eq!(n.version, 1);
-    assert_eq!(n.sync_state, "local_only");
     assert!(!n.is_pinned && !n.is_archived && !n.is_deleted);
     assert!(!n.created_at.is_empty());
     assert_eq!(n.created_at, n.updated_at);
@@ -92,7 +90,7 @@ fn get_with_touch_sets_last_opened_at() {
 // ---- update ----
 
 #[test]
-fn update_body_increments_version() {
+fn update_body_persists_new_body() {
     let mut s = store();
     let n = create(&mut s, "draft one");
     let u = s
@@ -104,7 +102,6 @@ fn update_body_increments_version() {
             },
         )
         .unwrap();
-    assert_eq!(u.version, 2);
     assert_eq!(u.body, "draft two");
 }
 
@@ -215,11 +212,10 @@ fn explicit_add_promotes_inline_tag_past_token_removal() {
 }
 
 #[test]
-fn empty_patch_does_not_bump_version_or_updated_at() {
+fn empty_patch_does_not_bump_updated_at() {
     let mut s = store();
     let n = create(&mut s, "leave me alone");
     let u = s.update_note(&n.id, UpdateNotePatch::default()).unwrap();
-    assert_eq!(u.version, n.version);
     assert_eq!(u.updated_at, n.updated_at);
 }
 

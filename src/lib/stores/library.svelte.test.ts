@@ -104,8 +104,6 @@ function mkNote(id: string, overrides: Partial<Note> = {}): Note {
     isPinned: false,
     isArchived: false,
     isDeleted: false,
-    syncState: "local_only",
-    version: 1,
     ...overrides,
   };
 }

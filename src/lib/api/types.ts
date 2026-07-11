@@ -1,9 +1,6 @@
 // IPC contract types shared by the Svelte UI and the Rust desktop layer.
 // Field names are camelCase over the wire (serde).
 
-export type SyncState =
-  "local_only" | "pending_sync" | "synced" | "conflict" | "sync_error";
-
 export interface Note {
   id: string;
   title: string;
@@ -15,9 +12,6 @@ export interface Note {
   isArchived: boolean;
   isDeleted: boolean;
   deletedAt?: string | null;
-  syncState: SyncState;
-  version: number;
-  lastSyncedAt?: string | null;
 }
 
 export interface Tag {

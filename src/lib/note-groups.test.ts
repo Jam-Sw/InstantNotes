@@ -15,8 +15,6 @@ function mkNote(id: string, updatedAt: Date, overrides: Partial<Note> = {}): Not
     isPinned: false,
     isArchived: false,
     isDeleted: false,
-    syncState: "local_only",
-    version: 1,
     ...overrides,
   };
 }

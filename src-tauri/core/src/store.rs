@@ -98,10 +98,17 @@ CREATE TABLE note_workspaces (
 );
 CREATE INDEX idx_note_workspaces_ws ON note_workspaces(workspace_id);
 "#,
+    // v3: drop the unused sync scaffolding. These columns were written but
+    // never read; a real sync feature will design its own schema when it lands.
+    r#"
+ALTER TABLE notes DROP COLUMN sync_state;
+ALTER TABLE notes DROP COLUMN version;
+ALTER TABLE notes DROP COLUMN last_synced_at;
+"#,
 ];
 
 const NOTE_COLUMNS: &str = "id, title, body, created_at, updated_at, last_opened_at, \
-     is_pinned, is_archived, is_deleted, deleted_at, sync_state, version, last_synced_at";
+     is_pinned, is_archived, is_deleted, deleted_at";
 
 pub struct Store {
     conn: Connection,
@@ -127,9 +134,6 @@ fn row_to_note(row: &rusqlite::Row<'_>) -> rusqlite::Result<Note> {
         is_archived: row.get::<_, i64>(7)? != 0,
         is_deleted: row.get::<_, i64>(8)? != 0,
         deleted_at: row.get(9)?,
-        sync_state: row.get(10)?,
-        version: row.get(11)?,
-        last_synced_at: row.get(12)?,
     })
 }
 
@@ -413,8 +417,8 @@ impl Store {
 
         let tx = self.conn.transaction()?;
         tx.execute(
-            "INSERT INTO notes (id, title, title_is_auto, body, created_at, updated_at, \
-             sync_state, version) VALUES (?1, ?2, ?3, ?4, ?5, ?5, 'local_only', 1)",
+            "INSERT INTO notes (id, title, title_is_auto, body, created_at, updated_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
             params![id, title, i64::from(title_is_auto), body, now],
         )?;
         for name in &inline_tags {
@@ -443,8 +447,8 @@ impl Store {
     pub fn update_note(&mut self, id: &str, patch: UpdateNotePatch) -> Result<Note> {
         // Ensure existence first for a clean NOT_FOUND.
         let existing = self.fetch_note(id)?;
-        // An empty patch is a no-op: skip the UPDATE so version and updated_at
-        // are not bumped and recency-sorted lists keep their order.
+        // An empty patch is a no-op: skip the UPDATE so updated_at is not
+        // bumped and recency-sorted lists keep their order.
         if patch.title.is_none()
             && patch.body.is_none()
             && patch.is_pinned.is_none()
@@ -481,8 +485,7 @@ impl Store {
                body = COALESCE(?3, body), \
                is_pinned = COALESCE(?4, is_pinned), \
                is_archived = COALESCE(?5, is_archived), \
-               updated_at = ?6, \
-               version = version + 1 \
+               updated_at = ?6 \
              WHERE id = ?7",
             params![
                 new_title,
@@ -532,8 +535,8 @@ impl Store {
         self.fetch_note(id)?;
         let now = now_iso();
         self.conn.execute(
-            "UPDATE notes SET is_deleted = 1, deleted_at = ?1, updated_at = ?1, \
-             version = version + 1 WHERE id = ?2",
+            "UPDATE notes SET is_deleted = 1, deleted_at = ?1, updated_at = ?1 \
+             WHERE id = ?2",
             params![now, id],
         )?;
         self.fetch_note(id)
@@ -543,8 +546,8 @@ impl Store {
         self.fetch_note(id)?;
         let now = now_iso();
         self.conn.execute(
-            "UPDATE notes SET is_deleted = 0, deleted_at = NULL, updated_at = ?1, \
-             version = version + 1 WHERE id = ?2",
+            "UPDATE notes SET is_deleted = 0, deleted_at = NULL, updated_at = ?1 \
+             WHERE id = ?2",
             params![now, id],
         )?;
         self.fetch_note(id)
@@ -1035,5 +1038,62 @@ mod pragma_tests {
             .query_row("PRAGMA synchronous", [], |r| r.get(0))
             .unwrap();
         assert_eq!(synchronous, 1);
+    }
+}
+
+#[cfg(test)]
+mod migration_tests {
+    use super::{Store, MIGRATIONS};
+    use rusqlite::Connection;
+    use tempfile::tempdir;
+
+    fn note_columns(conn: &Connection) -> Vec<String> {
+        let mut stmt = conn.prepare("PRAGMA table_info(notes)").unwrap();
+        let cols: Vec<String> = stmt
+            .query_map([], |r| r.get::<_, String>(1))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        cols
+    }
+
+    /// A database written by a pre-0.8 build (schema v2) still carries the sync
+    /// columns. Opening it runs the v3 migration, which must drop them without
+    /// losing any note.
+    #[test]
+    fn v3_drops_sync_columns_and_preserves_notes() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("legacy.db");
+
+        // Build a v2 database by hand, exactly as an older build left it.
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(MIGRATIONS[0]).unwrap();
+            conn.execute_batch(MIGRATIONS[1]).unwrap();
+            conn.pragma_update(None, "user_version", 2i64).unwrap();
+            conn.execute(
+                "INSERT INTO notes (id, title, body, created_at, updated_at, \
+                 sync_state, version) \
+                 VALUES ('n1', 'Kept', 'the body', 't', 't', 'local_only', 3)",
+                [],
+            )
+            .unwrap();
+            assert!(note_columns(&conn).contains(&"sync_state".to_string()));
+        }
+
+        // Opening runs the pending v3 migration.
+        let mut store = Store::open(&path).unwrap();
+
+        let cols = note_columns(&store.conn);
+        assert!(!cols.contains(&"sync_state".to_string()));
+        assert!(!cols.contains(&"version".to_string()));
+        assert!(!cols.contains(&"last_synced_at".to_string()));
+
+        // The note and its content survived the column drop.
+        let note = store.get_note("n1", false).unwrap();
+        assert_eq!(note.title, "Kept");
+        assert_eq!(note.body, "the body");
+        let all = store.list_notes(Default::default()).unwrap();
+        assert!(all.iter().any(|n| n.id == "n1"));
     }
 }
