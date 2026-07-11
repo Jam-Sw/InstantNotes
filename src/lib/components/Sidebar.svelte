@@ -4,9 +4,9 @@
   import { friendlyMessage } from "$lib/errors";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
-  import SpaceRow from "$lib/components/SpaceRow.svelte";
-  import TagRow from "$lib/components/TagRow.svelte";
+  import SidebarEntityRow from "$lib/components/SidebarEntityRow.svelte";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
+  import { normalizeTagInput } from "$lib/tag-name";
   import type { TagWithCount, WorkspaceWithCount } from "$lib/api/types";
 
   let newSpaceInput = $state("");
@@ -109,8 +109,11 @@
   <div class="tags-header" bind:this={spacesHeader} tabindex="-1">Spaces</div>
   <nav class="workspaces">
     {#each library.workspaces as ws (ws.id)}
-      <SpaceRow
-        workspace={ws}
+      <SidebarEntityRow
+        name={ws.name}
+        count={ws.noteCount}
+        normalize={(s) => s.trim()}
+        noun="Space"
         active={library.activeWorkspaceId === ws.id}
         editing={renamingSpaceId === ws.id}
         onSelect={() =>
@@ -134,8 +137,12 @@
   <div class="tags-header" bind:this={tagsHeader} tabindex="-1">Tags</div>
   <nav class="tags">
     {#each library.tags.filter((t) => t.usageCount > 0) as tag (tag.id)}
-      <TagRow
-        {tag}
+      <SidebarEntityRow
+        name={tag.name}
+        count={tag.usageCount}
+        prefix="#"
+        normalize={normalizeTagInput}
+        noun="Tag"
         active={library.activeTagId === tag.id}
         editing={renamingTagId === tag.id}
         onSelect={() =>
