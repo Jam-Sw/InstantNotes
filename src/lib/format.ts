@@ -1,7 +1,7 @@
 // Small presentation helpers shared by the library views.
 
 /** Today shows a time (e.g. "3:04 PM"); any other day shows a short date
- *  (e.g. "Jun 5"). Mirrors the previous inline helper in the library page. */
+ *  (e.g. "Jun 5"). */
 export function formatDate(iso: string): string {
   const d = new Date(iso);
   const today = new Date();

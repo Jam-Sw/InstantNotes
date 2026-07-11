@@ -2,25 +2,31 @@
   // CodeMirror 6 wrapper. CM6 owns its DOM — Svelte never renders inside the
   // container. One-way discipline: external `value` changes dispatch into CM6
   // (guarded against feedback); user edits flow out through `onchange`.
+  //
+  // All markdown preview/interaction behavior lives in the editor kernel
+  // (src/lib/editor, see its ARCHITECTURE.md). This component only wires the
+  // kernel to the app: Rust APIs in, settings effects in, edits out.
   import { onMount } from "svelte";
-  import {
-    EditorView,
-    keymap,
-    placeholder as cmPlaceholder,
-    ViewPlugin,
-    Decoration,
-    type DecorationSet,
-    type ViewUpdate,
-  } from "@codemirror/view";
-  import { EditorState, RangeSetBuilder } from "@codemirror/state";
+  import { EditorView, keymap, placeholder as cmPlaceholder } from "@codemirror/view";
+  import { EditorState } from "@codemirror/state";
   import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
   import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+  import { languages } from "@codemirror/language-data";
   import { syntaxHighlighting } from "@codemirror/language";
+  import { highlightExtension } from "$lib/markdown-extensions";
   import { markdownHighlight } from "$lib/markdown-highlight";
   import { formatEdit, type FormatKind, type Sel } from "$lib/markdown-format";
   import { activeMarks, type ActiveMarks } from "$lib/markdown-active";
-  import { wysiwygExtension, wysiwygTheme, setPreviewMode } from "$lib/wysiwyg";
+  import {
+    editorKernel,
+    setPreviewMode,
+    setLinkPrefs,
+    setAttachmentsBase,
+  } from "$lib/editor";
+  import { linkPrefs } from "$lib/stores/links.svelte";
   import { listIndentChanges } from "$lib/list-indent";
+  import { getAttachmentsDir, openUrl, saveAttachment } from "$lib/api/client";
+  import { toasts } from "$lib/stores/toasts.svelte";
 
   let {
     value = "",
@@ -39,38 +45,6 @@
   let container: HTMLDivElement;
   let view: EditorView | undefined;
   let applyingExternal = false;
-
-  const tagMark = Decoration.mark({ class: "cm-tag" });
-  const TAG_RE = /(^|\s)(#[\p{L}\p{N}_-]+)/gu;
-
-  function buildTagDecorations(v: EditorView): DecorationSet {
-    const builder = new RangeSetBuilder<Decoration>();
-    for (const { from, to } of v.visibleRanges) {
-      const text = v.state.doc.sliceString(from, to);
-      TAG_RE.lastIndex = 0;
-      let m: RegExpExecArray | null;
-      while ((m = TAG_RE.exec(text))) {
-        const start = from + m.index + m[1].length;
-        builder.add(start, start + m[2].length, tagMark);
-      }
-    }
-    return builder.finish();
-  }
-
-  const tagHighlighter = ViewPlugin.fromClass(
-    class {
-      decorations: DecorationSet;
-      constructor(v: EditorView) {
-        this.decorations = buildTagDecorations(v);
-      }
-      update(u: ViewUpdate) {
-        if (u.docChanged || u.viewportChanged) {
-          this.decorations = buildTagDecorations(u.view);
-        }
-      }
-    },
-    { decorations: (v) => v.decorations },
-  );
 
   onMount(() => {
     view = new EditorView({
@@ -92,16 +66,31 @@
             { key: "Tab", run: (v) => applyListIndent(v, false) },
             { key: "Shift-Tab", run: (v) => applyListIndent(v, true) },
           ]),
+          // The kernel sits ABOVE defaultKeymap on purpose: it owns Backspace
+          // (block markers delete as whole objects) and Enter (lists, quotes,
+          // and tasks continue onto the next line).
+          editorKernel({
+            // Opening goes through Rust (open_url) since the webview has no
+            // opener capability of its own.
+            openUrl: (url) => void openUrl(url),
+            // Paste/drop an image → stored attachment + markdown reference;
+            // rendered inline in preview once the base dir arrives below.
+            saveImage: saveAttachment,
+            onImageError: (m) => toasts.show(`Couldn't save image. ${m}`),
+          }),
           keymap.of([...defaultKeymap, ...historyKeymap]),
           // GFM base so ~~strikethrough~~ parses (the highlight + active-state
-          // detection both rely on Strikethrough nodes existing).
-          markdown({ base: markdownLanguage }),
+          // detection both rely on Strikethrough nodes existing). Fenced code
+          // gets per-language highlighting; ==highlight== is our own inline
+          // extension.
+          markdown({
+            base: markdownLanguage,
+            codeLanguages: languages,
+            extensions: [highlightExtension],
+          }),
           syntaxHighlighting(markdownHighlight),
           EditorView.lineWrapping,
           cmPlaceholder(placeholder),
-          tagHighlighter,
-          ...wysiwygExtension(),
-          wysiwygTheme,
           EditorView.updateListener.of((u) => {
             if (u.docChanged && !applyingExternal) {
               onchange?.(u.state.doc.toString());
@@ -118,6 +107,11 @@
     });
     // Seed the toolbar before the first edit or selection change.
     onactive?.(activeMarks(view.state));
+    // Attachment images can only resolve once Rust reports where they live;
+    // until then they render as markdown text, then swap in.
+    void getAttachmentsDir()
+      .then((dir) => view?.dispatch({ effects: setAttachmentsBase.of(dir) }))
+      .catch(() => {});
     return () => view?.destroy();
   });
 
@@ -138,6 +132,15 @@
     const mode = previewMode;
     if (view) {
       view.dispatch({ effects: setPreviewMode.of(mode) });
+    }
+  });
+
+  $effect(() => {
+    // Sync link preferences into CM6; reading the snapshot registers all four
+    // fields as dependencies so Settings changes apply to open notes live.
+    const snap = linkPrefs.snapshot();
+    if (view) {
+      view.dispatch({ effects: setLinkPrefs.of(snap) });
     }
   });
 

@@ -11,7 +11,15 @@ export interface Edit {
   selection: Sel;
 }
 
-export type FormatKind = "bold" | "italic" | "strike" | "code" | "quote" | "list" | "link";
+export type FormatKind =
+  | "bold"
+  | "italic"
+  | "strike"
+  | "code"
+  | "quote"
+  | "list"
+  | "task"
+  | "link";
 
 /** Map a toolbar/shortcut action to the corresponding document edit. */
 export function formatEdit(doc: string, sel: Sel, kind: FormatKind): Edit {
@@ -28,6 +36,8 @@ export function formatEdit(doc: string, sel: Sel, kind: FormatKind): Edit {
       return toggleLinePrefix(doc, sel, "> ");
     case "list":
       return toggleLinePrefix(doc, sel, "- ");
+    case "task":
+      return toggleLinePrefix(doc, sel, "- [ ] ");
     case "link":
       return insertLink(doc, sel);
   }

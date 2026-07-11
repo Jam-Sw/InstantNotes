@@ -1,13 +1,6 @@
 // IPC contract types shared by the Svelte UI and the Rust desktop layer.
 // Field names are camelCase over the wire (serde).
 
-export type SyncState =
-  | "local_only"
-  | "pending_sync"
-  | "synced"
-  | "conflict"
-  | "sync_error";
-
 export interface Note {
   id: string;
   title: string;
@@ -19,9 +12,6 @@ export interface Note {
   isArchived: boolean;
   isDeleted: boolean;
   deletedAt?: string | null;
-  syncState: SyncState;
-  version: number;
-  lastSyncedAt?: string | null;
 }
 
 export interface Tag {
@@ -67,6 +57,10 @@ export interface NoteFilter {
   isPinned?: boolean;
   isArchived?: boolean;
   isDeleted?: boolean;
+  /** Only notes never opened in the library (capture-born, untriaged). */
+  neverOpened?: boolean;
+  /** Only notes created strictly before this ISO-8601 timestamp. */
+  createdBefore?: string;
   sortBy?: "updatedAt" | "createdAt" | "lastOpenedAt" | "title";
   sortOrder?: "asc" | "desc";
   limit?: number;
@@ -84,4 +78,11 @@ export interface SearchResult {
 export interface AppErrorPayload {
   code: string;
   message: string;
+}
+
+/** Reveal-to-input-ready timing for the capture panel (no note content). */
+export interface CaptureLatencySummary {
+  lastMs: number | null;
+  medianMs: number | null;
+  samples: number;
 }

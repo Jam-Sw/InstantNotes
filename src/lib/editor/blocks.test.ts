@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { blockMarkerRange } from "./wysiwyg";
+import { blockMarkerRange } from "./blocks";
 
 describe("blockMarkerRange", () => {
   it("returns null for plain text", () => {
@@ -46,5 +46,14 @@ describe("blockMarkerRange", () => {
   it("handles indented list markers", () => {
     // "  - item": indent=2, marker="-", space=1 → marker occupies [2,4), text starts at 4
     expect(blockMarkerRange("  - item", 0)).toEqual({ from: 2, to: 4 });
+  });
+
+  it("detects heading markers (# )", () => {
+    expect(blockMarkerRange("# Title", 0)).toEqual({ from: 0, to: 2 });
+    expect(blockMarkerRange("### Deep", 10)).toEqual({ from: 10, to: 14 });
+  });
+
+  it("does not treat a #tag (no space) as a heading marker", () => {
+    expect(blockMarkerRange("#tag stays", 0)).toBeNull();
   });
 });

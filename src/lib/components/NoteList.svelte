@@ -2,12 +2,23 @@
   import { library, type StatusFilter } from "$lib/stores/library.svelte";
   import { formatDate, preview } from "$lib/format";
   import { captureShortcut, modKey } from "$lib/platform";
+  import { parseHighlightSegments } from "$lib/highlight";
+  import { confirmDialog } from "$lib/stores/confirm.svelte";
+  import { groupNotes } from "$lib/note-groups";
 
   const statusFilters: { id: StatusFilter; label: string }[] = [
     { id: "active", label: "Active" },
     { id: "archived", label: "Archived" },
     { id: "trash", label: "Trash" },
   ];
+
+  // Time-bucketed sections (Pinned / Today / Yesterday / ...). Revisit stays
+  // flat: it sorts oldest-first by capture date, which time-of-edit buckets
+  // would fight. "Now" is sampled per list change, matching platform behavior
+  // (a list left open across midnight regroups on its next change).
+  const groups = $derived(
+    library.revisitMode ? null : groupNotes(library.notes, new Date()),
+  );
 
   function rowClick(e: MouseEvent, id: string) {
     if (e.metaKey || e.ctrlKey) {
@@ -20,9 +31,13 @@
   }
 
   async function confirmEmptyTrash() {
-    if (window.confirm("Permanently delete all notes in the Trash? This cannot be undone.")) {
-      await library.emptyTrash();
-    }
+    const ok = await confirmDialog.ask({
+      title: "Empty the Trash?",
+      body: "All notes in Trash will be permanently deleted. This action cannot be undone.",
+      confirmLabel: "Empty Trash",
+      tone: "danger",
+    });
+    if (ok) await library.emptyTrash();
   }
 </script>
 
@@ -37,7 +52,23 @@
     />
     <button class="new-note" title={`New note (${modKey}N)`} onclick={() => library.newNote()}>＋</button>
   </div>
-  {#if !library.activeWorkspaceId && !library.activeTagId && !library.searchResults}
+  {#if library.activeWorkspaceId && !library.searchResults && library.workspaceTags.length > 0}
+    <!-- Tags found on this space's notes; a chip filters within the space,
+         unlike the sidebar's global tags which replace it. -->
+    <div class="space-tags" role="group" aria-label="Filter this space by tag">
+      {#each library.workspaceTags as tag (tag.id)}
+        <button
+          class="space-tag-chip"
+          class:on={library.scopedTagId === tag.id}
+          title={`${tag.usageCount} note${tag.usageCount === 1 ? "" : "s"} in this space`}
+          onclick={() => library.toggleScopedTag(tag.id)}
+        >
+          #{tag.name}
+        </button>
+      {/each}
+    </div>
+  {/if}
+  {#if !library.activeWorkspaceId && !library.activeTagId && !library.revisitMode && !library.searchResults}
     <div class="status-filter">
       {#each statusFilters as f (f.id)}
         <button
@@ -64,15 +95,15 @@
           class:selected={library.isSelected(hit.noteId)}
           onclick={(e) => rowClick(e, hit.noteId)}
         >
-          <div class="row-title">{hit.title}</div>
-          <div class="row-preview">{hit.excerpt}</div>
+          <div class="row-title">{#each parseHighlightSegments(hit.title) as seg, i (i)}{#if seg.hit}<mark>{seg.text}</mark>{:else}{seg.text}{/if}{/each}</div>
+          <div class="row-preview">{#each parseHighlightSegments(hit.excerpt) as seg, i (i)}{#if seg.hit}<mark>{seg.text}</mark>{:else}{seg.text}{/if}{/each}</div>
           <div class="row-date">{formatDate(hit.updatedAt)}</div>
         </button>
       {:else}
         <div class="empty-state">No notes match your search.</div>
       {/each}
     {:else}
-      {#each library.notes as note (note.id)}
+      {#snippet noteRow(note: (typeof library.notes)[number])}
         <button
           class="note-row"
           data-note-id={note.id}
@@ -86,10 +117,15 @@
           <div class="row-preview">{preview(note.body) || "Empty note"}</div>
           <div class="row-date">{formatDate(note.updatedAt)}</div>
         </button>
-      {:else}
+      {/snippet}
+      {#if library.notes.length === 0}
         <div class="empty-state">
-          {#if library.activeWorkspaceId}
-            No notes in this workspace yet. Open a note and add it here.
+          {#if library.revisitMode}
+            All caught up. Every capture has been seen.
+          {:else if library.activeWorkspaceId && library.scopedTagId}
+            No notes with this tag in this space.
+          {:else if library.activeWorkspaceId}
+            Nothing here yet. New notes land in this space while you're in it.
           {:else if library.statusFilter === "trash"}
             Trash is empty.
           {:else if library.statusFilter === "archived"}
@@ -98,7 +134,18 @@
             No notes yet. Press {captureShortcut} anywhere to capture your first thought.
           {/if}
         </div>
-      {/each}
+      {:else if groups}
+        {#each groups as group (group.label)}
+          <div class="group-header">{group.label}</div>
+          {#each group.notes as note (note.id)}
+            {@render noteRow(note)}
+          {/each}
+        {/each}
+      {:else}
+        {#each library.notes as note (note.id)}
+          {@render noteRow(note)}
+        {/each}
+      {/if}
     {/if}
   </div>
 </section>
@@ -144,6 +191,31 @@
     padding: 6px 10px;
     border-bottom: 1px solid var(--border);
   }
+  /* Occupies the status-filter's slot: the pills hide inside a space. */
+  .space-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .space-tag-chip {
+    padding: 2px 10px;
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    font-size: 11px;
+    font-family: var(--font-meta);
+    color: var(--text-secondary);
+  }
+  .space-tag-chip:hover {
+    background: var(--bg-hover);
+  }
+  .space-tag-chip.on {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent-text);
+    font-weight: 500;
+  }
   .filter-pill {
     padding: 2px 10px;
     border-radius: 99px;
@@ -168,6 +240,19 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+  }
+  .group-header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 8px 16px 4px;
+    background: var(--bg);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--text-tertiary);
+    font-family: var(--font-meta);
   }
   .note-row {
     display: block;
@@ -199,6 +284,16 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* Reset UA mark styling (yellow bg, black text) so a search hit reads as
+     a subtle emphasis in both themes, matching pill/tag styling elsewhere. */
+  .row-title mark,
+  .row-preview mark {
+    background: var(--accent-soft);
+    color: inherit;
+    font-weight: inherit;
+    border-radius: 4px;
+    padding: 0 1px;
   }
   .row-date {
     color: var(--text-tertiary);

@@ -4,9 +4,9 @@
 //
 //   npm run bump 0.6.0
 //
-// Updates: package.json, src-tauri/tauri.conf.json, src-tauri/Cargo.toml, and
-// the instantnotes entry in src-tauri/Cargo.lock. The core crate
-// (src-tauri/core) versions independently and is intentionally left untouched.
+// Updates: package.json, package-lock.json, src-tauri/tauri.conf.json,
+// src-tauri/Cargo.toml, and the instantnotes entry in src-tauri/Cargo.lock. The
+// core crate (src-tauri/core) versions independently and is left untouched.
 // Prints the next steps (commit, tag, push); it does not git-commit for you.
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -34,6 +34,19 @@ export function bumpPackageVersion(text, name, next) {
   return text.replace(re, `$1${next}$2`);
 }
 
+/**
+ * Rewrite both instantnotes version fields in package-lock.json: the root
+ * `"version"` and the `packages[""].version` mirror of it. Both sit directly
+ * after `"name": "instantnotes"`, so anchoring on that leaves every dependency's
+ * `"version"` untouched. The global flag catches both entries in one pass.
+ */
+export function bumpLockVersion(text, next) {
+  return text.replace(
+    /("name":\s*"instantnotes",\s*"version":\s*")\d+\.\d+\.\d+(")/g,
+    `$1${next}$2`,
+  );
+}
+
 /** Read the current top-level version from a JSON document. */
 function readJsonVersion(text) {
   return text.match(/"version"\s*:\s*"(\d+\.\d+\.\d+)"/)?.[1] ?? null;
@@ -57,6 +70,7 @@ function main(argv) {
 
   const root = join(dirname(fileURLToPath(import.meta.url)), "..");
   const pkgPath = join(root, "package.json");
+  const pkgLockPath = join(root, "package-lock.json");
   const confPath = join(root, "src-tauri", "tauri.conf.json");
   const cargoPath = join(root, "src-tauri", "Cargo.toml");
   const lockPath = join(root, "src-tauri", "Cargo.lock");
@@ -76,12 +90,13 @@ function main(argv) {
   }
 
   rewriteFile(pkgPath, (t) => bumpJsonVersion(t, next));
+  rewriteFile(pkgLockPath, (t) => bumpLockVersion(t, next));
   rewriteFile(confPath, (t) => bumpJsonVersion(t, next));
   rewriteFile(cargoPath, (t) => bumpPackageVersion(t, "instantnotes", next));
   rewriteFile(lockPath, (t) => bumpPackageVersion(t, "instantnotes", next));
 
   console.log(`bumped ${current} -> ${next} in:`);
-  console.log("  package.json, src-tauri/tauri.conf.json, src-tauri/Cargo.toml, src-tauri/Cargo.lock");
+  console.log("  package.json, package-lock.json, src-tauri/tauri.conf.json, src-tauri/Cargo.toml, src-tauri/Cargo.lock");
   console.log("");
   console.log("next:");
   console.log(`  1. add a "## [${next}]" section to CHANGELOG.md`);

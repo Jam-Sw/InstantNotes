@@ -12,12 +12,17 @@ import {
   listNotes,
   listTags,
   listWorkspaces,
-  permanentlyDeleteNote,
+  listWorkspaceTags,
   removeNoteFromWorkspace,
   removeTagFromNote,
+  renameWorkspace,
   restoreNote,
   searchNotes,
   softDeleteNote,
+  softDeleteNotes,
+  restoreNotes,
+  setNotesFlags,
+  destroyNotes as destroyNotesCmd,
   tagsForNote,
   updateNote,
   workspacesForNote,
@@ -33,17 +38,40 @@ import type {
 } from "$lib/api/types";
 import { debounce } from "$lib/debounce";
 import { friendlyMessage } from "$lib/errors";
-import { rangeSelection, stepId, toggleSelection } from "$lib/selection";
+import { SaveQueue, type SaveState } from "$lib/stores/library/save-queue.svelte";
+import { SelectionModel } from "$lib/stores/library/selection.svelte";
+import { toasts } from "$lib/stores/toasts.svelte";
 import { listen } from "@tauri-apps/api/event";
+
+export type { SaveState };
 
 // Archived and trash live behind a list filter in All Notes, not as
 // top-level sections (two-section library: All Notes and Workspaces).
 export type StatusFilter = "active" | "archived" | "trash";
 
+// Debounce for search-text refreshes only, so a query runs per pause rather
+// than per keystroke; filter clicks and change events stay immediate.
+const SEARCH_DEBOUNCE_MS = 150;
+
+// A capture-born note that nobody has opened within this window is an open
+// loop worth resurfacing. Newer captures aren't nagged about: they're often
+// still in the user's head, and Revisit must never feel like a task manager.
+const REVISIT_AFTER_MS = 3 * 24 * 60 * 60 * 1000;
+
 class LibraryStore {
   statusFilter = $state<StatusFilter>("active");
   activeWorkspaceId = $state<string | null>(null);
   activeTagId = $state<string | null>(null);
+  // Tag filter applied within the active workspace (the note list's chip
+  // row). Composes with activeWorkspaceId; the global activeTagId replaces
+  // the workspace instead.
+  scopedTagId = $state<string | null>(null);
+  // Tags carried by the active workspace's visible notes; drives the chips.
+  workspaceTags = $state<TagWithCount[]>([]);
+  // Revisit: capture-born notes never opened in the library. The count keeps
+  // the sidebar entry honest (hidden at zero); the mode filters the list.
+  revisitMode = $state(false);
+  revisitCount = $state(0);
   searchText = $state("");
   notes = $state<Note[]>([]);
   searchResults = $state<SearchResult[] | null>(null);
@@ -52,55 +80,124 @@ class LibraryStore {
   selected = $state<Note | null>(null);
   selectedTags = $state<Tag[]>([]);
   selectedWorkspaces = $state<Workspace[]>([]);
-  // Ids checked for bulk actions. Holds the open note's id on a plain click;
-  // grows via cmd-click / shift-click. Size > 1 swaps the editor for the
-  // bulk-actions panel.
-  multiSelected = $state<Set<string>>(new Set());
   error = $state<string | null>(null);
-  loading = $state(false);
-  // True while a body edit is queued or in flight, for the save indicator.
-  saving = $state(false);
 
-  #anchorId: string | null = null;
+  // Ids checked for bulk actions (the open note's id on a plain click; grows
+  // via cmd-click / shift-click). Size > 1 swaps the editor for the bulk panel.
+  // The set and its anchor/cursor live in a composed model; the store keeps the
+  // open-note state and the editor-sync orchestration.
+  #selection = new SelectionModel(() => this.visibleIds);
+  get multiSelected(): ReadonlySet<string> {
+    return this.#selection.ids;
+  }
+
+  // Body persistence (debounce, retry, flush) lives in its own single-writer
+  // unit; the store composes one and delegates. A confirmed write updates the
+  // open note; a terminal failure surfaces an error.
+  #saveQueue = new SaveQueue({
+    onPersisted: async (id, updated) => {
+      if (this.selected?.id === id) {
+        // Keep local body if the user kept typing past this save.
+        const localBody = this.selected.body;
+        this.selected = { ...updated, body: localBody };
+        this.selectedTags = await tagsForNote(id);
+      }
+      this.error = null;
+    },
+    onError: (e) => this.#fail(e),
+  });
+
+  #initialized = false;
 
   #refreshDebounced = debounce(() => void this.refresh(), 50);
-  #saveBody = debounce((id: string, body: string) => {
-    void this.#applyUpdate(id, { body }).finally(() => {
-      this.saving = false;
-    });
-  }, 400);
+  // The revisit count rides the same 50ms window so a burst of change
+  // events (bulk delete, undo) costs one count query, not one per event.
+  #revisitCountDebounced = debounce(() => void this.#refreshRevisitCount(), 50);
+  #searchRefresh = debounce(() => void this.refresh(), SEARCH_DEBOUNCE_MS);
+
+  /** Save status of the selected note, for the editor status bar. */
+  get saveState(): SaveState {
+    return this.#saveQueue.stateFor(this.selected?.id);
+  }
 
   async init(): Promise<void> {
+    if (this.#initialized) return;
+    this.#initialized = true;
+    // Listeners before the initial fetches: a change event arriving during
+    // startup must trigger a re-query, not be dropped.
+    await Promise.all([
+      listen("notes:changed", () => {
+        this.#refreshDebounced();
+        this.#revisitCountDebounced();
+      }),
+      listen("tags:changed", () => void this.refreshTags()),
+      listen("workspaces:changed", () => void this.refreshWorkspaces()),
+    ]);
     await Promise.all([
       this.refresh(),
       this.refreshTags(),
       this.refreshWorkspaces(),
+      this.#refreshRevisitCount(),
     ]);
-    await listen("notes:changed", () => this.#refreshDebounced());
-    await listen("tags:changed", () => void this.refreshTags());
-    await listen("workspaces:changed", () => void this.refreshWorkspaces());
   }
 
   #filter(): NoteFilter {
+    if (this.revisitMode) return this.#revisitFilter();
     const f: NoteFilter = {};
     if (this.statusFilter === "archived") f.isArchived = true;
     if (this.statusFilter === "trash") f.isDeleted = true;
-    if (this.activeWorkspaceId) f.workspaceId = this.activeWorkspaceId;
+    if (this.activeWorkspaceId) {
+      f.workspaceId = this.activeWorkspaceId;
+      if (this.scopedTagId) f.tagIds = [this.scopedTagId];
+    }
     if (this.activeTagId) f.tagIds = [this.activeTagId];
     return f;
   }
 
+  // Oldest first: the longest-parked loop is the one to burn down first.
+  #revisitFilter(): NoteFilter {
+    return {
+      neverOpened: true,
+      createdBefore: new Date(Date.now() - REVISIT_AFTER_MS).toISOString(),
+      sortBy: "createdAt",
+      sortOrder: "asc",
+    };
+  }
+
+  // Monotonic refresh token: queries answer out of order (search per pause,
+  // list per filter click), so a response only lands while it is still the
+  // newest request; a slow earlier reply can never clobber a later one.
+  #refreshToken = 0;
+
   async refresh(): Promise<void> {
+    const token = ++this.#refreshToken;
     try {
       const text = this.searchText.trim();
       if (text) {
-        this.searchResults = await searchNotes(text);
+        const results = await searchNotes(text);
+        if (token !== this.#refreshToken) return;
+        this.searchResults = results;
       } else {
+        const notes = await listNotes(this.#filter());
+        if (token !== this.#refreshToken) return;
         this.searchResults = null;
-        this.notes = await listNotes(this.#filter());
+        this.notes = notes;
       }
       this.error = null;
+      // In revisit mode the main list IS the revisit query, so the count
+      // stays in lockstep with the burn-down for free.
+      if (this.revisitMode && !this.searchResults) {
+        this.revisitCount = this.notes.length;
+      }
+      // Chips ride along on every refresh: notes:changed also fires when a
+      // note's inline tags change, which is exactly when they go stale.
+      if (this.activeWorkspaceId) {
+        void this.#refreshWorkspaceTags();
+      } else if (this.workspaceTags.length > 0) {
+        this.workspaceTags = [];
+      }
     } catch (e) {
+      if (token !== this.#refreshToken) return;
       this.#fail(e);
     }
   }
@@ -129,57 +226,141 @@ class LibraryStore {
   }
 
   setStatusFilter(filter: StatusFilter): void {
+    // Status (All / Archived / Trash) composes with the active space or tag,
+    // so it clears revisit and search but keeps the space/tag scope.
     this.statusFilter = filter;
+    this.revisitMode = false;
     this.searchText = "";
     this.clearMultiSelect();
     void this.refresh();
+  }
+
+  /**
+   * Clear every primary filter dimension so a caller can set exactly one.
+   * The space, tag, and revisit views are mutually exclusive; each entry
+   * point resets the rest, drops any scoped tag, and clears search and the
+   * multi-selection before choosing its own dimension.
+   */
+  #resetForNavigation(): void {
+    this.activeWorkspaceId = null;
+    this.activeTagId = null;
+    this.scopedTagId = null;
+    this.workspaceTags = [];
+    this.revisitMode = false;
+    this.statusFilter = "active";
+    this.searchText = "";
+    this.clearMultiSelect();
   }
 
   /** Show All Notes (null) or one workspace's collected notes. */
   selectWorkspace(workspaceId: string | null): void {
+    this.#resetForNavigation();
     this.activeWorkspaceId = workspaceId;
-    this.statusFilter = "active";
-    this.activeTagId = null;
-    this.searchText = "";
-    this.clearMultiSelect();
+    void this.refresh();
+  }
+
+  /** Show the open loops: capture-born notes never opened in the library. */
+  selectRevisit(): void {
+    this.#resetForNavigation();
+    this.revisitMode = true;
     void this.refresh();
   }
 
   setTagFilter(tagId: string | null): void {
+    this.#resetForNavigation();
     this.activeTagId = tagId;
-    this.activeWorkspaceId = null;
-    this.statusFilter = "active";
-    this.searchText = "";
+    void this.refresh();
+  }
+
+  /**
+   * Re-count the open loops (never-opened captures old enough to matter).
+   * Cheap and quiet: a failed count only affects a sidebar hint, and the
+   * next change event retries it.
+   */
+  async #refreshRevisitCount(): Promise<void> {
+    try {
+      const loops = await listNotes(this.#revisitFilter());
+      this.revisitCount = loops.length;
+    } catch {
+      // Keep the stale count rather than surface an error for a hint.
+    }
+  }
+
+  /** Toggle a chip: filter the active workspace's list by one of its tags. */
+  toggleScopedTag(tagId: string): void {
+    if (!this.activeWorkspaceId) return;
+    this.scopedTagId = this.scopedTagId === tagId ? null : tagId;
     this.clearMultiSelect();
     void this.refresh();
+  }
+
+  /**
+   * Re-query the chip row for the active workspace. The scoped tag is
+   * dropped when it no longer exists on the workspace's visible notes: a
+   * chip that vanished must not keep filtering the list.
+   */
+  async #refreshWorkspaceTags(): Promise<void> {
+    const id = this.activeWorkspaceId;
+    if (!id) {
+      this.workspaceTags = [];
+      return;
+    }
+    try {
+      const tags = await listWorkspaceTags(id);
+      if (this.activeWorkspaceId !== id) return; // switched away mid-flight
+      this.workspaceTags = tags;
+      if (this.scopedTagId && !tags.some((t) => t.id === this.scopedTagId)) {
+        this.scopedTagId = null;
+        void this.refresh();
+      }
+    } catch (e) {
+      if (this.activeWorkspaceId !== id) return;
+      this.workspaceTags = [];
+      // The workspace can be deleted between the list refresh and this
+      // query; refreshWorkspaces resets the selection, nothing to surface.
+      if (!(e instanceof ApiError && e.code === "NOT_FOUND")) this.#fail(e);
+    }
   }
 
   setSearch(text: string): void {
     this.searchText = text;
     // Reset the multi-selection but keep the open note in the editor.
-    this.multiSelected = this.selected ? new Set([this.selected.id]) : new Set();
-    this.#anchorId = this.selected?.id ?? null;
-    this.#lastRangeEnd = this.#anchorId;
-    void this.refresh();
+    const openId = this.selected?.id ?? null;
+    this.#selection.reset(openId ? [openId] : [], openId);
+    if (text.trim()) {
+      this.#searchRefresh();
+    } else {
+      // Clearing must feel instant: drop any pending keystroke debounce and
+      // go straight back to the list.
+      this.#searchRefresh.cancel();
+      void this.refresh();
+    }
   }
 
   async select(id: string): Promise<void> {
-    this.multiSelected = new Set([id]);
-    this.#anchorId = id;
-    this.#lastRangeEnd = id;
+    this.#selection.reset([id], id);
     await this.#open(id);
   }
 
   async #open(id: string): Promise<void> {
     // Flush any pending edit of the previous note before switching.
-    this.#saveBody.flush();
+    this.#saveQueue.flushDebounce();
     try {
-      this.selected = await getNote(id, true);
+      const note = await getNote(id, true);
+      // A queued edit (debounced or awaiting retry) is newer than what disk
+      // returned; showing the disk body would fork the note's history.
+      const queued = this.#saveQueue.peek(id);
+      this.selected = queued !== undefined ? { ...note, body: queued } : note;
       [this.selectedTags, this.selectedWorkspaces] = await Promise.all([
         tagsForNote(id),
         workspacesForNote(id),
       ]);
       this.error = null;
+      // The touch in getNote released this note from the Revisit filter;
+      // get_note emits no change event, so sync the count (and, in revisit
+      // mode, the list burn-down) here.
+      void this.#refreshRevisitCount();
+      if (this.revisitMode) void this.refresh();
     } catch (e) {
       this.#fail(e);
     }
@@ -203,20 +384,17 @@ class LibraryStore {
   }
 
   async toggleInSelection(id: string): Promise<void> {
-    this.multiSelected = toggleSelection(this.multiSelected, id);
-    this.#anchorId = id;
-    this.#lastRangeEnd = id;
+    this.#selection.toggle(id);
     await this.#syncEditorToSelection();
   }
 
   async extendSelectionTo(id: string): Promise<void> {
-    this.multiSelected = rangeSelection(this.visibleIds, this.#anchorId, id);
-    this.#lastRangeEnd = id;
+    this.#selection.extendTo(id);
     await this.#syncEditorToSelection();
   }
 
   async selectAllVisible(): Promise<void> {
-    this.multiSelected = new Set(this.visibleIds);
+    this.#selection.selectAll();
     await this.#syncEditorToSelection();
   }
 
@@ -225,9 +403,7 @@ class LibraryStore {
    * Returns the id the selection moved to so the view can reveal it.
    */
   async moveSelection(delta: number, extend = false): Promise<string | null> {
-    const current =
-      this.#lastRangeEnd ?? this.selected?.id ?? this.#anchorId;
-    const next = stepId(this.visibleIds, current, delta);
+    const next = this.#selection.step(delta, this.selected?.id ?? null);
     if (!next) return null;
     if (extend) {
       await this.extendSelectionTo(next);
@@ -237,14 +413,8 @@ class LibraryStore {
     return next;
   }
 
-  // Active end of the selection: the last row clicked, toggled, or stepped to.
-  // Shift+arrow continues from here rather than from the anchor.
-  #lastRangeEnd: string | null = null;
-
   clearMultiSelect(): void {
-    this.multiSelected = new Set();
-    this.#anchorId = null;
-    this.#lastRangeEnd = null;
+    this.#selection.clear();
     this.selected = null;
     this.selectedTags = [];
     this.selectedWorkspaces = [];
@@ -254,11 +424,10 @@ class LibraryStore {
   async #syncEditorToSelection(): Promise<void> {
     const ids = [...this.multiSelected];
     if (ids.length === 1) {
-      this.#anchorId = ids[0];
-      this.#lastRangeEnd = ids[0];
+      this.#selection.setActive(ids[0]);
       if (this.selected?.id !== ids[0]) await this.#open(ids[0]);
     } else {
-      this.#saveBody.flush();
+      this.#saveQueue.flushDebounce();
       this.selected = null;
       this.selectedTags = [];
       this.selectedWorkspaces = [];
@@ -268,48 +437,83 @@ class LibraryStore {
   // ---- bulk actions ----
 
   async bulkSetPinned(isPinned: boolean): Promise<void> {
-    await this.#bulk((id) => updateNote(id, { isPinned }).then(() => {}));
+    await this.#bulk((ids) => setNotesFlags(ids, { isPinned }));
     this.clearMultiSelect();
   }
 
   async bulkSetArchived(isArchived: boolean): Promise<void> {
-    await this.#bulk((id) => updateNote(id, { isArchived }).then(() => {}));
+    await this.#bulk((ids) => setNotesFlags(ids, { isArchived }));
     this.clearMultiSelect();
   }
 
   async bulkDelete(): Promise<void> {
-    this.#saveBody.cancel();
-    await this.#bulk((id) => softDeleteNote(id).then(() => {}));
+    const ids = [...this.multiSelected];
+    // Trash is reversible and Undo promises fidelity: persist any pending
+    // edit first, so a restored note holds the user's last keystrokes.
+    this.#saveQueue.cancelDebounce();
+    await this.#saveQueue.flushIds(ids);
+    this.#saveQueue.drop(ids);
+    await this.#bulk((sel) => softDeleteNotes(sel));
     this.clearMultiSelect();
+    if (ids.length > 0) {
+      const label = ids.length === 1 ? "1 note" : `${ids.length} notes`;
+      toasts.show(`${label} moved to Trash`, {
+        label: "Undo",
+        run: () => void this.#undoSoftDelete(ids),
+      });
+    }
   }
 
   async bulkRestore(): Promise<void> {
-    await this.#bulk((id) => restoreNote(id).then(() => {}));
+    await this.#bulk((ids) => restoreNotes(ids));
     this.clearMultiSelect();
   }
 
   async bulkDestroy(): Promise<void> {
-    await this.#bulk((id) => permanentlyDeleteNote(id, true));
+    await this.destroyNotes([...this.multiSelected]);
+  }
+
+  /**
+   * Permanently delete an explicit set of notes. Ids are an argument rather
+   * than a read of the live selection so confirm dialogs can snapshot them
+   * at ask time: the selection must not be able to drift between the dialog
+   * opening and the user confirming.
+   */
+  async destroyNotes(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    // Destroyed notes must also forget their queued edits, or the retry and
+    // every later flush re-attempts a write against a row that no longer
+    // exists and surfaces NOT_FOUND forever.
+    this.#saveQueue.cancelDebounce();
+    this.#saveQueue.drop(ids);
+    try {
+      await destroyNotesCmd(ids, true);
+      this.error = null;
+    } catch (e) {
+      this.#fail(e);
+    }
     this.clearMultiSelect();
   }
 
   async emptyTrash(): Promise<void> {
     try {
       const trashed = await listNotes({ isDeleted: true });
-      for (const note of trashed) {
-        await permanentlyDeleteNote(note.id, true);
-      }
+      this.#saveQueue.cancelDebounce();
+      this.#saveQueue.drop(trashed.map((n) => n.id));
+      await destroyNotesCmd(
+        trashed.map((n) => n.id),
+        true,
+      );
       this.clearMultiSelect();
+      if (trashed.length > 0) toasts.show("Trash emptied");
     } catch (e) {
       this.#fail(e);
     }
   }
 
-  async #bulk(op: (id: string) => Promise<void>): Promise<void> {
+  async #bulk(op: (ids: string[]) => Promise<void>): Promise<void> {
     try {
-      for (const id of this.multiSelected) {
-        await op(id);
-      }
+      await op([...this.multiSelected]);
       this.error = null;
     } catch (e) {
       this.#fail(e);
@@ -322,12 +526,18 @@ class LibraryStore {
         ? this.tags.find((t) => t.id === this.activeTagId)
         : null;
 
-      const note = await createNote(activeTag ? { tags: [activeTag.name] } : {});
+      const note = await createNote(
+        activeTag ? { tags: [activeTag.name] } : {},
+      );
       // A note born inside a workspace joins it; the view stays put.
       if (this.activeWorkspaceId) {
         await addNoteToWorkspace(note.id, this.activeWorkspaceId);
       }
       this.statusFilter = "active";
+      // A brand-new note can never match the Revisit filter (it is neither
+      // old nor forgotten), so leaving the mode on would hide the note the
+      // user just asked for. Exit it, exactly like trash and archived above.
+      this.revisitMode = false;
       if (!activeTag) this.activeTagId = null;
       this.searchText = "";
       void this.refresh();
@@ -349,13 +559,83 @@ class LibraryStore {
     }
   }
 
-  /** Delete a workspace; its notes are kept. */
+  /**
+   * Delete a workspace; its notes are kept. Immediate, with an Undo toast:
+   * the operation never destroys note data, so it earns the reversible-action
+   * treatment instead of a confirm dialog.
+   */
   async removeWorkspace(id: string): Promise<void> {
+    const ws = this.workspaces.find((w) => w.id === id);
     try {
-      await deleteWorkspace(id);
+      const memberIds = await deleteWorkspace(id);
       if (this.activeWorkspaceId === id) this.selectWorkspace(null);
+      // An open note's membership chips may have shown this workspace.
+      if (this.selected) {
+        this.selectedWorkspaces = await workspacesForNote(this.selected.id);
+      }
+      await this.refreshWorkspaces();
+      if (ws) {
+        toasts.show(`Deleted "${ws.name}" - notes are kept`, {
+          label: "Undo",
+          run: () => void this.#undoWorkspaceDelete(ws.name, memberIds),
+        });
+      }
     } catch (e) {
       this.#fail(e);
+    }
+  }
+
+  /**
+   * Undo for a workspace delete: recreate it by name and re-add every
+   * member. The ids come from the backend at delete time so archived and
+   * trashed members are restored too; a member destroyed in the meantime
+   * fails quietly into a plain toast rather than throwing back into the
+   * toast's action handler.
+   */
+  async #undoWorkspaceDelete(name: string, memberIds: string[]): Promise<void> {
+    try {
+      const ws = await getOrCreateWorkspace(name);
+      const results = await Promise.allSettled(
+        memberIds.map((noteId) => addNoteToWorkspace(noteId, ws.id)),
+      );
+      await this.refreshWorkspaces();
+      if (this.selected) {
+        this.selectedWorkspaces = await workspacesForNote(this.selected.id);
+      }
+      const failedCount = results.filter((r) => r.status === "rejected").length;
+      if (failedCount > 0) {
+        toasts.show(
+          `Restored "${name}" without ${failedCount} of ${memberIds.length} notes.`,
+        );
+      }
+    } catch {
+      toasts.show(`Couldn't restore "${name}".`);
+    }
+  }
+
+  /**
+   * Rename a workspace. Returns an inline-error shape rather than throwing
+   * so the row's edit state can show a duplicate-name rejection in place,
+   * mirroring the Sidebar's tag rename.
+   */
+  async renameWorkspace(
+    id: string,
+    name: string,
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
+    try {
+      await renameWorkspace(id, name);
+      await this.refreshWorkspaces();
+      // An open note's membership chips may display the old name.
+      if (this.selected) {
+        this.selectedWorkspaces = await workspacesForNote(this.selected.id);
+      }
+      return { ok: true };
+    } catch (e) {
+      const message =
+        e instanceof ApiError
+          ? friendlyMessage(e.code, e.message)
+          : friendlyMessage("");
+      return { ok: false, message };
     }
   }
 
@@ -383,10 +663,10 @@ class LibraryStore {
 
   editBody(body: string): void {
     if (!this.selected) return;
-    // Optimistic local state; persistence is debounced.
+    // Optimistic local state; persistence is debounced. The note is dirty
+    // from this moment until a write of this (or a newer) body succeeds.
     this.selected.body = body;
-    this.saving = true;
-    this.#saveBody(this.selected.id, body);
+    this.#saveQueue.queue(this.selected.id, body);
   }
 
   editTitle(title: string): void {
@@ -412,11 +692,19 @@ class LibraryStore {
 
   async deleteSelected(): Promise<void> {
     if (!this.selected) return;
-    this.#saveBody.cancel();
-    this.saving = false;
+    const id = this.selected.id;
+    // Trash is reversible and Undo promises fidelity: persist any pending
+    // edit first, so a restored note holds the user's last keystrokes.
+    this.#saveQueue.cancelDebounce();
+    await this.#saveQueue.flushIds([id]);
+    this.#saveQueue.drop([id]);
     try {
-      await softDeleteNote(this.selected.id);
+      await softDeleteNote(id);
       this.clearMultiSelect();
+      toasts.show("Moved to Trash", {
+        label: "Undo",
+        run: () => void this.#undoSoftDelete([id]),
+      });
     } catch (e) {
       this.#fail(e);
     }
@@ -433,12 +721,7 @@ class LibraryStore {
 
   async destroySelected(): Promise<void> {
     if (!this.selected) return;
-    try {
-      await permanentlyDeleteNote(this.selected.id, true);
-      this.clearMultiSelect();
-    } catch (e) {
-      this.#fail(e);
-    }
+    await this.destroyNotes([this.selected.id]);
   }
 
   async addTag(name: string): Promise<void> {
@@ -461,8 +744,32 @@ class LibraryStore {
     }
   }
 
-  flushPendingEdits(): void {
-    this.#saveBody.flush();
+  /**
+   * Persist every queued edit now (note switch, window blur, export, quit).
+   * Resolves once the writes have settled; anything that still fails stays
+   * queued for the next flush.
+   */
+  async flushPendingEdits(): Promise<void> {
+    await this.#saveQueue.flushAll();
+  }
+
+  /**
+   * Undo for a soft delete: restore each id, then refresh. A note destroyed
+   * in the meantime (or otherwise gone) fails quietly into a plain toast
+   * instead of throwing back into the caller (the toast's action handler).
+   */
+  async #undoSoftDelete(ids: string[]): Promise<void> {
+    const results = await Promise.allSettled(ids.map((id) => restoreNote(id)));
+    await this.refresh();
+    const failedCount = results.filter((r) => r.status === "rejected").length;
+    if (failedCount === 0) return;
+    const message =
+      failedCount === ids.length
+        ? ids.length === 1
+          ? "Couldn't restore. It may already be gone."
+          : "Couldn't restore. The notes may already be gone."
+        : `Couldn't restore ${failedCount} of ${ids.length} notes.`;
+    toasts.show(message);
   }
 
   async #applyUpdate(

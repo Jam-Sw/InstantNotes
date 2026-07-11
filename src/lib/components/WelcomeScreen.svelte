@@ -1,10 +1,27 @@
 <script lang="ts">
+  import { onMount } from "svelte";
+  import { getShortcutFailure } from "$lib/api/client";
   import { library } from "$lib/stores/library.svelte";
   import { updater } from "$lib/stores/updater.svelte";
   import { captureShortcut, modKey } from "$lib/platform";
 
   let { appVersion, onShowUpdate }: { appVersion: string; onShowUpdate: () => void } =
     $props();
+
+  // Set when the global capture hotkey could not be registered at startup
+  // (another app owns it); without this notice the core feature would just
+  // silently not exist. Queried, not event-driven: the failure happens before
+  // this webview has listeners attached.
+  let shortcutConflict = $state<string | null>(null);
+  let conflictDismissed = $state(false);
+
+  onMount(() => {
+    getShortcutFailure()
+      .then((label) => (shortcutConflict = label))
+      .catch(() => {
+        // Best-effort notice; the welcome screen must render regardless.
+      });
+  });
 </script>
 
 <div class="no-selection">
@@ -42,6 +59,15 @@
     </h2>
     <p>Select a note, or press <kbd>{captureShortcut}</kbd> anywhere to capture.</p>
     <p class="hint-line">Press <kbd>{modKey}K</kbd> for commands and themes.</p>
+    {#if shortcutConflict && !conflictDismissed}
+      <p class="shortcut-notice">
+        The capture shortcut <kbd>{shortcutConflict}</kbd> could not be registered;
+        another app likely owns it.
+        <button class="notice-dismiss" onclick={() => (conflictDismissed = true)}>
+          Dismiss
+        </button>
+      </p>
+    {/if}
     {#if library.error}<p class="error">{library.error}</p>{/if}
   </div>
 </div>
@@ -64,6 +90,21 @@
   .hint-line {
     font-size: 12px;
     opacity: 0.8;
+  }
+  /* Same warning orange as the beta badge; a conflict is a caution, not an error. */
+  .shortcut-notice {
+    font-size: 12px;
+    color: #e8923a;
+  }
+  .notice-dismiss {
+    margin-left: 4px;
+    border: 1px solid #e8923a;
+    border-radius: 99px;
+    padding: 0 7px;
+    color: #e8923a;
+    background: rgba(232, 146, 58, 0.08);
+    font-size: 10px;
+    cursor: pointer;
   }
   /* Orange marks beta builds. */
   .version-badge {

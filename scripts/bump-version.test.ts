@@ -3,6 +3,7 @@ import {
   isValidVersion,
   bumpJsonVersion,
   bumpPackageVersion,
+  bumpLockVersion,
 } from "./bump-version.mjs";
 
 describe("isValidVersion", () => {
@@ -62,5 +63,33 @@ describe("bumpPackageVersion", () => {
     const out = bumpPackageVersion(lock, "instantnotes", "0.6.0");
     expect(out).toContain('name = "instantnotes-core"\nversion = "0.4.0"');
     expect(out).toContain('name = "instantnotes"\nversion = "0.6.0"');
+  });
+});
+
+describe("bumpLockVersion", () => {
+  it("rewrites both the root and packages[\"\"] version, leaving dependency versions alone", () => {
+    const lock = [
+      "{",
+      '  "name": "instantnotes",',
+      '  "version": "0.5.2",',
+      '  "lockfileVersion": 3,',
+      '  "packages": {',
+      '    "": {',
+      '      "name": "instantnotes",',
+      '      "version": "0.5.2",',
+      '      "license": "MIT"',
+      "    },",
+      '    "node_modules/svelte": {',
+      '      "version": "5.0.0"',
+      "    }",
+      "  }",
+      "}",
+    ].join("\n");
+    const out = bumpLockVersion(lock, "0.6.0");
+    // Both instantnotes version fields move.
+    expect(out.match(/"version": "0\.6\.0"/g)).toHaveLength(2);
+    expect(out).not.toContain('"version": "0.5.2"');
+    // The dependency's version is untouched.
+    expect(out).toContain('"version": "5.0.0"');
   });
 });

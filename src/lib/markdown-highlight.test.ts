@@ -1,14 +1,19 @@
 import { describe, it, expect } from "vitest";
-import { markdownHighlightSpec, HEADING_TAGS } from "./markdown-highlight";
+import { tags as t } from "@lezer/highlight";
+import { markdownHighlightSpec } from "./markdown-highlight";
 
 describe("markdown highlight spec", () => {
   const styledTags = markdownHighlightSpec.flatMap((s) =>
     Array.isArray(s.tag) ? s.tag : [s.tag],
   );
 
-  it("never styles a markdown heading (# is reserved for tags)", () => {
-    for (const heading of HEADING_TAGS) {
-      expect(styledTags).not.toContain(heading);
+  // Headings render because `# Heading` (space) and `#tag` (no space) are
+  // disjoint: CommonMark requires the space for a heading, the tag
+  // highlighter requires its absence. If either side of that invariant
+  // changes, tags and headings collide - revisit both together.
+  it("styles headings with a visual scale", () => {
+    for (const heading of [t.heading1, t.heading2, t.heading3, t.heading]) {
+      expect(styledTags).toContain(heading);
     }
   });
 

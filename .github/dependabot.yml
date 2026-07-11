@@ -1,0 +1,29 @@
+# Weekly dependency updates, one grouped PR per ecosystem so the review load is a
+# single PR a week rather than one per package. Grouping every update into the
+# same PR keeps the three lockfiles (package-lock.json, src-tauri/Cargo.lock,
+# workflow SHAs) moving in lockstep with CI.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      npm:
+        patterns: ["*"]
+
+  - package-ecosystem: cargo
+    directory: "/src-tauri"
+    schedule:
+      interval: weekly
+    groups:
+      cargo:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]

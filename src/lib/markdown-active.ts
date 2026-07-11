@@ -14,6 +14,7 @@ export interface ActiveMarks {
   code: boolean;
   quote: boolean;
   list: boolean;
+  task: boolean;
 }
 
 export const NO_MARKS: ActiveMarks = {
@@ -23,6 +24,7 @@ export const NO_MARKS: ActiveMarks = {
   code: false,
   quote: false,
   list: false,
+  task: false,
 };
 
 // Lezer-markdown node names → the toolbar mark they represent.
@@ -47,6 +49,9 @@ function mark(name: string, marks: ActiveMarks): void {
     case "OrderedList":
     case "ListItem":
       marks.list = true;
+      break;
+    case "Task":
+      marks.task = true;
       break;
   }
 }

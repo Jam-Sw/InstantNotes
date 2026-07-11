@@ -6,7 +6,7 @@
   import { getVersion } from "@tauri-apps/api/app";
   import { listen } from "@tauri-apps/api/event";
   import { save } from "@tauri-apps/plugin-dialog";
-  import { exportNoteFile } from "$lib/api/client";
+  import { exportNoteFile, quitApp } from "$lib/api/client";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import NoteList from "$lib/components/NoteList.svelte";
   import NoteEditor from "$lib/components/NoteEditor.svelte";
@@ -15,10 +15,15 @@
   import CommandPalette from "$lib/components/CommandPalette.svelte";
   import UpdatePanel from "$lib/components/UpdatePanel.svelte";
   import SettingsView from "$lib/components/SettingsView.svelte";
+  import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
+  import Toast from "$lib/components/Toast.svelte";
   import { library } from "$lib/stores/library.svelte";
   import { updater } from "$lib/stores/updater.svelte";
   import { editorPrefs } from "$lib/stores/editor.svelte";
+  import { sidebar } from "$lib/stores/sidebar.svelte";
+  import { linkPrefs as linkPrefsStore } from "$lib/stores/links.svelte";
   import { contexting } from "$lib/stores/contexting.svelte";
+  import { confirmDialog } from "$lib/stores/confirm.svelte";
 
   let appVersion = $state("");
   let paletteOpen = $state(false);
@@ -28,6 +33,8 @@
   onMount(() => {
     void library.init();
     void editorPrefs.init();
+    void sidebar.init();
+    void linkPrefsStore.init();
     void contexting.init();
     void getVersion().then((v) => (appVersion = v));
     updater.start();
@@ -55,7 +62,15 @@
       void exportSelectedNote();
     }).then((un) => (unlistenExport = un));
 
-    const flush = () => library.flushPendingEdits();
+    // Quit handshake: persist the debounced edit, then tell Rust to exit for
+    // real. If this webview is hung the Rust-side fallback exits anyway.
+    let unlistenQuit: (() => void) | undefined;
+    void listen("app:quit-requested", async () => {
+      await library.flushPendingEdits();
+      await quitApp();
+    }).then((un) => (unlistenQuit = un));
+
+    const flush = () => void library.flushPendingEdits();
     window.addEventListener("blur", flush);
     window.addEventListener("keydown", onKeydown);
     return () => {
@@ -64,6 +79,7 @@
       unlistenSettings?.();
       unlistenNewNote?.();
       unlistenExport?.();
+      unlistenQuit?.();
       window.removeEventListener("blur", flush);
       window.removeEventListener("keydown", onKeydown);
     };
@@ -77,6 +93,10 @@
   }
 
   function onKeydown(e: KeyboardEvent) {
+    // The confirm dialog stops propagation itself, but that only covers keys
+    // dispatched through it; this guard catches the rest (focus on body after
+    // an invoker unmounted) so nothing moves under an open modal.
+    if (confirmDialog.request) return;
     const mod = e.metaKey || e.ctrlKey;
     // ⌘K toggles the command palette from anywhere, including input fields.
     if (mod && e.key === "k") {
@@ -97,6 +117,12 @@
     if (mod && e.key === "0") {
       e.preventDefault();
       editorPrefs.resetZoom();
+      return;
+    }
+    // ⌘\ toggles the sidebar from anywhere, including input fields.
+    if (mod && e.key === "\\") {
+      e.preventDefault();
+      sidebar.toggle();
       return;
     }
     if (isTypingTarget(e.target)) {
@@ -168,20 +194,85 @@
     await exportNoteFile(path, note.body);
   }
 
-  async function confirmBulkDestroy() {
-    const n = library.multiSelected.size;
-    const what = n === 1 ? "this note" : `these ${n} notes`;
-    if (window.confirm(`Permanently delete ${what}? This cannot be undone.`)) {
-      await library.bulkDestroy();
+  // Sidebar resize: pointer capture keeps the gesture on the handle even when
+  // the pointer outruns it; width persists once at release, not per move.
+  let draggingSidebar = $state(false);
+
+  function startSidebarDrag(e: PointerEvent) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const handle = e.currentTarget as HTMLElement;
+    handle.setPointerCapture(e.pointerId);
+    draggingSidebar = true;
+    const startX = e.clientX;
+    const startWidth = sidebar.width;
+    const move = (ev: PointerEvent) => sidebar.setWidth(startWidth + ev.clientX - startX);
+    const up = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+      draggingSidebar = false;
+      sidebar.commitWidth();
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+  }
+
+  function onHandleKeydown(e: KeyboardEvent) {
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault();
+      sidebar.setWidth(sidebar.width + (e.key === "ArrowLeft" ? -10 : 10));
+      sidebar.commitWidth();
     }
+  }
+
+  async function confirmBulkDestroy() {
+    // Snapshot the ids when the dialog opens: the selection could otherwise
+    // drift while it is up (menu events, cross-window refreshes) and the
+    // confirm would destroy whatever is selected at resolve time instead.
+    const ids = [...library.multiSelected];
+    if (ids.length === 0) return;
+    const what = ids.length === 1 ? "this note" : `these ${ids.length} notes`;
+    const ok = await confirmDialog.ask({
+      title: `Delete ${what} permanently?`,
+      body: "This action cannot be undone.",
+      confirmLabel: "Delete Forever",
+      tone: "danger",
+    });
+    if (ok) await library.destroyNotes(ids);
   }
 </script>
 
 {#if settingsOpen}
   <SettingsView {appVersion} onBack={() => (settingsOpen = false)} />
 {:else}
-  <div class="layout">
-    <Sidebar />
+  <div
+    class="layout"
+    style:grid-template-columns={sidebar.collapsed
+      ? "280px 1fr"
+      : `${sidebar.width}px 280px 1fr`}
+  >
+    {#if !sidebar.collapsed}
+      <Sidebar />
+      <!-- Sits on the sidebar/list border; drag resizes, double-click resets,
+           arrows nudge. Collapse/expand lives on ⌘\ and the command palette.
+           WAI-ARIA window-splitter: a focusable separator with arrow-key
+           resizing is the canonical widget, which the a11y lint doesn't know. -->
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <div
+        class="sidebar-handle"
+        class:dragging={draggingSidebar}
+        style:left="{sidebar.width - 3}px"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize sidebar"
+        aria-valuenow={sidebar.width}
+        tabindex="0"
+        onpointerdown={startSidebarDrag}
+        ondblclick={() => sidebar.resetWidth()}
+        onkeydown={onHandleKeydown}
+      ></div>
+    {/if}
     <NoteList />
     <section class="editor-pane">
       {#if library.multiSelected.size > 1}
@@ -197,16 +288,37 @@
 
 <CommandPalette bind:open={paletteOpen} />
 <UpdatePanel bind:open={updatePanelOpen} currentVersion={appVersion} />
+<ConfirmDialog />
+<Toast />
 
 <style>
   .layout {
     display: grid;
-    grid-template-columns: 190px 280px 1fr;
+    /* Columns come from inline style: the sidebar column is drag-resizable
+       and drops out entirely when collapsed (⌘\). */
     /* Pin the single row to the viewport so each pane scrolls internally
        instead of growing the row and clipping content below the fold. */
     grid-template-rows: minmax(0, 1fr);
     height: 100vh;
     overflow: hidden;
+    position: relative;
+  }
+
+  /* Invisible 6px hit strip straddling the sidebar border. The border itself
+     stays the visual affordance; the strip only tints while engaged. */
+  .sidebar-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 6px;
+    cursor: col-resize;
+    z-index: 10;
+  }
+  .sidebar-handle:hover,
+  .sidebar-handle.dragging,
+  .sidebar-handle:focus-visible {
+    background: var(--accent-soft);
+    outline: none;
   }
 
   .editor-pane {

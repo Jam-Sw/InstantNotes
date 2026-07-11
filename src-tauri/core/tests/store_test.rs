@@ -1,6 +1,7 @@
 //! Integration tests against real SQLite (tempfile / in-memory).
 //! Synthetic fixtures only, per TEST_PLAN.md §5.
 
+use instantnotes_core::store::MIGRATIONS;
 use instantnotes_core::types::*;
 use instantnotes_core::{AppError, Store};
 
@@ -25,8 +26,6 @@ fn create_sets_defaults_per_data_model() {
     let n = create(&mut s, "Buy milk and coffee");
     assert!(!n.id.is_empty());
     assert_eq!(n.title, "Buy milk and coffee");
-    assert_eq!(n.version, 1);
-    assert_eq!(n.sync_state, "local_only");
     assert!(!n.is_pinned && !n.is_archived && !n.is_deleted);
     assert!(!n.created_at.is_empty());
     assert_eq!(n.created_at, n.updated_at);
@@ -91,7 +90,7 @@ fn get_with_touch_sets_last_opened_at() {
 // ---- update ----
 
 #[test]
-fn update_body_increments_version() {
+fn update_body_persists_new_body() {
     let mut s = store();
     let n = create(&mut s, "draft one");
     let u = s
@@ -103,7 +102,6 @@ fn update_body_increments_version() {
             },
         )
         .unwrap();
-    assert_eq!(u.version, 2);
     assert_eq!(u.body, "draft two");
 }
 
@@ -126,6 +124,99 @@ fn update_body_attaches_new_inline_tags() {
         .map(|t| t.name)
         .collect();
     assert!(names.contains(&"newtag".to_string()));
+}
+
+#[test]
+fn removing_inline_token_detaches_tag_but_keeps_tag_row() {
+    let mut s = store();
+    let n = create(&mut s, "notes on #alpha and #beta");
+    s.update_note(
+        &n.id,
+        UpdateNotePatch {
+            body: Some("notes on #beta only".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let names: Vec<String> = s
+        .tags_for_note(&n.id)
+        .unwrap()
+        .into_iter()
+        .map(|t| t.name)
+        .collect();
+    assert_eq!(names, vec!["beta".to_string()]);
+    // The tag itself survives, just unused.
+    let alpha = s
+        .list_tags()
+        .unwrap()
+        .into_iter()
+        .find(|t| t.tag.name == "alpha")
+        .expect("alpha tag row should survive detachment");
+    assert_eq!(alpha.usage_count, 0);
+
+    // A body with no tokens at all clears every inline edge.
+    s.update_note(
+        &n.id,
+        UpdateNotePatch {
+            body: Some("no tags anymore".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert!(s.tags_for_note(&n.id).unwrap().is_empty());
+}
+
+#[test]
+fn manually_added_tag_survives_body_edits() {
+    let mut s = store();
+    let n = create(&mut s, "plain body");
+    s.add_tag_to_note(&n.id, "pinned").unwrap();
+    s.update_note(
+        &n.id,
+        UpdateNotePatch {
+            body: Some("edited body, still no tokens".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let names: Vec<String> = s
+        .tags_for_note(&n.id)
+        .unwrap()
+        .into_iter()
+        .map(|t| t.name)
+        .collect();
+    assert_eq!(names, vec!["pinned".to_string()]);
+}
+
+#[test]
+fn explicit_add_promotes_inline_tag_past_token_removal() {
+    let mut s = store();
+    let n = create(&mut s, "working on #keeper today");
+    // The explicit add pins the already-inline tag against body edits.
+    s.add_tag_to_note(&n.id, "keeper").unwrap();
+    s.update_note(
+        &n.id,
+        UpdateNotePatch {
+            body: Some("token removed from body".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let names: Vec<String> = s
+        .tags_for_note(&n.id)
+        .unwrap()
+        .into_iter()
+        .map(|t| t.name)
+        .collect();
+    assert_eq!(names, vec!["keeper".to_string()]);
+}
+
+#[test]
+fn empty_patch_does_not_bump_updated_at() {
+    let mut s = store();
+    let n = create(&mut s, "leave me alone");
+    let u = s.update_note(&n.id, UpdateNotePatch::default()).unwrap();
+    assert_eq!(u.updated_at, n.updated_at);
 }
 
 #[test]
@@ -407,6 +498,93 @@ fn search_special_characters_do_not_error() {
     }
 }
 
+#[test]
+fn search_excerpt_brackets_the_matched_term_with_sentinels() {
+    let mut s = store();
+    create(&mut s, "Travel checklist\npassport tickets sunscreen");
+    let hits = s.search_notes("passport", 10).unwrap();
+    assert_eq!(hits.len(), 1);
+    let excerpt = &hits[0].excerpt;
+    let start = excerpt
+        .find('\u{1}')
+        .unwrap_or_else(|| panic!("missing start sentinel in {excerpt:?}"));
+    let end = excerpt
+        .find('\u{2}')
+        .unwrap_or_else(|| panic!("missing end sentinel in {excerpt:?}"));
+    assert!(
+        start < end,
+        "start sentinel should precede end: {excerpt:?}"
+    );
+    let hit_text = &excerpt[start + '\u{1}'.len_utf8()..end];
+    assert_eq!(hit_text.to_lowercase(), "passport");
+}
+
+#[test]
+fn search_excerpt_marks_every_term_in_a_multi_word_query() {
+    let mut s = store();
+    create(
+        &mut s,
+        "Travel checklist\npassport tickets sunscreen and a boarding pass",
+    );
+    let hits = s.search_notes("passport tickets", 10).unwrap();
+    assert_eq!(hits.len(), 1);
+    let excerpt = &hits[0].excerpt;
+    assert_eq!(
+        excerpt.matches('\u{1}').count(),
+        2,
+        "expected both query terms marked: {excerpt:?}"
+    );
+    assert_eq!(excerpt.matches('\u{2}').count(), 2);
+}
+
+#[test]
+fn search_excerpt_sentinels_are_always_balanced() {
+    let mut s = store();
+    create(
+        &mut s,
+        "brainstorming session notes: more brainstorming, then a brainstorming recap",
+    );
+    let hits = s.search_notes("brainstorming", 10).unwrap();
+    assert_eq!(hits.len(), 1);
+    let excerpt = &hits[0].excerpt;
+    let starts = excerpt.matches('\u{1}').count();
+    let ends = excerpt.matches('\u{2}').count();
+    assert!(starts > 0, "expected at least one match: {excerpt:?}");
+    assert_eq!(starts, ends, "sentinels should be balanced: {excerpt:?}");
+}
+
+#[test]
+fn search_title_matches_are_bracketed_with_sentinels() {
+    let mut s = store();
+    create(&mut s, "Travel checklist\npassport tickets sunscreen");
+    let hits = s.search_notes("travel", 10).unwrap();
+    assert_eq!(hits.len(), 1);
+    let title = &hits[0].title;
+    let start = title
+        .find('\u{1}')
+        .unwrap_or_else(|| panic!("missing start sentinel in {title:?}"));
+    let end = title
+        .find('\u{2}')
+        .unwrap_or_else(|| panic!("missing end sentinel in {title:?}"));
+    assert!(start < end, "start sentinel should precede end: {title:?}");
+    let hit_text = &title[start + '\u{1}'.len_utf8()..end];
+    assert_eq!(hit_text.to_lowercase(), "travel");
+}
+
+#[test]
+fn search_title_without_a_match_carries_no_sentinels() {
+    let mut s = store();
+    create(&mut s, "Travel checklist\npassport tickets sunscreen");
+    let hits = s.search_notes("passport", 10).unwrap();
+    assert_eq!(hits.len(), 1);
+    assert!(
+        !hits[0].title.contains('\u{1}') && !hits[0].title.contains('\u{2}'),
+        "unmatched title should be marker-free: {:?}",
+        hits[0].title
+    );
+    assert_eq!(hits[0].title, "Travel checklist");
+}
+
 // ---- tags ----
 
 #[test]
@@ -456,7 +634,9 @@ fn rename_tag_normalizes_and_conflicts_error() {
     let _b = s.get_or_create_tag("beta").unwrap();
     let renamed = s.update_tag(&a.id, Some("#Gamma".into()), None).unwrap();
     assert_eq!(renamed.name, "gamma");
-    let err = s.update_tag(&renamed.id, Some("beta".into()), None).unwrap_err();
+    let err = s
+        .update_tag(&renamed.id, Some("beta".into()), None)
+        .unwrap_err();
     assert_eq!(err.code(), "CONFLICT");
 }
 
@@ -526,9 +706,142 @@ fn notes_survive_reopen() {
     assert_eq!(names, vec!["idea".to_string()]);
 }
 
+// ---- migrations / recovery ----
+
+#[test]
+fn migrate_refuses_user_version_above_known_migrations() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("future.db");
+    // A file stamped by a newer build: valid but with a schema version this
+    // build has never heard of.
+    {
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.pragma_update(None, "user_version", (MIGRATIONS.len() + 1) as i64)
+            .unwrap();
+    }
+    let err = match Store::open(&path) {
+        Ok(_) => panic!("open should refuse a future schema version"),
+        Err(e) => e,
+    };
+    assert_eq!(err.code(), "MIGRATION_ERROR");
+}
+
+#[test]
+fn open_migrates_v1_schema_and_leaves_backup() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("legacy.db");
+    // v1 fixture: only the first migration applied, user_version pinned at 1,
+    // exactly as an older build would have left the file.
+    {
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute_batch(MIGRATIONS[0]).unwrap();
+        conn.pragma_update(None, "user_version", 1).unwrap();
+    }
+    let mut s = Store::open(&path).unwrap();
+    // The v2 migration ran: workspaces (added in v2) is usable.
+    s.get_or_create_workspace("Migrated").unwrap();
+    assert_eq!(s.list_workspaces().unwrap().len(), 1);
+    // And the pre-migration snapshot sits next to the database.
+    let backup = dir.path().join("legacy.db.backup-v1");
+    assert!(
+        backup.exists(),
+        "expected pre-migration backup at {backup:?}"
+    );
+}
+
+#[test]
+fn open_or_recover_sets_corrupt_file_aside_and_starts_fresh() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("garbage.db");
+    std::fs::write(&path, b"\x7f not a sqlite database \x00\x01\x02garbage").unwrap();
+    assert!(
+        Store::open(&path).is_err(),
+        "garbage must not open normally"
+    );
+
+    let (mut s, recovered) = Store::open_or_recover(&path).unwrap();
+    assert!(recovered);
+    let n = create(&mut s, "fresh start");
+    assert_eq!(s.get_note(&n.id, false).unwrap().id, n.id);
+    // The unreadable original was set aside, not destroyed.
+    assert!(dir.path().join("garbage.db.corrupt-1").exists());
+}
+
 // keep AppError import used even if individual asserts change
 #[allow(dead_code)]
 fn _uses(_: AppError) {}
+
+// ---- capture write-path perf smoke ----
+
+#[test]
+fn create_note_stays_fast_enough_for_capture() {
+    // An order-of-magnitude regression net for the capture write path, not a
+    // benchmark: the bound is generous so CI runners never flake, but an
+    // accidental full-table rescan or per-insert reindex would blow through it.
+    let mut s = store();
+    for i in 0..200 {
+        create(&mut s, &format!("warmup note {i} #tag{}", i % 7));
+    }
+    let start = std::time::Instant::now();
+    create(&mut s, "capture perf probe #loop");
+    let elapsed = start.elapsed();
+    assert!(
+        elapsed < std::time::Duration::from_millis(250),
+        "single capture write took {elapsed:?}"
+    );
+}
+
+// ---- revisit filter (never opened + created before) ----
+
+#[test]
+fn never_opened_filter_releases_notes_once_touched() {
+    let mut s = store();
+    let seen = create(&mut s, "capture that got read");
+    let unseen = create(&mut s, "capture still waiting");
+    // Opening with touch stamps last_opened_at and releases the note.
+    s.get_note(&seen.id, true).unwrap();
+
+    let filter = NoteFilter {
+        never_opened: Some(true),
+        ..Default::default()
+    };
+    let loops = s.list_notes(filter).unwrap();
+    let ids: Vec<_> = loops.iter().map(|n| n.id.as_str()).collect();
+    assert_eq!(ids, vec![unseen.id.as_str()]);
+
+    // A plain get without touch must NOT release it.
+    s.get_note(&unseen.id, false).unwrap();
+    let filter = NoteFilter {
+        never_opened: Some(true),
+        ..Default::default()
+    };
+    assert_eq!(s.list_notes(filter).unwrap().len(), 1);
+}
+
+#[test]
+fn created_before_filter_is_a_strict_cutoff() {
+    let mut s = store();
+    let n = create(&mut s, "old enough");
+    let far_future = "2099-01-01T00:00:00Z".to_string();
+    let far_past = "2000-01-01T00:00:00Z".to_string();
+
+    let hits = s
+        .list_notes(NoteFilter {
+            created_before: Some(far_future),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].id, n.id);
+
+    let hits = s
+        .list_notes(NoteFilter {
+            created_before: Some(far_past),
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(hits.is_empty());
+}
 
 // ---- workspaces ----
 
@@ -585,6 +898,80 @@ fn delete_workspace_keeps_notes() {
     assert!(s.list_workspaces().unwrap().is_empty());
     assert_eq!(s.get_note(&n.id, false).unwrap().id, n.id);
     let err = s.delete_workspace(&ws.id).unwrap_err();
+    assert!(matches!(err, AppError::NotFound(_)));
+}
+
+#[test]
+fn delete_workspace_returns_every_member_id_for_undo() {
+    let mut s = store();
+    let ws = s.get_or_create_workspace("Disbanded").unwrap();
+    let live = create(&mut s, "live member");
+    let archived = create(&mut s, "archived member");
+    let trashed = create(&mut s, "trashed member");
+    for n in [&live, &archived, &trashed] {
+        s.add_note_to_workspace(&n.id, &ws.id).unwrap();
+    }
+    s.update_note(
+        &archived.id,
+        UpdateNotePatch {
+            is_archived: Some(true),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    s.soft_delete_note(&trashed.id).unwrap();
+
+    let mut member_ids = s.delete_workspace(&ws.id).unwrap();
+    member_ids.sort();
+    let mut expected = vec![live.id.clone(), archived.id.clone(), trashed.id.clone()];
+    expected.sort();
+    assert_eq!(member_ids, expected);
+
+    // The returned ids are enough to rebuild the space with full fidelity.
+    let again = s.get_or_create_workspace("Disbanded").unwrap();
+    for id in &member_ids {
+        s.add_note_to_workspace(id, &again.id).unwrap();
+    }
+    assert_eq!(s.workspaces_for_note(&trashed.id).unwrap().len(), 1);
+    assert_eq!(s.workspaces_for_note(&archived.id).unwrap().len(), 1);
+}
+
+#[test]
+fn list_workspace_tags_scopes_counts_to_visible_members() {
+    let mut s = store();
+    let ws = s.get_or_create_workspace("To do").unwrap();
+    let school = create(&mut s, "essay draft #school");
+    let car = create(&mut s, "oil change #car");
+    let gone = create(&mut s, "old chore #car");
+    let _outside = create(&mut s, "unrelated #school");
+    for n in [&school, &car, &gone] {
+        s.add_note_to_workspace(&n.id, &ws.id).unwrap();
+    }
+    s.soft_delete_note(&gone.id).unwrap();
+
+    let tags = s.list_workspace_tags(&ws.id).unwrap();
+    let summary: Vec<(&str, i64)> = tags
+        .iter()
+        .map(|t| (t.tag.name.as_str(), t.usage_count))
+        .collect();
+    // #car counts one member (the trashed one is invisible); the note
+    // outside the workspace never contributes to #school.
+    assert_eq!(summary, vec![("car", 1), ("school", 1)]);
+
+    // Archived members drop out of the chips too.
+    s.update_note(
+        &car.id,
+        UpdateNotePatch {
+            is_archived: Some(true),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let tags = s.list_workspace_tags(&ws.id).unwrap();
+    assert_eq!(tags.len(), 1);
+    assert_eq!(tags[0].tag.name, "school");
+
+    let err = s.list_workspace_tags("missing-ws").unwrap_err();
     assert!(matches!(err, AppError::NotFound(_)));
 }
 
@@ -664,4 +1051,41 @@ fn workspaces_survive_reopen() {
     assert_eq!(listed[0].workspace.id, ws_id);
     let members = s2.workspaces_for_note(&note_id).unwrap();
     assert_eq!(members.len(), 1);
+}
+
+#[test]
+fn bulk_soft_delete_then_restore_roundtrip() {
+    let mut s = store();
+    let a = create(&mut s, "a");
+    let b = create(&mut s, "b");
+    let ids = vec![a.id.clone(), b.id.clone()];
+    s.soft_delete_notes(&ids).unwrap();
+    assert!(s.get_note(&a.id, false).unwrap().is_deleted);
+    assert!(s.get_note(&b.id, false).unwrap().is_deleted);
+    s.restore_notes(&ids).unwrap();
+    assert!(!s.get_note(&a.id, false).unwrap().is_deleted);
+    assert!(!s.get_note(&b.id, false).unwrap().is_deleted);
+}
+
+#[test]
+fn bulk_set_flags_updates_all() {
+    let mut s = store();
+    let a = create(&mut s, "a");
+    let b = create(&mut s, "b");
+    let ids = vec![a.id.clone(), b.id.clone()];
+    s.set_notes_flags(&ids, Some(true), None).unwrap();
+    assert!(s.get_note(&a.id, false).unwrap().is_pinned);
+    assert!(s.get_note(&b.id, false).unwrap().is_pinned);
+    assert!(!s.get_note(&a.id, false).unwrap().is_archived);
+}
+
+#[test]
+fn bulk_destroy_requires_confirm() {
+    let mut s = store();
+    let a = create(&mut s, "a");
+    let ids = vec![a.id.clone()];
+    assert!(s.destroy_notes(&ids, false).is_err());
+    assert!(s.get_note(&a.id, false).is_ok());
+    s.destroy_notes(&ids, true).unwrap();
+    assert!(s.get_note(&a.id, false).is_err());
 }

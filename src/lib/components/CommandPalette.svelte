@@ -1,7 +1,10 @@
 <script lang="ts">
-  // ⌘K command palette: a centered overlay with a fuzzy-filtered command list.
+  // ⌘K command palette: a centered overlay over a fuzzy-filtered command list,
+  // plus notes (Recent when the query is empty, search hits once it isn't).
   // Commands are rebuilt each time it opens (theme list and selection-aware
-  // labels stay current). Keyboard: ↑/↓ move, ↵ runs, Esc closes.
+  // labels stay current). Keyboard: ↑/↓ move (wrapping) across every visible
+  // row, ↵ activates, Esc closes. Section-flattening and index math live in
+  // palette-sections.ts so this file stays about wiring, not navigation math.
   import {
     buildCommands,
     filterCommands,
@@ -12,8 +15,26 @@
     resolveActivation,
     type Command,
   } from "$lib/commands";
+  import { listNotes, searchNotes } from "$lib/api/client";
+  import { stripSentinels } from "$lib/highlight";
+  import type { SearchResult } from "$lib/api/types";
+  import { library } from "$lib/stores/library.svelte";
+  import { formatDate } from "$lib/format";
+  import { debounce } from "$lib/debounce";
+  import {
+    clampActive,
+    flattenRows,
+    moveActive,
+    rowDomId,
+    visibleSections,
+    type PaletteSection,
+  } from "$lib/palette-sections";
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
+
+  const RECENT_NOTES_LIMIT = 5;
+  const NOTE_SEARCH_LIMIT = 8;
+  const NOTE_SEARCH_DEBOUNCE_MS = 120;
 
   let query = $state("");
   let active = $state(0);
@@ -24,12 +45,23 @@
   let commands = $state<Command[]>([]);
   let input = $state<HTMLInputElement>();
 
+  // Notes shown alongside commands. Only populated at the top level: inside a
+  // folder (e.g. Themes) the palette is command-only, as before.
+  let recentNotes = $state<SearchResult[]>([]);
+  let noteHits = $state<SearchResult[]>([]);
+
   // The folder command we are inside, if any (for the back button + placeholder).
   const folder = $derived(findCommand(commands, currentParent));
 
+  // Row shape rendered by the palette: a command keeps its full row (icon,
+  // breadcrumb, shortcut, group…), a note is a quieter title + relative time.
+  type PaletteRow =
+    | { kind: "command"; id: string; command: Command }
+    | { kind: "note"; id: string; note: SearchResult; title: string };
+
   // Empty query shows the current level (recents first at the top level);
   // otherwise the ranked fuzzy results over the current search scope.
-  const results = $derived.by(() => {
+  const commandResults = $derived.by(() => {
     if (query.trim()) {
       // Search the whole tree at the top level, the open folder's children when
       // inside one. Leaves matched outside their folder show a breadcrumb.
@@ -43,6 +75,58 @@
     return [...recents, ...level.filter((c) => !seen.has(c.id))];
   });
 
+  // A note with no title (still auto-titled, or briefly mid-save) falls back
+  // to the first non-empty line of its excerpt, then to a plain "Untitled".
+  // The palette shows no highlight, so the backend's match sentinels are
+  // stripped from everything it renders. Only the sentinels: a broader
+  // control-char sweep would eat the real newlines the line split relies on.
+  function noteTitle(hit: SearchResult): string {
+    const title = stripSentinels(hit.title).trim();
+    if (title) return title;
+    const firstLine = hit.excerpt
+      .split(/\r?\n/)
+      .map((line) => stripSentinels(line).trim())
+      .find(Boolean);
+    return firstLine || "Untitled";
+  }
+
+  const noteSections = $derived.by((): PaletteSection<PaletteRow>[] => {
+    if (currentParent !== null) return [];
+    const querying = query.trim().length > 0;
+    const hits = querying ? noteHits : recentNotes;
+    const rows: PaletteRow[] = hits.map((hit) => ({
+      kind: "note",
+      id: `note:${hit.noteId}`,
+      note: hit,
+      title: noteTitle(hit),
+    }));
+    return [{ label: querying ? "Notes" : "Recent", rows }];
+  });
+
+  // The command section keeps today's headerless look at the top level with
+  // an empty query; querying (or being inside a folder) is unchanged too,
+  // except it now gains a header once notes sit alongside it.
+  const sections = $derived.by((): PaletteSection<PaletteRow>[] => {
+    const cmdRows: PaletteRow[] = commandResults.map((cmd) => ({
+      kind: "command",
+      id: cmd.id,
+      command: cmd,
+    }));
+    const label = currentParent === null && query.trim() ? "Commands" : "";
+    return [{ label, rows: cmdRows }, ...noteSections];
+  });
+
+  const shownSections = $derived(visibleSections(sections));
+  const flatRows = $derived(flattenRows(shownSections));
+  const activeRow = $derived(flatRows[active]);
+  // id -> flat index, so a row rendered inside a nested #each (sections, then
+  // rows) still knows its place in the single navigable list.
+  const rowIndex = $derived.by(() => {
+    const map = new Map<string, number>();
+    flatRows.forEach((row, i) => map.set(row.id, i));
+    return map;
+  });
+
   // Reset and focus whenever the palette opens.
   $effect(() => {
     if (open) {
@@ -50,13 +134,69 @@
       query = "";
       active = 0;
       currentParent = null;
+      recentNotes = [];
+      noteHits = [];
+      searchNotesDebounced.cancel();
+      void loadRecentNotes();
       queueMicrotask(() => input?.focus());
     }
   });
 
-  // Keep the active index in range as results shrink.
+  // Keep the active index in range as the flattened row count shrinks.
   $effect(() => {
-    if (active >= results.length) active = Math.max(0, results.length - 1);
+    active = clampActive(active, flatRows.length);
+  });
+
+  // Debounced, stale-response-safe note search: a token bumped per request
+  // so a slow earlier reply can never clobber a later one (mirrors the
+  // refresh-token pattern in the library store).
+  let recentToken = 0;
+  let searchToken = 0;
+
+  async function loadRecentNotes() {
+    const token = ++recentToken;
+    try {
+      // list_notes already sorts pinned-first then by updated_at DESC, which
+      // reads fine as "recent" too. Reshaped into SearchResult (body doubling
+      // as excerpt) so noteTitle()'s fallback works the same for both lists.
+      const notes = await listNotes({ limit: RECENT_NOTES_LIMIT });
+      if (token !== recentToken) return;
+      recentNotes = notes.map((n) => ({
+        noteId: n.id,
+        title: n.title,
+        excerpt: n.body,
+        score: 0,
+        updatedAt: n.updatedAt,
+      }));
+    } catch {
+      if (token !== recentToken) return;
+      recentNotes = [];
+    }
+  }
+
+  const searchNotesDebounced = debounce((q: string) => {
+    const token = ++searchToken;
+    searchNotes(q, NOTE_SEARCH_LIMIT)
+      .then((hits) => {
+        if (token !== searchToken) return;
+        noteHits = hits;
+      })
+      .catch(() => {
+        if (token !== searchToken) return;
+        noteHits = [];
+      });
+  }, NOTE_SEARCH_DEBOUNCE_MS);
+
+  // Query changes drive the note search; clearing the query must feel
+  // instant, so it bypasses the debounce rather than waiting it out.
+  $effect(() => {
+    if (currentParent !== null) return;
+    if (query.trim()) {
+      searchNotesDebounced(query);
+    } else {
+      searchNotesDebounced.cancel();
+      noteHits = [];
+    }
   });
 
   function descend(id: string) {
@@ -84,21 +224,43 @@
     if (!action.keepOpen) open = false;
   }
 
+  function openNote(hit: SearchResult) {
+    // Palette hits ignore the sidebar's current scope. If that scope cannot
+    // show this note (a tag, workspace, search, or the trash view), widen it
+    // first so the list, filters, and editor stay in sync after the jump.
+    const visible = library.searchResults
+      ? library.searchResults.some((h) => h.noteId === hit.noteId)
+      : library.notes.some((n) => n.id === hit.noteId);
+    if (!visible) {
+      library.setStatusFilter("active");
+      library.setTagFilter(null);
+      library.selectWorkspace(null);
+      library.setSearch("");
+    }
+    void library.select(hit.noteId);
+    open = false;
+  }
+
+  function activate(row: PaletteRow) {
+    if (row.kind === "command") run(row.command);
+    else openNote(row.note);
+  }
+
   function onKeydown(e: KeyboardEvent) {
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault();
-        active = Math.min(active + 1, results.length - 1);
+        active = moveActive(active, 1, flatRows.length);
         scrollActiveIntoView();
         break;
       case "ArrowUp":
         e.preventDefault();
-        active = Math.max(active - 1, 0);
+        active = moveActive(active, -1, flatRows.length);
         scrollActiveIntoView();
         break;
       case "Enter":
         e.preventDefault();
-        if (results[active]) run(results[active]);
+        if (activeRow) activate(activeRow);
         break;
       case "Escape":
         e.preventDefault();
@@ -137,32 +299,54 @@
         bind:value={query}
         class="cmd-input"
         type="text"
-        placeholder={folder ? `Search ${folder.title.toLowerCase()}…` : "Type a command…"}
+        placeholder={folder ? `Search ${folder.title.toLowerCase()}…` : "Type a command or search notes…"}
         aria-label="Command"
+        role="combobox"
+        aria-expanded="true"
+        aria-controls="palette-listbox"
+        aria-autocomplete="list"
+        aria-activedescendant={activeRow ? rowDomId(activeRow.id) : undefined}
       />
-      <div class="cmd-list">
-        {#each results as cmd, i (cmd.id)}
-          <button
-            class="cmd-row"
-            class:active={i === active}
-            class:emphasis={cmd.emphasis}
-            data-index={i}
-            onclick={() => run(cmd)}
-            onmousemove={() => (active = i)}
-          >
-            <span class="cmd-title">
-              {#if cmd.icon}<span class="cmd-icon" aria-hidden="true">{cmd.icon()}</span>{/if}{#if cmd.prefix}<span class="cmd-parent">{cmd.prefix}</span><span class="cmd-crumb" aria-hidden="true">&rsaquo;</span>{/if}{#if cmd.parent && cmd.parent !== currentParent}<span class="cmd-parent">{findCommand(commands, cmd.parent)?.title}</span><span class="cmd-crumb" aria-hidden="true">&rsaquo;</span>{/if}<span class="cmd-action">{cmd.title}</span>
-            </span>
-            <span class="cmd-meta">
-              {#if cmd.isActive?.()}
-                <span class="theme-check">&#10003;</span>
+      <div class="cmd-list" id="palette-listbox" role="listbox" aria-label="Commands and notes">
+        {#if flatRows.length === 0}
+          <div class="cmd-empty">No results</div>
+        {/if}
+        {#each shownSections as section, sectionIndex (sectionIndex + ":" + section.label)}
+          {#if section.label}
+            <div class="cmd-section-label" role="presentation">{section.label}</div>
+          {/if}
+          {#each section.rows as row (row.id)}
+            {@const i = rowIndex.get(row.id) ?? -1}
+            <button
+              id={rowDomId(row.id)}
+              class="cmd-row"
+              class:active={i === active}
+              class:emphasis={row.kind === "command" && row.command.emphasis}
+              role="option"
+              aria-selected={i === active}
+              data-index={i}
+              onclick={() => activate(row)}
+              onmousemove={() => (active = i)}
+            >
+              {#if row.kind === "command"}
+                <span class="cmd-title">
+                  {#if row.command.icon}<span class="cmd-icon" aria-hidden="true">{row.command.icon()}</span>{/if}{#if row.command.prefix}<span class="cmd-parent">{row.command.prefix}</span><span class="cmd-crumb" aria-hidden="true">&rsaquo;</span>{/if}{#if row.command.parent && row.command.parent !== currentParent}<span class="cmd-parent">{findCommand(commands, row.command.parent)?.title}</span><span class="cmd-crumb" aria-hidden="true">&rsaquo;</span>{/if}<span class="cmd-action">{row.command.title}</span>
+                </span>
+                <span class="cmd-meta">
+                  {#if row.command.isActive?.()}
+                    <span class="theme-check">&#10003;</span>
+                  {/if}
+                  {#if row.command.shortcut}<kbd>{row.command.shortcut}</kbd>{/if}
+                  {#if !(row.command.parent && row.command.parent !== currentParent)}<span class="cmd-group">{row.command.group}</span>{/if}
+                </span>
+              {:else}
+                <span class="note-title">{row.title}</span>
+                <span class="cmd-meta">
+                  <span class="note-time">{formatDate(row.note.updatedAt)}</span>
+                </span>
               {/if}
-              {#if cmd.shortcut}<kbd>{cmd.shortcut}</kbd>{/if}
-              {#if !(cmd.parent && cmd.parent !== currentParent)}<span class="cmd-group">{cmd.group}</span>{/if}
-            </span>
-          </button>
-        {:else}
-          <div class="cmd-empty">No matching commands</div>
+            </button>
+          {/each}
         {/each}
       </div>
     </div>
@@ -296,6 +480,30 @@
     color: var(--text-tertiary);
     text-transform: uppercase;
     letter-spacing: 0.4px;
+  }
+  .cmd-section-label {
+    padding: 10px 10px 4px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .cmd-section-label:first-child {
+    padding-top: 4px;
+  }
+  /* Unlike .cmd-action (command titles, always short), a note title is
+     free-length user text, so it takes the ellipsis itself rather than
+     leaning on a shrinking breadcrumb. */
+  .note-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .note-time {
+    color: var(--text-tertiary);
+    font-size: 11px;
   }
   .cmd-empty {
     padding: 20px;

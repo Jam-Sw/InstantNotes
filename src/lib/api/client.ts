@@ -3,6 +3,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  CaptureLatencySummary,
   CreateNoteInput,
   Note,
   NoteFilter,
@@ -23,7 +24,10 @@ export class ApiError extends Error {
   }
 }
 
-async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+async function call<T>(
+  cmd: string,
+  args?: Record<string, unknown>,
+): Promise<T> {
   try {
     return await invoke<T>(cmd, args);
   } catch (e) {
@@ -51,6 +55,23 @@ export const listNotes = (filter: NoteFilter = {}) =>
 export const searchNotes = (text: string, limit = 50) =>
   call<SearchResult[]>("search_notes", { text, limit });
 
+// Bulk variants: one transaction and one change event for a whole multi-select.
+export const setNotesFlags = (
+  ids: string[],
+  flags: { isPinned?: boolean; isArchived?: boolean },
+) =>
+  call<void>("set_notes_flags", {
+    ids,
+    isPinned: flags.isPinned ?? null,
+    isArchived: flags.isArchived ?? null,
+  });
+export const softDeleteNotes = (ids: string[]) =>
+  call<void>("soft_delete_notes", { ids });
+export const restoreNotes = (ids: string[]) =>
+  call<void>("restore_notes", { ids });
+export const destroyNotes = (ids: string[], confirm: boolean) =>
+  call<void>("destroy_notes", { ids, confirm });
+
 // ---- tags ----
 export const listTags = () => call<TagWithCount[]>("list_tags");
 export const getOrCreateTag = (name: string) =>
@@ -65,21 +86,41 @@ export const removeTagFromNote = (noteId: string, tagId: string) =>
 export const tagsForNote = (noteId: string) =>
   call<Tag[]>("tags_for_note", { noteId });
 
-// ---- workspaces ----
+// ---- workspaces (the UI calls these "Spaces") ----
+// GLOSSARY / naming boundary: the product term is "Space" everywhere the user
+// sees it (sidebar, copy, component names); the command strings, storage
+// tables, and these wrapper names keep "workspace". This file is the single
+// place the two vocabularies meet, by decision: renaming the storage internals
+// is churn with no user value (see openspec/project.md and
+// docs/superpowers/specs/2026-07-10-spaces-design.md). One concept, two names,
+// documented here so no layer has to guess which it is in.
 export const listWorkspaces = () =>
   call<WorkspaceWithCount[]>("list_workspaces");
 export const getOrCreateWorkspace = (name: string) =>
   call<Workspace>("get_or_create_workspace", { name });
 export const renameWorkspace = (id: string, name: string) =>
   call<Workspace>("rename_workspace", { id, name });
+// Returns the member note ids (including archived and trashed members) so
+// the caller can offer an undo that restores every membership.
 export const deleteWorkspace = (id: string) =>
-  call<void>("delete_workspace", { id });
+  call<string[]>("delete_workspace", { id });
+// Tags on the workspace's visible notes, counts scoped to the workspace.
+export const listWorkspaceTags = (workspaceId: string) =>
+  call<TagWithCount[]>("list_workspace_tags", { workspaceId });
 export const addNoteToWorkspace = (noteId: string, workspaceId: string) =>
   call<void>("add_note_to_workspace", { noteId, workspaceId });
 export const removeNoteFromWorkspace = (noteId: string, workspaceId: string) =>
   call<void>("remove_note_from_workspace", { noteId, workspaceId });
 export const workspacesForNote = (noteId: string) =>
   call<Workspace[]>("workspaces_for_note", { noteId });
+
+// ---- capture latency ----
+// Reports that the capture textarea is focused and painted; the backend
+// turns the pending reveal stamp into one latency sample.
+export const captureInputReady = () =>
+  call<number | null>("capture_input_ready");
+export const getCaptureLatency = () =>
+  call<CaptureLatencySummary>("get_capture_latency");
 
 // ---- settings ----
 export const getSetting = <T>(key: string) =>
@@ -112,3 +153,33 @@ export const importThemeFile = (path: string) =>
 // ---- note export ----
 export const exportNoteFile = (path: string, contents: string) =>
   call<void>("export_note_file", { path, contents });
+
+// ---- attachments ----
+// Raw-body invoke: image bytes go over IPC as-is (no JSON number array), with
+// the extension in a header. Returns the stored filename; notes reference it
+// as `attachments/<name>`.
+export const saveAttachment = async (
+  bytes: Uint8Array,
+  ext: string,
+): Promise<string> => {
+  try {
+    return await invoke<string>("save_attachment", bytes, {
+      headers: { "x-attachment-ext": ext },
+    });
+  } catch (e) {
+    if (e && typeof e === "object" && "code" in e && "message" in e) {
+      throw new ApiError(String(e.code), String(e.message));
+    }
+    throw new ApiError("STORAGE_ERROR", String(e));
+  }
+};
+export const getAttachmentsDir = () => call<string>("get_attachments_dir");
+
+// ---- app lifecycle ----
+// Answer to "app:quit-requested": pending edits are flushed, exit for real now.
+export const quitApp = () => call<void>("quit_app");
+// Label of the capture shortcut when startup registration failed, else null.
+// A command rather than an event alone: the failure happens before the library
+// webview has listeners attached, so an event would be lost.
+export const getShortcutFailure = () =>
+  call<string | null>("get_shortcut_failure");

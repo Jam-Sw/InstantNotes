@@ -8,6 +8,7 @@
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { getSetting, setSetting, deleteSetting } from "$lib/api/client";
+import { library } from "$lib/stores/library.svelte";
 import { snoozeDeadline, type SnoozeKind } from "$lib/updater-snooze";
 
 export type { SnoozeKind } from "$lib/updater-snooze";
@@ -126,6 +127,11 @@ class UpdaterStore {
 
   async restart() {
     if (this.status !== "ready") return;
+    // Flush here, before relaunch: the Rust quit interceptor deliberately
+    // lets the restart's exit request pass untouched (holding it would
+    // strand the freshly installed update), so this is the only place the
+    // pending edits can be saved on the update path.
+    await library.flushPendingEdits();
     await relaunch();
   }
 

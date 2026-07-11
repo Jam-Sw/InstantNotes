@@ -7,10 +7,12 @@ use crate::error::{AppError, Result};
 use crate::types::*;
 use chrono::{SecondsFormat, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
-const MIGRATIONS: &[&str] = &[
+/// Ordered schema migrations; user_version tracks how many have run. Public so
+/// tests can build fixtures at a historical schema version.
+pub const MIGRATIONS: &[&str] = &[
     // v1 — initial schema
     r#"
 CREATE TABLE notes (
@@ -96,10 +98,17 @@ CREATE TABLE note_workspaces (
 );
 CREATE INDEX idx_note_workspaces_ws ON note_workspaces(workspace_id);
 "#,
+    // v3: drop the unused sync scaffolding. These columns were written but
+    // never read; a real sync feature will design its own schema when it lands.
+    r#"
+ALTER TABLE notes DROP COLUMN sync_state;
+ALTER TABLE notes DROP COLUMN version;
+ALTER TABLE notes DROP COLUMN last_synced_at;
+"#,
 ];
 
 const NOTE_COLUMNS: &str = "id, title, body, created_at, updated_at, last_opened_at, \
-     is_pinned, is_archived, is_deleted, deleted_at, sync_state, version, last_synced_at";
+     is_pinned, is_archived, is_deleted, deleted_at";
 
 pub struct Store {
     conn: Connection,
@@ -125,9 +134,6 @@ fn row_to_note(row: &rusqlite::Row<'_>) -> rusqlite::Result<Note> {
         is_archived: row.get::<_, i64>(7)? != 0,
         is_deleted: row.get::<_, i64>(8)? != 0,
         deleted_at: row.get(9)?,
-        sync_state: row.get(10)?,
-        version: row.get(11)?,
-        last_synced_at: row.get(12)?,
     })
 }
 
@@ -230,13 +236,41 @@ impl Store {
         // surfaces to the user as a hard "database is locked" error.
         conn.busy_timeout(std::time::Duration::from_secs(5))
             .map_err(|e| AppError::Storage(format!("cannot set busy timeout: {e}")))?;
-        conn.query_row("PRAGMA journal_mode = WAL", [], |r| r.get::<_, String>(0))?;
+        // A filesystem that refuses WAL (some network mounts) leaves the
+        // connection silently in rollback mode, defeating the crash-safety this
+        // app relies on; treat that as an unusable storage location.
+        let journal_mode: String = conn.query_row("PRAGMA journal_mode = WAL", [], |r| r.get(0))?;
+        if !journal_mode.eq_ignore_ascii_case("wal") {
+            return Err(AppError::Storage(format!(
+                "storage location does not support WAL journaling (got '{journal_mode}')"
+            )));
+        }
         // NORMAL is the standard, crash-safe pairing with WAL: fsync at
         // checkpoints rather than on every commit. Safe against app crashes; only
         // an OS crash or power loss can drop commits still sitting in the WAL.
         conn.pragma_update(None, "synchronous", "NORMAL")
             .map_err(|e| AppError::Storage(format!("cannot set synchronous mode: {e}")))?;
+        // Snapshot an existing library before it is migrated so a failed or
+        // buggy migration is always recoverable.
+        Self::backup_before_migration(path, &conn)?;
         Self::init(conn)
+    }
+
+    /// Open the store, recovering from a corrupt database file by setting it
+    /// aside and starting fresh. The returned bool is true only when recovery
+    /// happened. Non-corruption failures (permissions, a WAL-hostile mount)
+    /// propagate unchanged so a transient or fixable problem never discards
+    /// good data.
+    pub fn open_or_recover(path: &Path) -> Result<(Self, bool)> {
+        match Self::open(path) {
+            Ok(store) => Ok((store, false)),
+            Err(e) if e.is_corruption() => {
+                Self::move_corrupt_aside(path)?;
+                let store = Self::open(path)?;
+                Ok((store, true))
+            }
+            Err(e) => Err(e),
+        }
     }
 
     /// In-memory store for tests that don't need restart semantics.
@@ -250,7 +284,7 @@ impl Store {
         conn.pragma_update(None, "foreign_keys", "ON")?;
         let check: String = conn.query_row("PRAGMA quick_check", [], |r| r.get(0))?;
         if check != "ok" {
-            return Err(AppError::Storage(format!(
+            return Err(AppError::Corruption(format!(
                 "database integrity check failed: {check}"
             )));
         }
@@ -263,6 +297,16 @@ impl Store {
         let current: i64 = self
             .conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        // A user_version past the last known migration means this file was
+        // written by a newer build; its schema is unknown to us, so refuse
+        // rather than run queries that assume the older shape.
+        if current > MIGRATIONS.len() as i64 {
+            return Err(AppError::Migration(format!(
+                "database schema v{current} was created by a newer version of \
+                 the app (this build knows up to v{})",
+                MIGRATIONS.len()
+            )));
+        }
         for (idx, sql) in MIGRATIONS.iter().enumerate() {
             let target = (idx + 1) as i64;
             if target <= current {
@@ -282,6 +326,70 @@ impl Store {
         Ok(())
     }
 
+    /// Copy an existing library aside before migrating it. Runs only for a file
+    /// that already carries a schema older than the current one (0 < v < len);
+    /// a brand-new file has nothing to lose and a current file is not migrated.
+    /// A backup failure fails the open rather than migrating without a net.
+    fn backup_before_migration(path: &Path, conn: &Connection) -> Result<()> {
+        let current: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        if current <= 0 || current >= MIGRATIONS.len() as i64 {
+            return Ok(());
+        }
+        let mut backup = path.as_os_str().to_os_string();
+        backup.push(format!(".backup-v{current}"));
+        let backup_path = PathBuf::from(backup);
+        // VACUUM INTO refuses to overwrite; clear any leftover from a prior
+        // interrupted attempt first.
+        if backup_path.exists() {
+            std::fs::remove_file(&backup_path)
+                .map_err(|e| AppError::Storage(format!("cannot clear stale backup: {e}")))?;
+        }
+        // The path is interpolated as a SQL string literal, so double any single
+        // quotes it contains.
+        let escaped = backup_path.to_string_lossy().replace('\'', "''");
+        conn.execute_batch(&format!("VACUUM INTO '{escaped}'"))
+            .map_err(|e| match AppError::from(e) {
+                // A corrupt source keeps its classification so open_or_recover
+                // can still set the file aside instead of giving up.
+                AppError::Corruption(msg) => {
+                    AppError::Corruption(format!("pre-migration backup failed: {msg}"))
+                }
+                other => AppError::Storage(format!("pre-migration backup failed: {other}")),
+            })?;
+        Ok(())
+    }
+
+    /// Rename a corrupt database and its WAL/SHM siblings to a free
+    /// ".corrupt-N" suffix so a fresh store can be created at the same path
+    /// without clobbering the salvaged file.
+    fn move_corrupt_aside(path: &Path) -> Result<()> {
+        let mut n = 1;
+        let target = loop {
+            let mut candidate = path.as_os_str().to_os_string();
+            candidate.push(format!(".corrupt-{n}"));
+            let candidate = PathBuf::from(candidate);
+            if !candidate.exists() {
+                break candidate;
+            }
+            n += 1;
+        };
+        std::fs::rename(path, &target)
+            .map_err(|e| AppError::Storage(format!("cannot set corrupt database aside: {e}")))?;
+        // WAL/SHM belong to the corrupt file; move them out of the way too so
+        // the fresh database starts clean. They may be absent.
+        for ext in ["-wal", "-shm"] {
+            let mut sibling = path.as_os_str().to_os_string();
+            sibling.push(ext);
+            let sibling = PathBuf::from(sibling);
+            if sibling.exists() {
+                let mut sibling_target = target.as_os_str().to_os_string();
+                sibling_target.push(ext);
+                let _ = std::fs::rename(&sibling, PathBuf::from(sibling_target));
+            }
+        }
+        Ok(())
+    }
+
     fn fetch_note(&self, id: &str) -> Result<Note> {
         self.conn
             .query_row(
@@ -292,517 +400,12 @@ impl Store {
             .optional()?
             .ok_or_else(|| AppError::NotFound(format!("note {id} not found")))
     }
-
-    // ---- notes ----
-
-    pub fn create_note(&mut self, input: CreateNoteInput) -> Result<Note> {
-        let body = input.body.unwrap_or_default();
-        let explicit_title = input
-            .title
-            .map(|t| t.trim().to_string())
-            .filter(|t| !t.is_empty());
-        let title_is_auto = explicit_title.is_none();
-        let title = explicit_title.unwrap_or_else(|| domain::derive_title(&body));
-        let inline_tags = domain::extract_inline_tags(&body);
-        let now = now_iso();
-        let id = new_id();
-
-        let tx = self.conn.transaction()?;
-        tx.execute(
-            "INSERT INTO notes (id, title, title_is_auto, body, created_at, updated_at, \
-             sync_state, version) VALUES (?1, ?2, ?3, ?4, ?5, ?5, 'local_only', 1)",
-            params![id, title, i64::from(title_is_auto), body, now],
-        )?;
-        for name in &inline_tags {
-            let tag = tag_get_or_create(&tx, name)?;
-            attach_tag(&tx, &id, &tag.id, "inline")?;
-        }
-        for name in &input.tags {
-            let tag = tag_get_or_create(&tx, name)?;
-            attach_tag(&tx, &id, &tag.id, "manual")?;
-        }
-        tx.commit()?;
-        self.fetch_note(&id)
-    }
-
-    /// Fetch a note. When `touch` is true, updates `last_opened_at`.
-    pub fn get_note(&mut self, id: &str, touch: bool) -> Result<Note> {
-        if touch {
-            self.conn.execute(
-                "UPDATE notes SET last_opened_at = ?1 WHERE id = ?2",
-                params![now_iso(), id],
-            )?;
-        }
-        self.fetch_note(id)
-    }
-
-    pub fn update_note(&mut self, id: &str, patch: UpdateNotePatch) -> Result<Note> {
-        // Ensure existence first for a clean NOT_FOUND.
-        self.fetch_note(id)?;
-        let title_is_auto: bool = self
-            .conn
-            .query_row(
-                "SELECT title_is_auto FROM notes WHERE id = ?1",
-                params![id],
-                |r| r.get::<_, i64>(0),
-            )
-            .map(|v| v != 0)?;
-
-        // An explicit title pins the title; an auto title follows body edits.
-        let explicit_title = patch
-            .title
-            .map(|t| t.trim().to_string())
-            .filter(|t| !t.is_empty());
-        let (new_title, new_title_is_auto) = match (&explicit_title, &patch.body) {
-            (Some(t), _) => (Some(t.clone()), Some(false)),
-            (None, Some(body)) if title_is_auto => (Some(domain::derive_title(body)), None),
-            _ => (None, None),
-        };
-
-        let now = now_iso();
-        let tx = self.conn.transaction()?;
-        tx.execute(
-            "UPDATE notes SET \
-               title = COALESCE(?1, title), \
-               title_is_auto = COALESCE(?2, title_is_auto), \
-               body = COALESCE(?3, body), \
-               is_pinned = COALESCE(?4, is_pinned), \
-               is_archived = COALESCE(?5, is_archived), \
-               updated_at = ?6, \
-               version = version + 1 \
-             WHERE id = ?7",
-            params![
-                new_title,
-                new_title_is_auto.map(i64::from),
-                patch.body.as_deref(),
-                patch.is_pinned.map(i64::from),
-                patch.is_archived.map(i64::from),
-                now,
-                id
-            ],
-        )?;
-        if let Some(body) = &patch.body {
-            for name in domain::extract_inline_tags(body) {
-                let tag = tag_get_or_create(&tx, &name)?;
-                attach_tag(&tx, id, &tag.id, "inline")?;
-            }
-        }
-        tx.commit()?;
-        self.fetch_note(id)
-    }
-
-    pub fn soft_delete_note(&mut self, id: &str) -> Result<Note> {
-        self.fetch_note(id)?;
-        let now = now_iso();
-        self.conn.execute(
-            "UPDATE notes SET is_deleted = 1, deleted_at = ?1, updated_at = ?1, \
-             version = version + 1 WHERE id = ?2",
-            params![now, id],
-        )?;
-        self.fetch_note(id)
-    }
-
-    pub fn restore_note(&mut self, id: &str) -> Result<Note> {
-        self.fetch_note(id)?;
-        let now = now_iso();
-        self.conn.execute(
-            "UPDATE notes SET is_deleted = 0, deleted_at = NULL, updated_at = ?1, \
-             version = version + 1 WHERE id = ?2",
-            params![now, id],
-        )?;
-        self.fetch_note(id)
-    }
-
-    /// Permanent deletion requires `confirm == true` (VALIDATION_ERROR otherwise).
-    pub fn permanently_delete_note(&mut self, id: &str, confirm: bool) -> Result<()> {
-        if !confirm {
-            return Err(AppError::Validation(
-                "permanent deletion requires explicit confirmation".into(),
-            ));
-        }
-        self.fetch_note(id)?;
-        // FK cascade removes note_tags; the AFTER DELETE trigger removes FTS rows.
-        self.conn
-            .execute("DELETE FROM notes WHERE id = ?1", params![id])?;
-        Ok(())
-    }
-
-    /// Default filter excludes archived and deleted notes; sorts by
-    /// updatedAt desc.
-    pub fn list_notes(&self, filter: NoteFilter) -> Result<Vec<Note>> {
-        let mut conditions: Vec<String> = Vec::new();
-        let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-
-        let deleted = filter.is_deleted.unwrap_or(false);
-        conditions.push("is_deleted = ?".into());
-        args.push(Box::new(i64::from(deleted)));
-
-        if !deleted {
-            conditions.push("is_archived = ?".into());
-            args.push(Box::new(i64::from(filter.is_archived.unwrap_or(false))));
-        } else if let Some(archived) = filter.is_archived {
-            conditions.push("is_archived = ?".into());
-            args.push(Box::new(i64::from(archived)));
-        }
-
-        if let Some(pinned) = filter.is_pinned {
-            conditions.push("is_pinned = ?".into());
-            args.push(Box::new(i64::from(pinned)));
-        }
-
-        if let Some(workspace_id) = &filter.workspace_id {
-            conditions.push(
-                "id IN (SELECT note_id FROM note_workspaces WHERE workspace_id = ?)".into(),
-            );
-            args.push(Box::new(workspace_id.clone()));
-        }
-
-        if !filter.tag_ids.is_empty() {
-            let placeholders = vec!["?"; filter.tag_ids.len()].join(", ");
-            conditions.push(format!(
-                "id IN (SELECT note_id FROM note_tags WHERE tag_id IN ({placeholders}))"
-            ));
-            for tag_id in &filter.tag_ids {
-                args.push(Box::new(tag_id.clone()));
-            }
-        }
-
-        if let Some(query) = filter.query.as_ref().filter(|q| !q.trim().is_empty()) {
-            conditions.push("(title LIKE ? OR body LIKE ?)".into());
-            let like = format!("%{}%", query.trim());
-            args.push(Box::new(like.clone()));
-            args.push(Box::new(like));
-        }
-
-        let order_column = match filter.sort_by.as_deref() {
-            Some("createdAt") => "created_at",
-            Some("lastOpenedAt") => "last_opened_at",
-            Some("title") => "title COLLATE NOCASE",
-            _ => "updated_at",
-        };
-        let order_dir = match filter.sort_order.as_deref() {
-            Some("asc") => "ASC",
-            _ => "DESC",
-        };
-        let limit = filter.limit.unwrap_or(500).clamp(1, 5000);
-        let offset = filter.offset.unwrap_or(0).max(0);
-
-        // Pinned notes float to the top of every live list; trash keeps
-        // plain recency order.
-        let pinned_first = if deleted { "" } else { "is_pinned DESC, " };
-        let sql = format!(
-            "SELECT {NOTE_COLUMNS} FROM notes WHERE {} \
-             ORDER BY {pinned_first}{order_column} {order_dir} \
-             LIMIT {limit} OFFSET {offset}",
-            conditions.join(" AND ")
-        );
-        let mut stmt = self.conn.prepare(&sql)?;
-        let rows = stmt.query_map(
-            rusqlite::params_from_iter(args.iter().map(|a| a.as_ref())),
-            row_to_note,
-        )?;
-        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
-    }
-
-    /// Full-text search over title+body. Always excludes deleted notes;
-    /// excludes archived notes. Special characters in `text` must not error.
-    pub fn search_notes(&self, text: &str, limit: i64) -> Result<Vec<SearchResult>> {
-        let Some(match_expr) = fts_match_expr(text) else {
-            return Ok(Vec::new());
-        };
-        let limit = limit.clamp(1, 500);
-        let mut stmt = self.conn.prepare(
-            "SELECT n.id, n.title, snippet(notes_fts, 1, '', '', '…', 12), \
-                    bm25(notes_fts), n.updated_at \
-             FROM notes_fts \
-             JOIN notes n ON n.seq = notes_fts.rowid \
-             WHERE notes_fts MATCH ?1 AND n.is_deleted = 0 AND n.is_archived = 0 \
-             ORDER BY bm25(notes_fts) \
-             LIMIT ?2",
-        )?;
-        let rows = stmt.query_map(params![match_expr, limit], |row| {
-            Ok(SearchResult {
-                note_id: row.get(0)?,
-                title: row.get(1)?,
-                excerpt: row.get(2)?,
-                // bm25: lower is better (negative); expose higher-is-better.
-                score: -row.get::<_, f64>(3)?,
-                updated_at: row.get(4)?,
-            })
-        })?;
-        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
-    }
-
-    // ---- tags ----
-
-    pub fn get_or_create_tag(&mut self, name: &str) -> Result<Tag> {
-        tag_get_or_create(&self.conn, name)
-    }
-
-    pub fn list_tags(&self) -> Result<Vec<TagWithCount>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT t.id, t.name, t.color, t.created_at, t.updated_at, \
-                    (SELECT COUNT(*) FROM note_tags nt \
-                       JOIN notes n ON n.id = nt.note_id \
-                      WHERE nt.tag_id = t.id AND n.is_deleted = 0) AS usage_count \
-             FROM tags t ORDER BY t.name",
-        )?;
-        let rows = stmt.query_map([], |row| {
-            Ok(TagWithCount {
-                tag: row_to_tag(row)?,
-                usage_count: row.get(5)?,
-            })
-        })?;
-        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
-    }
-
-    pub fn update_tag(
-        &mut self,
-        id: &str,
-        name: Option<String>,
-        color: Option<String>,
-    ) -> Result<Tag> {
-        let existing = self
-            .conn
-            .query_row(
-                "SELECT id, name, color, created_at, updated_at FROM tags WHERE id = ?1",
-                params![id],
-                row_to_tag,
-            )
-            .optional()?
-            .ok_or_else(|| AppError::NotFound(format!("tag {id} not found")))?;
-
-        let new_name = match name {
-            Some(raw) => {
-                let normalized = domain::normalize_tag_name(&raw)
-                    .ok_or_else(|| AppError::Validation("tag name must not be empty".into()))?;
-                let clash: Option<String> = self
-                    .conn
-                    .query_row(
-                        "SELECT id FROM tags WHERE name = ?1 AND id <> ?2",
-                        params![normalized, id],
-                        |r| r.get(0),
-                    )
-                    .optional()?;
-                if clash.is_some() {
-                    return Err(AppError::Conflict(format!(
-                        "a tag named '{normalized}' already exists"
-                    )));
-                }
-                normalized
-            }
-            None => existing.name,
-        };
-
-        self.conn.execute(
-            "UPDATE tags SET name = ?1, color = COALESCE(?2, color), updated_at = ?3 WHERE id = ?4",
-            params![new_name, color, now_iso(), id],
-        )?;
-        self.conn
-            .query_row(
-                "SELECT id, name, color, created_at, updated_at FROM tags WHERE id = ?1",
-                params![id],
-                row_to_tag,
-            )
-            .map_err(Into::into)
-    }
-
-    /// Removes the tag and its associations; notes are untouched.
-    pub fn delete_tag(&mut self, id: &str) -> Result<()> {
-        let affected = self
-            .conn
-            .execute("DELETE FROM tags WHERE id = ?1", params![id])?;
-        if affected == 0 {
-            return Err(AppError::NotFound(format!("tag {id} not found")));
-        }
-        Ok(())
-    }
-
-    pub fn add_tag_to_note(&mut self, note_id: &str, name: &str) -> Result<Tag> {
-        self.fetch_note(note_id)?;
-        let tag = tag_get_or_create(&self.conn, name)?;
-        attach_tag(&self.conn, note_id, &tag.id, "manual")?;
-        Ok(tag)
-    }
-
-    pub fn remove_tag_from_note(&mut self, note_id: &str, tag_id: &str) -> Result<()> {
-        self.conn.execute(
-            "DELETE FROM note_tags WHERE note_id = ?1 AND tag_id = ?2",
-            params![note_id, tag_id],
-        )?;
-        Ok(())
-    }
-
-    pub fn tags_for_note(&self, note_id: &str) -> Result<Vec<Tag>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT t.id, t.name, t.color, t.created_at, t.updated_at \
-             FROM tags t JOIN note_tags nt ON nt.tag_id = t.id \
-             WHERE nt.note_id = ?1 ORDER BY t.name",
-        )?;
-        let rows = stmt.query_map(params![note_id], row_to_tag)?;
-        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
-    }
-
-    // ---- workspaces ----
-
-    fn fetch_workspace(&self, id: &str) -> Result<Workspace> {
-        self.conn
-            .query_row(
-                &format!("SELECT {WORKSPACE_COLUMNS} FROM workspaces WHERE id = ?1"),
-                params![id],
-                row_to_workspace,
-            )
-            .optional()?
-            .ok_or_else(|| AppError::NotFound(format!("workspace {id} not found")))
-    }
-
-    pub fn get_or_create_workspace(&mut self, raw_name: &str) -> Result<Workspace> {
-        let name = domain::normalize_workspace_name(raw_name)
-            .ok_or_else(|| AppError::Validation("workspace name must not be empty".into()))?;
-        if let Some(ws) = self
-            .conn
-            .query_row(
-                &format!("SELECT {WORKSPACE_COLUMNS} FROM workspaces WHERE name = ?1"),
-                params![name],
-                row_to_workspace,
-            )
-            .optional()?
-        {
-            return Ok(ws);
-        }
-        let now = now_iso();
-        let id = new_id();
-        self.conn.execute(
-            "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES (?1, ?2, ?3, ?3)",
-            params![id, name, now],
-        )?;
-        Ok(Workspace {
-            id,
-            name,
-            created_at: now.clone(),
-            updated_at: now,
-        })
-    }
-
-    pub fn list_workspaces(&self) -> Result<Vec<WorkspaceWithCount>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT w.id, w.name, w.created_at, w.updated_at, \
-                    (SELECT COUNT(*) FROM note_workspaces nw \
-                       JOIN notes n ON n.id = nw.note_id \
-                      WHERE nw.workspace_id = w.id AND n.is_deleted = 0) AS note_count \
-             FROM workspaces w ORDER BY w.name COLLATE NOCASE",
-        )?;
-        let rows = stmt.query_map([], |row| {
-            Ok(WorkspaceWithCount {
-                workspace: row_to_workspace(row)?,
-                note_count: row.get(4)?,
-            })
-        })?;
-        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
-    }
-
-    pub fn rename_workspace(&mut self, id: &str, raw_name: &str) -> Result<Workspace> {
-        self.fetch_workspace(id)?;
-        let name = domain::normalize_workspace_name(raw_name)
-            .ok_or_else(|| AppError::Validation("workspace name must not be empty".into()))?;
-        let clash: Option<String> = self
-            .conn
-            .query_row(
-                "SELECT id FROM workspaces WHERE name = ?1 AND id <> ?2",
-                params![name, id],
-                |r| r.get(0),
-            )
-            .optional()?;
-        if clash.is_some() {
-            return Err(AppError::Conflict(format!(
-                "a workspace named '{name}' already exists"
-            )));
-        }
-        self.conn.execute(
-            "UPDATE workspaces SET name = ?1, updated_at = ?2 WHERE id = ?3",
-            params![name, now_iso(), id],
-        )?;
-        self.fetch_workspace(id)
-    }
-
-    /// Removes the workspace and its memberships; notes are untouched.
-    pub fn delete_workspace(&mut self, id: &str) -> Result<()> {
-        let affected = self
-            .conn
-            .execute("DELETE FROM workspaces WHERE id = ?1", params![id])?;
-        if affected == 0 {
-            return Err(AppError::NotFound(format!("workspace {id} not found")));
-        }
-        Ok(())
-    }
-
-    /// Collect a note into a workspace (idempotent).
-    pub fn add_note_to_workspace(&mut self, note_id: &str, workspace_id: &str) -> Result<()> {
-        self.fetch_note(note_id)?;
-        self.fetch_workspace(workspace_id)?;
-        self.conn.execute(
-            "INSERT OR IGNORE INTO note_workspaces (note_id, workspace_id, created_at) \
-             VALUES (?1, ?2, ?3)",
-            params![note_id, workspace_id, now_iso()],
-        )?;
-        Ok(())
-    }
-
-    pub fn remove_note_from_workspace(&mut self, note_id: &str, workspace_id: &str) -> Result<()> {
-        self.conn.execute(
-            "DELETE FROM note_workspaces WHERE note_id = ?1 AND workspace_id = ?2",
-            params![note_id, workspace_id],
-        )?;
-        Ok(())
-    }
-
-    pub fn workspaces_for_note(&self, note_id: &str) -> Result<Vec<Workspace>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT w.id, w.name, w.created_at, w.updated_at \
-             FROM workspaces w JOIN note_workspaces nw ON nw.workspace_id = w.id \
-             WHERE nw.note_id = ?1 ORDER BY w.name COLLATE NOCASE",
-        )?;
-        let rows = stmt.query_map(params![note_id], row_to_workspace)?;
-        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
-    }
-
-    // ---- settings ----
-
-    pub fn get_setting(&self, key: &str) -> Result<Option<serde_json::Value>> {
-        let raw: Option<String> = self
-            .conn
-            .query_row(
-                "SELECT value FROM settings WHERE key = ?1",
-                params![key],
-                |r| r.get(0),
-            )
-            .optional()?;
-        match raw {
-            None => Ok(None),
-            Some(s) => serde_json::from_str(&s)
-                .map(Some)
-                .map_err(|e| AppError::Storage(format!("corrupt setting '{key}': {e}"))),
-        }
-    }
-
-    pub fn set_setting(&mut self, key: &str, value: serde_json::Value) -> Result<()> {
-        let serialized = serde_json::to_string(&value)
-            .map_err(|e| AppError::Validation(format!("unserializable setting value: {e}")))?;
-        self.conn.execute(
-            "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3) \
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value, \
-             updated_at = excluded.updated_at",
-            params![key, serialized, now_iso()],
-        )?;
-        Ok(())
-    }
-
-    pub fn delete_setting(&mut self, key: &str) -> Result<()> {
-        self.conn
-            .execute("DELETE FROM settings WHERE key = ?1", params![key])?;
-        Ok(())
-    }
 }
+
+mod notes;
+mod settings;
+mod tags;
+mod workspaces;
 
 #[cfg(test)]
 mod pragma_tests {
@@ -835,5 +438,62 @@ mod pragma_tests {
             .query_row("PRAGMA synchronous", [], |r| r.get(0))
             .unwrap();
         assert_eq!(synchronous, 1);
+    }
+}
+
+#[cfg(test)]
+mod migration_tests {
+    use super::{Store, MIGRATIONS};
+    use rusqlite::Connection;
+    use tempfile::tempdir;
+
+    fn note_columns(conn: &Connection) -> Vec<String> {
+        let mut stmt = conn.prepare("PRAGMA table_info(notes)").unwrap();
+        let cols: Vec<String> = stmt
+            .query_map([], |r| r.get::<_, String>(1))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        cols
+    }
+
+    /// A database written by a pre-0.8 build (schema v2) still carries the sync
+    /// columns. Opening it runs the v3 migration, which must drop them without
+    /// losing any note.
+    #[test]
+    fn v3_drops_sync_columns_and_preserves_notes() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("legacy.db");
+
+        // Build a v2 database by hand, exactly as an older build left it.
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(MIGRATIONS[0]).unwrap();
+            conn.execute_batch(MIGRATIONS[1]).unwrap();
+            conn.pragma_update(None, "user_version", 2i64).unwrap();
+            conn.execute(
+                "INSERT INTO notes (id, title, body, created_at, updated_at, \
+                 sync_state, version) \
+                 VALUES ('n1', 'Kept', 'the body', 't', 't', 'local_only', 3)",
+                [],
+            )
+            .unwrap();
+            assert!(note_columns(&conn).contains(&"sync_state".to_string()));
+        }
+
+        // Opening runs the pending v3 migration.
+        let mut store = Store::open(&path).unwrap();
+
+        let cols = note_columns(&store.conn);
+        assert!(!cols.contains(&"sync_state".to_string()));
+        assert!(!cols.contains(&"version".to_string()));
+        assert!(!cols.contains(&"last_synced_at".to_string()));
+
+        // The note and its content survived the column drop.
+        let note = store.get_note("n1", false).unwrap();
+        assert_eq!(note.title, "Kept");
+        assert_eq!(note.body, "the body");
+        let all = store.list_notes(Default::default()).unwrap();
+        assert!(all.iter().any(|n| n.id == "n1"));
     }
 }

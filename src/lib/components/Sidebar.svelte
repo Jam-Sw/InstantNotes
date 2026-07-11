@@ -1,18 +1,84 @@
 <script lang="ts">
   import { library } from "$lib/stores/library.svelte";
+  import { ApiError, deleteTag, updateTag } from "$lib/api/client";
+  import { friendlyMessage } from "$lib/errors";
+  import { confirmDialog } from "$lib/stores/confirm.svelte";
+  import { toasts } from "$lib/stores/toasts.svelte";
+  import SidebarEntityRow from "$lib/components/SidebarEntityRow.svelte";
+  import ContextMenu from "$lib/components/ContextMenu.svelte";
+  import { normalizeTagInput } from "$lib/tag-name";
+  import type { TagWithCount, WorkspaceWithCount } from "$lib/api/types";
 
-  let newWorkspaceInput = $state("");
+  let newSpaceInput = $state("");
+  let spacesHeader = $state<HTMLDivElement>();
+  let tagsHeader = $state<HTMLDivElement>();
+  // Space and tag management live behind a context menu (right-click /
+  // Shift+F10) and double-click-to-rename, so rows carry no resting chrome.
+  let renamingSpaceId = $state<string | null>(null);
+  let spaceMenu = $state<{ x: number; y: number; ws: WorkspaceWithCount } | null>(null);
+  let renamingTagId = $state<string | null>(null);
+  let tagMenu = $state<{ x: number; y: number; tag: TagWithCount } | null>(null);
 
-  async function submitNewWorkspace(e: Event) {
+  async function submitNewSpace(e: Event) {
     e.preventDefault();
-    await library.createWorkspace(newWorkspaceInput);
-    newWorkspaceInput = "";
+    await library.createWorkspace(newSpaceInput);
+    newSpaceInput = "";
   }
 
-  async function confirmDeleteWorkspace(id: string, name: string) {
-    if (window.confirm(`Delete workspace "${name}"? Its notes are kept.`)) {
-      await library.removeWorkspace(id);
+  // Deleting a space never touches notes, so it goes straight through with
+  // an Undo toast (shown by the store) instead of a confirm dialog.
+  async function deleteSpace(ws: WorkspaceWithCount): Promise<void> {
+    await library.removeWorkspace(ws.id);
+    // The row that held focus is gone; land somewhere stable nearby.
+    queueMicrotask(() => spacesHeader?.focus());
+  }
+
+  // The tag keeps its id across a rename, so an active filter on it stays
+  // valid without any extra bookkeeping here.
+  async function renameTag(
+    tag: TagWithCount,
+    name: string,
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
+    try {
+      await updateTag(tag.id, name);
+      await Promise.all([library.refreshTags(), library.refresh()]);
+      return { ok: true };
+    } catch (e) {
+      const message =
+        e instanceof ApiError ? friendlyMessage(e.code, e.message) : friendlyMessage("");
+      return { ok: false, message };
     }
+  }
+
+  async function confirmDeleteTag(tag: TagWithCount): Promise<void> {
+    const notes = `${tag.usageCount} note${tag.usageCount === 1 ? "" : "s"}`;
+    const ok = await confirmDialog.ask({
+      title: `Delete tag "#${tag.name}"?`,
+      body: `It will be removed from ${notes}; the notes are kept.`,
+      confirmLabel: "Delete Tag",
+      tone: "danger",
+    });
+    if (ok) await deleteTagRow(tag);
+  }
+
+  async function deleteTagRow(tag: TagWithCount): Promise<void> {
+    // Point the filter away from the tag before it disappears, so the note
+    // list is never left querying a tag id that no longer exists.
+    if (library.activeTagId === tag.id) {
+      library.setTagFilter(null);
+    }
+    try {
+      await deleteTag(tag.id);
+    } catch (e) {
+      // The refresh below re-syncs the list, but the user completed a
+      // two-step confirm; a failure must say so rather than vanish.
+      const message =
+        e instanceof ApiError ? friendlyMessage(e.code, e.message) : friendlyMessage("");
+      toasts.show(`Couldn't delete #${tag.name}. ${message}`);
+    }
+    await Promise.all([library.refreshTags(), library.refresh()]);
+    // The row that held focus is gone; land somewhere stable nearby.
+    queueMicrotask(() => tagsHeader?.focus());
   }
 </script>
 
@@ -20,61 +86,103 @@
   <nav class="sections">
     <button
       class="nav-item"
-      class:active={!library.activeWorkspaceId && !library.activeTagId}
+      class:active={!library.activeWorkspaceId && !library.activeTagId && !library.revisitMode}
       onclick={() => library.selectWorkspace(null)}
     >
       All Notes
     </button>
+    <!-- Open loops: capture-born notes never opened since. Hidden at zero
+         (useful by default, invisible when there's nothing to do), but held
+         visible while active so the row doesn't vanish mid burn-down. -->
+    {#if library.revisitCount > 0 || library.revisitMode}
+      <button
+        class="nav-item"
+        class:active={library.revisitMode}
+        title="Captured notes you've never reopened"
+        onclick={() => library.selectRevisit()}
+      >
+        <span>Revisit</span>
+        <span class="nav-count">{library.revisitCount}</span>
+      </button>
+    {/if}
   </nav>
-  <div class="tags-header">Workspaces</div>
+  <div class="tags-header" bind:this={spacesHeader} tabindex="-1">Spaces</div>
   <nav class="workspaces">
     {#each library.workspaces as ws (ws.id)}
-      <div class="workspace-row">
-        <button
-          class="nav-item workspace-item"
-          class:active={library.activeWorkspaceId === ws.id}
-          onclick={() =>
-            library.selectWorkspace(library.activeWorkspaceId === ws.id ? null : ws.id)}
-        >
-          <span class="workspace-name">{ws.name}</span>
-          <span class="tag-count">{ws.noteCount}</span>
-        </button>
-        <button
-          class="workspace-delete"
-          title={`Delete workspace "${ws.name}" (notes are kept)`}
-          onclick={() => confirmDeleteWorkspace(ws.id, ws.name)}
-        >
-          ×
-        </button>
-      </div>
+      <SidebarEntityRow
+        name={ws.name}
+        count={ws.noteCount}
+        normalize={(s) => s.trim()}
+        noun="Space"
+        active={library.activeWorkspaceId === ws.id}
+        editing={renamingSpaceId === ws.id}
+        onSelect={() =>
+          library.selectWorkspace(library.activeWorkspaceId === ws.id ? null : ws.id)}
+        onStartRename={() => (renamingSpaceId = ws.id)}
+        onRename={(name) => library.renameWorkspace(ws.id, name)}
+        onDoneRename={() => (renamingSpaceId = null)}
+        onMenu={(x, y) => (spaceMenu = { x, y, ws })}
+      />
     {:else}
-      <div class="empty-hint">Group notes by project or topic</div>
+      <div class="empty-hint">A place for one project or topic</div>
     {/each}
-    <form onsubmit={submitNewWorkspace}>
+    <form onsubmit={submitNewSpace}>
       <input
         class="workspace-new"
-        placeholder="＋ New workspace…"
-        bind:value={newWorkspaceInput}
+        placeholder="＋ New space…"
+        bind:value={newSpaceInput}
       />
     </form>
   </nav>
-  <div class="tags-header">Tags</div>
+  <div class="tags-header" bind:this={tagsHeader} tabindex="-1">Tags</div>
   <nav class="tags">
     {#each library.tags.filter((t) => t.usageCount > 0) as tag (tag.id)}
-      <button
-        class="nav-item tag-item"
-        class:active={library.activeTagId === tag.id}
-        onclick={() =>
+      <SidebarEntityRow
+        name={tag.name}
+        count={tag.usageCount}
+        prefix="#"
+        normalize={normalizeTagInput}
+        noun="Tag"
+        active={library.activeTagId === tag.id}
+        editing={renamingTagId === tag.id}
+        onSelect={() =>
           library.setTagFilter(library.activeTagId === tag.id ? null : tag.id)}
-      >
-        <span class="tag-name">#{tag.name}</span>
-        <span class="tag-count">{tag.usageCount}</span>
-      </button>
+        onStartRename={() => (renamingTagId = tag.id)}
+        onRename={(name) => renameTag(tag, name)}
+        onDoneRename={() => (renamingTagId = null)}
+        onMenu={(x, y) => (tagMenu = { x, y, tag })}
+      />
     {:else}
       <div class="empty-hint">Type #tag in a note</div>
     {/each}
   </nav>
 </aside>
+
+{#if spaceMenu}
+  {@const menuWs = spaceMenu.ws}
+  <ContextMenu
+    x={spaceMenu.x}
+    y={spaceMenu.y}
+    items={[
+      { label: "Rename Space", run: () => (renamingSpaceId = menuWs.id) },
+      { label: "Delete Space", danger: true, run: () => void deleteSpace(menuWs) },
+    ]}
+    onclose={() => (spaceMenu = null)}
+  />
+{/if}
+
+{#if tagMenu}
+  {@const menuTag = tagMenu.tag}
+  <ContextMenu
+    x={tagMenu.x}
+    y={tagMenu.y}
+    items={[
+      { label: "Rename Tag", run: () => (renamingTagId = menuTag.id) },
+      { label: "Delete Tag", danger: true, run: () => void confirmDeleteTag(menuTag) },
+    ]}
+    onclose={() => (tagMenu = null)}
+  />
+{/if}
 
 <style>
   /* sidebar */
@@ -111,15 +219,14 @@
     color: var(--text-tertiary);
     font-family: var(--font-meta);
   }
-  .tag-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .tag-count {
+  .nav-count {
     color: var(--text-tertiary);
     font-size: 11px;
     font-family: var(--font-meta);
+  }
+  .nav-item.active .nav-count {
+    color: var(--accent-text);
+    opacity: 0.75;
   }
   .empty-hint {
     padding: 4px 10px;
@@ -127,33 +234,7 @@
     font-size: 12px;
   }
 
-  /* workspaces */
-  .workspace-row {
-    display: flex;
-    align-items: center;
-  }
-  .workspace-row .nav-item {
-    min-width: 0;
-  }
-  .workspace-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .workspace-delete {
-    flex-shrink: 0;
-    width: 18px;
-    color: var(--text-tertiary);
-    font-size: 13px;
-    line-height: 1;
-    visibility: hidden;
-  }
-  .workspace-row:hover .workspace-delete {
-    visibility: visible;
-  }
-  .workspace-delete:hover {
-    color: var(--danger);
-  }
+  /* spaces */
   .workspace-new {
     width: 100%;
     margin-top: 2px;

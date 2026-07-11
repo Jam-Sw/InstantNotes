@@ -9,14 +9,48 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- Search results highlight what matched, in both the note title and the
+  excerpt.
+- The command palette opens notes: press the palette shortcut and see your
+  five most recent notes, or type to search everything without leaving the
+  keyboard.
+- Rename or delete a tag right in the sidebar: right-click it (or press
+  Shift+F10) for options, or double-click the tag to rename it in place.
+
+### Changed
+- Deleting is calmer: moving notes to the Trash shows an Undo toast instead
+  of interrupting you, and permanent deletions ask in a proper in-app dialog
+  instead of a system popup.
+- The quick capture panel closes when you click elsewhere (your draft is
+  kept), shows a brief "Saved" confirmation, and Cmd+Enter (Ctrl+Enter on
+  Windows) saves and opens the library.
+
+### Fixed
+- Quitting can no longer lose your last moments of typing: every quit path
+  saves pending edits first, and a note whose save failed says "Not saved"
+  instead of pretending otherwise.
+- Removing a #tag from a note's text now actually removes that tag from the
+  note.
+- If the notes database is ever corrupted, the app sets it aside and starts
+  fresh instead of failing to launch, and tells you what happened. The
+  database is also backed up automatically before any update that changes
+  its format.
+- Typing quickly in search can no longer show results for an older query.
+- If another app owns the capture shortcut, the welcome screen now says so
+  instead of the shortcut silently doing nothing.
+
 ## [0.7.0] - 2026-07-06
 
 ### Added
-- Windows and Linux support: InstantNotes now ships an installer for Windows
-  (x64) and an AppImage for Linux (x64) alongside the macOS build, all with
-  in-app updates. On Windows and Linux the capture panel is summoned with
-  `Ctrl+Shift+Space`, Settings and Quit live in the File menu, and shortcut
-  labels show `Ctrl+` combinations instead of mac glyphs.
+- Windows support: InstantNotes now ships an installer for Windows (x64)
+  alongside the macOS build, both with in-app updates. On Windows the capture
+  panel is summoned with `Ctrl+Shift+Space`, Settings and Quit live in the
+  File menu, and shortcut labels show `Ctrl+` combinations instead of mac
+  glyphs.
+- Linux (early preview): an AppImage (x64) is included, but Linux support is
+  still under development and may not work properly yet. The current focus is
+  getting InstantNotes fully functional on macOS and Windows first.
 - Settings is now a small wiki: a landing grid of category cards opening
   focused sub-pages with a breadcrumb back, including the new Contexting page.
 - Contexting: a template that shapes what "Copy note as context" hands to
