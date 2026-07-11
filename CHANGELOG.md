@@ -9,7 +9,27 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-11
+
 ### Added
+- Spaces: the sidebar's collections are now Spaces, a place you go rather than
+  a label you hunt for. Rename a Space in place by double-clicking it, delete
+  one with an Undo toast that always keeps its notes, and narrow a Space to one
+  of its tags with the chip row above the list.
+- Revisit: captures you saved but never opened resurface in a Revisit view,
+  oldest first, so a thought parked in a hurry comes back instead of getting
+  lost. The sidebar entry appears only when something is waiting.
+- The note list groups into time sections (Today, Yesterday, and so on), so a
+  growing library still reads at a glance.
+- Paste or drop an image straight into a note and it appears inline; the file
+  is stored alongside your notes so exported markdown stays portable.
+- A Links settings page controls how links in your notes look and open:
+  underline always, on hover, or never; open on a plain click or with
+  Cmd/Ctrl+Click; reveal a link's destination on hover; and mark links that
+  leave the app.
+- A resizable, collapsible sidebar: drag its edge to set the width,
+  double-click the edge to reset it, and Cmd+\ (Ctrl+\ on Windows) or the
+  command palette to hide and show it.
 - Search results highlight what matched, in both the note title and the
   excerpt.
 - The command palette opens notes: press the palette shortcut and see your
@@ -17,8 +37,15 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   keyboard.
 - Rename or delete a tag right in the sidebar: right-click it (or press
   Shift+F10) for options, or double-click the tag to rename it in place.
+- About shows a Capture readiness number: the median time from pressing the
+  capture shortcut to the panel being ready to type, so the promise that
+  capture stays instant is measured, not assumed.
 
 ### Changed
+- Markdown preview is more dependable: it is now driven by a single pass over
+  the note, so approaching or selecting formatting always reveals its markers
+  before a keystroke can land, and the cursor no longer slips inside hidden
+  syntax.
 - Deleting is calmer: moving notes to the Trash shows an Undo toast instead
   of interrupting you, and permanent deletions ask in a proper in-app dialog
   instead of a system popup.
