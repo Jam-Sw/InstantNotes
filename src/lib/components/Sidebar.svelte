@@ -86,11 +86,25 @@
   <nav class="sections">
     <button
       class="nav-item"
-      class:active={!library.activeWorkspaceId && !library.activeTagId}
+      class:active={!library.activeWorkspaceId && !library.activeTagId && !library.revisitMode}
       onclick={() => library.selectWorkspace(null)}
     >
       All Notes
     </button>
+    <!-- Open loops: capture-born notes never opened since. Hidden at zero
+         (useful by default, invisible when there's nothing to do), but held
+         visible while active so the row doesn't vanish mid burn-down. -->
+    {#if library.revisitCount > 0 || library.revisitMode}
+      <button
+        class="nav-item"
+        class:active={library.revisitMode}
+        title="Captured notes you've never reopened"
+        onclick={() => library.selectRevisit()}
+      >
+        <span>Revisit</span>
+        <span class="nav-count">{library.revisitCount}</span>
+      </button>
+    {/if}
   </nav>
   <div class="tags-header" bind:this={spacesHeader} tabindex="-1">Spaces</div>
   <nav class="workspaces">
@@ -197,6 +211,15 @@
     letter-spacing: 0.4px;
     color: var(--text-tertiary);
     font-family: var(--font-meta);
+  }
+  .nav-count {
+    color: var(--text-tertiary);
+    font-size: 11px;
+    font-family: var(--font-meta);
+  }
+  .nav-item.active .nav-count {
+    color: var(--accent-text);
+    opacity: 0.75;
   }
   .empty-hint {
     padding: 4px 10px;

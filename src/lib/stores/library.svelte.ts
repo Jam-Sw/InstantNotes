@@ -54,6 +54,11 @@ const SEARCH_DEBOUNCE_MS = 150;
 /** Selected-note save status for the editor status bar. */
 export type SaveState = "saved" | "saving" | "failed";
 
+// A capture-born note that nobody has opened within this window is an open
+// loop worth resurfacing. Newer captures aren't nagged about: they're often
+// still in the user's head, and Revisit must never feel like a task manager.
+const REVISIT_AFTER_MS = 3 * 24 * 60 * 60 * 1000;
+
 class LibraryStore {
   statusFilter = $state<StatusFilter>("active");
   activeWorkspaceId = $state<string | null>(null);
@@ -64,6 +69,10 @@ class LibraryStore {
   scopedTagId = $state<string | null>(null);
   // Tags carried by the active workspace's visible notes; drives the chips.
   workspaceTags = $state<TagWithCount[]>([]);
+  // Revisit: capture-born notes never opened in the library. The count keeps
+  // the sidebar entry honest (hidden at zero); the mode filters the list.
+  revisitMode = $state(false);
+  revisitCount = $state(0);
   searchText = $state("");
   notes = $state<Note[]>([]);
   searchResults = $state<SearchResult[] | null>(null);
@@ -93,6 +102,9 @@ class LibraryStore {
   #initialized = false;
 
   #refreshDebounced = debounce(() => void this.refresh(), 50);
+  // The revisit count rides the same 50ms window so a burst of change
+  // events (bulk delete, undo) costs one count query, not one per event.
+  #revisitCountDebounced = debounce(() => void this.#refreshRevisitCount(), 50);
   #searchRefresh = debounce(() => void this.refresh(), SEARCH_DEBOUNCE_MS);
   #saveBody = debounce((id: string, body: string) => {
     void this.#persistBody(id, body, true);
@@ -111,7 +123,10 @@ class LibraryStore {
     // Listeners before the initial fetches: a change event arriving during
     // startup must trigger a re-query, not be dropped.
     await Promise.all([
-      listen("notes:changed", () => this.#refreshDebounced()),
+      listen("notes:changed", () => {
+        this.#refreshDebounced();
+        this.#revisitCountDebounced();
+      }),
       listen("tags:changed", () => void this.refreshTags()),
       listen("workspaces:changed", () => void this.refreshWorkspaces()),
     ]);
@@ -119,10 +134,12 @@ class LibraryStore {
       this.refresh(),
       this.refreshTags(),
       this.refreshWorkspaces(),
+      this.#refreshRevisitCount(),
     ]);
   }
 
   #filter(): NoteFilter {
+    if (this.revisitMode) return this.#revisitFilter();
     const f: NoteFilter = {};
     if (this.statusFilter === "archived") f.isArchived = true;
     if (this.statusFilter === "trash") f.isDeleted = true;
@@ -132,6 +149,16 @@ class LibraryStore {
     }
     if (this.activeTagId) f.tagIds = [this.activeTagId];
     return f;
+  }
+
+  // Oldest first: the longest-parked loop is the one to burn down first.
+  #revisitFilter(): NoteFilter {
+    return {
+      neverOpened: true,
+      createdBefore: new Date(Date.now() - REVISIT_AFTER_MS).toISOString(),
+      sortBy: "createdAt",
+      sortOrder: "asc",
+    };
   }
 
   // Monotonic refresh token: queries answer out of order (search per pause,
@@ -154,6 +181,11 @@ class LibraryStore {
         this.notes = notes;
       }
       this.error = null;
+      // In revisit mode the main list IS the revisit query, so the count
+      // stays in lockstep with the burn-down for free.
+      if (this.revisitMode && !this.searchResults) {
+        this.revisitCount = this.notes.length;
+      }
       // Chips ride along on every refresh: notes:changed also fires when a
       // note's inline tags change, which is exactly when they go stale.
       if (this.activeWorkspaceId) {
@@ -192,6 +224,7 @@ class LibraryStore {
 
   setStatusFilter(filter: StatusFilter): void {
     this.statusFilter = filter;
+    this.revisitMode = false;
     this.searchText = "";
     this.clearMultiSelect();
     void this.refresh();
@@ -200,6 +233,7 @@ class LibraryStore {
   /** Show All Notes (null) or one workspace's collected notes. */
   selectWorkspace(workspaceId: string | null): void {
     this.activeWorkspaceId = workspaceId;
+    this.revisitMode = false;
     this.scopedTagId = null;
     this.workspaceTags = [];
     this.statusFilter = "active";
@@ -209,15 +243,43 @@ class LibraryStore {
     void this.refresh();
   }
 
-  setTagFilter(tagId: string | null): void {
-    this.activeTagId = tagId;
+  /** Show the open loops: capture-born notes never opened in the library. */
+  selectRevisit(): void {
+    this.revisitMode = true;
     this.activeWorkspaceId = null;
+    this.activeTagId = null;
     this.scopedTagId = null;
     this.workspaceTags = [];
     this.statusFilter = "active";
     this.searchText = "";
     this.clearMultiSelect();
     void this.refresh();
+  }
+
+  setTagFilter(tagId: string | null): void {
+    this.activeTagId = tagId;
+    this.activeWorkspaceId = null;
+    this.revisitMode = false;
+    this.scopedTagId = null;
+    this.workspaceTags = [];
+    this.statusFilter = "active";
+    this.searchText = "";
+    this.clearMultiSelect();
+    void this.refresh();
+  }
+
+  /**
+   * Re-count the open loops (never-opened captures old enough to matter).
+   * Cheap and quiet: a failed count only affects a sidebar hint, and the
+   * next change event retries it.
+   */
+  async #refreshRevisitCount(): Promise<void> {
+    try {
+      const loops = await listNotes(this.#revisitFilter());
+      this.revisitCount = loops.length;
+    } catch {
+      // Keep the stale count rather than surface an error for a hint.
+    }
   }
 
   /** Toggle a chip: filter the active workspace's list by one of its tags. */
@@ -295,6 +357,11 @@ class LibraryStore {
         workspacesForNote(id),
       ]);
       this.error = null;
+      // The touch in getNote released this note from the Revisit filter;
+      // get_note emits no change event, so sync the count (and, in revisit
+      // mode, the list burn-down) here.
+      void this.#refreshRevisitCount();
+      if (this.revisitMode) void this.refresh();
     } catch (e) {
       this.#fail(e);
     }

@@ -523,7 +523,8 @@ describe("init ordering", () => {
     gate.resolve(() => {});
     await initPromise;
 
-    expect(mockListNotes).toHaveBeenCalledTimes(1);
+    // Two listNotes calls: the visible list and the revisit count.
+    expect(mockListNotes).toHaveBeenCalledTimes(2);
     expect(mockListTags).toHaveBeenCalledTimes(1);
     expect(mockListWorkspaces).toHaveBeenCalledTimes(1);
   });
@@ -536,7 +537,8 @@ describe("init ordering", () => {
     await Promise.all([p1, p2]);
 
     expect(mockListen).toHaveBeenCalledTimes(3);
-    expect(mockListNotes).toHaveBeenCalledTimes(1);
+    // Two listNotes calls: the visible list and the revisit count.
+    expect(mockListNotes).toHaveBeenCalledTimes(2);
     expect(mockListTags).toHaveBeenCalledTimes(1);
     expect(mockListWorkspaces).toHaveBeenCalledTimes(1);
   });
@@ -554,7 +556,8 @@ describe("init ordering", () => {
 
     expect(mockListNotes).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(50);
-    expect(mockListNotes).toHaveBeenCalledTimes(1);
+    // The debounce window releases both the list and the revisit count.
+    expect(mockListNotes).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -729,5 +732,53 @@ describe("workspace rename", () => {
       ok: false,
       message: "That name is already in use.",
     });
+  });
+});
+
+describe("revisit mode (open-loop resurfacing)", () => {
+  it("filters to never-opened captures older than the window, oldest first", async () => {
+    const library = await load();
+    library.selectRevisit();
+    await vi.advanceTimersByTimeAsync(0);
+    const filter = mockListNotes.mock.lastCall?.[0];
+    expect(filter).toMatchObject({
+      neverOpened: true,
+      sortBy: "createdAt",
+      sortOrder: "asc",
+    });
+    expect(typeof filter?.createdBefore).toBe("string");
+  });
+
+  it("keeps the count in lockstep, and opening a note burns it down live", async () => {
+    const library = await load();
+    mockListNotes.mockResolvedValue([mkNote("n1"), mkNote("n2")]);
+    library.selectRevisit();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.revisitCount).toBe(2);
+
+    // getNote's touch releases n1; the store re-queries on open because the
+    // backend emits no change event for a touch.
+    mockListNotes.mockResolvedValue([mkNote("n2")]);
+    await selectNote(library, "n1");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.revisitCount).toBe(1);
+    expect(library.notes.map((n) => n.id)).toEqual(["n2"]);
+  });
+
+  it("leaves revisit mode when any other view is selected", async () => {
+    const library = await load();
+    library.selectRevisit();
+    expect(library.revisitMode).toBe(true);
+    library.selectWorkspace("ws1");
+    expect(library.revisitMode).toBe(false);
+
+    library.selectRevisit();
+    library.setTagFilter("t1");
+    expect(library.revisitMode).toBe(false);
+
+    library.selectRevisit();
+    library.setStatusFilter("archived");
+    expect(library.revisitMode).toBe(false);
+    await vi.advanceTimersByTimeAsync(0);
   });
 });

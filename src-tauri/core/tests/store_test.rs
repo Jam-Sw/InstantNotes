@@ -775,6 +775,58 @@ fn open_or_recover_sets_corrupt_file_aside_and_starts_fresh() {
 #[allow(dead_code)]
 fn _uses(_: AppError) {}
 
+// ---- revisit filter (never opened + created before) ----
+
+#[test]
+fn never_opened_filter_releases_notes_once_touched() {
+    let mut s = store();
+    let seen = create(&mut s, "capture that got read");
+    let unseen = create(&mut s, "capture still waiting");
+    // Opening with touch stamps last_opened_at and releases the note.
+    s.get_note(&seen.id, true).unwrap();
+
+    let filter = NoteFilter {
+        never_opened: Some(true),
+        ..Default::default()
+    };
+    let loops = s.list_notes(filter).unwrap();
+    let ids: Vec<_> = loops.iter().map(|n| n.id.as_str()).collect();
+    assert_eq!(ids, vec![unseen.id.as_str()]);
+
+    // A plain get without touch must NOT release it.
+    s.get_note(&unseen.id, false).unwrap();
+    let filter = NoteFilter {
+        never_opened: Some(true),
+        ..Default::default()
+    };
+    assert_eq!(s.list_notes(filter).unwrap().len(), 1);
+}
+
+#[test]
+fn created_before_filter_is_a_strict_cutoff() {
+    let mut s = store();
+    let n = create(&mut s, "old enough");
+    let far_future = "2099-01-01T00:00:00Z".to_string();
+    let far_past = "2000-01-01T00:00:00Z".to_string();
+
+    let hits = s
+        .list_notes(NoteFilter {
+            created_before: Some(far_future),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].id, n.id);
+
+    let hits = s
+        .list_notes(NoteFilter {
+            created_before: Some(far_past),
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(hits.is_empty());
+}
+
 // ---- workspaces ----
 
 #[test]

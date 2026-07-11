@@ -83,6 +83,11 @@ pub struct NoteFilter {
     pub is_pinned: Option<bool>,
     pub is_archived: Option<bool>,
     pub is_deleted: Option<bool>,
+    /// Only notes never opened in the library (capture-born, untriaged).
+    /// Drives the Revisit view; opening a note releases it from the filter.
+    pub never_opened: Option<bool>,
+    /// Only notes created strictly before this ISO-8601 timestamp.
+    pub created_before: Option<String>,
     pub sort_by: Option<String>,
     pub sort_order: Option<String>,
     pub limit: Option<i64>,

@@ -587,6 +587,18 @@ impl Store {
             args.push(Box::new(i64::from(pinned)));
         }
 
+        if filter.never_opened == Some(true) {
+            conditions.push("last_opened_at IS NULL".into());
+        }
+
+        if let Some(created_before) = &filter.created_before {
+            // Timestamps are stored as UTC ISO-8601, so string comparison is
+            // chronological; differing sub-second precision only moves the
+            // boundary within a second, which no caller depends on.
+            conditions.push("created_at < ?".into());
+            args.push(Box::new(created_before.clone()));
+        }
+
         if let Some(workspace_id) = &filter.workspace_id {
             conditions
                 .push("id IN (SELECT note_id FROM note_workspaces WHERE workspace_id = ?)".into());

@@ -67,6 +67,10 @@ export interface NoteFilter {
   isPinned?: boolean;
   isArchived?: boolean;
   isDeleted?: boolean;
+  /** Only notes never opened in the library (capture-born, untriaged). */
+  neverOpened?: boolean;
+  /** Only notes created strictly before this ISO-8601 timestamp. */
+  createdBefore?: string;
   sortBy?: "updatedAt" | "createdAt" | "lastOpenedAt" | "title";
   sortOrder?: "asc" | "desc";
   limit?: number;

@@ -59,7 +59,7 @@
       {/each}
     </div>
   {/if}
-  {#if !library.activeWorkspaceId && !library.activeTagId && !library.searchResults}
+  {#if !library.activeWorkspaceId && !library.activeTagId && !library.revisitMode && !library.searchResults}
     <div class="status-filter">
       {#each statusFilters as f (f.id)}
         <button
@@ -110,7 +110,9 @@
         </button>
       {:else}
         <div class="empty-state">
-          {#if library.activeWorkspaceId && library.scopedTagId}
+          {#if library.revisitMode}
+            All caught up. Every capture has been seen.
+          {:else if library.activeWorkspaceId && library.scopedTagId}
             No notes with this tag in this space.
           {:else if library.activeWorkspaceId}
             Nothing here yet. New notes land in this space while you're in it.
