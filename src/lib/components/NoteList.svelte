@@ -4,12 +4,21 @@
   import { captureShortcut, modKey } from "$lib/platform";
   import { parseHighlightSegments } from "$lib/highlight";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
+  import { groupNotes } from "$lib/note-groups";
 
   const statusFilters: { id: StatusFilter; label: string }[] = [
     { id: "active", label: "Active" },
     { id: "archived", label: "Archived" },
     { id: "trash", label: "Trash" },
   ];
+
+  // Time-bucketed sections (Pinned / Today / Yesterday / ...). Revisit stays
+  // flat: it sorts oldest-first by capture date, which time-of-edit buckets
+  // would fight. "Now" is sampled per list change, matching platform behavior
+  // (a list left open across midnight regroups on its next change).
+  const groups = $derived(
+    library.revisitMode ? null : groupNotes(library.notes, new Date()),
+  );
 
   function rowClick(e: MouseEvent, id: string) {
     if (e.metaKey || e.ctrlKey) {
@@ -94,7 +103,7 @@
         <div class="empty-state">No notes match your search.</div>
       {/each}
     {:else}
-      {#each library.notes as note (note.id)}
+      {#snippet noteRow(note: (typeof library.notes)[number])}
         <button
           class="note-row"
           data-note-id={note.id}
@@ -108,7 +117,8 @@
           <div class="row-preview">{preview(note.body) || "Empty note"}</div>
           <div class="row-date">{formatDate(note.updatedAt)}</div>
         </button>
-      {:else}
+      {/snippet}
+      {#if library.notes.length === 0}
         <div class="empty-state">
           {#if library.revisitMode}
             All caught up. Every capture has been seen.
@@ -124,7 +134,18 @@
             No notes yet. Press {captureShortcut} anywhere to capture your first thought.
           {/if}
         </div>
-      {/each}
+      {:else if groups}
+        {#each groups as group (group.label)}
+          <div class="group-header">{group.label}</div>
+          {#each group.notes as note (note.id)}
+            {@render noteRow(note)}
+          {/each}
+        {/each}
+      {:else}
+        {#each library.notes as note (note.id)}
+          {@render noteRow(note)}
+        {/each}
+      {/if}
     {/if}
   </div>
 </section>
@@ -219,6 +240,19 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+  }
+  .group-header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 8px 16px 4px;
+    background: var(--bg);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--text-tertiary);
+    font-family: var(--font-meta);
   }
   .note-row {
     display: block;
