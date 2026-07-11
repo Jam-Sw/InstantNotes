@@ -2,7 +2,6 @@
 
 use crate::*;
 
-
 #[tauri::command(async)]
 pub fn list_workspaces(state: State<'_, AppState>) -> CmdResult<Vec<WorkspaceWithCount>> {
     Ok(locked(&state)?.list_workspaces()?)
@@ -78,7 +77,9 @@ pub fn remove_note_from_workspace(
 }
 
 #[tauri::command(async)]
-pub fn workspaces_for_note(state: State<'_, AppState>, note_id: String) -> CmdResult<Vec<Workspace>> {
+pub fn workspaces_for_note(
+    state: State<'_, AppState>,
+    note_id: String,
+) -> CmdResult<Vec<Workspace>> {
     Ok(locked(&state)?.workspaces_for_note(&note_id)?)
 }
-

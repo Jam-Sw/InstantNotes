@@ -2,7 +2,6 @@
 
 use crate::*;
 
-
 #[tauri::command(async)]
 pub fn create_note(
     state: State<'_, AppState>,
@@ -126,4 +125,3 @@ pub fn destroy_notes(
     emit_tags_changed(&app);
     Ok(())
 }
-

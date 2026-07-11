@@ -403,9 +403,9 @@ impl Store {
 }
 
 mod notes;
+mod settings;
 mod tags;
 mod workspaces;
-mod settings;
 
 #[cfg(test)]
 mod pragma_tests {

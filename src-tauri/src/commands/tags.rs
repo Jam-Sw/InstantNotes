@@ -2,14 +2,17 @@
 
 use crate::*;
 
-
 #[tauri::command(async)]
 pub fn list_tags(state: State<'_, AppState>) -> CmdResult<Vec<TagWithCount>> {
     Ok(locked(&state)?.list_tags()?)
 }
 
 #[tauri::command(async)]
-pub fn get_or_create_tag(state: State<'_, AppState>, app: AppHandle, name: String) -> CmdResult<Tag> {
+pub fn get_or_create_tag(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    name: String,
+) -> CmdResult<Tag> {
     let tag = locked(&state)?.get_or_create_tag(&name)?;
     emit_tags_changed(&app);
     Ok(tag)
@@ -66,4 +69,3 @@ pub fn remove_tag_from_note(
 pub fn tags_for_note(state: State<'_, AppState>, note_id: String) -> CmdResult<Vec<Tag>> {
     Ok(locked(&state)?.tags_for_note(&note_id)?)
 }
-

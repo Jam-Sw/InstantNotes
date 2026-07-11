@@ -387,7 +387,8 @@ impl Store {
             "DELETE FROM notes WHERE id IN ({})",
             Self::id_placeholders(ids)
         );
-        let args: Vec<&dyn rusqlite::ToSql> = ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+        let args: Vec<&dyn rusqlite::ToSql> =
+            ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
         self.conn.execute(&sql, rusqlite::params_from_iter(args))?;
         Ok(())
     }
