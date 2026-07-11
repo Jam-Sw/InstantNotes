@@ -3,12 +3,12 @@
   // cards, each opening a focused sub-page with a breadcrumb back to the grid.
   // Escape steps back to the grid first, then closes the whole view.
   import { onMount } from "svelte";
-  import { openUrl } from "$lib/api/client";
+  import { getCaptureLatency, openUrl } from "$lib/api/client";
   import { modKey } from "$lib/platform";
   import { contexting } from "$lib/stores/contexting.svelte";
   import { renderTemplate, TEMPLATE_VARS } from "$lib/contexting-format";
   import { library } from "$lib/stores/library.svelte";
-  import type { Note, Tag } from "$lib/api/types";
+  import type { CaptureLatencySummary, Note, Tag } from "$lib/api/types";
 
   let {
     appVersion,
@@ -35,6 +35,17 @@
     updatedAt: new Date().toISOString(),
   };
   const SAMPLE_TAGS: Pick<Tag, "name">[] = [{ name: "example" }];
+
+  // Reveal-to-ready timing for the capture panel; the number that keeps the
+  // "capture is discharge" promise honest. Re-fetched each time About opens.
+  let captureLatency = $state<CaptureLatencySummary | null>(null);
+  $effect(() => {
+    if (page === "about") {
+      getCaptureLatency()
+        .then((summary) => (captureLatency = summary))
+        .catch(() => (captureLatency = null));
+    }
+  });
 
   const preview = $derived.by(() => {
     const note = library.selected;
@@ -104,6 +115,20 @@
             <div class="detail-row">
               <span class="detail-key">Platform</span>
               <span class="detail-val">macOS &middot; Apple Silicon</span>
+            </div>
+            <hr />
+            <div class="detail-row">
+              <span class="detail-key">Capture readiness</span>
+              <span
+                class="detail-val"
+                title="Hotkey reveal to ready-for-typing, median of recent opens"
+              >
+                {#if captureLatency && captureLatency.medianMs !== null}
+                  {captureLatency.medianMs} ms
+                {:else}
+                  Measured on first capture
+                {/if}
+              </span>
             </div>
             <hr />
             <div class="detail-row">

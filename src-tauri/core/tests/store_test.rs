@@ -775,6 +775,26 @@ fn open_or_recover_sets_corrupt_file_aside_and_starts_fresh() {
 #[allow(dead_code)]
 fn _uses(_: AppError) {}
 
+// ---- capture write-path perf smoke ----
+
+#[test]
+fn create_note_stays_fast_enough_for_capture() {
+    // An order-of-magnitude regression net for the capture write path, not a
+    // benchmark: the bound is generous so CI runners never flake, but an
+    // accidental full-table rescan or per-insert reindex would blow through it.
+    let mut s = store();
+    for i in 0..200 {
+        create(&mut s, &format!("warmup note {i} #tag{}", i % 7));
+    }
+    let start = std::time::Instant::now();
+    create(&mut s, "capture perf probe #loop");
+    let elapsed = start.elapsed();
+    assert!(
+        elapsed < std::time::Duration::from_millis(250),
+        "single capture write took {elapsed:?}"
+    );
+}
+
 // ---- revisit filter (never opened + created before) ----
 
 #[test]

@@ -2,11 +2,7 @@
 // Field names are camelCase over the wire (serde).
 
 export type SyncState =
-  | "local_only"
-  | "pending_sync"
-  | "synced"
-  | "conflict"
-  | "sync_error";
+  "local_only" | "pending_sync" | "synced" | "conflict" | "sync_error";
 
 export interface Note {
   id: string;
@@ -88,4 +84,11 @@ export interface SearchResult {
 export interface AppErrorPayload {
   code: string;
   message: string;
+}
+
+/** Reveal-to-input-ready timing for the capture panel (no note content). */
+export interface CaptureLatencySummary {
+  lastMs: number | null;
+  medianMs: number | null;
+  samples: number;
 }

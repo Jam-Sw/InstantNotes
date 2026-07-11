@@ -3,6 +3,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  CaptureLatencySummary,
   CreateNoteInput,
   Note,
   NoteFilter,
@@ -88,6 +89,14 @@ export const removeNoteFromWorkspace = (noteId: string, workspaceId: string) =>
   call<void>("remove_note_from_workspace", { noteId, workspaceId });
 export const workspacesForNote = (noteId: string) =>
   call<Workspace[]>("workspaces_for_note", { noteId });
+
+// ---- capture latency ----
+// Reports that the capture textarea is focused and painted; the backend
+// turns the pending reveal stamp into one latency sample.
+export const captureInputReady = () =>
+  call<number | null>("capture_input_ready");
+export const getCaptureLatency = () =>
+  call<CaptureLatencySummary>("get_capture_latency");
 
 // ---- settings ----
 export const getSetting = <T>(key: string) =>

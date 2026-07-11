@@ -17,6 +17,51 @@ struct AppState {
     store: Mutex<Store>,
 }
 
+// ---- capture latency metrics ----
+// "Capture is discharge" only holds if the panel is ready before the thought
+// decays, so reveal-to-input-ready is tracked as a first-class number. The
+// anchor is the moment the shell starts revealing the window: the earliest
+// point we control (the OS delivers no timestamp for the hotkey press).
+// Note content is never involved here.
+
+/// Rolling window; enough for a stable median, small enough to forget history.
+const CAPTURE_SAMPLE_CAP: usize = 50;
+
+#[derive(Default)]
+struct CaptureMetrics {
+    inner: Mutex<CaptureMetricsInner>,
+}
+
+#[derive(Default)]
+struct CaptureMetricsInner {
+    shown_at: Option<std::time::Instant>,
+    samples_ms: Vec<u64>,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct CaptureLatencySummary {
+    last_ms: Option<u64>,
+    median_ms: Option<u64>,
+    samples: usize,
+}
+
+fn push_capture_sample(samples: &mut Vec<u64>, ms: u64) {
+    samples.push(ms);
+    if samples.len() > CAPTURE_SAMPLE_CAP {
+        samples.remove(0);
+    }
+}
+
+fn median_ms(samples: &[u64]) -> Option<u64> {
+    if samples.is_empty() {
+        return None;
+    }
+    let mut sorted = samples.to_vec();
+    sorted.sort_unstable();
+    Some(sorted[sorted.len() / 2])
+}
+
 /// Serializable error per API.md §3.6 / §11.
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -277,6 +322,38 @@ fn workspaces_for_note(state: State<'_, AppState>, note_id: String) -> CmdResult
     Ok(locked(&state)?.workspaces_for_note(&note_id)?)
 }
 
+// ---- capture latency commands ----
+
+/// Called by the capture webview once its textarea has focus after a
+/// reveal (post-paint). Consumes the pending stamp so a stray call can
+/// never double-record; returns the measured reveal-to-ready milliseconds.
+#[tauri::command]
+fn capture_input_ready(metrics: State<'_, CaptureMetrics>) -> CmdResult<Option<u64>> {
+    let mut inner = metrics.inner.lock().map_err(|_| CmdError {
+        code: "STORAGE_ERROR".into(),
+        message: "internal state lock poisoned".into(),
+    })?;
+    let Some(shown) = inner.shown_at.take() else {
+        return Ok(None);
+    };
+    let ms = shown.elapsed().as_millis() as u64;
+    push_capture_sample(&mut inner.samples_ms, ms);
+    Ok(Some(ms))
+}
+
+#[tauri::command]
+fn get_capture_latency(metrics: State<'_, CaptureMetrics>) -> CmdResult<CaptureLatencySummary> {
+    let inner = metrics.inner.lock().map_err(|_| CmdError {
+        code: "STORAGE_ERROR".into(),
+        message: "internal state lock poisoned".into(),
+    })?;
+    Ok(CaptureLatencySummary {
+        last_ms: inner.samples_ms.last().copied(),
+        median_ms: median_ms(&inner.samples_ms),
+        samples: inner.samples_ms.len(),
+    })
+}
+
 // ---- settings commands ----
 
 #[tauri::command(async)]
@@ -520,6 +597,12 @@ fn refresh_macos_icon(bundle: std::path::PathBuf) {
 
 fn show_capture_window(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("capture") {
+        // Stamp before any window work so the sample covers the whole reveal.
+        if let Some(metrics) = app.try_state::<CaptureMetrics>() {
+            if let Ok(mut inner) = metrics.inner.lock() {
+                inner.shown_at = Some(std::time::Instant::now());
+            }
+        }
         let _ = w.center();
         let _ = w.show();
         let _ = w.set_focus();
@@ -663,6 +746,7 @@ pub fn run() {
             app.manage(AppState {
                 store: Mutex::new(store),
             });
+            app.manage(CaptureMetrics::default());
             if recovered {
                 // Non-blocking on purpose: setup must finish (single-instance
                 // handshake, window creation) whether or not the user has
@@ -947,6 +1031,8 @@ pub fn run() {
             export_note_file,
             open_url,
             quit_app,
+            capture_input_ready,
+            get_capture_latency,
             get_shortcut_failure
         ])
         .build(tauri::generate_context!())
@@ -975,7 +1061,32 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{export_theme_file, icon_refresh_needed, import_theme_file};
+    use super::{
+        export_theme_file, icon_refresh_needed, import_theme_file, median_ms, push_capture_sample,
+        CAPTURE_SAMPLE_CAP,
+    };
+
+    #[test]
+    fn capture_samples_roll_over_at_the_cap() {
+        let mut samples = Vec::new();
+        for ms in 0..(CAPTURE_SAMPLE_CAP as u64 + 10) {
+            push_capture_sample(&mut samples, ms);
+        }
+        assert_eq!(samples.len(), CAPTURE_SAMPLE_CAP);
+        // Oldest entries were evicted; the newest survives.
+        assert_eq!(samples.first().copied(), Some(10));
+        assert_eq!(samples.last().copied(), Some(CAPTURE_SAMPLE_CAP as u64 + 9));
+    }
+
+    #[test]
+    fn median_is_none_when_empty_and_stable_against_outliers() {
+        assert_eq!(median_ms(&[]), None);
+        assert_eq!(median_ms(&[40]), Some(40));
+        // One slow cold start must not drag the reported number.
+        assert_eq!(median_ms(&[35, 38, 40, 42, 900]), Some(40));
+        // Input order is irrelevant.
+        assert_eq!(median_ms(&[900, 40, 35, 42, 38]), Some(40));
+    }
 
     #[test]
     fn icon_refresh_when_version_changed_or_unknown() {

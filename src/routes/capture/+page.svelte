@@ -6,6 +6,7 @@
   import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import {
+    captureInputReady,
     createNote,
     deleteSetting,
     getSetting,
@@ -50,6 +51,9 @@
       void theme.init();
       void restoreDraft();
       textarea?.focus();
+      // After the next paint the textarea is genuinely accepting input;
+      // report it so the shell can close this reveal's latency sample.
+      requestAnimationFrame(() => void captureInputReady());
     });
     // Dismiss on outside click like Spotlight/Raycast/Things: this panel is
     // always-on-top on every Space, so a click elsewhere would otherwise strand
