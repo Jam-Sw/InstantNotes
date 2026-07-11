@@ -130,6 +130,27 @@ export const importThemeFile = (path: string) =>
 export const exportNoteFile = (path: string, contents: string) =>
   call<void>("export_note_file", { path, contents });
 
+// ---- attachments ----
+// Raw-body invoke: image bytes go over IPC as-is (no JSON number array), with
+// the extension in a header. Returns the stored filename; notes reference it
+// as `attachments/<name>`.
+export const saveAttachment = async (
+  bytes: Uint8Array,
+  ext: string,
+): Promise<string> => {
+  try {
+    return await invoke<string>("save_attachment", bytes, {
+      headers: { "x-attachment-ext": ext },
+    });
+  } catch (e) {
+    if (e && typeof e === "object" && "code" in e && "message" in e) {
+      throw new ApiError(String(e.code), String(e.message));
+    }
+    throw new ApiError("STORAGE_ERROR", String(e));
+  }
+};
+export const getAttachmentsDir = () => call<string>("get_attachments_dir");
+
 // ---- app lifecycle ----
 // Answer to "app:quit-requested": pending edits are flushed, exit for real now.
 export const quitApp = () => call<void>("quit_app");

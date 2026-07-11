@@ -62,6 +62,15 @@
     </button>
     <button
       class="fmt"
+      title="Task list"
+      aria-label="Task list"
+      aria-pressed={active.task}
+      onclick={() => onFormat("task")}
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="6" height="6" rx="1.5" /><path d="M5.8 8l1.4 1.4L9.6 7" stroke-width="1.6" /><path d="M13 8h7" /><path d="M4.5 15.5h5" /><path d="M13 16h7" /></svg>
+    </button>
+    <button
+      class="fmt"
       title={`Link (${modKey}${shiftKey}K)`}
       aria-label="Link"
       onclick={() => onFormat("link")}

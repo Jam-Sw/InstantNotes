@@ -521,6 +521,73 @@ fn export_note_file(path: String, contents: String) -> CmdResult<()> {
     })
 }
 
+// ---- attachments ----
+// Pasted/dropped images live as files under <app data>/attachments and notes
+// reference them by relative `attachments/<name>` markdown paths, so exported
+// markdown stays portable and the DB stays lean. The webview reads them back
+// through the asset protocol (scoped to this directory in tauri.conf.json).
+
+const ATTACHMENT_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp"];
+
+fn attachments_dir(app: &AppHandle) -> CmdResult<std::path::PathBuf> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| CmdError {
+            code: "STORAGE_ERROR".into(),
+            message: format!("no app data dir: {e}"),
+        })?
+        .join("attachments");
+    std::fs::create_dir_all(&dir).map_err(|e| CmdError {
+        code: "STORAGE_ERROR".into(),
+        message: format!("could not create attachments dir: {e}"),
+    })?;
+    Ok(dir)
+}
+
+#[tauri::command(async)]
+fn get_attachments_dir(app: AppHandle) -> CmdResult<String> {
+    Ok(attachments_dir(&app)?.to_string_lossy().into_owned())
+}
+
+/// Store one image. The body is the raw bytes (not JSON) so a screenshot paste
+/// doesn't pay for number-array serialization; the extension rides in a header.
+/// Returns the generated filename; the caller builds `attachments/<name>`.
+#[tauri::command(async)]
+fn save_attachment(app: AppHandle, request: tauri::ipc::Request<'_>) -> CmdResult<String> {
+    let ext = request
+        .headers()
+        .get("x-attachment-ext")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_default();
+    if !ATTACHMENT_EXTS.contains(&ext.as_str()) {
+        return Err(CmdError {
+            code: "VALIDATION".into(),
+            message: format!("unsupported attachment type: {ext:?}"),
+        });
+    }
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err(CmdError {
+            code: "VALIDATION".into(),
+            message: "attachment body must be raw bytes".into(),
+        });
+    };
+    if bytes.is_empty() {
+        return Err(CmdError {
+            code: "VALIDATION".into(),
+            message: "attachment is empty".into(),
+        });
+    }
+    let name = format!("{}.{ext}", uuid::Uuid::new_v4());
+    let path = attachments_dir(&app)?.join(&name);
+    std::fs::write(&path, bytes).map_err(|e| CmdError {
+        code: "STORAGE_ERROR".into(),
+        message: format!("could not write attachment: {e}"),
+    })?;
+    Ok(name)
+}
+
 const REPO_URL: &str = "https://github.com/Jam-Sw/InstantNotes";
 
 fn open_data_folder(app: &AppHandle) {
@@ -1029,6 +1096,8 @@ pub fn run() {
             export_theme_file,
             import_theme_file,
             export_note_file,
+            save_attachment,
+            get_attachments_dir,
             open_url,
             quit_app,
             capture_input_ready,
