@@ -227,11 +227,23 @@ fn rename_workspace(
 }
 
 #[tauri::command(async)]
-fn delete_workspace(state: State<'_, AppState>, app: AppHandle, id: String) -> CmdResult<()> {
-    locked(&state)?.delete_workspace(&id)?;
+fn delete_workspace(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    id: String,
+) -> CmdResult<Vec<String>> {
+    let member_note_ids = locked(&state)?.delete_workspace(&id)?;
     emit_workspaces_changed(&app);
     emit_notes_changed(&app);
-    Ok(())
+    Ok(member_note_ids)
+}
+
+#[tauri::command(async)]
+fn list_workspace_tags(
+    state: State<'_, AppState>,
+    workspace_id: String,
+) -> CmdResult<Vec<TagWithCount>> {
+    Ok(locked(&state)?.list_workspace_tags(&workspace_id)?)
 }
 
 #[tauri::command(async)]
@@ -919,6 +931,7 @@ pub fn run() {
             get_or_create_workspace,
             rename_workspace,
             delete_workspace,
+            list_workspace_tags,
             add_note_to_workspace,
             remove_note_from_workspace,
             workspaces_for_note,

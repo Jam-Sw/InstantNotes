@@ -12,6 +12,7 @@ import {
   ApiError,
   getOrCreateWorkspace,
   listWorkspaces,
+  listWorkspaceTags,
   removeNoteFromWorkspace,
   renameWorkspace,
   deleteWorkspace,
@@ -46,10 +47,18 @@ describe("workspace client wrappers", () => {
     });
   });
 
-  it("deleteWorkspace passes the id", async () => {
-    invoke.mockResolvedValue(undefined);
-    await deleteWorkspace("w1");
+  it("deleteWorkspace passes the id and returns the member note ids", async () => {
+    invoke.mockResolvedValue(["n1", "n2"]);
+    await expect(deleteWorkspace("w1")).resolves.toEqual(["n1", "n2"]);
     expect(invoke).toHaveBeenCalledWith("delete_workspace", { id: "w1" });
+  });
+
+  it("listWorkspaceTags passes the workspaceId", async () => {
+    invoke.mockResolvedValue([]);
+    await expect(listWorkspaceTags("w1")).resolves.toEqual([]);
+    expect(invoke).toHaveBeenCalledWith("list_workspace_tags", {
+      workspaceId: "w1",
+    });
   });
 
   it("membership wrappers pass noteId and workspaceId", async () => {
@@ -69,7 +78,9 @@ describe("workspace client wrappers", () => {
   it("workspacesForNote passes the noteId", async () => {
     invoke.mockResolvedValue([]);
     await workspacesForNote("n1");
-    expect(invoke).toHaveBeenCalledWith("workspaces_for_note", { noteId: "n1" });
+    expect(invoke).toHaveBeenCalledWith("workspaces_for_note", {
+      noteId: "n1",
+    });
   });
 
   it("maps structured backend errors to ApiError", async () => {

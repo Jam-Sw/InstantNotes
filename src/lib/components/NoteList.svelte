@@ -43,6 +43,22 @@
     />
     <button class="new-note" title={`New note (${modKey}N)`} onclick={() => library.newNote()}>＋</button>
   </div>
+  {#if library.activeWorkspaceId && !library.searchResults && library.workspaceTags.length > 0}
+    <!-- Tags found on this space's notes; a chip filters within the space,
+         unlike the sidebar's global tags which replace it. -->
+    <div class="space-tags" role="group" aria-label="Filter this space by tag">
+      {#each library.workspaceTags as tag (tag.id)}
+        <button
+          class="space-tag-chip"
+          class:on={library.scopedTagId === tag.id}
+          title={`${tag.usageCount} note${tag.usageCount === 1 ? "" : "s"} in this space`}
+          onclick={() => library.toggleScopedTag(tag.id)}
+        >
+          #{tag.name}
+        </button>
+      {/each}
+    </div>
+  {/if}
   {#if !library.activeWorkspaceId && !library.activeTagId && !library.searchResults}
     <div class="status-filter">
       {#each statusFilters as f (f.id)}
@@ -94,8 +110,10 @@
         </button>
       {:else}
         <div class="empty-state">
-          {#if library.activeWorkspaceId}
-            No notes in this workspace yet. Open a note and add it here.
+          {#if library.activeWorkspaceId && library.scopedTagId}
+            No notes with this tag in this space.
+          {:else if library.activeWorkspaceId}
+            Nothing here yet. New notes land in this space while you're in it.
           {:else if library.statusFilter === "trash"}
             Trash is empty.
           {:else if library.statusFilter === "archived"}
@@ -149,6 +167,31 @@
     gap: 4px;
     padding: 6px 10px;
     border-bottom: 1px solid var(--border);
+  }
+  /* Occupies the status-filter's slot: the pills hide inside a space. */
+  .space-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .space-tag-chip {
+    padding: 2px 10px;
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    font-size: 11px;
+    font-family: var(--font-meta);
+    color: var(--text-secondary);
+  }
+  .space-tag-chip:hover {
+    background: var(--bg-hover);
+  }
+  .space-tag-chip.on {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent-text);
+    font-weight: 500;
   }
   .filter-pill {
     padding: 2px 10px;

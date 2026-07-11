@@ -12,9 +12,11 @@ import {
   listNotes,
   listTags,
   listWorkspaces,
+  listWorkspaceTags,
   permanentlyDeleteNote,
   removeNoteFromWorkspace,
   removeTagFromNote,
+  renameWorkspace,
   restoreNote,
   searchNotes,
   softDeleteNote,
@@ -56,6 +58,12 @@ class LibraryStore {
   statusFilter = $state<StatusFilter>("active");
   activeWorkspaceId = $state<string | null>(null);
   activeTagId = $state<string | null>(null);
+  // Tag filter applied within the active workspace (the note list's chip
+  // row). Composes with activeWorkspaceId; the global activeTagId replaces
+  // the workspace instead.
+  scopedTagId = $state<string | null>(null);
+  // Tags carried by the active workspace's visible notes; drives the chips.
+  workspaceTags = $state<TagWithCount[]>([]);
   searchText = $state("");
   notes = $state<Note[]>([]);
   searchResults = $state<SearchResult[] | null>(null);
@@ -118,7 +126,10 @@ class LibraryStore {
     const f: NoteFilter = {};
     if (this.statusFilter === "archived") f.isArchived = true;
     if (this.statusFilter === "trash") f.isDeleted = true;
-    if (this.activeWorkspaceId) f.workspaceId = this.activeWorkspaceId;
+    if (this.activeWorkspaceId) {
+      f.workspaceId = this.activeWorkspaceId;
+      if (this.scopedTagId) f.tagIds = [this.scopedTagId];
+    }
     if (this.activeTagId) f.tagIds = [this.activeTagId];
     return f;
   }
@@ -143,6 +154,13 @@ class LibraryStore {
         this.notes = notes;
       }
       this.error = null;
+      // Chips ride along on every refresh: notes:changed also fires when a
+      // note's inline tags change, which is exactly when they go stale.
+      if (this.activeWorkspaceId) {
+        void this.#refreshWorkspaceTags();
+      } else if (this.workspaceTags.length > 0) {
+        this.workspaceTags = [];
+      }
     } catch (e) {
       if (token !== this.#refreshToken) return;
       this.#fail(e);
@@ -182,6 +200,8 @@ class LibraryStore {
   /** Show All Notes (null) or one workspace's collected notes. */
   selectWorkspace(workspaceId: string | null): void {
     this.activeWorkspaceId = workspaceId;
+    this.scopedTagId = null;
+    this.workspaceTags = [];
     this.statusFilter = "active";
     this.activeTagId = null;
     this.searchText = "";
@@ -192,16 +212,56 @@ class LibraryStore {
   setTagFilter(tagId: string | null): void {
     this.activeTagId = tagId;
     this.activeWorkspaceId = null;
+    this.scopedTagId = null;
+    this.workspaceTags = [];
     this.statusFilter = "active";
     this.searchText = "";
     this.clearMultiSelect();
     void this.refresh();
   }
 
+  /** Toggle a chip: filter the active workspace's list by one of its tags. */
+  toggleScopedTag(tagId: string): void {
+    if (!this.activeWorkspaceId) return;
+    this.scopedTagId = this.scopedTagId === tagId ? null : tagId;
+    this.clearMultiSelect();
+    void this.refresh();
+  }
+
+  /**
+   * Re-query the chip row for the active workspace. The scoped tag is
+   * dropped when it no longer exists on the workspace's visible notes: a
+   * chip that vanished must not keep filtering the list.
+   */
+  async #refreshWorkspaceTags(): Promise<void> {
+    const id = this.activeWorkspaceId;
+    if (!id) {
+      this.workspaceTags = [];
+      return;
+    }
+    try {
+      const tags = await listWorkspaceTags(id);
+      if (this.activeWorkspaceId !== id) return; // switched away mid-flight
+      this.workspaceTags = tags;
+      if (this.scopedTagId && !tags.some((t) => t.id === this.scopedTagId)) {
+        this.scopedTagId = null;
+        void this.refresh();
+      }
+    } catch (e) {
+      if (this.activeWorkspaceId !== id) return;
+      this.workspaceTags = [];
+      // The workspace can be deleted between the list refresh and this
+      // query; refreshWorkspaces resets the selection, nothing to surface.
+      if (!(e instanceof ApiError && e.code === "NOT_FOUND")) this.#fail(e);
+    }
+  }
+
   setSearch(text: string): void {
     this.searchText = text;
     // Reset the multi-selection but keep the open note in the editor.
-    this.multiSelected = this.selected ? new Set([this.selected.id]) : new Set();
+    this.multiSelected = this.selected
+      ? new Set([this.selected.id])
+      : new Set();
     this.#anchorId = this.selected?.id ?? null;
     this.#lastRangeEnd = this.#anchorId;
     if (text.trim()) {
@@ -280,8 +340,7 @@ class LibraryStore {
    * Returns the id the selection moved to so the view can reveal it.
    */
   async moveSelection(delta: number, extend = false): Promise<string | null> {
-    const current =
-      this.#lastRangeEnd ?? this.selected?.id ?? this.#anchorId;
+    const current = this.#lastRangeEnd ?? this.selected?.id ?? this.#anchorId;
     const next = stepId(this.visibleIds, current, delta);
     if (!next) return null;
     if (extend) {
@@ -415,7 +474,9 @@ class LibraryStore {
         ? this.tags.find((t) => t.id === this.activeTagId)
         : null;
 
-      const note = await createNote(activeTag ? { tags: [activeTag.name] } : {});
+      const note = await createNote(
+        activeTag ? { tags: [activeTag.name] } : {},
+      );
       // A note born inside a workspace joins it; the view stays put.
       if (this.activeWorkspaceId) {
         await addNoteToWorkspace(note.id, this.activeWorkspaceId);
@@ -442,13 +503,83 @@ class LibraryStore {
     }
   }
 
-  /** Delete a workspace; its notes are kept. */
+  /**
+   * Delete a workspace; its notes are kept. Immediate, with an Undo toast:
+   * the operation never destroys note data, so it earns the reversible-action
+   * treatment instead of a confirm dialog.
+   */
   async removeWorkspace(id: string): Promise<void> {
+    const ws = this.workspaces.find((w) => w.id === id);
     try {
-      await deleteWorkspace(id);
+      const memberIds = await deleteWorkspace(id);
       if (this.activeWorkspaceId === id) this.selectWorkspace(null);
+      // An open note's membership chips may have shown this workspace.
+      if (this.selected) {
+        this.selectedWorkspaces = await workspacesForNote(this.selected.id);
+      }
+      await this.refreshWorkspaces();
+      if (ws) {
+        toasts.show(`Deleted "${ws.name}" - notes are kept`, {
+          label: "Undo",
+          run: () => void this.#undoWorkspaceDelete(ws.name, memberIds),
+        });
+      }
     } catch (e) {
       this.#fail(e);
+    }
+  }
+
+  /**
+   * Undo for a workspace delete: recreate it by name and re-add every
+   * member. The ids come from the backend at delete time so archived and
+   * trashed members are restored too; a member destroyed in the meantime
+   * fails quietly into a plain toast rather than throwing back into the
+   * toast's action handler.
+   */
+  async #undoWorkspaceDelete(name: string, memberIds: string[]): Promise<void> {
+    try {
+      const ws = await getOrCreateWorkspace(name);
+      const results = await Promise.allSettled(
+        memberIds.map((noteId) => addNoteToWorkspace(noteId, ws.id)),
+      );
+      await this.refreshWorkspaces();
+      if (this.selected) {
+        this.selectedWorkspaces = await workspacesForNote(this.selected.id);
+      }
+      const failedCount = results.filter((r) => r.status === "rejected").length;
+      if (failedCount > 0) {
+        toasts.show(
+          `Restored "${name}" without ${failedCount} of ${memberIds.length} notes.`,
+        );
+      }
+    } catch {
+      toasts.show(`Couldn't restore "${name}".`);
+    }
+  }
+
+  /**
+   * Rename a workspace. Returns an inline-error shape rather than throwing
+   * so the row's edit state can show a duplicate-name rejection in place,
+   * mirroring the Sidebar's tag rename.
+   */
+  async renameWorkspace(
+    id: string,
+    name: string,
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
+    try {
+      await renameWorkspace(id, name);
+      await this.refreshWorkspaces();
+      // An open note's membership chips may display the old name.
+      if (this.selected) {
+        this.selectedWorkspaces = await workspacesForNote(this.selected.id);
+      }
+      return { ok: true };
+    } catch (e) {
+      const message =
+        e instanceof ApiError
+          ? friendlyMessage(e.code, e.message)
+          : friendlyMessage("");
+      return { ok: false, message };
     }
   }
 
@@ -589,7 +720,9 @@ class LibraryStore {
     await Promise.all(
       ids
         .filter((id) => this.#unsaved.has(id))
-        .map((id) => this.#persistBody(id, this.#unsaved.get(id) as string, false)),
+        .map((id) =>
+          this.#persistBody(id, this.#unsaved.get(id) as string, false),
+        ),
     );
   }
 
@@ -599,7 +732,11 @@ class LibraryStore {
    * a second failure flips the note to "failed" while keeping the edit in
    * #unsaved so a later flush still attempts it.
    */
-  async #persistBody(id: string, body: string, canRetry: boolean): Promise<void> {
+  async #persistBody(
+    id: string,
+    body: string,
+    canRetry: boolean,
+  ): Promise<void> {
     // Any write attempt for this id, whether from the debounce, a retry, or
     // a flush, supersedes an outstanding scheduled retry for the same id.
     this.#clearRetryTimer(id);

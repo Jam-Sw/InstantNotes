@@ -4,31 +4,33 @@
   import { friendlyMessage } from "$lib/errors";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
+  import SpaceRow from "$lib/components/SpaceRow.svelte";
   import TagRow from "$lib/components/TagRow.svelte";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
-  import type { TagWithCount } from "$lib/api/types";
+  import type { TagWithCount, WorkspaceWithCount } from "$lib/api/types";
 
-  let newWorkspaceInput = $state("");
+  let newSpaceInput = $state("");
+  let spacesHeader = $state<HTMLDivElement>();
   let tagsHeader = $state<HTMLDivElement>();
-  // Tag management lives behind a context menu (right-click / Shift+F10) and
-  // double-click-to-rename, so tag rows carry no resting chrome at all.
+  // Space and tag management live behind a context menu (right-click /
+  // Shift+F10) and double-click-to-rename, so rows carry no resting chrome.
+  let renamingSpaceId = $state<string | null>(null);
+  let spaceMenu = $state<{ x: number; y: number; ws: WorkspaceWithCount } | null>(null);
   let renamingTagId = $state<string | null>(null);
   let tagMenu = $state<{ x: number; y: number; tag: TagWithCount } | null>(null);
 
-  async function submitNewWorkspace(e: Event) {
+  async function submitNewSpace(e: Event) {
     e.preventDefault();
-    await library.createWorkspace(newWorkspaceInput);
-    newWorkspaceInput = "";
+    await library.createWorkspace(newSpaceInput);
+    newSpaceInput = "";
   }
 
-  async function confirmDeleteWorkspace(id: string, name: string) {
-    const ok = await confirmDialog.ask({
-      title: `Delete workspace "${name}"?`,
-      body: "Its notes are kept; only the workspace is removed.",
-      confirmLabel: "Delete Workspace",
-      tone: "danger",
-    });
-    if (ok) await library.removeWorkspace(id);
+  // Deleting a space never touches notes, so it goes straight through with
+  // an Undo toast (shown by the store) instead of a confirm dialog.
+  async function deleteSpace(ws: WorkspaceWithCount): Promise<void> {
+    await library.removeWorkspace(ws.id);
+    // The row that held focus is gone; land somewhere stable nearby.
+    queueMicrotask(() => spacesHeader?.focus());
   }
 
   // The tag keeps its id across a rename, so an active filter on it stays
@@ -90,35 +92,28 @@
       All Notes
     </button>
   </nav>
-  <div class="tags-header">Workspaces</div>
+  <div class="tags-header" bind:this={spacesHeader} tabindex="-1">Spaces</div>
   <nav class="workspaces">
     {#each library.workspaces as ws (ws.id)}
-      <div class="workspace-row">
-        <button
-          class="nav-item workspace-item"
-          class:active={library.activeWorkspaceId === ws.id}
-          onclick={() =>
-            library.selectWorkspace(library.activeWorkspaceId === ws.id ? null : ws.id)}
-        >
-          <span class="workspace-name">{ws.name}</span>
-          <span class="tag-count">{ws.noteCount}</span>
-        </button>
-        <button
-          class="workspace-delete"
-          title={`Delete workspace "${ws.name}" (notes are kept)`}
-          onclick={() => confirmDeleteWorkspace(ws.id, ws.name)}
-        >
-          ×
-        </button>
-      </div>
+      <SpaceRow
+        workspace={ws}
+        active={library.activeWorkspaceId === ws.id}
+        editing={renamingSpaceId === ws.id}
+        onSelect={() =>
+          library.selectWorkspace(library.activeWorkspaceId === ws.id ? null : ws.id)}
+        onStartRename={() => (renamingSpaceId = ws.id)}
+        onRename={(name) => library.renameWorkspace(ws.id, name)}
+        onDoneRename={() => (renamingSpaceId = null)}
+        onMenu={(x, y) => (spaceMenu = { x, y, ws })}
+      />
     {:else}
-      <div class="empty-hint">Group notes by project or topic</div>
+      <div class="empty-hint">A place for one project or topic</div>
     {/each}
-    <form onsubmit={submitNewWorkspace}>
+    <form onsubmit={submitNewSpace}>
       <input
         class="workspace-new"
-        placeholder="＋ New workspace…"
-        bind:value={newWorkspaceInput}
+        placeholder="＋ New space…"
+        bind:value={newSpaceInput}
       />
     </form>
   </nav>
@@ -141,6 +136,19 @@
     {/each}
   </nav>
 </aside>
+
+{#if spaceMenu}
+  {@const menuWs = spaceMenu.ws}
+  <ContextMenu
+    x={spaceMenu.x}
+    y={spaceMenu.y}
+    items={[
+      { label: "Rename Space", run: () => (renamingSpaceId = menuWs.id) },
+      { label: "Delete Space", danger: true, run: () => void deleteSpace(menuWs) },
+    ]}
+    onclose={() => (spaceMenu = null)}
+  />
+{/if}
 
 {#if tagMenu}
   {@const menuTag = tagMenu.tag}
@@ -190,44 +198,13 @@
     color: var(--text-tertiary);
     font-family: var(--font-meta);
   }
-  .tag-count {
-    color: var(--text-tertiary);
-    font-size: 11px;
-    font-family: var(--font-meta);
-  }
   .empty-hint {
     padding: 4px 10px;
     color: var(--text-tertiary);
     font-size: 12px;
   }
 
-  /* workspaces */
-  .workspace-row {
-    display: flex;
-    align-items: center;
-  }
-  .workspace-row .nav-item {
-    min-width: 0;
-  }
-  .workspace-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .workspace-delete {
-    flex-shrink: 0;
-    width: 18px;
-    color: var(--text-tertiary);
-    font-size: 13px;
-    line-height: 1;
-    visibility: hidden;
-  }
-  .workspace-row:hover .workspace-delete {
-    visibility: visible;
-  }
-  .workspace-delete:hover {
-    color: var(--danger);
-  }
+  /* spaces */
   .workspace-new {
     width: 100%;
     margin-top: 2px;

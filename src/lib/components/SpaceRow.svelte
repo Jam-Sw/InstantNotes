@@ -1,12 +1,11 @@
 <script lang="ts">
-  // One tag in the sidebar: click filters, double-click renames in place,
-  // right-click (or Shift+F10) opens the row's context menu. No resting
-  // chrome: management lives behind the menu, so a row is just the tag.
-  import { normalizeTagInput } from "$lib/tag-name";
-  import type { TagWithCount } from "$lib/api/types";
+  // One space in the sidebar: click switches, double-click renames in place,
+  // right-click (or Shift+F10) opens the row's context menu. Same contract
+  // as TagRow, and the same rule: no resting chrome, a row is just the space.
+  import type { WorkspaceWithCount } from "$lib/api/types";
 
   let {
-    tag,
+    workspace,
     active,
     editing,
     onSelect,
@@ -15,7 +14,7 @@
     onDoneRename,
     onMenu,
   }: {
-    tag: TagWithCount;
+    workspace: WorkspaceWithCount;
     active: boolean;
     editing: boolean;
     onSelect: () => void;
@@ -31,13 +30,15 @@
   let inputEl = $state<HTMLInputElement>();
   let wasEditing = false;
 
-  const noteLabel = $derived(`${tag.usageCount} note${tag.usageCount === 1 ? "" : "s"}`);
+  const noteLabel = $derived(
+    `${workspace.noteCount} note${workspace.noteCount === 1 ? "" : "s"}`,
+  );
 
   // Seed and focus the input when the parent puts this row into edit mode;
   // hand focus back to the row itself when editing ends.
   $effect(() => {
     if (editing && !wasEditing) {
-      editValue = tag.name;
+      editValue = workspace.name;
       editError = null;
       queueMicrotask(() => {
         inputEl?.focus();
@@ -51,13 +52,15 @@
 
   async function commitRename() {
     if (!editing) return;
-    const normalized = normalizeTagInput(editValue);
+    // The backend normalizes to a trimmed name; mirror it here so "same
+    // name with spaces" is a no-op instead of a round-trip.
+    const normalized = editValue.trim();
     if (!normalized) {
-      editError = "Tag name can't be empty";
-      editValue = tag.name;
+      editError = "Space name can't be empty";
+      editValue = workspace.name;
       return;
     }
-    if (normalized === tag.name) {
+    if (normalized === workspace.name) {
       onDoneRename();
       return;
     }
@@ -67,7 +70,7 @@
       onDoneRename();
     } else {
       editError = result.message;
-      editValue = tag.name;
+      editValue = workspace.name;
     }
   }
 
@@ -97,24 +100,23 @@
 </script>
 
 {#if editing}
-  <div class="tag-edit">
-    <span class="tag-hash">#</span>
+  <div class="space-edit">
     <input
-      class="tag-rename-input"
+      class="space-rename-input"
       class:invalid={!!editError}
       bind:value={editValue}
       bind:this={inputEl}
-      aria-label={`Rename tag ${tag.name}`}
+      aria-label={`Rename space ${workspace.name}`}
       onkeydown={onRenameKeydown}
       onblur={onDoneRename}
     />
   </div>
   {#if editError}
-    <p class="tag-error" role="alert">{editError}</p>
+    <p class="space-error" role="alert">{editError}</p>
   {/if}
 {:else}
   <button
-    class="nav-item tag-item"
+    class="nav-item space-item"
     class:active
     bind:this={selectButton}
     title={`${noteLabel} · Double-click renames, right-click for options`}
@@ -123,13 +125,13 @@
     oncontextmenu={onContextMenu}
     onkeydown={onRowKeydown}
   >
-    <span class="tag-name">#{tag.name}</span>
-    <span class="tag-count">{tag.usageCount}</span>
+    <span class="space-name">{workspace.name}</span>
+    <span class="space-count">{workspace.noteCount}</span>
   </button>
 {/if}
 
 <style>
-  /* Mirrors the sidebar's .nav-item so a tag row reads as one of the list. */
+  /* Mirrors the sidebar's .nav-item so a space row reads as one of the list. */
   .nav-item {
     display: flex;
     justify-content: space-between;
@@ -148,26 +150,23 @@
     color: var(--accent-text);
     font-weight: 500;
   }
-  .tag-name {
+  .space-name {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .tag-count {
+  .space-count {
     color: var(--text-tertiary);
     font-size: 11px;
     font-family: var(--font-meta);
   }
 
-  .tag-edit {
+  .space-edit {
     display: flex;
     align-items: center;
     padding-left: 10px;
   }
-  .tag-hash {
-    color: var(--text-tertiary);
-  }
-  .tag-rename-input {
+  .space-rename-input {
     flex: 1;
     min-width: 0;
     margin: 2px 0;
@@ -179,11 +178,11 @@
     color: var(--text);
     font-size: inherit;
   }
-  .tag-rename-input.invalid {
+  .space-rename-input.invalid {
     border-color: var(--danger);
-    animation: tag-shake 240ms ease-in-out;
+    animation: space-shake 240ms ease-in-out;
   }
-  @keyframes tag-shake {
+  @keyframes space-shake {
     0%,
     100% {
       transform: translateX(0);
@@ -196,11 +195,11 @@
     }
   }
   @media (prefers-reduced-motion: reduce) {
-    .tag-rename-input.invalid {
+    .space-rename-input.invalid {
       animation: none;
     }
   }
-  .tag-error {
+  .space-error {
     margin: 2px 0 4px;
     padding: 0 10px;
     color: var(--danger);

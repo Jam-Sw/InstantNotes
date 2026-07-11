@@ -23,7 +23,10 @@ export class ApiError extends Error {
   }
 }
 
-async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+async function call<T>(
+  cmd: string,
+  args?: Record<string, unknown>,
+): Promise<T> {
   try {
     return await invoke<T>(cmd, args);
   } catch (e) {
@@ -72,8 +75,13 @@ export const getOrCreateWorkspace = (name: string) =>
   call<Workspace>("get_or_create_workspace", { name });
 export const renameWorkspace = (id: string, name: string) =>
   call<Workspace>("rename_workspace", { id, name });
+// Returns the member note ids (including archived and trashed members) so
+// the caller can offer an undo that restores every membership.
 export const deleteWorkspace = (id: string) =>
-  call<void>("delete_workspace", { id });
+  call<string[]>("delete_workspace", { id });
+// Tags on the workspace's visible notes, counts scoped to the workspace.
+export const listWorkspaceTags = (workspaceId: string) =>
+  call<TagWithCount[]>("list_workspace_tags", { workspaceId });
 export const addNoteToWorkspace = (noteId: string, workspaceId: string) =>
   call<void>("add_note_to_workspace", { noteId, workspaceId });
 export const removeNoteFromWorkspace = (noteId: string, workspaceId: string) =>

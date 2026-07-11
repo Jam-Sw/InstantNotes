@@ -94,7 +94,7 @@
         {ws.name}
         <button
           class="chip-remove"
-          title="Remove from workspace"
+          title="Remove from space"
           onclick={() => library.removeSelectedFromWorkspace(ws.id)}
           >×</button
         >
@@ -103,7 +103,7 @@
     <form onsubmit={submitWorkspace}>
       <input
         class="tag-input"
-        placeholder="Add to workspace…"
+        placeholder="Add to space…"
         list="workspace-names"
         bind:value={workspaceInput}
       />

@@ -834,6 +834,80 @@ fn delete_workspace_keeps_notes() {
 }
 
 #[test]
+fn delete_workspace_returns_every_member_id_for_undo() {
+    let mut s = store();
+    let ws = s.get_or_create_workspace("Disbanded").unwrap();
+    let live = create(&mut s, "live member");
+    let archived = create(&mut s, "archived member");
+    let trashed = create(&mut s, "trashed member");
+    for n in [&live, &archived, &trashed] {
+        s.add_note_to_workspace(&n.id, &ws.id).unwrap();
+    }
+    s.update_note(
+        &archived.id,
+        UpdateNotePatch {
+            is_archived: Some(true),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    s.soft_delete_note(&trashed.id).unwrap();
+
+    let mut member_ids = s.delete_workspace(&ws.id).unwrap();
+    member_ids.sort();
+    let mut expected = vec![live.id.clone(), archived.id.clone(), trashed.id.clone()];
+    expected.sort();
+    assert_eq!(member_ids, expected);
+
+    // The returned ids are enough to rebuild the space with full fidelity.
+    let again = s.get_or_create_workspace("Disbanded").unwrap();
+    for id in &member_ids {
+        s.add_note_to_workspace(id, &again.id).unwrap();
+    }
+    assert_eq!(s.workspaces_for_note(&trashed.id).unwrap().len(), 1);
+    assert_eq!(s.workspaces_for_note(&archived.id).unwrap().len(), 1);
+}
+
+#[test]
+fn list_workspace_tags_scopes_counts_to_visible_members() {
+    let mut s = store();
+    let ws = s.get_or_create_workspace("To do").unwrap();
+    let school = create(&mut s, "essay draft #school");
+    let car = create(&mut s, "oil change #car");
+    let gone = create(&mut s, "old chore #car");
+    let _outside = create(&mut s, "unrelated #school");
+    for n in [&school, &car, &gone] {
+        s.add_note_to_workspace(&n.id, &ws.id).unwrap();
+    }
+    s.soft_delete_note(&gone.id).unwrap();
+
+    let tags = s.list_workspace_tags(&ws.id).unwrap();
+    let summary: Vec<(&str, i64)> = tags
+        .iter()
+        .map(|t| (t.tag.name.as_str(), t.usage_count))
+        .collect();
+    // #car counts one member (the trashed one is invisible); the note
+    // outside the workspace never contributes to #school.
+    assert_eq!(summary, vec![("car", 1), ("school", 1)]);
+
+    // Archived members drop out of the chips too.
+    s.update_note(
+        &car.id,
+        UpdateNotePatch {
+            is_archived: Some(true),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let tags = s.list_workspace_tags(&ws.id).unwrap();
+    assert_eq!(tags.len(), 1);
+    assert_eq!(tags[0].tag.name, "school");
+
+    let err = s.list_workspace_tags("missing-ws").unwrap_err();
+    assert!(matches!(err, AppError::NotFound(_)));
+}
+
+#[test]
 fn workspace_membership_roundtrip() {
     let mut s = store();
     let ws = s.get_or_create_workspace("Research").unwrap();

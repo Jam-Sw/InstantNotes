@@ -882,14 +882,46 @@ impl Store {
     }
 
     /// Removes the workspace and its memberships; notes are untouched.
-    pub fn delete_workspace(&mut self, id: &str) -> Result<()> {
-        let affected = self
-            .conn
+    /// Returns the member note ids so the caller can offer an undo that
+    /// re-adds every membership: a post-hoc `list_notes` snapshot can't,
+    /// because its default filter hides archived and trashed members.
+    pub fn delete_workspace(&mut self, id: &str) -> Result<Vec<String>> {
+        self.fetch_workspace(id)?;
+        let member_ids = {
+            let mut stmt = self
+                .conn
+                .prepare("SELECT note_id FROM note_workspaces WHERE workspace_id = ?1")?;
+            let rows = stmt.query_map(params![id], |r| r.get(0))?;
+            rows.collect::<rusqlite::Result<Vec<String>>>()?
+        };
+        self.conn
             .execute("DELETE FROM workspaces WHERE id = ?1", params![id])?;
-        if affected == 0 {
-            return Err(AppError::NotFound(format!("workspace {id} not found")));
-        }
-        Ok(())
+        Ok(member_ids)
+    }
+
+    /// Tags carried by a workspace's visible notes, with counts scoped to
+    /// the workspace (the note list's tag chips). Archived and trashed
+    /// members don't contribute: a chip must never filter the visible
+    /// list down to zero matches for a tag the user can't see.
+    pub fn list_workspace_tags(&self, workspace_id: &str) -> Result<Vec<TagWithCount>> {
+        self.fetch_workspace(workspace_id)?;
+        let mut stmt = self.conn.prepare(
+            "SELECT t.id, t.name, t.color, t.created_at, t.updated_at, \
+                    COUNT(*) AS usage_count \
+             FROM tags t \
+             JOIN note_tags nt ON nt.tag_id = t.id \
+             JOIN note_workspaces nw ON nw.note_id = nt.note_id \
+             JOIN notes n ON n.id = nt.note_id \
+             WHERE nw.workspace_id = ?1 AND n.is_deleted = 0 AND n.is_archived = 0 \
+             GROUP BY t.id ORDER BY t.name",
+        )?;
+        let rows = stmt.query_map(params![workspace_id], |row| {
+            Ok(TagWithCount {
+                tag: row_to_tag(row)?,
+                usage_count: row.get(5)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
     /// Collect a note into a workspace (idempotent).

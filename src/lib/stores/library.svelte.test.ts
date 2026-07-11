@@ -12,12 +12,17 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  addNoteToWorkspace,
   ApiError,
+  deleteWorkspace,
   getNote,
+  getOrCreateWorkspace,
   listNotes,
   listTags,
   listWorkspaces,
+  listWorkspaceTags,
   permanentlyDeleteNote,
+  renameWorkspace,
   searchNotes,
   softDeleteNote,
   tagsForNote,
@@ -25,7 +30,12 @@ import {
   workspacesForNote,
 } from "$lib/api/client";
 import { listen } from "@tauri-apps/api/event";
-import type { Note, SearchResult } from "$lib/api/types";
+import type {
+  Note,
+  SearchResult,
+  TagWithCount,
+  WorkspaceWithCount,
+} from "$lib/api/types";
 
 vi.mock("$lib/api/client", () => {
   class ApiError extends Error {
@@ -49,7 +59,9 @@ vi.mock("$lib/api/client", () => {
     listTags: vi.fn(),
     listWorkspaces: vi.fn(),
     getOrCreateWorkspace: vi.fn(),
+    renameWorkspace: vi.fn(),
     deleteWorkspace: vi.fn(),
+    listWorkspaceTags: vi.fn(),
     addNoteToWorkspace: vi.fn(),
     removeNoteFromWorkspace: vi.fn(),
     workspacesForNote: vi.fn(),
@@ -73,6 +85,11 @@ const mockTagsForNote = vi.mocked(tagsForNote);
 const mockWorkspacesForNote = vi.mocked(workspacesForNote);
 const mockPermanentlyDeleteNote = vi.mocked(permanentlyDeleteNote);
 const mockSoftDeleteNote = vi.mocked(softDeleteNote);
+const mockDeleteWorkspace = vi.mocked(deleteWorkspace);
+const mockRenameWorkspace = vi.mocked(renameWorkspace);
+const mockGetOrCreateWorkspace = vi.mocked(getOrCreateWorkspace);
+const mockAddNoteToWorkspace = vi.mocked(addNoteToWorkspace);
+const mockListWorkspaceTags = vi.mocked(listWorkspaceTags);
 const mockListen = vi.mocked(listen);
 
 function mkNote(id: string, overrides: Partial<Note> = {}): Note {
@@ -141,6 +158,11 @@ beforeEach(() => {
   mockWorkspacesForNote.mockReset().mockResolvedValue([]);
   mockPermanentlyDeleteNote.mockReset();
   mockSoftDeleteNote.mockReset();
+  mockDeleteWorkspace.mockReset();
+  mockRenameWorkspace.mockReset();
+  mockGetOrCreateWorkspace.mockReset();
+  mockAddNoteToWorkspace.mockReset();
+  mockListWorkspaceTags.mockReset().mockResolvedValue([]);
   mockListen.mockReset().mockResolvedValue(() => {});
 });
 
@@ -196,7 +218,9 @@ describe("save queue", () => {
     const library = await load();
     await selectNote(library, "n1");
 
-    mockUpdateNote.mockRejectedValue(new ApiError("STORAGE_ERROR", "disk full"));
+    mockUpdateNote.mockRejectedValue(
+      new ApiError("STORAGE_ERROR", "disk full"),
+    );
 
     library.editBody("doomed");
     await vi.advanceTimersByTimeAsync(400);
@@ -206,7 +230,9 @@ describe("save queue", () => {
     await vi.advanceTimersByTimeAsync(2000);
     expect(mockUpdateNote).toHaveBeenCalledTimes(2);
     expect(library.saveState).toBe("failed");
-    expect(library.error).toBe("Your note couldn't be saved. Please try again.");
+    expect(library.error).toBe(
+      "Your note couldn't be saved. Please try again.",
+    );
   });
 });
 
@@ -243,7 +269,9 @@ describe("flushPendingEdits", () => {
     // and a later flush would still have something to retry (proven by the
     // note staying selected/dirty rather than the state resetting to idle).
     expect(library.saveState).toBe("failed");
-    expect(library.error).toBe("Your note couldn't be saved. Please try again.");
+    expect(library.error).toBe(
+      "Your note couldn't be saved. Please try again.",
+    );
   });
 
   it("fixed: a flush of one dirty note performs exactly one write attempt, and no timer survives once it resolves", async () => {
@@ -345,7 +373,9 @@ describe("soft delete flushes queued edits (Undo restores the last keystrokes)",
     library.editBody("last keystrokes");
     await library.deleteSelected();
 
-    expect(mockUpdateNote).toHaveBeenCalledWith("n1", { body: "last keystrokes" });
+    expect(mockUpdateNote).toHaveBeenCalledWith("n1", {
+      body: "last keystrokes",
+    });
     expect(mockSoftDeleteNote).toHaveBeenCalledWith("n1");
     // The write must land before the trash, or a restore loses the edit.
     const write = mockUpdateNote.mock.invocationCallOrder[0];
@@ -359,13 +389,17 @@ describe("soft delete flushes queued edits (Undo restores the last keystrokes)",
   it("bulkDelete persists pending edits for the selection before trashing", async () => {
     const library = await load();
     await selectNote(library, "n1");
-    mockUpdateNote.mockResolvedValue(mkNote("n1", { body: "unsaved bulk edit" }));
+    mockUpdateNote.mockResolvedValue(
+      mkNote("n1", { body: "unsaved bulk edit" }),
+    );
     mockSoftDeleteNote.mockResolvedValue(mkNote("n1", { isDeleted: true }));
 
     library.editBody("unsaved bulk edit");
     await library.bulkDelete();
 
-    expect(mockUpdateNote).toHaveBeenCalledWith("n1", { body: "unsaved bulk edit" });
+    expect(mockUpdateNote).toHaveBeenCalledWith("n1", {
+      body: "unsaved bulk edit",
+    });
     expect(mockSoftDeleteNote).toHaveBeenCalledWith("n1");
     await vi.advanceTimersByTimeAsync(3000);
     expect(mockUpdateNote).toHaveBeenCalledTimes(1);
@@ -374,7 +408,9 @@ describe("soft delete flushes queued edits (Undo restores the last keystrokes)",
   it("a failed pre-trash flush still trashes the note and surfaces the error", async () => {
     const library = await load();
     await selectNote(library, "n1");
-    mockUpdateNote.mockRejectedValue(new ApiError("STORAGE_ERROR", "disk full"));
+    mockUpdateNote.mockRejectedValue(
+      new ApiError("STORAGE_ERROR", "disk full"),
+    );
     mockSoftDeleteNote.mockResolvedValue(mkNote("n1", { isDeleted: true }));
 
     library.editBody("doomed edit");
@@ -393,7 +429,9 @@ describe("refresh race token", () => {
     const library = await load();
     const older = deferred<Note[]>();
     const newer = deferred<Note[]>();
-    mockListNotes.mockReturnValueOnce(older.promise).mockReturnValueOnce(newer.promise);
+    mockListNotes
+      .mockReturnValueOnce(older.promise)
+      .mockReturnValueOnce(newer.promise);
 
     const p1 = library.refresh();
     const p2 = library.refresh();
@@ -415,7 +453,9 @@ describe("refresh race token", () => {
 
     const older = deferred<SearchResult[]>();
     const newer = deferred<SearchResult[]>();
-    mockSearchNotes.mockReturnValueOnce(older.promise).mockReturnValueOnce(newer.promise);
+    mockSearchNotes
+      .mockReturnValueOnce(older.promise)
+      .mockReturnValueOnce(newer.promise);
 
     const p1 = library.refresh();
     const p2 = library.refresh();
@@ -506,14 +546,188 @@ describe("init ordering", () => {
     await library.init();
     mockListNotes.mockClear();
 
-    const handler = mockListen.mock.calls.find((c) => c[0] === "notes:changed")?.[1] as
-      | (() => void)
-      | undefined;
+    const handler = mockListen.mock.calls.find(
+      (c) => c[0] === "notes:changed",
+    )?.[1] as (() => void) | undefined;
     expect(handler).toBeTypeOf("function");
     handler!();
 
     expect(mockListNotes).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(50);
     expect(mockListNotes).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---- Spaces rework: scoped tag chips + undo-able workspace delete ----
+
+function mkTagWithCount(id: string, name: string): TagWithCount {
+  return {
+    id,
+    name,
+    color: null,
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+    usageCount: 1,
+  };
+}
+
+function mkWorkspace(id: string, name: string): WorkspaceWithCount {
+  return {
+    id,
+    name,
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+    noteCount: 0,
+  };
+}
+
+describe("scoped tag filter (chips inside a workspace)", () => {
+  it("composes with the workspace filter, toggles off, and resets on switch", async () => {
+    const library = await load();
+    mockListWorkspaceTags.mockResolvedValue([
+      mkTagWithCount("t-school", "school"),
+    ]);
+
+    library.selectWorkspace("ws1");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockListNotes).toHaveBeenLastCalledWith({ workspaceId: "ws1" });
+
+    library.toggleScopedTag("t-school");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockListNotes).toHaveBeenLastCalledWith({
+      workspaceId: "ws1",
+      tagIds: ["t-school"],
+    });
+
+    library.toggleScopedTag("t-school");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.scopedTagId).toBeNull();
+    expect(mockListNotes).toHaveBeenLastCalledWith({ workspaceId: "ws1" });
+
+    library.toggleScopedTag("t-school");
+    await vi.advanceTimersByTimeAsync(0);
+    library.selectWorkspace("ws2");
+    expect(library.scopedTagId).toBeNull();
+  });
+
+  it("is inert outside a workspace and never leaks into the global tag filter", async () => {
+    const library = await load();
+    library.toggleScopedTag("t-anything");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.scopedTagId).toBeNull();
+
+    mockListWorkspaceTags.mockResolvedValue([mkTagWithCount("t-x", "x")]);
+    library.selectWorkspace("ws1");
+    await vi.advanceTimersByTimeAsync(0);
+    library.toggleScopedTag("t-x");
+    await vi.advanceTimersByTimeAsync(0);
+
+    library.setTagFilter("t-global");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.scopedTagId).toBeNull();
+    expect(mockListNotes).toHaveBeenLastCalledWith({ tagIds: ["t-global"] });
+  });
+
+  it("drops a scoped tag that vanished from the workspace's visible notes", async () => {
+    const library = await load();
+    mockListWorkspaceTags.mockResolvedValue([
+      mkTagWithCount("t-school", "school"),
+    ]);
+    library.selectWorkspace("ws1");
+    await vi.advanceTimersByTimeAsync(0);
+    library.toggleScopedTag("t-school");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.scopedTagId).toBe("t-school");
+
+    // The last #school note was edited away; the chip data comes back empty.
+    mockListWorkspaceTags.mockResolvedValue([]);
+    await library.refresh();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.scopedTagId).toBeNull();
+    expect(mockListNotes).toHaveBeenLastCalledWith({ workspaceId: "ws1" });
+  });
+});
+
+describe("workspace delete with undo", () => {
+  it("deletes immediately and the toast's Undo re-adds every member id", async () => {
+    const library = await load();
+    mockListWorkspaces.mockResolvedValue([mkWorkspace("ws1", "Movies")]);
+    await library.refreshWorkspaces();
+    mockDeleteWorkspace.mockResolvedValue(["n1", "n2", "n3"]);
+
+    await library.removeWorkspace("ws1");
+    expect(mockDeleteWorkspace).toHaveBeenCalledWith("ws1");
+
+    const { toasts } = await import("$lib/stores/toasts.svelte");
+    expect(toasts.items).toHaveLength(1);
+    expect(toasts.items[0].message).toBe('Deleted "Movies" - notes are kept');
+    expect(toasts.items[0].action?.label).toBe("Undo");
+
+    mockGetOrCreateWorkspace.mockResolvedValue(mkWorkspace("ws-new", "Movies"));
+    mockAddNoteToWorkspace.mockResolvedValue(undefined);
+    toasts.activate(toasts.items[0].id);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(mockGetOrCreateWorkspace).toHaveBeenCalledWith("Movies");
+    for (const id of ["n1", "n2", "n3"]) {
+      expect(mockAddNoteToWorkspace).toHaveBeenCalledWith(id, "ws-new");
+    }
+  });
+
+  it("deleting the active workspace lands the view in All Notes", async () => {
+    const library = await load();
+    mockListWorkspaces.mockResolvedValue([mkWorkspace("ws1", "Doomed")]);
+    await library.refreshWorkspaces();
+    library.selectWorkspace("ws1");
+    await vi.advanceTimersByTimeAsync(0);
+
+    mockListWorkspaces.mockResolvedValue([]);
+    mockDeleteWorkspace.mockResolvedValue([]);
+    await library.removeWorkspace("ws1");
+    expect(library.activeWorkspaceId).toBeNull();
+    expect(library.scopedTagId).toBeNull();
+  });
+
+  it("a partial undo (a member was destroyed meanwhile) reports what it restored", async () => {
+    const library = await load();
+    mockListWorkspaces.mockResolvedValue([mkWorkspace("ws1", "Movies")]);
+    await library.refreshWorkspaces();
+    mockDeleteWorkspace.mockResolvedValue(["n1", "n2"]);
+    await library.removeWorkspace("ws1");
+
+    const { toasts } = await import("$lib/stores/toasts.svelte");
+    mockGetOrCreateWorkspace.mockResolvedValue(mkWorkspace("ws-new", "Movies"));
+    mockAddNoteToWorkspace
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new ApiError("NOT_FOUND", "note n2 not found"));
+    toasts.activate(toasts.items[0].id);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(toasts.items).toHaveLength(1);
+    expect(toasts.items[0].message).toBe(
+      'Restored "Movies" without 1 of 2 notes.',
+    );
+  });
+});
+
+describe("workspace rename", () => {
+  it("returns ok and refreshes the list on success", async () => {
+    const library = await load();
+    mockRenameWorkspace.mockResolvedValue(mkWorkspace("ws1", "Gamma"));
+    mockListWorkspaces.mockClear();
+    const result = await library.renameWorkspace("ws1", "Gamma");
+    expect(result).toEqual({ ok: true });
+    expect(mockRenameWorkspace).toHaveBeenCalledWith("ws1", "Gamma");
+    expect(mockListWorkspaces).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces a duplicate name as an inline error, not a thrown error", async () => {
+    const library = await load();
+    mockRenameWorkspace.mockRejectedValue(new ApiError("CONFLICT", "exists"));
+    const result = await library.renameWorkspace("ws1", "Beta");
+    expect(result).toEqual({
+      ok: false,
+      message: "That name is already in use.",
+    });
   });
 });
