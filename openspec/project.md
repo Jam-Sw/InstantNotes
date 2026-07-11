@@ -42,6 +42,9 @@ Active OpenSpec change proposals live in `openspec/changes/`. Once a change has 
 ## Domain Context
 Notes are the canonical user data. Tags are lightweight labels, including tags extracted from `#inline` text. Workspaces are named collections that group related notes; a note can belong to more than one, and deleting a workspace never deletes its notes. Search must support plain user input without exposing FTS syntax errors.
 
+### Glossary: Space = Workspace
+The product term is **Space** (sidebar, copy, component names). The storage tables, IPC command names, and Rust core keep the original **workspace** name. This is deliberate: renaming storage internals is churn with no user value. The one place the two vocabularies meet is `src/lib/api/client.ts`, which documents the boundary; UI and store code say "space", everything from the command strings down says "workspace".
+
 ## Important Constraints
 - Notes are stored locally.
 - Note content must not appear in logs.

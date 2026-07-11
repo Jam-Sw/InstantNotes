@@ -86,7 +86,14 @@ export const removeTagFromNote = (noteId: string, tagId: string) =>
 export const tagsForNote = (noteId: string) =>
   call<Tag[]>("tags_for_note", { noteId });
 
-// ---- workspaces ----
+// ---- workspaces (the UI calls these "Spaces") ----
+// GLOSSARY / naming boundary: the product term is "Space" everywhere the user
+// sees it (sidebar, copy, component names); the command strings, storage
+// tables, and these wrapper names keep "workspace". This file is the single
+// place the two vocabularies meet, by decision: renaming the storage internals
+// is churn with no user value (see openspec/project.md and
+// docs/superpowers/specs/2026-07-10-spaces-design.md). One concept, two names,
+// documented here so no layer has to guess which it is in.
 export const listWorkspaces = () =>
   call<WorkspaceWithCount[]>("list_workspaces");
 export const getOrCreateWorkspace = (name: string) =>
