@@ -66,8 +66,9 @@ pub fn extract_inline_tags(body: &str) -> Vec<String> {
     out
 }
 
-/// Derive a note title from the first non-empty line of the body per CAP-004:
-/// strip leading markdown markers (`#`, `-`, `*`, `>`) and inline `#` tag
+/// Derive a note title from the first non-empty line of the body (see
+/// DATA_MODEL.md section 6): strip leading markdown markers (`#`, `-`, `*`,
+/// `>`) and inline `#` tag
 /// prefixes, collapse whitespace, truncate to 80 chars (char boundary).
 /// Empty body yields "Untitled".
 pub fn derive_title(body: &str) -> String {

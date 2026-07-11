@@ -1,7 +1,7 @@
 <script lang="ts">
   // Capture panel: the product promise. Bare textarea on the latency-critical
-  // path — no editor framework here. ↵ saves & dismisses, ⇧↵ newline,
-  // Esc dismisses preserving the draft (CAP-011).
+  // path, no editor framework here. Enter saves and dismisses, Shift+Enter is
+  // a newline, and Esc dismisses the window while preserving the draft.
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
