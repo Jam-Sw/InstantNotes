@@ -37,31 +37,21 @@ import type {
   WorkspaceWithCount,
 } from "$lib/api/types";
 import { debounce } from "$lib/debounce";
-import {
-  withMapEntry,
-  withoutMapKeys,
-  withSetEntry,
-  withoutSetEntries,
-} from "$lib/reactive-collections";
 import { friendlyMessage } from "$lib/errors";
 import { rangeSelection, stepId, toggleSelection } from "$lib/selection";
+import { SaveQueue, type SaveState } from "$lib/stores/library/save-queue.svelte";
 import { toasts } from "$lib/stores/toasts.svelte";
 import { listen } from "@tauri-apps/api/event";
+
+export type { SaveState };
 
 // Archived and trash live behind a list filter in All Notes, not as
 // top-level sections (two-section library: All Notes and Workspaces).
 export type StatusFilter = "active" | "archived" | "trash";
 
-// One quiet retry this long after a failed body save; most failures (a
-// competing writer briefly holding the database lock) clear well within it.
-const SAVE_RETRY_MS = 2000;
-
 // Debounce for search-text refreshes only, so a query runs per pause rather
 // than per keystroke; filter clicks and change events stay immediate.
 const SEARCH_DEBOUNCE_MS = 150;
-
-/** Selected-note save status for the editor status bar. */
-export type SaveState = "saved" | "saving" | "failed";
 
 // A capture-born note that nobody has opened within this window is an open
 // loop worth resurfacing. Newer captures aren't nagged about: they're often
@@ -96,16 +86,21 @@ class LibraryStore {
   multiSelected = $state<Set<string>>(new Set());
   error = $state<string | null>(null);
 
-  // Bodies not yet confirmed persisted, by note id. An entry is only removed
-  // by a successful write, so a failed save stays queued for the next flush
-  // (note switch, blur, quit) instead of being silently dropped. Reassigned
-  // on change, like multiSelected, so the status bar tracks it reactively.
-  #unsaved = $state(new Map<string, string>());
-  // Note ids whose save failed even after the retry; drives "Not saved".
-  #failed = $state(new Set<string>());
-  // Scheduled 2s retry per note id, so a newer write, a drop, or a flush can
-  // cancel it before it fires a stray write behind the caller's back.
-  #retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  // Body persistence (debounce, retry, flush) lives in its own single-writer
+  // unit; the store composes one and delegates. A confirmed write updates the
+  // open note; a terminal failure surfaces an error.
+  #saveQueue = new SaveQueue({
+    onPersisted: async (id, updated) => {
+      if (this.selected?.id === id) {
+        // Keep local body if the user kept typing past this save.
+        const localBody = this.selected.body;
+        this.selected = { ...updated, body: localBody };
+        this.selectedTags = await tagsForNote(id);
+      }
+      this.error = null;
+    },
+    onError: (e) => this.#fail(e),
+  });
 
   #anchorId: string | null = null;
   #initialized = false;
@@ -115,15 +110,10 @@ class LibraryStore {
   // events (bulk delete, undo) costs one count query, not one per event.
   #revisitCountDebounced = debounce(() => void this.#refreshRevisitCount(), 50);
   #searchRefresh = debounce(() => void this.refresh(), SEARCH_DEBOUNCE_MS);
-  #saveBody = debounce((id: string, body: string) => {
-    void this.#persistBody(id, body, true);
-  }, 400);
 
   /** Save status of the selected note, for the editor status bar. */
   get saveState(): SaveState {
-    const id = this.selected?.id;
-    if (!id || !this.#unsaved.has(id)) return "saved";
-    return this.#failed.has(id) ? "failed" : "saving";
+    return this.#saveQueue.stateFor(this.selected?.id);
   }
 
   async init(): Promise<void> {
@@ -355,12 +345,12 @@ class LibraryStore {
 
   async #open(id: string): Promise<void> {
     // Flush any pending edit of the previous note before switching.
-    this.#saveBody.flush();
+    this.#saveQueue.flushDebounce();
     try {
       const note = await getNote(id, true);
       // A queued edit (debounced or awaiting retry) is newer than what disk
       // returned; showing the disk body would fork the note's history.
-      const queued = this.#unsaved.get(id);
+      const queued = this.#saveQueue.peek(id);
       this.selected = queued !== undefined ? { ...note, body: queued } : note;
       [this.selectedTags, this.selectedWorkspaces] = await Promise.all([
         tagsForNote(id),
@@ -449,7 +439,7 @@ class LibraryStore {
       this.#lastRangeEnd = ids[0];
       if (this.selected?.id !== ids[0]) await this.#open(ids[0]);
     } else {
-      this.#saveBody.flush();
+      this.#saveQueue.flushDebounce();
       this.selected = null;
       this.selectedTags = [];
       this.selectedWorkspaces = [];
@@ -472,9 +462,9 @@ class LibraryStore {
     const ids = [...this.multiSelected];
     // Trash is reversible and Undo promises fidelity: persist any pending
     // edit first, so a restored note holds the user's last keystrokes.
-    this.#saveBody.cancel();
-    await this.#flushIds(ids);
-    this.#dropQueued(...ids);
+    this.#saveQueue.cancelDebounce();
+    await this.#saveQueue.flushIds(ids);
+    this.#saveQueue.drop(ids);
     await this.#bulk((sel) => softDeleteNotes(sel));
     this.clearMultiSelect();
     if (ids.length > 0) {
@@ -506,8 +496,8 @@ class LibraryStore {
     // Destroyed notes must also forget their queued edits, or the retry and
     // every later flush re-attempts a write against a row that no longer
     // exists and surfaces NOT_FOUND forever.
-    this.#saveBody.cancel();
-    this.#dropQueued(...ids);
+    this.#saveQueue.cancelDebounce();
+    this.#saveQueue.drop(ids);
     try {
       await destroyNotesCmd(ids, true);
       this.error = null;
@@ -520,8 +510,8 @@ class LibraryStore {
   async emptyTrash(): Promise<void> {
     try {
       const trashed = await listNotes({ isDeleted: true });
-      this.#saveBody.cancel();
-      this.#dropQueued(...trashed.map((n) => n.id));
+      this.#saveQueue.cancelDebounce();
+      this.#saveQueue.drop(trashed.map((n) => n.id));
       await destroyNotesCmd(
         trashed.map((n) => n.id),
         true,
@@ -688,8 +678,7 @@ class LibraryStore {
     // Optimistic local state; persistence is debounced. The note is dirty
     // from this moment until a write of this (or a newer) body succeeds.
     this.selected.body = body;
-    this.#unsaved = withMapEntry(this.#unsaved, this.selected.id, body);
-    this.#saveBody(this.selected.id, body);
+    this.#saveQueue.queue(this.selected.id, body);
   }
 
   editTitle(title: string): void {
@@ -718,9 +707,9 @@ class LibraryStore {
     const id = this.selected.id;
     // Trash is reversible and Undo promises fidelity: persist any pending
     // edit first, so a restored note holds the user's last keystrokes.
-    this.#saveBody.cancel();
-    await this.#flushIds([id]);
-    this.#dropQueued(id);
+    this.#saveQueue.cancelDebounce();
+    await this.#saveQueue.flushIds([id]);
+    this.#saveQueue.drop([id]);
     try {
       await softDeleteNote(id);
       this.clearMultiSelect();
@@ -771,101 +760,9 @@ class LibraryStore {
    * Persist every queued edit now (note switch, window blur, export, quit).
    * Resolves once the writes have settled; anything that still fails stays
    * queued for the next flush.
-   *
-   * Cancels the debounce outright rather than flushing through it: flushing
-   * would run the retry-enabled path, which schedules its own 2s retry on
-   * failure and can fire a stray write after this call has already
-   * resolved. #unsaved already holds the latest body for every queued note
-   * (editBody sets it synchronously, ahead of the debounce), so a single
-   * no-retry persist below covers the just-typed edit too, with exactly one
-   * write attempt per note.
    */
   async flushPendingEdits(): Promise<void> {
-    this.#saveBody.cancel();
-    await Promise.all(
-      [...this.#unsaved.entries()].map(([id, body]) =>
-        this.#persistBody(id, body, false),
-      ),
-    );
-  }
-
-  /**
-   * Persist queued edits for specific ids now, no retry. Used ahead of a
-   * soft delete: the note survives in the trash, so the last keystrokes
-   * must land before the row leaves the list (Undo depends on them).
-   */
-  async #flushIds(ids: string[]): Promise<void> {
-    await Promise.all(
-      ids
-        .filter((id) => this.#unsaved.has(id))
-        .map((id) =>
-          this.#persistBody(id, this.#unsaved.get(id) as string, false),
-        ),
-    );
-  }
-
-  /**
-   * Write one note body. A failure retries once after a short backoff (state
-   * stays "saving", so the UI never claims "Saved" over unpersisted data);
-   * a second failure flips the note to "failed" while keeping the edit in
-   * #unsaved so a later flush still attempts it.
-   */
-  async #persistBody(
-    id: string,
-    body: string,
-    canRetry: boolean,
-  ): Promise<void> {
-    // Any write attempt for this id, whether from the debounce, a retry, or
-    // a flush, supersedes an outstanding scheduled retry for the same id.
-    this.#clearRetryTimer(id);
-    try {
-      const updated = await updateNote(id, { body });
-      // Confirmed on disk. Clear the queue entry unless a newer edit
-      // superseded the body this write carried.
-      if (this.#unsaved.get(id) === body) {
-        this.#unsaved = withoutMapKeys(this.#unsaved, [id]);
-      }
-      if (this.#failed.has(id)) {
-        this.#failed = withoutSetEntries(this.#failed, [id]);
-      }
-      if (this.selected?.id === id) {
-        // Keep local body if user kept typing past this save.
-        const localBody = this.selected.body;
-        this.selected = { ...updated, body: localBody };
-        this.selectedTags = await tagsForNote(id);
-      }
-      this.error = null;
-    } catch (e) {
-      if (canRetry) {
-        // One quiet retry: most failures (a competing writer briefly holding
-        // the database lock) clear well within the backoff. Tracked so a
-        // drop or a flush can cancel it before it fires.
-        const timer = setTimeout(() => {
-          this.#retryTimers.delete(id);
-          const latest = this.#unsaved.get(id);
-          if (latest !== undefined) void this.#persistBody(id, latest, false);
-        }, SAVE_RETRY_MS);
-        this.#retryTimers.set(id, timer);
-      } else {
-        this.#failed = withSetEntry(this.#failed, id);
-        this.#fail(e);
-      }
-    }
-  }
-
-  #clearRetryTimer(id: string): void {
-    const timer = this.#retryTimers.get(id);
-    if (timer !== undefined) {
-      clearTimeout(timer);
-      this.#retryTimers.delete(id);
-    }
-  }
-
-  /** Forget queued edits for notes that are being discarded. */
-  #dropQueued(...ids: string[]): void {
-    this.#unsaved = withoutMapKeys(this.#unsaved, ids);
-    this.#failed = withoutSetEntries(this.#failed, ids);
-    for (const id of ids) this.#clearRetryTimer(id);
+    await this.#saveQueue.flushAll();
   }
 
   /**
