@@ -59,8 +59,10 @@ To build from source instead, see [Development](#development).
 
 ```sh
 npm install
-npm run tauri dev
+npm run tauri:dev
 ```
+
+Use `npm run tauri:dev`, not `npm run tauri dev`: the app hides to the tray on close, so a plain re-run resurrects the old instance with a webview still pointing at a dead Vite HMR socket (edits never show); the wrapper kills any prior instance first so every run is genuinely fresh.
 
 This builds the Rust core, starts the Vite dev server, and launches the app. Frontend changes hot-reload instantly; Rust changes trigger an incremental rebuild and app restart.
 
