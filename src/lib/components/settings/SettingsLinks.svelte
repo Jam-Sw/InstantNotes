@@ -4,7 +4,23 @@
   import { modKey } from "$lib/platform";
   import { linkPrefs } from "$lib/stores/links.svelte";
 
-  onMount(() => void linkPrefs.init());
+  // Track whether a Cmd/Ctrl modifier is held so the sample link shows the
+  // pointer cursor exactly when a modifier-click would open it, mirroring the
+  // editor's behavior in the "open with Cmd/Ctrl+Click" mode.
+  let modHeld = $state(false);
+  onMount(() => {
+    void linkPrefs.init();
+    const onKey = (e: KeyboardEvent) => (modHeld = e.metaKey || e.ctrlKey);
+    const onBlur = () => (modHeld = false);
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("keyup", onKey, true);
+    window.addEventListener("blur", onBlur, true);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("keyup", onKey, true);
+      window.removeEventListener("blur", onBlur, true);
+    };
+  });
 
   // The sample link mirrors the reading (preview) behavior so trying it here
   // feels exactly like clicking in a note.
@@ -30,6 +46,7 @@
       class="sample-link ul-{linkPrefs.underline}"
       class:ext={linkPrefs.externalIndicator}
       class:plain-click={linkPrefs.openWith === "click"}
+      class:mod-ready={linkPrefs.openWith === "modclick" && modHeld}
       title={linkPrefs.tooltip ? "https://example.com" : undefined}
       onclick={sampleLinkClick}
     >the write-up</button> for the numbers.
@@ -153,7 +170,8 @@
     font-size: inherit;
     padding: 0;
   }
-  .sample-link.plain-click {
+  .sample-link.plain-click,
+  .sample-link.mod-ready {
     cursor: pointer;
   }
   .sample-link.ul-always {

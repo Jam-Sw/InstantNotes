@@ -5,6 +5,8 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   CaptureLatencySummary,
   CreateNoteInput,
+  DashboardStats,
+  FeedbackInput,
   Note,
   NoteFilter,
   SearchResult,
@@ -174,6 +176,20 @@ export const saveAttachment = async (
   }
 };
 export const getAttachmentsDir = () => call<string>("get_attachments_dir");
+// Copy a dialog-picked image into attachments (the "copy in" storage mode);
+// returns the stored filename. `allow` opens one existing local image to the
+// asset protocol so a linked (not copied) image can render inline.
+export const importImageFile = (path: string) =>
+  call<string>("import_image_file", { path });
+export const allowImageFile = (path: string) =>
+  call<void>("allow_image_file", { path });
+export const openAttachmentsFolder = () =>
+  call<void>("open_attachments_folder");
+
+// ---- dashboard + feedback ----
+export const getLibraryStats = () => call<DashboardStats>("library_stats");
+export const submitFeedback = (input: FeedbackInput) =>
+  call<void>("submit_feedback", { input });
 
 // ---- app lifecycle ----
 // Answer to "app:quit-requested": pending edits are flushed, exit for real now.

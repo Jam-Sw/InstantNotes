@@ -9,6 +9,32 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.0]
+
+### Added
+- The Settings front page is now a dashboard: live counts for your notes, tags,
+  Spaces, and attachments, the capture readiness time, and the release notes for
+  the version you are running.
+- An Images settings page: choose whether an added image is copied into
+  InstantNotes or linked from its original file, set how tall images preview,
+  and see where attachments live with a button to open the folder.
+- Insert an image from a file with the Image button in the editor toolbar, in
+  addition to pasting or dropping one.
+- An Editor settings page with a "Show exact save time" option; the exact save
+  time, to the minute, is always available on hover over any note's date.
+- Contexting can rewrite images to their absolute path (the new default), keep
+  the reference as written, or drop images entirely when you copy a note as
+  context.
+- Send feedback from inside the app: the new Feedback page files a bug or idea,
+  saves a copy on your machine, and opens a prefilled GitHub issue.
+
+### Fixed
+- A stray caret no longer lingers in notes you switch between: each note now
+  loads with its own clean editing state, and undo no longer reaches back into
+  the previously open note.
+- Links set to open with Cmd/Ctrl+Click now show the pointer cursor while the
+  modifier is held, so it reads as clickable.
+
 ## [0.8.0] - 2026-07-11
 
 ### Added

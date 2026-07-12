@@ -404,6 +404,7 @@ impl Store {
 
 mod notes;
 mod settings;
+mod stats;
 mod tags;
 mod workspaces;
 

@@ -2,16 +2,23 @@
   import { onMount } from "svelte";
   import { modKey } from "$lib/platform";
   import { contexting } from "$lib/stores/contexting.svelte";
-  import { renderTemplate, TEMPLATE_VARS } from "$lib/contexting-format";
+  import {
+    renderTemplate,
+    TEMPLATE_VARS,
+    type ContextImageMode,
+  } from "$lib/contexting-format";
   import { library } from "$lib/stores/library.svelte";
   import type { Note, Tag } from "$lib/api/types";
+  import SegmentedRow from "$lib/components/settings/SegmentedRow.svelte";
 
   onMount(() => void contexting.init());
 
-  // Live preview for the copy template, using the open note or a sample stand-in.
+  // Live preview for the copy template, using the open note or a sample
+  // stand-in. The sample carries an image so the image-handling choice is
+  // visible in the preview.
   const SAMPLE_NOTE: Pick<Note, "title" | "body" | "updatedAt"> = {
     title: "Sample note",
-    body: "The quick brown fox.",
+    body: "The quick brown fox.\n![diagram](attachments/example.png)",
     updatedAt: new Date().toISOString(),
   };
   const SAMPLE_TAGS: Pick<Tag, "name">[] = [{ name: "example" }];
@@ -19,7 +26,10 @@
   const preview = $derived.by(() => {
     const note = library.selected;
     const tags = note ? library.selectedTags : SAMPLE_TAGS;
-    return renderTemplate(contexting.copyTemplate, note ?? SAMPLE_NOTE, tags);
+    return renderTemplate(contexting.copyTemplate, note ?? SAMPLE_NOTE, tags, {
+      imageMode: contexting.imageMode,
+      attachmentsDir: contexting.attachmentsDir,
+    });
   });
 </script>
 
@@ -44,6 +54,19 @@
       <code class="ctx-var">{v}</code>
     {/each}
   </div>
+
+  <span class="field-label">Images</span>
+  <SegmentedRow
+    label="When copying, images become"
+    sub="What happens to an image in the note. Absolute path lets a tool or agent that reads files find the image; keep leaves the note's own reference; remove drops it for text-only context."
+    options={[
+      { value: "absolute", label: "Absolute path" },
+      { value: "keep", label: "Keep reference" },
+      { value: "strip", label: "Remove" },
+    ]}
+    value={contexting.imageMode}
+    onchange={(v) => contexting.setImageMode(v as ContextImageMode)}
+  />
 
   <span class="field-label">Preview</span>
   <pre class="ctx-preview">{preview}</pre>

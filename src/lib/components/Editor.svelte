@@ -8,7 +8,7 @@
   // kernel to the app: Rust APIs in, settings effects in, edits out.
   import { onMount } from "svelte";
   import { EditorView, keymap, placeholder as cmPlaceholder } from "@codemirror/view";
-  import { EditorState } from "@codemirror/state";
+  import { EditorState, type Extension, type StateEffect } from "@codemirror/state";
   import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
   import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
   import { languages } from "@codemirror/language-data";
@@ -22,10 +22,16 @@
     setPreviewMode,
     setLinkPrefs,
     setAttachmentsBase,
+    linkedImagePaths,
   } from "$lib/editor";
   import { linkPrefs } from "$lib/stores/links.svelte";
   import { listIndentChanges } from "$lib/list-indent";
-  import { getAttachmentsDir, openUrl, saveAttachment } from "$lib/api/client";
+  import {
+    getAttachmentsDir,
+    openUrl,
+    saveAttachment,
+    allowImageFile,
+  } from "$lib/api/client";
   import { toasts } from "$lib/stores/toasts.svelte";
 
   let {
@@ -45,12 +51,15 @@
   let container: HTMLDivElement;
   let view: EditorView | undefined;
   let applyingExternal = false;
+  // Built once and reused for every note load, so each note gets a fresh state
+  // (clean selection, its own undo history) with identical behavior.
+  let extensions: Extension[] = [];
+  // Absolute attachments dir, cached once it arrives from Rust so each note
+  // load can re-seed it after setState resets the field.
+  let attachmentsBase: string | null = null;
 
   onMount(() => {
-    view = new EditorView({
-      state: EditorState.create({
-        doc: value,
-        extensions: [
+    extensions = [
           history(),
           // Formatting shortcuts take precedence over the defaults. Cmd-K is the
           // command palette (handled at the window level), so link uses Cmd-Shift-K.
@@ -101,29 +110,72 @@
               onactive?.(activeMarks(u.state));
             }
           }),
-        ],
-      }),
+    ];
+    view = new EditorView({
+      state: EditorState.create({ doc: value, selection: { anchor: 0 }, extensions }),
       parent: container,
     });
     // Seed the toolbar before the first edit or selection change.
     onactive?.(activeMarks(view.state));
     // Attachment images can only resolve once Rust reports where they live;
-    // until then they render as markdown text, then swap in.
+    // until then they render as markdown text, then swap in. Cache the dir so
+    // each later note load can re-seed it after setState resets the field.
     void getAttachmentsDir()
-      .then((dir) => view?.dispatch({ effects: setAttachmentsBase.of(dir) }))
+      .then((dir) => {
+        attachmentsBase = dir;
+        view?.dispatch({ effects: setAttachmentsBase.of(dir) });
+      })
       .catch(() => {});
     return () => view?.destroy();
   });
 
+  // setState resets every state field to its default, so re-apply the dynamic
+  // ones (preview mode, link prefs, attachments base) whenever a note loads.
+  function seedEffects(): StateEffect<unknown>[] {
+    const effects: StateEffect<unknown>[] = [
+      setPreviewMode.of(previewMode),
+      setLinkPrefs.of(linkPrefs.snapshot()),
+    ];
+    if (attachmentsBase !== null) {
+      effects.push(setAttachmentsBase.of(attachmentsBase));
+    }
+    return effects;
+  }
+
+  // Load a note's body with a CLEAN state: a fresh selection at the top and its
+  // own undo history. This is the fix for the stray caret that used to linger
+  // in notes being switched between, and it stops an undo from reaching back
+  // into the previously open note. Linked (absolute-path) images are permitted
+  // into the asset scope before the state renders so they load on first paint.
+  async function loadDoc(next: string): Promise<void> {
+    // Guard edit echoes to the OUTGOING note across the (possible) async gap
+    // while linked images are permitted, and across the state swap itself.
+    applyingExternal = true;
+    try {
+      const linked = linkedImagePaths(next);
+      if (linked.length > 0) {
+        await Promise.all(linked.map((p) => allowImageFile(p).catch(() => {})));
+        // A newer note may have been requested while we awaited; let its own
+        // effect run apply it instead of clobbering with a stale body.
+        if (value !== next) return;
+      }
+      if (!view) return;
+      view.setState(
+        EditorState.create({ doc: next, selection: { anchor: 0 }, extensions }),
+      );
+      view.dispatch({ effects: seedEffects() });
+      onactive?.(activeMarks(view.state));
+    } finally {
+      applyingExternal = false;
+    }
+  }
+
   $effect(() => {
-    // Sync external value changes (note switching) into the editor.
+    // Sync external value changes (note switching) into the editor by loading
+    // a clean state for the new body.
     const next = value;
     if (view && next !== view.state.doc.toString()) {
-      applyingExternal = true;
-      view.dispatch({
-        changes: { from: 0, to: view.state.doc.length, insert: next },
-      });
-      applyingExternal = false;
+      void loadDoc(next);
     }
   });
 
@@ -146,6 +198,19 @@
 
   export function focus() {
     view?.focus();
+  }
+
+  // Insert text at the current selection (replacing it), then focus. Flows out
+  // through onchange like any edit, so it auto-saves and is undoable. Used by
+  // the "Insert image..." action for a dialog-picked file.
+  export function insertText(text: string) {
+    if (!view) return;
+    const { from, to } = view.state.selection.main;
+    view.dispatch({
+      changes: { from, to, insert: text },
+      selection: { anchor: from + text.length },
+    });
+    view.focus();
   }
 
   // Apply a formatting action to the current selection. Flows out through

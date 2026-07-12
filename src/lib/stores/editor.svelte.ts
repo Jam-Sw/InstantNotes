@@ -6,6 +6,7 @@ import { getSetting, setSetting } from "$lib/api/client";
 
 const KEY_ZOOM = "editor.zoom";
 const KEY_TOOLBAR = "editor.toolbarOpen";
+const KEY_EXACT_TIME = "editor.showExactTime";
 const MIN = 0.7;
 const MAX = 2.5;
 const STEP = 0.1;
@@ -13,6 +14,9 @@ const STEP = 0.1;
 class EditorPrefs {
   zoom = $state(1);
   toolbarOpen = $state(false);
+  // Show the full minute-precise save time inline in the editor status bar.
+  // The exact time is always available on hover regardless of this toggle.
+  showExactTime = $state(false);
 
   #loaded = false;
 
@@ -20,15 +24,22 @@ class EditorPrefs {
     if (this.#loaded) return;
     this.#loaded = true;
     try {
-      const [z, open] = await Promise.all([
+      const [z, open, exact] = await Promise.all([
         getSetting<number>(KEY_ZOOM),
         getSetting<boolean>(KEY_TOOLBAR),
+        getSetting<boolean>(KEY_EXACT_TIME),
       ]);
       if (typeof z === "number" && z >= MIN && z <= MAX) this.zoom = z;
       if (typeof open === "boolean") this.toolbarOpen = open;
+      if (typeof exact === "boolean") this.showExactTime = exact;
     } catch {
       // Settings are best-effort; fall back to defaults silently.
     }
+  }
+
+  setShowExactTime(v: boolean): void {
+    this.showExactTime = v;
+    void setSetting(KEY_EXACT_TIME, v);
   }
 
   #clamp(z: number): number {

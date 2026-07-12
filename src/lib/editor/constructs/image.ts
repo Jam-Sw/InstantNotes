@@ -7,7 +7,7 @@
 
 import { Decoration, WidgetType } from "@codemirror/view";
 import type { SyntaxNodeRef } from "@lezer/common";
-import { attachmentSrc, attachmentsBaseField } from "../images";
+import { imageSrc, attachmentsBaseField } from "../images";
 import type { ConstructSpec, Emit, ScanContext } from "../types";
 
 class ImageWidget extends WidgetType {
@@ -46,7 +46,7 @@ export class ImageSpec implements ConstructSpec {
     if (!cx.preview) return true;
     const url = node.node.getChild("URL");
     if (!url) return true;
-    const src = attachmentSrc(
+    const src = imageSrc(
       cx.state.doc.sliceString(url.from, url.to),
       cx.state.field(attachmentsBaseField),
       this.convert,

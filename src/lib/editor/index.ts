@@ -13,7 +13,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { previewKernel } from "./kernel";
 import { CaretGuard } from "./caret";
 import { markerBackspaceKeymap } from "./blocks";
-import { linkOpenHandler, linkPrefsField } from "./links";
+import { linkOpenHandler, linkPrefsField, modKeyCursor } from "./links";
 import { attachmentsBaseField, imageCapture } from "./images";
 import { editModeTaskToggle } from "./tasks";
 import { kernelTheme } from "./theme";
@@ -74,6 +74,7 @@ export function editorKernel(opts: EditorKernelOpts): Extension {
     extension,
     new CaretGuard(plugin).extension(),
     linkOpenHandler(opts.openUrl),
+    modKeyCursor(),
     editModeTaskToggle(),
     imageCapture({ save: opts.saveImage, onError: opts.onImageError }),
     kernelTheme,
@@ -98,6 +99,9 @@ export {
   setAttachmentsBase,
   attachmentsBaseField,
   attachmentSrc,
+  imageSrc,
+  localFilePath,
+  linkedImagePaths,
   extForMime,
   attachmentMarkdown,
 } from "./images";

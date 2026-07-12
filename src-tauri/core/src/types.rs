@@ -91,6 +91,22 @@ pub struct NoteFilter {
     pub offset: Option<i64>,
 }
 
+/// Aggregate library counts for the Settings dashboard. Attachment counts are
+/// added by the desktop layer (they live on the filesystem, not in the store).
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LibraryStats {
+    /// Notes not in the Trash (active plus archived).
+    pub notes_total: i64,
+    /// Notes not in the Trash and not archived.
+    pub notes_active: i64,
+    pub notes_pinned: i64,
+    pub notes_archived: i64,
+    pub notes_trashed: i64,
+    pub tags: i64,
+    pub spaces: i64,
+}
+
 /// Search result for library queries. Tag search goes through the note_tags
 /// join, not FTS.
 #[derive(Debug, Clone, Serialize, PartialEq)]

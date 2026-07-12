@@ -1,17 +1,48 @@
 <script lang="ts">
+  import { open } from "@tauri-apps/plugin-dialog";
   import Editor from "$lib/components/Editor.svelte";
   import FormatToolbar from "$lib/components/FormatToolbar.svelte";
   import { library } from "$lib/stores/library.svelte";
   import { editorPrefs } from "$lib/stores/editor.svelte";
+  import { imagePrefs } from "$lib/stores/images.svelte";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
-  import { formatDate, wordCount } from "$lib/format";
+  import { toasts } from "$lib/stores/toasts.svelte";
+  import { importImageFile, allowImageFile } from "$lib/api/client";
+  import { formatDate, formatExact, wordCount } from "$lib/format";
   import type { FormatKind } from "$lib/markdown-format";
   import { NO_MARKS, type ActiveMarks } from "$lib/markdown-active";
 
   let tagInput = $state("");
   let workspaceInput = $state("");
-  let editorRef = $state<{ applyFormat: (k: FormatKind) => void; focus: () => void }>();
+  let editorRef = $state<{
+    applyFormat: (k: FormatKind) => void;
+    focus: () => void;
+    insertText: (t: string) => void;
+  }>();
   let active = $state<ActiveMarks>({ ...NO_MARKS });
+
+  // Insert an image from a file the user picks. Honors the storage setting:
+  // "copy" reads it into the attachments folder; "link" references it in place
+  // (allowed into the asset scope so it renders). Pasting or dropping still
+  // captures images directly in the editor.
+  async function insertImage() {
+    const picked = await open({
+      multiple: false,
+      filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp"] }],
+    });
+    if (typeof picked !== "string") return;
+    try {
+      if (imagePrefs.storage === "copy") {
+        const name = await importImageFile(picked);
+        editorRef?.insertText(`![](attachments/${name})`);
+      } else {
+        await allowImageFile(picked);
+        editorRef?.insertText(`![](${picked})`);
+      }
+    } catch (e) {
+      toasts.show(`Couldn't add image. ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 
   async function submitTag(e: Event) {
     e.preventDefault();
@@ -53,6 +84,13 @@
         <button class="action" onclick={() => library.restoreSelected()}>Restore</button>
         <button class="action danger" onclick={confirmDestroy}>Delete Forever</button>
       {:else}
+        <button
+          class="action"
+          title="Insert image from a file"
+          onclick={insertImage}
+        >
+          Image
+        </button>
         <button
           class="action"
           class:active={editorPrefs.toolbarOpen}
@@ -117,7 +155,10 @@
   {#if editorPrefs.toolbarOpen}
     <FormatToolbar {active} onFormat={(k) => editorRef?.applyFormat(k)} />
   {/if}
-  <div class="editor-body" style="--editor-zoom: {editorPrefs.zoom}">
+  <div
+    class="editor-body"
+    style="--editor-zoom: {editorPrefs.zoom}; --image-max-height: {imagePrefs.maxPreviewHeight}px"
+  >
     <Editor
       bind:this={editorRef}
       value={library.selected.body}
@@ -132,8 +173,9 @@
       class="save-state"
       class:saving={library.saveState === "saving"}
       class:failed={library.saveState === "failed"}
+      title={formatExact(library.selected.updatedAt)}
     >
-      {#if library.saveState === "saving"}<span class="save-dot"></span>Saving…{:else if library.saveState === "failed"}Not saved{:else}Saved · {formatDate(library.selected.updatedAt)}{/if}
+      {#if library.saveState === "saving"}<span class="save-dot"></span>Saving…{:else if library.saveState === "failed"}Not saved{:else}Saved · {editorPrefs.showExactTime ? formatExact(library.selected.updatedAt) : formatDate(library.selected.updatedAt)}{/if}
     </span>
     {#if library.error}
       <span class="error">{library.error}</span>

@@ -93,6 +93,12 @@ textarea {
   line-height: var(--leading);
   letter-spacing: var(--tracking);
 }
+/* Paint a caret only in the focused editor. Without this, loading a note's
+   document while the editor is blurred (switching between notes) could leave a
+   stray native caret drawn at the top of the text in WKWebView. */
+.cm-editor:not(.cm-focused) .cm-content {
+  caret-color: transparent;
+}
 .cm-editor .cm-line {
   padding: 0 calc(16px * var(--density));
 }

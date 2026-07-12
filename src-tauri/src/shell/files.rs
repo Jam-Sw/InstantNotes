@@ -144,6 +144,119 @@ pub fn save_attachment(app: AppHandle, request: tauri::ipc::Request<'_>) -> CmdR
     Ok(name)
 }
 
+fn image_ext(path: &std::path::Path) -> CmdResult<String> {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_default();
+    if !ATTACHMENT_EXTS.contains(&ext.as_str()) {
+        return Err(CmdError {
+            code: "VALIDATION".into(),
+            message: format!("unsupported image type: {ext:?}"),
+        });
+    }
+    Ok(ext)
+}
+
+/// Copy an image the user picked through a file dialog into the attachments
+/// directory (the "copy in" storage mode). Returns the stored filename; the
+/// caller builds `attachments/<name>`, exactly like a pasted image.
+#[tauri::command(async)]
+pub fn import_image_file(app: AppHandle, path: String) -> CmdResult<String> {
+    let src = std::path::Path::new(&path);
+    if !src.is_absolute() {
+        return Err(CmdError {
+            code: "VALIDATION".into(),
+            message: "image path must be absolute".into(),
+        });
+    }
+    let ext = image_ext(src)?;
+    let bytes = std::fs::read(src).map_err(|e| CmdError {
+        code: "STORAGE_ERROR".into(),
+        message: format!("could not read image: {e}"),
+    })?;
+    if bytes.is_empty() {
+        return Err(CmdError {
+            code: "VALIDATION".into(),
+            message: "image is empty".into(),
+        });
+    }
+    let name = format!("{}.{ext}", uuid::Uuid::new_v4());
+    let dest = attachments_dir(&app)?.join(&name);
+    std::fs::write(&dest, bytes).map_err(|e| CmdError {
+        code: "STORAGE_ERROR".into(),
+        message: format!("could not write attachment: {e}"),
+    })?;
+    Ok(name)
+}
+
+/// Allow one existing local image to load through the asset protocol (the
+/// "link the original file" storage mode). Only an existing image file is
+/// permitted, and only that specific file, so the scope is never widened to a
+/// whole directory. Idempotent: re-allowing on every note open is fine.
+#[tauri::command(async)]
+pub fn allow_image_file(app: AppHandle, path: String) -> CmdResult<()> {
+    let p = std::path::Path::new(&path);
+    if !p.is_absolute() {
+        return Err(CmdError {
+            code: "VALIDATION".into(),
+            message: "image path must be absolute".into(),
+        });
+    }
+    image_ext(p)?;
+    if !p.is_file() {
+        return Err(CmdError {
+            code: "STORAGE_ERROR".into(),
+            message: "image file not found".into(),
+        });
+    }
+    app.asset_protocol_scope()
+        .allow_file(p)
+        .map_err(|e| CmdError {
+            code: "STORAGE_ERROR".into(),
+            message: format!("could not allow image: {e}"),
+        })?;
+    Ok(())
+}
+
+/// Reveal the attachments folder in the OS file manager, from the Images
+/// settings page. Uses the opener from Rust (like `open_url`), so it needs no
+/// frontend opener capability.
+#[tauri::command(async)]
+pub fn open_attachments_folder(app: AppHandle) -> CmdResult<()> {
+    let dir = attachments_dir(&app)?;
+    app.opener()
+        .open_path(dir.to_string_lossy(), None::<&str>)
+        .map_err(|e| CmdError {
+            code: "STORAGE_ERROR".into(),
+            message: format!("could not open attachments folder: {e}"),
+        })?;
+    Ok(())
+}
+
+/// Best-effort count and total byte size of stored attachments, for the
+/// dashboard. A missing or unreadable directory reports zero rather than
+/// failing the whole stats call.
+pub fn attachments_stats(app: &AppHandle) -> (i64, i64) {
+    let Ok(dir) = attachments_dir(app) else {
+        return (0, 0);
+    };
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return (0, 0);
+    };
+    let (mut count, mut bytes) = (0i64, 0i64);
+    for entry in entries.flatten() {
+        if let Ok(meta) = entry.metadata() {
+            if meta.is_file() {
+                count += 1;
+                bytes += meta.len() as i64;
+            }
+        }
+    }
+    (count, bytes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{export_theme_file, import_theme_file};

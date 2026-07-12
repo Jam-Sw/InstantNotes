@@ -13,6 +13,20 @@ vi.mock("$lib/api/client", () => ({
     medianMs: null,
     samples: 0,
   }),
+  getLibraryStats: vi.fn().mockResolvedValue({
+    notesTotal: 12,
+    notesActive: 10,
+    notesPinned: 2,
+    notesArchived: 2,
+    notesTrashed: 1,
+    tags: 5,
+    spaces: 3,
+    attachmentsCount: 4,
+    attachmentsBytes: 2048,
+  }),
+  getAttachmentsDir: vi.fn().mockResolvedValue("/data/attachments"),
+  openAttachmentsFolder: vi.fn().mockResolvedValue(undefined),
+  submitFeedback: vi.fn().mockResolvedValue(undefined),
   openUrl: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -25,11 +39,19 @@ function open() {
 }
 
 describe("SettingsView", () => {
-  it("lands on the category grid with a card per page", () => {
+  it("lands on the dashboard with a card per page", () => {
     const { getByRole } = open();
     expect(getByRole("button", { name: /About/ })).toBeTruthy();
+    expect(getByRole("button", { name: /Editor/ })).toBeTruthy();
+    expect(getByRole("button", { name: /Images/ })).toBeTruthy();
     expect(getByRole("button", { name: /Links/ })).toBeTruthy();
     expect(getByRole("button", { name: /Contexting/ })).toBeTruthy();
+    expect(getByRole("button", { name: /Feedback/ })).toBeTruthy();
+  });
+
+  it("shows the installed version's release notes on the dashboard", async () => {
+    const { findByText } = open();
+    expect(await findByText(/What's new in v0\.8\.0/)).toBeTruthy();
   });
 
   it("opens a page from its card and shows a breadcrumb back to Settings", async () => {

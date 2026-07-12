@@ -86,3 +86,25 @@ export interface CaptureLatencySummary {
   medianMs: number | null;
   samples: number;
 }
+
+/** Aggregate library + attachment counts for the Settings dashboard. */
+export interface DashboardStats {
+  notesTotal: number;
+  notesActive: number;
+  notesPinned: number;
+  notesArchived: number;
+  notesTrashed: number;
+  tags: number;
+  spaces: number;
+  attachmentsCount: number;
+  attachmentsBytes: number;
+}
+
+/** One in-app feedback submission, persisted to the local log by the backend. */
+export interface FeedbackInput {
+  category: string;
+  message: string;
+  appVersion?: string | null;
+  /** Opt-in diagnostics snapshot the user agreed to attach. */
+  diagnostics?: unknown;
+}

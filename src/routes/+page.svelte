@@ -20,6 +20,7 @@
   import { library } from "$lib/stores/library.svelte";
   import { updater } from "$lib/stores/updater.svelte";
   import { editorPrefs } from "$lib/stores/editor.svelte";
+  import { imagePrefs } from "$lib/stores/images.svelte";
   import { sidebar } from "$lib/stores/sidebar.svelte";
   import { linkPrefs as linkPrefsStore } from "$lib/stores/links.svelte";
   import { contexting } from "$lib/stores/contexting.svelte";
@@ -33,6 +34,7 @@
   onMount(() => {
     void library.init();
     void editorPrefs.init();
+    void imagePrefs.init();
     void sidebar.init();
     void linkPrefsStore.init();
     void contexting.init();

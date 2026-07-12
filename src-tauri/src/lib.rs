@@ -69,7 +69,7 @@ pub(crate) struct ShortcutStatus {
 
 mod commands;
 mod shell;
-use commands::{notes::*, settings::*, tags::*, workspaces::*};
+use commands::{feedback::*, notes::*, settings::*, stats::*, tags::*, workspaces::*};
 use shell::{capture::*, files::*, quit::*, windows::*};
 
 // ---- app shell ----
@@ -414,6 +414,11 @@ pub fn run() {
             export_note_file,
             save_attachment,
             get_attachments_dir,
+            import_image_file,
+            allow_image_file,
+            open_attachments_folder,
+            library_stats,
+            submit_feedback,
             open_url,
             quit_app,
             capture_input_ready,

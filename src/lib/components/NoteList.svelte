@@ -1,6 +1,6 @@
 <script lang="ts">
   import { library, type StatusFilter } from "$lib/stores/library.svelte";
-  import { formatDate, preview } from "$lib/format";
+  import { formatDate, formatExact, preview } from "$lib/format";
   import { captureShortcut, modKey } from "$lib/platform";
   import { parseHighlightSegments } from "$lib/highlight";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
@@ -97,7 +97,7 @@
         >
           <div class="row-title">{#each parseHighlightSegments(hit.title) as seg, i (i)}{#if seg.hit}<mark>{seg.text}</mark>{:else}{seg.text}{/if}{/each}</div>
           <div class="row-preview">{#each parseHighlightSegments(hit.excerpt) as seg, i (i)}{#if seg.hit}<mark>{seg.text}</mark>{:else}{seg.text}{/if}{/each}</div>
-          <div class="row-date">{formatDate(hit.updatedAt)}</div>
+          <div class="row-date" title={formatExact(hit.updatedAt)}>{formatDate(hit.updatedAt)}</div>
         </button>
       {:else}
         <div class="empty-state">No notes match your search.</div>
@@ -115,7 +115,7 @@
             {note.title}
           </div>
           <div class="row-preview">{preview(note.body) || "Empty note"}</div>
-          <div class="row-date">{formatDate(note.updatedAt)}</div>
+          <div class="row-date" title={formatExact(note.updatedAt)}>{formatDate(note.updatedAt)}</div>
         </button>
       {/snippet}
       {#if library.notes.length === 0}
