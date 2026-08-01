@@ -41,6 +41,10 @@ import { friendlyMessage } from "$lib/errors";
 import { SaveQueue, type SaveState } from "$lib/stores/library/save-queue.svelte";
 import { SelectionModel } from "$lib/stores/library/selection.svelte";
 import { toasts } from "$lib/stores/toasts.svelte";
+import {
+  emptySurfaceDocument,
+  serializeSurfaceDocument,
+} from "$lib/whiteboard/document";
 import { listen } from "@tauri-apps/api/event";
 
 export type { SaveState };
@@ -669,6 +673,41 @@ class LibraryStore {
     this.#saveQueue.queue(this.selected.id, body);
   }
 
+  /**
+   * Persist whiteboard engine JSON. Immediate (not debounced like body):
+   * surface saves are rarer and adapters batch their own onChange.
+   */
+  editSurfaceData(surfaceData: string): void {
+    if (!this.selected) return;
+    this.selected = { ...this.selected, surfaceData };
+    void this.#applyUpdate(this.selected.id, { surfaceData });
+  }
+
+  /**
+   * Turn the open note into a whiteboard surface. Body text is kept for
+   * search and convert-back; surface payload is seeded only if missing.
+   */
+  async convertToWhiteboard(): Promise<void> {
+    if (!this.selected || this.selected.isDeleted) return;
+    if (this.selected.contentKind === "whiteboard") return;
+    await this.flushPendingEdits();
+    const surfaceData =
+      this.selected.surfaceData?.trim() ||
+      serializeSurfaceDocument(emptySurfaceDocument());
+    await this.#applyUpdate(this.selected.id, {
+      contentKind: "whiteboard",
+      surfaceData,
+    });
+  }
+
+  /** Return the open note to the markdown editor; keep surface data for re-open. */
+  async convertToDocument(): Promise<void> {
+    if (!this.selected || this.selected.isDeleted) return;
+    if (this.selected.contentKind !== "whiteboard") return;
+    await this.flushPendingEdits();
+    await this.#applyUpdate(this.selected.id, { contentKind: "document" });
+  }
+
   editTitle(title: string): void {
     if (!this.selected) return;
     const trimmed = title.trim();
@@ -779,9 +818,17 @@ class LibraryStore {
     try {
       const updated = await updateNote(id, patch);
       if (this.selected?.id === id) {
-        // Keep local body if user kept typing past this save.
+        // Keep local body / surface if the user kept editing past this save.
         const localBody = this.selected.body;
-        this.selected = { ...updated, body: patch.body ?? localBody };
+        const localSurface = this.selected.surfaceData;
+        this.selected = {
+          ...updated,
+          body: patch.body ?? localBody,
+          surfaceData:
+            patch.surfaceData !== undefined
+              ? patch.surfaceData
+              : (updated.surfaceData ?? localSurface),
+        };
         this.selectedTags = await tagsForNote(id);
       }
       this.error = null;

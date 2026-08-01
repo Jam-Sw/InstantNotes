@@ -15,6 +15,8 @@ function mkNote(id: string, updatedAt: Date, overrides: Partial<Note> = {}): Not
     isPinned: false,
     isArchived: false,
     isDeleted: false,
+    contentKind: "document",
+    surfaceData: null,
     ...overrides,
   };
 }

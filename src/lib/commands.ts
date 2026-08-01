@@ -7,6 +7,7 @@ import { library } from "$lib/stores/library.svelte";
 import { sidebar } from "$lib/stores/sidebar.svelte";
 import { theme } from "$lib/stores/theme.svelte";
 import { contexting } from "$lib/stores/contexting.svelte";
+import { confirmDialog } from "$lib/stores/confirm.svelte";
 import { exportTheme, importTheme } from "$lib/themes/share";
 import { BODY_FONTS } from "$lib/themes/fonts";
 import { modKey } from "$lib/platform";
@@ -111,6 +112,37 @@ export function buildCommands(): Command[] {
         },
       },
     );
+    if (!n.isDeleted) {
+      if (n.contentKind === "whiteboard") {
+        commands.push({
+          id: "note.convertDocument",
+          title: "Convert to document",
+          group: "Notes",
+          prefix: notePrefix,
+          run: () => void library.convertToDocument(),
+        });
+      } else {
+        commands.push({
+          id: "note.convertWhiteboard",
+          title: "Convert to whiteboard",
+          group: "Notes",
+          prefix: notePrefix,
+          run: async () => {
+            const note = library.selected;
+            if (!note) return;
+            if (note.body.trim()) {
+              const ok = await confirmDialog.ask({
+                title: "Open as whiteboard?",
+                body: "This note becomes a canvas surface. Your text stays on the note and stays searchable. You can convert back to the document editor anytime.",
+                confirmLabel: "Open Whiteboard",
+              });
+              if (!ok) return;
+            }
+            await library.convertToWhiteboard();
+          },
+        });
+      }
+    }
   }
 
   commands.push(

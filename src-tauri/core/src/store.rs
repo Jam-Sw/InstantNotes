@@ -105,10 +105,16 @@ ALTER TABLE notes DROP COLUMN sync_state;
 ALTER TABLE notes DROP COLUMN version;
 ALTER TABLE notes DROP COLUMN last_synced_at;
 "#,
+    // v4 — note surface mode: document (markdown) or whiteboard (canvas host).
+    // body stays human-readable/searchable; surface_data holds engine JSON.
+    r#"
+ALTER TABLE notes ADD COLUMN content_kind TEXT NOT NULL DEFAULT 'document';
+ALTER TABLE notes ADD COLUMN surface_data TEXT;
+"#,
 ];
 
 const NOTE_COLUMNS: &str = "id, title, body, created_at, updated_at, last_opened_at, \
-     is_pinned, is_archived, is_deleted, deleted_at";
+     is_pinned, is_archived, is_deleted, deleted_at, content_kind, surface_data";
 
 pub struct Store {
     conn: Connection,
@@ -134,6 +140,8 @@ fn row_to_note(row: &rusqlite::Row<'_>) -> rusqlite::Result<Note> {
         is_archived: row.get::<_, i64>(7)? != 0,
         is_deleted: row.get::<_, i64>(8)? != 0,
         deleted_at: row.get(9)?,
+        content_kind: row.get(10)?,
+        surface_data: row.get(11)?,
     })
 }
 
@@ -493,7 +501,37 @@ mod migration_tests {
         let note = store.get_note("n1", false).unwrap();
         assert_eq!(note.title, "Kept");
         assert_eq!(note.body, "the body");
+        // Later migrations (v4 surface columns) also applied on open.
+        assert_eq!(note.content_kind, "document");
+        assert!(note.surface_data.is_none());
         let all = store.list_notes(Default::default()).unwrap();
         assert!(all.iter().any(|n| n.id == "n1"));
+    }
+
+    #[test]
+    fn v4_adds_surface_columns() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("pre-surface.db");
+        {
+            let conn = Connection::open(&path).unwrap();
+            for sql in &MIGRATIONS[..3] {
+                conn.execute_batch(sql).unwrap();
+            }
+            conn.pragma_update(None, "user_version", 3i64).unwrap();
+            conn.execute(
+                "INSERT INTO notes (id, title, body, created_at, updated_at) \
+                 VALUES ('n1', 'Doc', 'body', 't', 't')",
+                [],
+            )
+            .unwrap();
+            assert!(!note_columns(&conn).contains(&"content_kind".to_string()));
+        }
+        let mut store = Store::open(&path).unwrap();
+        let cols = note_columns(&store.conn);
+        assert!(cols.contains(&"content_kind".to_string()));
+        assert!(cols.contains(&"surface_data".to_string()));
+        let note = store.get_note("n1", false).unwrap();
+        assert_eq!(note.content_kind, "document");
+        assert!(note.surface_data.is_none());
     }
 }

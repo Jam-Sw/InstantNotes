@@ -53,9 +53,23 @@ impl Store {
             && patch.body.is_none()
             && patch.is_pinned.is_none()
             && patch.is_archived.is_none()
+            && patch.content_kind.is_none()
+            && patch.surface_data.is_none()
         {
             return Ok(existing);
         }
+
+        let content_kind = match patch.content_kind.as_deref() {
+            None => None,
+            Some(CONTENT_KIND_DOCUMENT) => Some(CONTENT_KIND_DOCUMENT.to_string()),
+            Some(CONTENT_KIND_WHITEBOARD) => Some(CONTENT_KIND_WHITEBOARD.to_string()),
+            Some(other) => {
+                return Err(AppError::Validation(format!(
+                    "content_kind must be '{CONTENT_KIND_DOCUMENT}' or '{CONTENT_KIND_WHITEBOARD}', got {other}"
+                )));
+            }
+        };
+
         let title_is_auto: bool = self
             .conn
             .query_row(
@@ -85,14 +99,18 @@ impl Store {
                body = COALESCE(?3, body), \
                is_pinned = COALESCE(?4, is_pinned), \
                is_archived = COALESCE(?5, is_archived), \
-               updated_at = ?6 \
-             WHERE id = ?7",
+               content_kind = COALESCE(?6, content_kind), \
+               surface_data = COALESCE(?7, surface_data), \
+               updated_at = ?8 \
+             WHERE id = ?9",
             params![
                 new_title,
                 new_title_is_auto.map(i64::from),
                 patch.body.as_deref(),
                 patch.is_pinned.map(i64::from),
                 patch.is_archived.map(i64::from),
+                content_kind,
+                patch.surface_data.as_deref(),
                 now,
                 id
             ],

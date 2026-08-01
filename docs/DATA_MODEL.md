@@ -38,11 +38,25 @@ content rowid; `id` is the public UUID):
 | `seq` | Integer primary key; FTS `content_rowid`. |
 | `id` | Public UUID, unique. |
 | `title`, `title_is_auto` | Title and whether it was auto-derived (section 6). |
-| `body` | Markdown body. |
+| `body` | Markdown body (always human-readable; FTS indexes this). |
+| `content_kind` | `document` (default) or `whiteboard`. Surface mode for the open note. |
+| `surface_data` | Optional JSON for whiteboard engines; null for plain documents. |
 | `created_at`, `updated_at`, `last_opened_at` | Lifecycle timestamps. |
 | `is_pinned`, `is_archived`, `is_deleted`, `deleted_at` | Status flags. |
 
 Indexes cover `updated_at`, `created_at`, and the status-flag triple.
+
+### 3.1 Surface mode (document vs whiteboard)
+
+A note is always a note. `content_kind` chooses how the library opens it:
+
+- `document` — markdown editor (CodeMirror), as before.
+- `whiteboard` — canvas host; engine payload lives in `surface_data`, not `body`.
+
+Convert switches `content_kind`. Body text is preserved either way so search and
+convert-back stay honest. Convert-back to document keeps `surface_data` so
+re-opening the whiteboard restores the board. Capture always creates documents.
+There is no separate whiteboard entity and no new sidebar section.
 
 ## 4. Tags
 

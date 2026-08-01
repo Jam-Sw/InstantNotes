@@ -112,6 +112,8 @@ function mkNote(id: string, overrides: Partial<Note> = {}): Note {
     isPinned: false,
     isArchived: false,
     isDeleted: false,
+    contentKind: "document",
+    surfaceData: null,
     ...overrides,
   };
 }

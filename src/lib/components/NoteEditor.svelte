@@ -1,6 +1,7 @@
 <script lang="ts">
   import Editor from "$lib/components/Editor.svelte";
   import FormatToolbar from "$lib/components/FormatToolbar.svelte";
+  import WhiteboardSurface from "$lib/components/whiteboard/WhiteboardSurface.svelte";
   import { library } from "$lib/stores/library.svelte";
   import { editorPrefs } from "$lib/stores/editor.svelte";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
@@ -12,6 +13,8 @@
   let workspaceInput = $state("");
   let editorRef = $state<{ applyFormat: (k: FormatKind) => void; focus: () => void }>();
   let active = $state<ActiveMarks>({ ...NO_MARKS });
+
+  const isWhiteboard = $derived(library.selected?.contentKind === "whiteboard");
 
   async function submitTag(e: Event) {
     e.preventDefault();
@@ -38,6 +41,25 @@
     });
     if (ok) await library.destroyNotes([id]);
   }
+
+  async function convertToWhiteboard() {
+    const note = library.selected;
+    if (!note || note.isDeleted) return;
+    if (note.body.trim()) {
+      const ok = await confirmDialog.ask({
+        title: "Open as whiteboard?",
+        body: "This note becomes a canvas surface. Your text stays on the note and stays searchable. You can convert back to the document editor anytime.",
+        confirmLabel: "Open Whiteboard",
+      });
+      if (!ok) return;
+    }
+    await library.convertToWhiteboard();
+  }
+
+  async function convertToDocument() {
+    if (!library.selected || library.selected.isDeleted) return;
+    await library.convertToDocument();
+  }
 </script>
 
 {#if library.selected}
@@ -53,15 +75,32 @@
         <button class="action" onclick={() => library.restoreSelected()}>Restore</button>
         <button class="action danger" onclick={confirmDestroy}>Delete Forever</button>
       {:else}
-        <button
-          class="action"
-          class:active={editorPrefs.toolbarOpen}
-          title="Formatting tools"
-          aria-pressed={editorPrefs.toolbarOpen}
-          onclick={() => editorPrefs.toggleToolbar()}
-        >
-          Aa
-        </button>
+        {#if isWhiteboard}
+          <button
+            class="action"
+            title="Return to the markdown document editor"
+            onclick={convertToDocument}
+          >
+            Document
+          </button>
+        {:else}
+          <button
+            class="action"
+            class:active={editorPrefs.toolbarOpen}
+            title="Formatting tools"
+            aria-pressed={editorPrefs.toolbarOpen}
+            onclick={() => editorPrefs.toggleToolbar()}
+          >
+            Aa
+          </button>
+          <button
+            class="action"
+            title="Open this note as a whiteboard surface"
+            onclick={convertToWhiteboard}
+          >
+            Board
+          </button>
+        {/if}
         <button
           class="action"
           title={library.selected.isPinned ? "Unpin" : "Pin"}
@@ -114,34 +153,59 @@
       {/each}
     </datalist>
   </div>
-  {#if editorPrefs.toolbarOpen}
-    <FormatToolbar {active} onFormat={(k) => editorRef?.applyFormat(k)} />
-  {/if}
-  <div class="editor-body" style="--editor-zoom: {editorPrefs.zoom}">
-    <Editor
-      bind:this={editorRef}
-      value={library.selected.body}
-      placeholder="Start writing… use #tags to organize"
-      previewMode={!editorPrefs.toolbarOpen}
-      onchange={(v) => library.editBody(v)}
-      onactive={(a) => (active = a)}
-    />
-  </div>
-  <div class="status-bar">
-    <span
-      class="save-state"
-      class:saving={library.saveState === "saving"}
-      class:failed={library.saveState === "failed"}
-    >
-      {#if library.saveState === "saving"}<span class="save-dot"></span>Saving…{:else if library.saveState === "failed"}Not saved{:else}Saved · {formatDate(library.selected.updatedAt)}{/if}
-    </span>
-    {#if library.error}
-      <span class="error">{library.error}</span>
-    {:else}
-      {@const n = wordCount(library.selected.body)}
-      <span>{n} {n === 1 ? "word" : "words"}</span>
+  {#if isWhiteboard}
+    <div class="editor-body">
+      <WhiteboardSurface
+        noteId={library.selected.id}
+        surfaceData={library.selected.surfaceData}
+        readonly={library.selected.isDeleted}
+        onchange={(v) => library.editSurfaceData(v)}
+      />
+    </div>
+    <div class="status-bar">
+      <span
+        class="save-state"
+        class:saving={library.saveState === "saving"}
+        class:failed={library.saveState === "failed"}
+      >
+        {#if library.saveState === "saving"}<span class="save-dot"></span>Saving…{:else if library.saveState === "failed"}Not saved{:else}Saved · {formatDate(library.selected.updatedAt)}{/if}
+      </span>
+      {#if library.error}
+        <span class="error">{library.error}</span>
+      {:else}
+        <span>Whiteboard</span>
+      {/if}
+    </div>
+  {:else}
+    {#if editorPrefs.toolbarOpen}
+      <FormatToolbar {active} onFormat={(k) => editorRef?.applyFormat(k)} />
     {/if}
-  </div>
+    <div class="editor-body" style="--editor-zoom: {editorPrefs.zoom}">
+      <Editor
+        bind:this={editorRef}
+        value={library.selected.body}
+        placeholder="Start writing… use #tags to organize"
+        previewMode={!editorPrefs.toolbarOpen}
+        onchange={(v) => library.editBody(v)}
+        onactive={(a) => (active = a)}
+      />
+    </div>
+    <div class="status-bar">
+      <span
+        class="save-state"
+        class:saving={library.saveState === "saving"}
+        class:failed={library.saveState === "failed"}
+      >
+        {#if library.saveState === "saving"}<span class="save-dot"></span>Saving…{:else if library.saveState === "failed"}Not saved{:else}Saved · {formatDate(library.selected.updatedAt)}{/if}
+      </span>
+      {#if library.error}
+        <span class="error">{library.error}</span>
+      {:else}
+        {@const n = wordCount(library.selected.body)}
+        <span>{n} {n === 1 ? "word" : "words"}</span>
+      {/if}
+    </div>
+  {/if}
 {/if}
 
 <style>

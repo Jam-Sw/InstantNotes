@@ -29,6 +29,8 @@ fn create_sets_defaults_per_data_model() {
     assert!(!n.is_pinned && !n.is_archived && !n.is_deleted);
     assert!(!n.created_at.is_empty());
     assert_eq!(n.created_at, n.updated_at);
+    assert_eq!(n.content_kind, CONTENT_KIND_DOCUMENT);
+    assert!(n.surface_data.is_none());
 }
 
 #[test]
@@ -441,6 +443,72 @@ fn list_supports_limit_offset_and_title_sort() {
         .unwrap();
     let titles: Vec<_> = page.iter().map(|n| n.title.as_str()).collect();
     assert_eq!(titles, vec!["banana", "cherry"]);
+}
+
+// ---- content kind / whiteboard surface ----
+
+#[test]
+fn convert_to_whiteboard_sets_kind_and_surface_data() {
+    let mut s = store();
+    let n = create(&mut s, "planning notes for agents");
+    let surface = r#"{"v":1,"engine":"shell","nodes":[]}"#;
+    let u = s
+        .update_note(
+            &n.id,
+            UpdateNotePatch {
+                content_kind: Some(CONTENT_KIND_WHITEBOARD.into()),
+                surface_data: Some(surface.into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(u.content_kind, CONTENT_KIND_WHITEBOARD);
+    assert_eq!(u.surface_data.as_deref(), Some(surface));
+    // Body stays searchable / convert-back friendly.
+    assert_eq!(u.body, "planning notes for agents");
+}
+
+#[test]
+fn convert_back_to_document_keeps_surface_data() {
+    let mut s = store();
+    let n = create(&mut s, "keep me");
+    let surface = r#"{"v":1,"engine":"shell","nodes":[]}"#;
+    s.update_note(
+        &n.id,
+        UpdateNotePatch {
+            content_kind: Some(CONTENT_KIND_WHITEBOARD.into()),
+            surface_data: Some(surface.into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let u = s
+        .update_note(
+            &n.id,
+            UpdateNotePatch {
+                content_kind: Some(CONTENT_KIND_DOCUMENT.into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(u.content_kind, CONTENT_KIND_DOCUMENT);
+    assert_eq!(u.surface_data.as_deref(), Some(surface));
+}
+
+#[test]
+fn rejects_unknown_content_kind() {
+    let mut s = store();
+    let n = create(&mut s, "x");
+    let err = s
+        .update_note(
+            &n.id,
+            UpdateNotePatch {
+                content_kind: Some("canvas".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap_err();
+    assert_eq!(err.code(), "VALIDATION_ERROR");
 }
 
 // ---- search ----

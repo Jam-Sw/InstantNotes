@@ -46,7 +46,7 @@ developer-facing description and is never shown to users verbatim.
 | --- | --- |
 | `create_note` | Create a note; title is derived from the body (see DATA_MODEL.md section 6). |
 | `get_note` | Fetch one note by id. |
-| `update_note` | Patch title/body/flags; an empty patch is a no-op. |
+| `update_note` | Patch title/body/flags/`contentKind`/`surfaceData`; an empty patch is a no-op. |
 | `soft_delete_note` | Move a note to trash (`is_deleted = 1`). |
 | `restore_note` | Restore a trashed note. |
 | `permanently_delete_note` | Destroy a note and its rows for good. |
