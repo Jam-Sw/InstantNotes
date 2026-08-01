@@ -464,8 +464,7 @@ fn convert_to_whiteboard_sets_kind_and_surface_data() {
         .unwrap();
     assert_eq!(u.content_kind, CONTENT_KIND_WHITEBOARD);
     assert_eq!(u.surface_data.as_deref(), Some(surface));
-    // Body is not wiped by the storage layer (title/search may still use it);
-    // the product treats convert as one-way and no longer edits body as text.
+    // Storage layer does not auto-clear body; the UI convert path does that.
     assert_eq!(u.body, "planning notes for agents");
 }
 

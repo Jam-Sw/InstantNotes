@@ -117,7 +117,7 @@
           </div>
           <div class="row-preview">
             {#if note.contentKind === "whiteboard"}
-              {preview(note.body) || "Whiteboard"}
+              Whiteboard
             {:else}
               {preview(note.body) || "Empty note"}
             {/if}

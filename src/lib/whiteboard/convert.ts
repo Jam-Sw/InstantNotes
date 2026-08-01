@@ -7,7 +7,7 @@ import { confirmDialog } from "$lib/stores/confirm.svelte";
 
 const CONFIRM = {
   title: "Convert to whiteboard permanently?",
-  body: "This note becomes a whiteboard. The written text will leave the editor and you cannot convert it back to a document. Copy anything you still need first, or use a fresh note for the board.",
+  body: "This note becomes a whiteboard. The written text is removed from the note (list preview and search will no longer show it), and you cannot convert it back to a document. Copy anything you still need first, or use a fresh note for the board.",
   confirmLabel: "Convert to Whiteboard",
   tone: "danger" as const,
 };

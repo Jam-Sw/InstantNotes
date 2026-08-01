@@ -55,8 +55,10 @@ A note is always a note. `content_kind` chooses how the library opens it:
 
 Converting a document to a whiteboard is a **one-way product action**. The UI
 always confirms (danger tone) and never offers convert-back: users should not
-accidentally replace a text note with a board. Capture always creates documents.
-There is no separate whiteboard entity and no new sidebar section.
+accidentally replace a text note with a board. Convert clears `body` (so list
+preview and search stop showing the old text) and pins the current title.
+Capture always creates documents. There is no separate whiteboard entity and no
+new sidebar section.
 
 ## 4. Tags
 
