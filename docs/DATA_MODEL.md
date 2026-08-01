@@ -53,9 +53,9 @@ A note is always a note. `content_kind` chooses how the library opens it:
 - `document` — markdown editor (CodeMirror), as before.
 - `whiteboard` — canvas host; engine payload lives in `surface_data`, not `body`.
 
-Convert switches `content_kind`. Body text is preserved either way so search and
-convert-back stay honest. Convert-back to document keeps `surface_data` so
-re-opening the whiteboard restores the board. Capture always creates documents.
+Converting a document to a whiteboard is a **one-way product action**. The UI
+always confirms (danger tone) and never offers convert-back: users should not
+accidentally replace a text note with a board. Capture always creates documents.
 There is no separate whiteboard entity and no new sidebar section.
 
 ## 4. Tags

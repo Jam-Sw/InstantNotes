@@ -56,7 +56,7 @@ export interface UpdateNotePatch {
   isPinned?: boolean;
   isArchived?: boolean;
   contentKind?: ContentKind;
-  /** Engine JSON; omit to leave alone. Convert-back keeps prior surface data. */
+  /** Engine JSON; omit to leave alone. Product convert is one-way. */
   surfaceData?: string;
 }
 

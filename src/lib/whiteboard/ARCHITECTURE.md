@@ -8,12 +8,11 @@ the markdown editor (`contentKind: "document"`) or a canvas host
 ## Why this shape
 
 - Notes remain the unit of identity and organization.
-- Markdown `body` stays human-readable and FTS-searchable; convert does not
-  stuff engine JSON into the body.
+- Convert is **one-way** (document → whiteboard). The UI always danger-confirms
+  and never offers convert-back, so a text note is not overwritten by accident.
 - Engine payloads live in `surfaceData` so libraries (tldraw, Excalidraw, …)
   can own their document format without InstantNotes inventing one.
-- Convert-back keeps `surfaceData` so re-opening the whiteboard restores the
-  board without a second persistence model.
+- Convert does not stuff engine JSON into `body`.
 
 ## Modules
 

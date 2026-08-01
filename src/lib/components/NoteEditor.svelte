@@ -5,6 +5,7 @@
   import { library } from "$lib/stores/library.svelte";
   import { editorPrefs } from "$lib/stores/editor.svelte";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
+  import { confirmConvertToWhiteboard } from "$lib/whiteboard/convert";
   import { formatDate, wordCount } from "$lib/format";
   import type { FormatKind } from "$lib/markdown-format";
   import { NO_MARKS, type ActiveMarks } from "$lib/markdown-active";
@@ -41,25 +42,6 @@
     });
     if (ok) await library.destroyNotes([id]);
   }
-
-  async function convertToWhiteboard() {
-    const note = library.selected;
-    if (!note || note.isDeleted) return;
-    if (note.body.trim()) {
-      const ok = await confirmDialog.ask({
-        title: "Open as whiteboard?",
-        body: "This note becomes a canvas surface. Your text stays on the note and stays searchable. You can convert back to the document editor anytime.",
-        confirmLabel: "Open Whiteboard",
-      });
-      if (!ok) return;
-    }
-    await library.convertToWhiteboard();
-  }
-
-  async function convertToDocument() {
-    if (!library.selected || library.selected.isDeleted) return;
-    await library.convertToDocument();
-  }
 </script>
 
 {#if library.selected}
@@ -75,15 +57,7 @@
         <button class="action" onclick={() => library.restoreSelected()}>Restore</button>
         <button class="action danger" onclick={confirmDestroy}>Delete Forever</button>
       {:else}
-        {#if isWhiteboard}
-          <button
-            class="action"
-            title="Return to the markdown document editor"
-            onclick={convertToDocument}
-          >
-            Document
-          </button>
-        {:else}
+        {#if !isWhiteboard}
           <button
             class="action"
             class:active={editorPrefs.toolbarOpen}
@@ -95,8 +69,8 @@
           </button>
           <button
             class="action"
-            title="Open this note as a whiteboard surface"
-            onclick={convertToWhiteboard}
+            title="Permanently convert this note into a whiteboard"
+            onclick={() => void confirmConvertToWhiteboard()}
           >
             Board
           </button>

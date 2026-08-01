@@ -34,12 +34,12 @@ function mountShell(host: HTMLElement, opts: WhiteboardMountOptions): Whiteboard
 
   const title = document.createElement("div");
   title.className = "wb-shell-title";
-  title.textContent = "Whiteboard surface";
+  title.textContent = "This note is a whiteboard";
 
   const body = document.createElement("p");
   body.className = "wb-shell-body";
   body.textContent =
-    "This note is a canvas host. Nodes, frames, arrows, and freehand drawing will come from a plugged-in engine so InstantNotes does not grow a second editor stack.";
+    "It stays a whiteboard. Diagram engines plug in here later for nodes, frames, and connections. Capture a new note if you need a normal document again.";
 
   const meta = document.createElement("p");
   meta.className = "wb-shell-meta";

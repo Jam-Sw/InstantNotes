@@ -64,7 +64,7 @@
 
 <div class="wb-surface">
   <div class="wb-chrome">
-    <span class="wb-badge" title="Whiteboard surface mode">Whiteboard</span>
+    <span class="wb-badge" title="This note is permanently a whiteboard">Whiteboard</span>
     <span class="wb-engine" title="Active canvas engine">{engineLabel || "…"}</span>
   </div>
   <div class="wb-host" bind:this={hostEl} tabindex="-1"></div>

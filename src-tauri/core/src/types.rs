@@ -81,8 +81,8 @@ pub struct UpdateNotePatch {
     /// `"document"` or `"whiteboard"`. Invalid values are rejected.
     pub content_kind: Option<String>,
     /// Engine JSON for whiteboard notes. Omitted = leave alone; Some sets the
-    /// value (including empty string). Convert-back keeps prior surface data
-    /// so re-opening the whiteboard restores the board.
+    /// value (including empty string). Product convert is one-way (document →
+    /// whiteboard); this field still persists so the board survives reloads.
     pub surface_data: Option<String>,
 }
 

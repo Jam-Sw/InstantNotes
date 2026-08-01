@@ -684,8 +684,10 @@ class LibraryStore {
   }
 
   /**
-   * Turn the open note into a whiteboard surface. Body text is kept for
-   * search and convert-back; surface payload is seeded only if missing.
+   * Permanently turn the open note into a whiteboard. UI always confirms
+   * first (`confirmConvertToWhiteboard`); there is no convert-back.
+   * Seeds surface_data only when missing. Body is left as-is for title/search
+   * but is no longer the editing surface.
    */
   async convertToWhiteboard(): Promise<void> {
     if (!this.selected || this.selected.isDeleted) return;
@@ -698,14 +700,6 @@ class LibraryStore {
       contentKind: "whiteboard",
       surfaceData,
     });
-  }
-
-  /** Return the open note to the markdown editor; keep surface data for re-open. */
-  async convertToDocument(): Promise<void> {
-    if (!this.selected || this.selected.isDeleted) return;
-    if (this.selected.contentKind !== "whiteboard") return;
-    await this.flushPendingEdits();
-    await this.#applyUpdate(this.selected.id, { contentKind: "document" });
   }
 
   editTitle(title: string): void {
