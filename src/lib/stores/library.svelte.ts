@@ -685,10 +685,8 @@ class LibraryStore {
 
   /**
    * Permanently turn the open note into a whiteboard. UI always confirms
-   * first (`confirmConvertToWhiteboard`); there is no convert-back.
-   * Seeds surface_data when missing, clears body so list/search no longer
-   * show the old document text, and pins the current title so auto-derive
-   * does not rename the note to Untitled.
+   * first; there is no convert-back. Seeds surface_data when missing.
+   * Title and list membership are left alone so the note stays findable.
    */
   async convertToWhiteboard(): Promise<void> {
     if (!this.selected || this.selected.isDeleted) return;
@@ -697,13 +695,12 @@ class LibraryStore {
     const surfaceData =
       this.selected.surfaceData?.trim() ||
       serializeSurfaceDocument(emptySurfaceDocument());
-    const title = this.selected.title.trim() || "Untitled";
     await this.#applyUpdate(this.selected.id, {
       contentKind: "whiteboard",
       surfaceData,
-      body: "",
-      title,
     });
+    // Keep the open note visible in the list after notes:changed refresh.
+    await this.refresh();
   }
 
   editTitle(title: string): void {

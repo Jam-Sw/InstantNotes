@@ -1,7 +1,9 @@
 // Whiteboard surface contracts. InstantNotes owns note chrome and persistence;
 // adapters own the canvas. Keep this free of Svelte/runes so it stays testable.
 
-/** Default engine until a real library is registered. */
+/** Default engine id (Svelte Flow). */
+export const FLOW_ENGINE_ID = "svelte-flow";
+/** Legacy placeholder engine id. */
 export const SHELL_ENGINE_ID = "shell";
 
 /** Versioned envelope stored in note.surfaceData (JSON string). */

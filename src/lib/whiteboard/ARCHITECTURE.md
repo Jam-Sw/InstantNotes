@@ -17,10 +17,10 @@ the markdown editor (`contentKind: "document"`) or a canvas host
 ## Modules
 
 - `types.ts` — surface document envelope and adapter contracts
-- `document.ts` — pure helpers: empty shell doc, parse/serialize, engine id
-- `registry.ts` — adapter lookup (shell today; real engines later)
+- `document.ts` — pure helpers: empty/starter flow doc, parse/serialize
+- `registry.ts` — optional registry for non-Svelte engines later
 - `components/whiteboard/WhiteboardSurface.svelte` — note chrome host
-- `components/whiteboard/ShellCanvas.svelte` — placeholder canvas (no engine)
+- `components/whiteboard/FlowCanvas.svelte` — Svelte Flow board (current engine)
 
 ## Adapter contract
 

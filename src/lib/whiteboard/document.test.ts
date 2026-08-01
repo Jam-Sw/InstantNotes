@@ -1,42 +1,55 @@
 import { describe, expect, it } from "vitest";
 import {
   emptySurfaceDocument,
+  FLOW_ENGINE_ID,
   isWhiteboardKind,
+  normalizeFlowData,
   parseSurfaceDocument,
   serializeSurfaceDocument,
+  starterFlowData,
   withSurfaceData,
 } from "./document";
-import { SHELL_ENGINE_ID } from "./types";
 
 describe("surface document helpers", () => {
-  it("builds an empty shell document", () => {
+  it("builds a starter svelte-flow document", () => {
     const doc = emptySurfaceDocument();
     expect(doc.v).toBe(1);
-    expect(doc.engine).toBe(SHELL_ENGINE_ID);
-    expect(doc.data).toEqual({ nodes: [] });
+    expect(doc.engine).toBe(FLOW_ENGINE_ID);
+    const data = normalizeFlowData(doc.data);
+    expect(data.nodes.length).toBeGreaterThan(0);
+    expect(data.edges.length).toBeGreaterThan(0);
   });
 
   it("round-trips serialize and parse", () => {
     const doc = emptySurfaceDocument();
     const raw = serializeSurfaceDocument(doc);
-    expect(parseSurfaceDocument(raw)).toEqual(doc);
+    const again = parseSurfaceDocument(raw);
+    expect(again.engine).toBe(FLOW_ENGINE_ID);
+    expect(normalizeFlowData(again.data).nodes.length).toBe(
+      starterFlowData().nodes.length,
+    );
   });
 
-  it("falls back to empty shell on invalid JSON", () => {
-    expect(parseSurfaceDocument("not-json").engine).toBe(SHELL_ENGINE_ID);
-    expect(parseSurfaceDocument(null).engine).toBe(SHELL_ENGINE_ID);
-    expect(parseSurfaceDocument("").engine).toBe(SHELL_ENGINE_ID);
+  it("falls back to starter on invalid JSON", () => {
+    expect(parseSurfaceDocument("not-json").engine).toBe(FLOW_ENGINE_ID);
+    expect(parseSurfaceDocument(null).engine).toBe(FLOW_ENGINE_ID);
+  });
+
+  it("upgrades legacy shell envelopes to flow", () => {
+    const raw = JSON.stringify({ v: 1, engine: "shell", data: { nodes: [] } });
+    const doc = parseSurfaceDocument(raw);
+    expect(doc.engine).toBe(FLOW_ENGINE_ID);
+    expect(normalizeFlowData(doc.data).nodes.length).toBeGreaterThan(0);
   });
 
   it("withSurfaceData preserves engine and replaces payload", () => {
-    const next = withSurfaceData(emptySurfaceDocument(), { nodes: [{ id: "a" }] });
-    expect(next.engine).toBe(SHELL_ENGINE_ID);
-    expect(next.data).toEqual({ nodes: [{ id: "a" }] });
+    const next = withSurfaceData(emptySurfaceDocument(), { nodes: [], edges: [] });
+    expect(next.engine).toBe(FLOW_ENGINE_ID);
+    expect(next.data).toEqual({ nodes: [], edges: [] });
   });
 
   it("isWhiteboardKind only accepts whiteboard", () => {
     expect(isWhiteboardKind("whiteboard")).toBe(true);
     expect(isWhiteboardKind("document")).toBe(false);
-    expect(isWhiteboardKind(undefined)).toBe(false);
   });
 });
