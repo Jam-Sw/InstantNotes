@@ -1,6 +1,6 @@
 <script lang="ts">
-  // Note chrome + canvas host. FlowCanvas is the first real engine (Svelte Flow).
-  import FlowCanvas from "./FlowCanvas.svelte";
+  // Freeform whiteboard host. Excalidraw owns the canvas (boxes, arrows, ink).
+  import ExcalidrawCanvas from "./ExcalidrawCanvas.svelte";
 
   interface Props {
     noteId: string;
@@ -15,10 +15,10 @@
 <div class="wb-surface">
   <div class="wb-chrome">
     <span class="wb-badge" title="This note is permanently a whiteboard">Whiteboard</span>
-    <span class="wb-engine" title="Canvas engine">Svelte Flow</span>
+    <span class="wb-engine" title="Canvas engine">Excalidraw · freeform</span>
   </div>
   <div class="wb-host">
-    <FlowCanvas {noteId} {surfaceData} {readonly} {onchange} />
+    <ExcalidrawCanvas {noteId} {surfaceData} {readonly} {onchange} />
   </div>
 </div>
 

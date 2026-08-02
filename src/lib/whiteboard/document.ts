@@ -1,66 +1,40 @@
-// Pure surface-document helpers (parse, empty, serialize). No DOM, no stores.
+// Pure surface-document helpers. Freeform board payload (Excalidraw scene).
 
 import type { SurfaceDocument } from "./types";
 
-/** Default engine: Svelte Flow (native to our Svelte stack). */
-export const FLOW_ENGINE_ID = "svelte-flow";
+/** Freeform whiteboard engine (boxes, arrows, freehand — not a rigid graph). */
+export const EXCALIDRAW_ENGINE_ID = "excalidraw";
 
-/** @deprecated Prefer FLOW_ENGINE_ID; kept so old shell rows still parse. */
+/** Legacy engine ids we may still see in stored rows. */
+export const FLOW_ENGINE_ID = "svelte-flow";
 export const SHELL_ENGINE_ID = "shell";
 
-export type FlowNode = {
-  id: string;
-  position: { x: number; y: number };
-  data: { label: string };
-  type?: string;
+/** Excalidraw scene slice we persist (elements + a few appState fields). */
+export type ExcalidrawScene = {
+  elements: unknown[];
+  appState?: Record<string, unknown>;
+  files?: Record<string, unknown>;
 };
 
-export type FlowEdge = {
-  id: string;
-  source: string;
-  target: string;
-};
-
-export type FlowData = {
-  nodes: FlowNode[];
-  edges: FlowEdge[];
-};
-
-/** Starter graph so a new board is not a blank void. */
-export function starterFlowData(): FlowData {
+/** Fresh empty board — no starter nodes, no forced layout. */
+export function emptyScene(): ExcalidrawScene {
   return {
-    nodes: [
-      {
-        id: "1",
-        type: "input",
-        position: { x: 80, y: 60 },
-        data: { label: "Start" },
-      },
-      {
-        id: "2",
-        position: { x: 80, y: 180 },
-        data: { label: "Idea" },
-      },
-      {
-        id: "3",
-        type: "output",
-        position: { x: 80, y: 300 },
-        data: { label: "Next" },
-      },
-    ],
-    edges: [
-      { id: "e1-2", source: "1", target: "2" },
-      { id: "e2-3", source: "2", target: "3" },
-    ],
+    elements: [],
+    appState: {
+      viewBackgroundColor: "transparent",
+      currentItemFontFamily: 1,
+    },
+    files: {},
   };
 }
 
-/** Empty / default surface document for a new whiteboard note. */
-export function emptySurfaceDocument(engine = FLOW_ENGINE_ID): SurfaceDocument {
+export function emptySurfaceDocument(
+  engine = EXCALIDRAW_ENGINE_ID,
+): SurfaceDocument {
   return {
     v: 1,
     engine,
-    data: engine === FLOW_ENGINE_ID || engine === SHELL_ENGINE_ID ? starterFlowData() : {},
+    data: emptyScene(),
   };
 }
 
@@ -69,18 +43,26 @@ export function serializeSurfaceDocument(doc: SurfaceDocument): string {
 }
 
 /**
- * Parse stored surface_data. Invalid input yields a fresh starter board.
- * Legacy "shell" rows are treated as empty flow boards.
+ * Parse stored surface_data. Invalid or legacy graph payloads become a fresh
+ * empty freeform board (we do not try to convert rigid flow nodes).
  */
-export function parseSurfaceDocument(raw: string | null | undefined): SurfaceDocument {
+export function parseSurfaceDocument(
+  raw: string | null | undefined,
+): SurfaceDocument {
   if (!raw || !raw.trim()) return emptySurfaceDocument();
   try {
     const parsed = JSON.parse(raw) as Partial<SurfaceDocument>;
     if (parsed && parsed.v === 1 && typeof parsed.engine === "string") {
-      const engine =
-        parsed.engine === SHELL_ENGINE_ID ? FLOW_ENGINE_ID : parsed.engine;
-      const data = normalizeFlowData(parsed.data);
-      return { v: 1, engine, data };
+      if (parsed.engine === EXCALIDRAW_ENGINE_ID) {
+        return {
+          v: 1,
+          engine: EXCALIDRAW_ENGINE_ID,
+          data: normalizeScene(parsed.data),
+        };
+      }
+      // Old shell / svelte-flow rows: open a blank freeform board instead of
+      // replaying a rigid starter graph the user never asked for.
+      return emptySurfaceDocument();
     }
   } catch {
     // fall through
@@ -88,16 +70,17 @@ export function parseSurfaceDocument(raw: string | null | undefined): SurfaceDoc
   return emptySurfaceDocument();
 }
 
-export function normalizeFlowData(raw: unknown): FlowData {
-  if (!raw || typeof raw !== "object") return starterFlowData();
-  const obj = raw as { nodes?: unknown; edges?: unknown };
-  const nodes = Array.isArray(obj.nodes) ? (obj.nodes as FlowNode[]) : [];
-  const edges = Array.isArray(obj.edges) ? (obj.edges as FlowEdge[]) : [];
-  if (nodes.length === 0) return starterFlowData();
-  return { nodes, edges };
+export function normalizeScene(raw: unknown): ExcalidrawScene {
+  if (!raw || typeof raw !== "object") return emptyScene();
+  const obj = raw as ExcalidrawScene;
+  return {
+    elements: Array.isArray(obj.elements) ? obj.elements : [],
+    appState:
+      obj.appState && typeof obj.appState === "object" ? obj.appState : emptyScene().appState,
+    files: obj.files && typeof obj.files === "object" ? obj.files : {},
+  };
 }
 
-/** Write a new engine payload into an existing envelope (or a fresh one). */
 export function withSurfaceData(
   current: SurfaceDocument | null | undefined,
   data: unknown,

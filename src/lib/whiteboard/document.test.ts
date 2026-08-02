@@ -1,51 +1,54 @@
 import { describe, expect, it } from "vitest";
 import {
+  emptyScene,
   emptySurfaceDocument,
-  FLOW_ENGINE_ID,
+  EXCALIDRAW_ENGINE_ID,
   isWhiteboardKind,
-  normalizeFlowData,
+  normalizeScene,
   parseSurfaceDocument,
   serializeSurfaceDocument,
-  starterFlowData,
   withSurfaceData,
 } from "./document";
 
 describe("surface document helpers", () => {
-  it("builds a starter svelte-flow document", () => {
+  it("starts empty freeform, not a starter graph", () => {
     const doc = emptySurfaceDocument();
-    expect(doc.v).toBe(1);
-    expect(doc.engine).toBe(FLOW_ENGINE_ID);
-    const data = normalizeFlowData(doc.data);
-    expect(data.nodes.length).toBeGreaterThan(0);
-    expect(data.edges.length).toBeGreaterThan(0);
+    expect(doc.engine).toBe(EXCALIDRAW_ENGINE_ID);
+    expect(normalizeScene(doc.data).elements).toEqual([]);
   });
 
   it("round-trips serialize and parse", () => {
     const doc = emptySurfaceDocument();
-    const raw = serializeSurfaceDocument(doc);
-    const again = parseSurfaceDocument(raw);
-    expect(again.engine).toBe(FLOW_ENGINE_ID);
-    expect(normalizeFlowData(again.data).nodes.length).toBe(
-      starterFlowData().nodes.length,
-    );
+    const scene = {
+      elements: [{ id: "a", type: "rectangle" }],
+      appState: {},
+      files: {},
+    };
+    const withEls = withSurfaceData(doc, scene, EXCALIDRAW_ENGINE_ID);
+    const again = parseSurfaceDocument(serializeSurfaceDocument(withEls));
+    expect(again.engine).toBe(EXCALIDRAW_ENGINE_ID);
+    expect(normalizeScene(again.data).elements).toHaveLength(1);
   });
 
-  it("falls back to starter on invalid JSON", () => {
-    expect(parseSurfaceDocument("not-json").engine).toBe(FLOW_ENGINE_ID);
-    expect(parseSurfaceDocument(null).engine).toBe(FLOW_ENGINE_ID);
+  it("falls back to empty on invalid JSON", () => {
+    expect(parseSurfaceDocument("not-json").engine).toBe(EXCALIDRAW_ENGINE_ID);
+    expect(normalizeScene(parseSurfaceDocument(null).data).elements).toEqual([]);
   });
 
-  it("upgrades legacy shell envelopes to flow", () => {
-    const raw = JSON.stringify({ v: 1, engine: "shell", data: { nodes: [] } });
-    const doc = parseSurfaceDocument(raw);
-    expect(doc.engine).toBe(FLOW_ENGINE_ID);
-    expect(normalizeFlowData(doc.data).nodes.length).toBeGreaterThan(0);
+  it("opens a blank board for legacy shell/flow rows", () => {
+    const shell = JSON.stringify({ v: 1, engine: "shell", data: { nodes: [] } });
+    const flow = JSON.stringify({
+      v: 1,
+      engine: "svelte-flow",
+      data: { nodes: [{ id: "1" }], edges: [] },
+    });
+    expect(parseSurfaceDocument(shell).engine).toBe(EXCALIDRAW_ENGINE_ID);
+    expect(normalizeScene(parseSurfaceDocument(shell).data).elements).toEqual([]);
+    expect(normalizeScene(parseSurfaceDocument(flow).data).elements).toEqual([]);
   });
 
-  it("withSurfaceData preserves engine and replaces payload", () => {
-    const next = withSurfaceData(emptySurfaceDocument(), { nodes: [], edges: [] });
-    expect(next.engine).toBe(FLOW_ENGINE_ID);
-    expect(next.data).toEqual({ nodes: [], edges: [] });
+  it("emptyScene has no elements", () => {
+    expect(emptyScene().elements).toEqual([]);
   });
 
   it("isWhiteboardKind only accepts whiteboard", () => {

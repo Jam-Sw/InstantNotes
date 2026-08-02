@@ -1,8 +1,8 @@
-// Adapter registry. Svelte Flow is mounted as a Svelte component (FlowCanvas);
-// this registry remains for future non-Svelte engines.
+// Optional registry for non-component engines. Excalidraw is mounted as a
+// Svelte host wrapping a React root (ExcalidrawCanvas.svelte).
 
 import type { WhiteboardAdapter } from "./types";
-import { FLOW_ENGINE_ID, SHELL_ENGINE_ID } from "./types";
+import { EXCALIDRAW_ENGINE_ID } from "./types";
 
 const adapters = new Map<string, WhiteboardAdapter>();
 
@@ -18,4 +18,4 @@ export function registerAdapter(adapter: WhiteboardAdapter): void {
   adapters.set(adapter.id, adapter);
 }
 
-export { FLOW_ENGINE_ID, SHELL_ENGINE_ID };
+export { EXCALIDRAW_ENGINE_ID };
