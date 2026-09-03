@@ -37,6 +37,8 @@ Core behavior is covered with Rust tests against SQLite. Frontend utilities are 
 Each public branch should contain one clear product step. Commit subjects stay short and concrete; bodies explain what changed in one or two natural sentences.
 
 ### Change Proposals
+`openspec/SEQUENCE.md` holds the order changes land in, the definition of done that gates each one, and the rule that places anything new. One unit is in flight at a time and lives as uncommitted work until it is complete.
+
 Active OpenSpec change proposals live in `openspec/changes/`. Once a change has shipped, its folder moves to `openspec/changes/archive/` so the active list only shows work in flight. The canonical IPC and storage contracts are documented in `docs/API.md` and `docs/DATA_MODEL.md`.
 
 ## Domain Context
