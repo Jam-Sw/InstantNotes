@@ -22,11 +22,11 @@ The app SHALL store notes, tags, settings, and search index data locally in SQLi
 #### Scenario: Create a note
 - **WHEN** the user creates a note without a title
 - **THEN** the app derives the title from the first meaningful line of the body
-- **AND** stores the note with timestamps and version metadata
+- **AND** stores the note with created and updated timestamps
 
 #### Scenario: Update a note
 - **WHEN** the user edits note content
-- **THEN** the app updates the note body, updated timestamp, version, and search index
+- **THEN** the app updates the note body, updated timestamp, and search index
 - **AND** keeps a manually entered title unless the title is edited again
 
 ### Requirement: Library Organization
