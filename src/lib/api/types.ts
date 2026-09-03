@@ -1,6 +1,9 @@
 // IPC contract types shared by the Svelte UI and the Rust desktop layer.
 // Field names are camelCase over the wire (serde).
 
+/** How a note is edited in the library. Capture always creates documents. */
+export type ContentKind = "document" | "whiteboard";
+
 export interface Note {
   id: string;
   title: string;
@@ -12,6 +15,10 @@ export interface Note {
   isArchived: boolean;
   isDeleted: boolean;
   deletedAt?: string | null;
+  /** Markdown editor vs whiteboard canvas host. */
+  contentKind: ContentKind;
+  /** Engine-specific JSON for whiteboard notes; null/absent for documents. */
+  surfaceData?: string | null;
 }
 
 export interface Tag {
@@ -48,6 +55,9 @@ export interface UpdateNotePatch {
   body?: string;
   isPinned?: boolean;
   isArchived?: boolean;
+  contentKind?: ContentKind;
+  /** Engine JSON; omit to leave alone. Product convert is one-way. */
+  surfaceData?: string;
 }
 
 export interface NoteFilter {

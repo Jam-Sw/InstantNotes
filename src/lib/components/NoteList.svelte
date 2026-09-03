@@ -112,9 +112,16 @@
         >
           <div class="row-title">
             {#if note.isPinned}<span class="pin">📌</span>{/if}
+            {#if note.contentKind === "whiteboard"}<span class="wb-cue" title="Whiteboard">▢</span>{/if}
             {note.title}
           </div>
-          <div class="row-preview">{preview(note.body) || "Empty note"}</div>
+          <div class="row-preview">
+            {#if note.contentKind === "whiteboard"}
+              Whiteboard
+            {:else}
+              {preview(note.body) || "Empty note"}
+            {/if}
+          </div>
           <div class="row-date" title={formatExact(note.updatedAt)}>{formatDate(note.updatedAt)}</div>
         </button>
       {/snippet}
@@ -266,6 +273,14 @@
   }
   .note-row.selected {
     background: var(--accent-soft);
+  }
+  .wb-cue {
+    display: inline-block;
+    margin-right: 4px;
+    color: var(--text-tertiary);
+    font-weight: 500;
+    font-size: 11px;
+    vertical-align: 1px;
   }
   .row-title {
     font-weight: 600;

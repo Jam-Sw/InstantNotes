@@ -1,5 +1,10 @@
 use serde::{Deserialize, Serialize};
 
+/// How a note is edited: markdown document or whiteboard surface.
+/// Stored as a string on the wire (`"document"` | `"whiteboard"`).
+pub const CONTENT_KIND_DOCUMENT: &str = "document";
+pub const CONTENT_KIND_WHITEBOARD: &str = "whiteboard";
+
 /// Canonical note shape used by persistence and the desktop IPC layer.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -14,6 +19,10 @@ pub struct Note {
     pub is_archived: bool,
     pub is_deleted: bool,
     pub deleted_at: Option<String>,
+    /// `"document"` (markdown editor) or `"whiteboard"` (canvas host).
+    pub content_kind: String,
+    /// Engine-specific JSON for whiteboard notes; null for plain documents.
+    pub surface_data: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -69,6 +78,12 @@ pub struct UpdateNotePatch {
     pub body: Option<String>,
     pub is_pinned: Option<bool>,
     pub is_archived: Option<bool>,
+    /// `"document"` or `"whiteboard"`. Invalid values are rejected.
+    pub content_kind: Option<String>,
+    /// Engine JSON for whiteboard notes. Omitted = leave alone; Some sets the
+    /// value (including empty string). Product convert is one-way (document →
+    /// whiteboard); this field still persists so the board survives reloads.
+    pub surface_data: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

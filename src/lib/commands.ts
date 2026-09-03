@@ -7,6 +7,7 @@ import { library } from "$lib/stores/library.svelte";
 import { sidebar } from "$lib/stores/sidebar.svelte";
 import { theme } from "$lib/stores/theme.svelte";
 import { contexting } from "$lib/stores/contexting.svelte";
+import { confirmConvertToWhiteboard } from "$lib/whiteboard/convert";
 import { exportTheme, importTheme } from "$lib/themes/share";
 import { BODY_FONTS } from "$lib/themes/fonts";
 import { modKey } from "$lib/platform";
@@ -111,6 +112,16 @@ export function buildCommands(): Command[] {
         },
       },
     );
+    // One-way only: document → whiteboard. Never offer convert-back.
+    if (!n.isDeleted && n.contentKind !== "whiteboard") {
+      commands.push({
+        id: "note.convertWhiteboard",
+        title: "Convert to whiteboard permanently",
+        group: "Notes",
+        prefix: notePrefix,
+        run: () => void confirmConvertToWhiteboard(),
+      });
+    }
   }
 
   commands.push(

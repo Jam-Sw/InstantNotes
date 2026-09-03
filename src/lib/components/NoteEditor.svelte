@@ -2,12 +2,14 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import Editor from "$lib/components/Editor.svelte";
   import FormatToolbar from "$lib/components/FormatToolbar.svelte";
+  import WhiteboardSurface from "$lib/components/whiteboard/WhiteboardSurface.svelte";
   import { library } from "$lib/stores/library.svelte";
   import { editorPrefs } from "$lib/stores/editor.svelte";
   import { imagePrefs } from "$lib/stores/images.svelte";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
   import { importImageFile, allowImageFile } from "$lib/api/client";
+  import { confirmConvertToWhiteboard } from "$lib/whiteboard/convert";
   import { formatDate, formatExact, wordCount } from "$lib/format";
   import type { FormatKind } from "$lib/markdown-format";
   import { NO_MARKS, type ActiveMarks } from "$lib/markdown-active";
@@ -43,6 +45,8 @@
       toasts.show(`Couldn't add image. ${e instanceof Error ? e.message : String(e)}`);
     }
   }
+
+  const isWhiteboard = $derived(library.selected?.contentKind === "whiteboard");
 
   async function submitTag(e: Event) {
     e.preventDefault();
@@ -84,22 +88,31 @@
         <button class="action" onclick={() => library.restoreSelected()}>Restore</button>
         <button class="action danger" onclick={confirmDestroy}>Delete Forever</button>
       {:else}
-        <button
-          class="action"
-          title="Insert image from a file"
-          onclick={insertImage}
-        >
-          Image
-        </button>
-        <button
-          class="action"
-          class:active={editorPrefs.toolbarOpen}
-          title="Formatting tools"
-          aria-pressed={editorPrefs.toolbarOpen}
-          onclick={() => editorPrefs.toggleToolbar()}
-        >
-          Aa
-        </button>
+{#if !isWhiteboard}
+          <button
+            class="action"
+            title="Insert image from a file"
+            onclick={insertImage}
+          >
+            Image
+          </button>
+          <button
+            class="action"
+            class:active={editorPrefs.toolbarOpen}
+            title="Formatting tools"
+            aria-pressed={editorPrefs.toolbarOpen}
+            onclick={() => editorPrefs.toggleToolbar()}
+          >
+            Aa
+          </button>
+          <button
+            class="action"
+            title="Permanently convert this note into a whiteboard"
+            onclick={() => void confirmConvertToWhiteboard()}
+          >
+            Board
+          </button>
+        {/if}
         <button
           class="action"
           title={library.selected.isPinned ? "Unpin" : "Pin"}
@@ -152,38 +165,91 @@
       {/each}
     </datalist>
   </div>
-  {#if editorPrefs.toolbarOpen}
-    <FormatToolbar {active} onFormat={(k) => editorRef?.applyFormat(k)} />
-  {/if}
-  <div
-    class="editor-body"
-    style="--editor-zoom: {editorPrefs.zoom}; --image-max-height: {imagePrefs.maxPreviewHeight}px"
-  >
-    <Editor
-      bind:this={editorRef}
-      value={library.selected.body}
-      placeholder="Start writing… use #tags to organize"
-      previewMode={!editorPrefs.toolbarOpen}
-      onchange={(v) => library.editBody(v)}
-      onactive={(a) => (active = a)}
-    />
-  </div>
-  <div class="status-bar">
-    <span
-      class="save-state"
-      class:saving={library.saveState === "saving"}
-      class:failed={library.saveState === "failed"}
-      title={formatExact(library.selected.updatedAt)}
-    >
-      {#if library.saveState === "saving"}<span class="save-dot"></span>Saving…{:else if library.saveState === "failed"}Not saved{:else}Saved · {editorPrefs.showExactTime ? formatExact(library.selected.updatedAt) : formatDate(library.selected.updatedAt)}{/if}
-    </span>
-    {#if library.error}
-      <span class="error">{library.error}</span>
-    {:else}
-      {@const n = wordCount(library.selected.body)}
-      <span>{n} {n === 1 ? "word" : "words"}</span>
+  {#if isWhiteboard}
+    <div class="editor-body">
+      <WhiteboardSurface
+        noteId={library.selected.id}
+        surfaceData={library.selected.surfaceData}
+        readonly={library.selected.isDeleted}
+        onchange={(v) => library.editSurfaceData(v)}
+      />
+    </div>
+    <div class="status-bar">
+      <span
+        class="save-state"
+        class:saving={library.saveState === "saving"}
+        class:failed={library.saveState === "failed"}
+        title={formatExact(library.selected.updatedAt)}
+      >
+        {#if library.saveState === "saving"}<span class="save-dot"></span>Saving…{:else if library.saveState === "failed"}Not saved{:else}Saved · {editorPrefs.showExactTime ? formatExact(library.selected.updatedAt) : formatDate(library.selected.updatedAt)}{/if}
+      </span>
+      {#if library.error}
+        <span class="error">{library.error}</span>
+      {:else}
+        <span>Whiteboard</span>
+      {/if}
+    </div>
+  {:else}
+    {#if editorPrefs.toolbarOpen}
+      <FormatToolbar {active} onFormat={(k) => editorRef?.applyFormat(k)} />
     {/if}
-  </div>
+    <div
+      class="editor-body"
+      style="--editor-zoom: {editorPrefs.zoom}; --image-max-height: {imagePrefs.maxPreviewHeight}px"
+    >
+      <Editor
+        bind:this={editorRef}
+        value={library.selected.body}
+        placeholder="Start writing… use #tags to organize"
+        previewMode={!editorPrefs.toolbarOpen}
+        onchange={(v) => library.editBody(v)}
+        onactive={(a) => (active = a)}
+      />
+    </div>
+    <div class="status-bar">
+      <span
+        class="save-state"
+        class:saving={library.saveState === "saving"}
+        class:failed={library.saveState === "failed"}
+        title={formatExact(library.selected.updatedAt)}
+      >
+        {#if library.saveState === "saving"}<span class="save-dot"></span>Saving…{:else if library.saveState === "failed"}Not saved{:else}Saved · {editorPrefs.showExactTime ? formatExact(library.selected.updatedAt) : formatDate(library.selected.updatedAt)}{/if}
+      </span>
+      {#if library.error}
+        <span class="error">{library.error}</span>
+      {:else}
+        {@const n = wordCount(library.selected.body)}
+        <span>{n} {n === 1 ? "word" : "words"}</span>
+      {/if}
+    </div>
+  {/if}
+    {/if}
+    <div class="editor-body" style="--editor-zoom: {editorPrefs.zoom}">
+      <Editor
+        bind:this={editorRef}
+        value={library.selected.body}
+        placeholder="Start writing… use #tags to organize"
+        previewMode={!editorPrefs.toolbarOpen}
+        onchange={(v) => library.editBody(v)}
+        onactive={(a) => (active = a)}
+      />
+    </div>
+    <div class="status-bar">
+      <span
+        class="save-state"
+        class:saving={library.saveState === "saving"}
+        class:failed={library.saveState === "failed"}
+      >
+        {#if library.saveState === "saving"}<span class="save-dot"></span>Saving…{:else if library.saveState === "failed"}Not saved{:else}Saved · {formatDate(library.selected.updatedAt)}{/if}
+      </span>
+      {#if library.error}
+        <span class="error">{library.error}</span>
+      {:else}
+        {@const n = wordCount(library.selected.body)}
+        <span>{n} {n === 1 ? "word" : "words"}</span>
+      {/if}
+    </div>
+  {/if}
 {/if}
 
 <style>
