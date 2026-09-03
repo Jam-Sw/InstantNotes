@@ -31,9 +31,9 @@ A unit is done when all of these are true:
 
 Only then does it commit and merge, and only then does the next unit start.
 
-**Code on a branch is not evidence of any of this.** `0.9.0-pre` carries working
-code for several features that are not decided, and a changelog section written
-as though they were. Presence in the tree says the work started, nothing more.
+**Code on a branch is not evidence of any of this.** Nothing in the ten streams
+found on `0.9.0-pre` carried a TODO or a stub marker; every one of them read as
+finished and none of them was.
 
 ## Insertion rule
 
@@ -41,220 +41,182 @@ Anything not listed below takes its position from one question — where does it
 touch persistence?
 
 - **Changes the shape of persisted note state, or the API the store is written
-  against** → before unit 4. The vault serializer encodes that shape; changing
+  against** -> before unit 7. The vault serializer encodes that shape; changing
   it afterwards means writing the format twice.
-- **Adds persisted state without changing note shape** → after unit 6.
-  Units 4 through 6 rewrite the store's write path, and anything built against
+- **Adds persisted state without changing note shape** -> after unit 9.
+  Units 7 through 9 rewrite the store's write path, and anything built against
   the old one gets built again.
 - **View only** — theming, editor behavior, palette, layout, list rendering,
-  settings pages on the existing key/value table → any slot between units. It
+  settings pages on the existing key/value table -> any slot between units. It
   takes a slot of its own; it does not run alongside an open unit.
 
 ---
 
-## 0. Branch hygiene — PARTIAL
+## 0. Branch hygiene — DONE
 
-Only the parts that assert nothing about feature readiness are done.
+`0.9.0-pre` held ten entangled streams and stated one of them.
 
-- [x] Commit the Linux working-tree changes — `WEBKIT_DISABLE_DMABUF_RENDERER`
-      in `src-tauri/src/main.rs` and `scripts/tauri-dev.mjs`, Arch/CachyOS notes
-      in `README.md` (`28c22d0`). A self-contained fix. It does **not** make
-      Linux a supported platform; `[0.7.0]` still calls Linux an early preview
-      and that remains true
-- [x] `openspec/specs/instantnotes/spec.md`: dropped the two references to the
-      `version` column that migration v3 removed. A factual correction,
-      independent of any feature's status
-- [x] Dependabot — deferred to unit 3, not merged into 0.9.0
-- [ ] Everything else waits on unit 1. The version bump, the changelog entries,
-      the whiteboard requirement in the spec, Excalidraw in the tech stack, and
-      the archive move are all statements that a feature is finished, and none
-      of them can be made yet
+- [x] Linux fix committed (`ffb7f90`). Does **not** make Linux supported;
+      `[0.7.0]` already ships an AppImage as early preview and CI already builds
+      `ubuntu-22.04`
+- [x] `spec.md`: dropped the two references to the `version` column that
+      migration v3 removed
+- [x] `0decff9` split. Its subject named only the bump-version guard, but it
+      also removed an editor block the whiteboard merge had duplicated. Only the
+      bump-version half survives, as `dff86b6`
+- [x] **Whiteboard lifted off the branch.** Its six commits were local-only, so
+      no published history was rewritten and no force-push is needed. Preserved
+      on `feat/note-whiteboard`; the pre-lift state is on
+      `backup/0.9.0-pre-with-whiteboard`. This removed migration v4, the
+      `react`/`react-dom`/`@excalidraw` runtime deps, and four defects from the
+      release. See unit 12
+- [x] Dependabot deferred to unit 6
 
-## 1. Finish what 0.9.0 started
+Verified after the lift: 298 tests, svelte-check 487 files / 0 errors, Rust green.
 
-**This is the open unit.** `0.9.0-pre` holds working-but-unfinished code for
-several features. Each is finished to the definition of done above, one at a
-time, before 0.9.0 exists as a release.
+## The four 0.9.0 units
 
-The pre-existing `[0.9.0]` changelog section describes seven of these as
-shipped. It was written ahead of the work; it is a draft, not a record, and each
-entry is only true once its feature clears the checklist.
+Seven of the ten streams are entangled in `44bea94`, which is **already pushed**.
+Splitting it would rewrite published history for no product value, so they are
+finished in place, grouped the way the repo already groups changes.
 
-Every difference between `v0.8.0` and this branch is unfinished work: 67 files,
-+6903/-1008, across ten independent streams. **Status is unconfirmed for every
-row** — it needs deciding, never inferred from the diff.
+## 1. `feat-settings-dashboard`
 
-| # | Stream | Surface | Known open question |
-| --- | --- | --- | --- |
-| 1 | Whiteboard surface | `src/lib/whiteboard/*`, `components/whiteboard/*`, **migration v4**, `types.rs`, `notes.rs`, NoteEditor, NoteList | **Backend undecided.** Svelte Flow wired, then swapped for Excalidraw. Neither is chosen. See 1a |
-| 2 | Settings dashboard | `SettingsView.svelte` (+239), `core/stats.rs`, `commands/stats.rs`, `LibraryStats`, `changelog.ts` | ? |
-| 3 | Images settings + insert from file | `SettingsImages.svelte` (210), `stores/images.svelte.ts`, `editor/images.ts`, `shell/files.rs` (+113) | ? |
-| 4 | Editor settings page | `SettingsEditor.svelte`, `stores/editor.svelte.ts`, `format.ts` | ? |
-| 5 | Contexting image modes | `contexting-format.ts` (+55), `stores/contexting.svelte.ts` | ? |
-| 6 | In-app feedback | `SettingsFeedback.svelte` (185), `feedback.ts`, `commands/feedback.rs` | ? |
-| 7 | Settings UI primitives | `SegmentedRow.svelte`, `ToggleRow.svelte` | Shared by 2-6; finishing those depends on these |
-| 8 | Editor state fixes | `Editor.svelte` (97), `NoteEditor.svelte` (157), `links.ts`, `theme.ts` | ? |
-| 9 | Linux support | `main.rs`, `tauri-dev.mjs`, `README.md` | Early preview per `[0.7.0]`. What makes it supported? |
-| 10 | bump-version guard | `scripts/bump-version.mjs` | ? |
+Streams 2 and 7. **First**, because `SegmentedRow` and `ToggleRow` are consumed
+by units 2 and 4; their API is frozen here or it is edited three times.
 
-### The schema is already committed to an undecided design
+## 2. `feat-image-handling`
 
-Stream 1 carries **migration v4** — `content_kind` and `surface_data` on `notes`.
-Migrations are one-way for users: once 0.9.0 releases, those columns are in every
-database and `user_version` has advanced. If the engine changes after that, the
-`surface_data` payloads already written need a data migration, not just new code.
+Streams 3 and 5. Carries a decision the vault depends on: **link mode versus
+portability**. A linked image lives outside the vault by definition. Decided
+here, because unit 7 encodes the answer and changing it later migrates user data.
 
-That makes 1a a blocker on **releasing 0.9.0 at all**, not only on unit 4.
+## 3. `feat-in-app-feedback`
 
-The branch also took `@excalidraw/excalidraw`, `react`, and `react-dom` as
-runtime dependencies of a Svelte app — a heavy commitment to a backend that is
-not chosen.
+Stream 6. The only 0.9.0 feature that reaches outside the app. Carries the
+question of where the local copy lives and what prunes it.
 
-### 1a. Whiteboard backend decision
+## 4. `feat-editor-settings-and-fixes`
 
-Called out separately because it blocks more than its own feature.
+Streams 4 and 8. Smallest. Exists as its own unit mainly because the caret/undo
+isolation fix has **no regression test** — the `undo` coverage is workspace
+undo, the `caret` coverage is fold behavior.
 
-The engine choice determines the shape of `surface_data`, and unit 4 serializes
-`surface_data` into a file format that then has to stay stable for every device
-and every transport. **Unit 4 cannot start until this is decided.** Writing the
-serializer against an undecided engine means writing it twice, and the second
-time it is a migration of user data rather than an edit.
+Streams 9 (Linux) and 10 (bump-version guard) are finished by every measure
+checked; they need a changelog line at release, not a unit.
 
-Deciding means: engine chosen, `surface_data` shape frozen, and convert
-semantics settled — not "Excalidraw is what is currently wired up".
+## 5. Cut 0.9.0
 
-**Done when** every row above is either finished to the checklist or explicitly
-cut from 0.9.0, the changelog describes only what is actually true, and the spec
-carries requirements only for shipped behavior.
-
-## 2. Cut 0.9.0
-
-Bump, tag, release. Mechanical once unit 1 is genuinely done.
+Mechanical once units 1-4 are done.
 
 - [ ] `npm run bump 0.9.0` — all five manifests still read `0.8.0`
-- [ ] Changelog: date `[0.9.0]`, and correct every entry to what shipped
-- [ ] `openspec/project.md`: platform line and tech stack, reflecting what was
-      actually decided in unit 1
-- [ ] Archive the OpenSpec changes whose features finished
+- [ ] Changelog: date `[0.9.0]`, and correct every entry to what shipped. The
+      current section is a draft written ahead of the work
 - [ ] Merge to `main`, tag `v0.9.0`
 
-## 3. Dependency baseline
+## 6. Dependency baseline
 
-The three open dependabot branches, rebased onto `main` after `v0.9.0`.
-**Not merged into 0.9.0**: all three branch from `main` before the whiteboard
-work, so their `package.json` carries no `@excalidraw/excalidraw`, `react`, or
-`react-dom`, and merging one reverts those while fighting a 2799-line lockfile.
+The three dependabot branches, rebased onto `main` after `v0.9.0`. Not merged
+into 0.9.0: all three branch from `main` before the whiteboard work and carry a
+stale `package.json`.
 
-They are not routine patches:
+Not routine patches — npm: vite 6->8, vitest 3->4, typescript 5.6->7.0,
+vite-plugin-svelte 5->7, jsdom 29->30, jest-dom 6->7, `@types/node` 25->26.
+cargo: rusqlite 0.32->0.40, window-vibrancy 0.6->0.8. github-actions: CI only.
 
-- npm: vite 6→8, vitest 3→4, typescript 5.6→7.0, vite-plugin-svelte 5→7,
-  jsdom 29→30, jest-dom 6→7, `@types/node` 25→26
-- cargo: rusqlite 0.32→0.40, window-vibrancy 0.6→0.8
-- github-actions: CI only, safe
+**Here, and not later, because rusqlite 0.32->0.40 changes the API `store.rs` is
+written against**, and units 7 through 9 rewrite that file. Take cargo and npm
+as separate units.
 
-**Here, and not later, because rusqlite 0.32→0.40 changes the API `store.rs` is
-written against**, and units 4 through 6 rewrite that same file. Taking the bump
-afterwards means porting fresh vault code to an API that was about to change.
-The npm half belongs here for a weaker but real reason: a TypeScript and Vitest
-major during vault work makes it ambiguous which change broke a test.
+**Done when** the suite passes on the new toolchain and a release bundle builds
+on every supported platform.
 
-Take cargo and npm as separate units. github-actions can ride with either.
+## 7. Vault serializer and export
 
-**Done when** the full suite passes on the new toolchain and a release bundle
-builds on every supported platform.
-
-## 4. Vault serializer and export
-
-`feat-portable-vault-sync` stage 1. Note ↔ Markdown with YAML frontmatter,
-whiteboard sidecar, `instantnotes.yaml`, round-trip property tests, and a
-one-way `export_vault` command.
-
-**Blocked on 1a.** The sidecar format is the chosen engine's format; there is no
-engine-neutral way to write it. Also blocked on image attachment handling from
-unit 1 settling, for the same reason.
-
-**Here because** it is otherwise pure addition. SQLite stays authoritative and
-no existing write path is touched, so the format can be proven against a real
-library before anything depends on it.
+`feat-portable-vault-sync` stage 1. Pure addition; SQLite stays authoritative.
 
 **Done when** exporting the full library and re-parsing it reproduces every
-field of every note, verified by property tests, and the exported folder reads
-correctly in a plain Markdown editor.
+field of every note, and the exported folder reads correctly in a plain Markdown
+editor.
 
-## 5. Dual-write
+## 8. Dual-write
 
-Stage 2. Migration v5, the dirty set, `flush_vault()`, filenames, trash moves,
-and the DB-versus-vault verification command.
+Stage 2. The last point at which the vault can be wrong for free. The
+verification command is the unit's real output.
 
-**Here because** it is the last point at which the vault can be wrong for free.
-SQLite is still authoritative; the vault is written and never read. The
-verification command is the unit's real output — it is what proves unit 6 safe.
+**Done when** it reports zero divergence across a real library after sustained
+ordinary use.
 
-**Done when** the verification command reports zero divergence across a real
-library after sustained ordinary use.
+## 9. Filesystem authoritative
 
-## 6. Filesystem authoritative
+Stage 3. Carries the data-loss risk, which is why units 7 and 8 precede it.
 
-Stage 3. The watcher, echo suppression, ingest, rebuild-from-disk, attachments
-moving into the vault, and the one-time migration for existing installs.
+**Cuts 0.10.0.** Portability with no sync: notes readable without the app,
+backup by folder copy, folder-sync tools work by construction.
 
-**Here because** everything it depends on is now proven. This is the unit that
-carries the data-loss risk, which is why the two units before it exist.
+## 10. Git transport
 
-**Cuts 0.10.0.** Portability ships with no sync in it: notes readable without
-the app, backup by folder copy, and any folder-sync tool works by construction.
+Stage 4. **Cuts 0.11.0.** Split from unit 9 so that if the vault runs long,
+portability has already shipped and only sync slips.
 
-**Done when** the cache can be deleted and rebuilt from disk with no
-user-visible loss, and an edit made in an external editor appears in the app.
+## 11. Attachment garbage collection
 
-## 7. Git transport
+Nothing removes an image when the last note referencing it is destroyed.
+`feat-portable-vault-sync/design.md` section 14. After unit 9 every reference and
+every file is visible in one place. Defects go before features.
 
-Stage 4. Pull and push cadence, conflict copies, whiteboard element merge,
-keychain token storage, sync status UI.
+## 12. Whiteboard surface
 
-**Here because** it is additive on top of a stable write path. It is split from
-unit 6 so that if the vault work runs long, portability has already shipped and
-only sync slips.
+Returns from `feat/note-whiteboard`.
 
-**Cuts 0.11.0.**
+**Here, not earlier, because the ordering makes it cheaper.** Landing after the
+vault means the whiteboard sidecar is a new file type added to a format with no
+legacy data — additive. Landing before means the vault serializes an engine
+format that is not chosen, and changing the engine later migrates user data on
+disk *and* in SQLite.
 
-**Done when** two machines converge on the same vault, and a deliberate
-concurrent edit produces a conflict copy rather than a loss.
+The engine decision is still open. Svelte Flow was wired, then swapped for
+Excalidraw; neither was chosen.
 
-## 8. Attachment garbage collection
+Four defects found on the branch, to fix or design away when it resumes:
 
-Nothing removes an image when the last note referencing it is destroyed. A
-pre-existing defect; `feat-portable-vault-sync/design.md` §14.
+1. **Silent canvas data loss.** `ExcalidrawCanvas.svelte` clears its 400 ms save
+   timer in `disposeRootOnly()` without firing it — on unmount, note switch, and
+   quit. The quit path flushes `library.flushPendingEdits()`, which this timer is
+   not part of. Contradicts the 0.8.0 promise that quitting cannot lose the last
+   moments of typing
+2. **Dead engine abstraction.** `registry.ts` and three interfaces in `types.ts`
+   have zero callers. Reads as though engine-swapping is supported; nothing
+   implements it
+3. **Theme ignored.** `theme: "dark"` hardcoded while the app ships six themes
+4. **Convert semantics contradict the dialog.** The confirm warns the written
+   body is lost. It is not — it stays in the row and stays FTS-indexed, just
+   invisible. Search can land on a whiteboard for text that cannot be seen.
+   `f806b6f`, despite its subject, changed only the list preview
 
-**Here because** after unit 6 every reference and every file is visible in one
-place, so the scanner is small and obviously correct. Written earlier it would
-be written against the DB and then rewritten. It sits at the front of the
-post-vault work because it is a known defect, and defects go before features.
+## 13. Graph
 
-## 9. Graph
+Consumes note state and adds none, provided it is derived at read time. Storing
+edges or node positions makes it persistence work and moves it by the insertion
+rule. Keep it derived.
 
-From the Product Thesis: resurfacing is closure.
+## 14. Local AI
 
-**Here because** it consumes note state and adds none, provided it is derived at
-read time. It becomes persistence work the moment it stores edges or node
-positions, which would move it behind the vault by the insertion rule. Keep it
-derived.
-
-## 10. Local AI
-
-**Last of what is currently identified.** It needs embedding storage, so it is
-persistence work and cannot precede unit 7. It also wants a decision the vault
-already made: embeddings are a rebuildable cache artifact and belong beside
-`instantnotes.db`, never in the vault. Building it earlier means making that
-call without the distinction existing.
-
-Graph precedes it because a graph gives local AI somewhere to surface results.
+Needs embedding storage, so it cannot precede unit 10. Embeddings are a
+rebuildable cache artifact and belong beside `instantnotes.db`, never in the
+vault — a distinction the vault establishes. Graph precedes it because a graph
+gives local AI somewhere to surface results.
 
 ---
 
 ## Branch model
 
-Unchanged. A `<version>-pre` branch collects a release, `feat/*` branches merge
-into it, the release merges to `main` and is tagged. One unit per branch. The
-vault units get their own `-pre` branch rather than sharing one with feature
-work, which is what makes the working rule enforceable rather than aspirational.
+A `<version>-pre` branch collects a release, `feat/*` branches merge into it, the
+release merges to `main` and is tagged. One unit per branch. The vault units get
+their own `-pre` branch rather than sharing one with feature work, which is what
+makes the working rule enforceable rather than aspirational.
+
+## Safety refs
+
+- `feat/note-whiteboard` — the whiteboard work, intact
+- `backup/0.9.0-pre-with-whiteboard` — `0.9.0-pre` as it stood before the lift

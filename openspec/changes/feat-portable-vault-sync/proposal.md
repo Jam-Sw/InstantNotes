@@ -47,16 +47,20 @@ while a single unreadable file is the only copy of everything the user parked.
 
 ## Sequencing
 
-Units 4-7 in `openspec/SEQUENCE.md`, worked one at a time and in that order.
-Unit 6 cuts 0.10.0 (the vault, no sync); unit 7 cuts 0.11.0 (git transport).
+Units 7-10 in `openspec/SEQUENCE.md`, worked one at a time and in that order.
+Unit 9 cuts 0.10.0 (the vault, no sync); unit 10 cuts 0.11.0 (git transport).
 
-Nothing that adds a migration, a persisted field, or a write path runs
-alongside these units, because they rewrite the store's write path.
+Nothing that adds a migration, a persisted field, or a write path runs alongside
+these units, because they rewrite the store's write path.
 
-**Blocked** until the whiteboard backend is decided (SEQUENCE.md 1a) and image
-attachment handling settles. Both are unfinished work on `0.9.0-pre`, and the
-serializer encodes their formats permanently. `747cb44` wired Excalidraw; it did
-not choose it.
+Two decisions land before unit 7 and are encoded permanently by it:
+
+- **Image link mode** (`feat-image-handling`). A linked image lives outside the
+  vault by definition, so it is either dropped, materialized on export, or
+  documented as opting a note out of portability
+- **Whiteboards are deliberately sequenced after the vault** (SEQUENCE.md unit
+  12), so the sidecar is a new file type in a format with no legacy data rather
+  than a migration of user data
 
 ## Impact
 
