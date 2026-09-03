@@ -77,7 +77,13 @@ const child = spawn(
   ["dev", "--config", "src-tauri/tauri.dev.conf.json"],
   {
     stdio: "inherit",
-    env: { ...process.env, INSTANTNOTES_DB_PATH: dbPath },
+    env: {
+      ...process.env,
+      INSTANTNOTES_DB_PATH: dbPath,
+      ...(process.platform === "linux" && !process.env.WEBKIT_DISABLE_DMABUF_RENDERER
+        ? { WEBKIT_DISABLE_DMABUF_RENDERER: "1" }
+        : {}),
+    },
     // .cmd shims only execute through a shell.
     shell: process.platform === "win32",
   },
