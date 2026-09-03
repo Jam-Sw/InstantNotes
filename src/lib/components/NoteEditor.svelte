@@ -223,33 +223,6 @@
       {/if}
     </div>
   {/if}
-    {/if}
-    <div class="editor-body" style="--editor-zoom: {editorPrefs.zoom}">
-      <Editor
-        bind:this={editorRef}
-        value={library.selected.body}
-        placeholder="Start writing… use #tags to organize"
-        previewMode={!editorPrefs.toolbarOpen}
-        onchange={(v) => library.editBody(v)}
-        onactive={(a) => (active = a)}
-      />
-    </div>
-    <div class="status-bar">
-      <span
-        class="save-state"
-        class:saving={library.saveState === "saving"}
-        class:failed={library.saveState === "failed"}
-      >
-        {#if library.saveState === "saving"}<span class="save-dot"></span>Saving…{:else if library.saveState === "failed"}Not saved{:else}Saved · {formatDate(library.selected.updatedAt)}{/if}
-      </span>
-      {#if library.error}
-        <span class="error">{library.error}</span>
-      {:else}
-        {@const n = wordCount(library.selected.body)}
-        <span>{n} {n === 1 ? "word" : "words"}</span>
-      {/if}
-    </div>
-  {/if}
 {/if}
 
 <style>
