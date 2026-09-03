@@ -36,10 +36,30 @@ To build from source instead
 
 ### Prerequisites
 
-- macOS, Windows
+- macOS, Windows, Linux
 - [Rust](https://rustup.rs/) via rustup (the version is pinned by `rust-toolchain.toml`)
 - Node.js 22+
 - Windows: the Visual Studio Build Tools with the C++ workload
+
+<details>
+<summary>Arch / CachyOS Linux</summary>
+
+Install system dependencies:
+```sh
+paru -S --needed webkit2gtk-4.1 base-devel openssl libayatana-appindicator librsvg squashfs-tools
+```
+
+If using system `rust` instead of `rustup`, configure `~/.cargo/config.toml`:
+```toml
+[target.x86_64-unknown-linux-gnu]
+linker = "gcc"
+```
+
+To build local bundles (`npm run tauri build`):
+```sh
+NO_STRIP=1 npm run tauri build -- --config '{"bundle":{"createUpdaterArtifacts":false}}'
+```
+</details>
 
 ### Run the app
 
