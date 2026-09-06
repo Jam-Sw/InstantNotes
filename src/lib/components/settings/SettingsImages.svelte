@@ -4,7 +4,17 @@
   import { getLibraryStats, getAttachmentsDir, openAttachmentsFolder } from "$lib/api/client";
   import { formatBytes } from "$lib/format";
   import { toasts } from "$lib/stores/toasts.svelte";
+  import PrefRow from "$lib/components/settings/PrefRow.svelte";
   import SegmentedRow from "$lib/components/settings/SegmentedRow.svelte";
+
+  const STORAGE_OPTIONS: { value: ImageStorage; label: string }[] = [
+    { value: "copy", label: "Copy in" },
+    { value: "link", label: "Link original" },
+  ];
+
+  // The preview-height row is a slider rather than one of the two row
+  // primitives, so it wires its own sub line to the control.
+  const heightSubId = $props.id();
 
   let attachmentsCount = $state<number | null>(null);
   let attachmentsBytes = $state(0);
@@ -43,12 +53,9 @@
   <SegmentedRow
     label="When adding an image"
     sub="Copy keeps a portable copy inside InstantNotes; Link references the original file where it already sits."
-    options={[
-      { value: "copy", label: "Copy in" },
-      { value: "link", label: "Link original" },
-    ]}
+    options={STORAGE_OPTIONS}
     value={imagePrefs.storage}
-    onchange={(v) => imagePrefs.setStorage(v as ImageStorage)}
+    onchange={(v) => imagePrefs.setStorage(v)}
   />
   <p class="fine-print">
     {#if imagePrefs.storage === "copy"}
@@ -62,24 +69,27 @@
   </p>
 
   <span class="group-label">Preview</span>
-  <div class="pref-row">
-    <span class="pref-label">
-      Maximum height in the note
-      <span class="pref-sub">How tall an image can render before it is scaled down. Wide images always fit the note width.</span>
-    </span>
-    <div class="slider-cell">
-      <input
-        type="range"
-        min={IMAGE_HEIGHT_RANGE.min}
-        max={IMAGE_HEIGHT_RANGE.max}
-        step="20"
-        value={imagePrefs.maxPreviewHeight}
-        oninput={(e) => imagePrefs.setMaxPreviewHeight(+e.currentTarget.value)}
-        aria-label="Maximum image preview height"
-      />
-      <span class="slider-val">{imagePrefs.maxPreviewHeight}px</span>
-    </div>
-  </div>
+  <PrefRow
+    label="Maximum height in the note"
+    sub="How tall an image can render before it is scaled down. Wide images always fit the note width."
+    subId={heightSubId}
+  >
+    {#snippet control()}
+      <div class="slider-cell">
+        <input
+          type="range"
+          min={IMAGE_HEIGHT_RANGE.min}
+          max={IMAGE_HEIGHT_RANGE.max}
+          step="20"
+          value={imagePrefs.maxPreviewHeight}
+          oninput={(e) => imagePrefs.setMaxPreviewHeight(+e.currentTarget.value)}
+          aria-label="Maximum image preview height"
+          aria-describedby={heightSubId}
+        />
+        <span class="slider-val">{imagePrefs.maxPreviewHeight}px</span>
+      </div>
+    {/snippet}
+  </PrefRow>
 
   <span class="group-label">Stored images</span>
   <div class="attach-card">
@@ -128,25 +138,6 @@
     color: var(--text-tertiary);
     font-size: 12px;
     line-height: 1.5;
-  }
-  .pref-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 12px 0;
-    border-top: 1px solid var(--border);
-  }
-  .pref-label {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    font-size: 13px;
-    color: var(--text);
-  }
-  .pref-sub {
-    color: var(--text-tertiary);
-    font-size: 11.5px;
   }
   .slider-cell {
     display: flex;

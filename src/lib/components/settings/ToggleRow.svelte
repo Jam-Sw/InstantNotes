@@ -1,53 +1,48 @@
 <script lang="ts">
   // A labeled on/off row: the shared switch control used across settings pages
   // so related toggles group together with one consistent look.
+  import PrefRow from "./PrefRow.svelte";
   let {
     label,
     sub = "",
     checked,
+    disabled = false,
     onchange,
   }: {
     label: string;
     sub?: string;
     checked: boolean;
+    disabled?: boolean;
     onchange: (v: boolean) => void;
   } = $props();
+
+  const subId = $props.id();
+
+  // The guard is not redundant with the disabled attribute: that stops a real
+  // click, this keeps "onchange never fires while disabled" true of the
+  // component itself, whoever dispatches the event.
+  function flip() {
+    if (disabled) return;
+    onchange(!checked);
+  }
 </script>
 
-<div class="pref-row">
-  <span class="pref-label">
-    {label}
-    {#if sub}<span class="pref-sub">{sub}</span>{/if}
-  </span>
-  <button
-    class="switch"
-    role="switch"
-    aria-checked={checked}
-    aria-label={label}
-    onclick={() => onchange(!checked)}
-  ><span class="switch-thumb"></span></button>
-</div>
+<PrefRow {label} {sub} {subId} {disabled}>
+  {#snippet control()}
+    <button
+      class="switch"
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      aria-describedby={sub ? subId : undefined}
+      {disabled}
+      onclick={flip}
+    ><span class="switch-thumb"></span></button>
+  {/snippet}
+</PrefRow>
 
 <style>
-  .pref-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 12px 0;
-    border-top: 1px solid var(--border);
-  }
-  .pref-label {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    font-size: 13px;
-    color: var(--text);
-  }
-  .pref-sub {
-    color: var(--text-tertiary);
-    font-size: 11.5px;
-  }
   .switch {
     position: relative;
     flex-shrink: 0;
@@ -61,6 +56,14 @@
   .switch[aria-checked="true"] {
     background: var(--accent);
     border-color: var(--accent);
+  }
+  .switch:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .switch:disabled {
+    opacity: 0.5;
+    cursor: default;
   }
   .switch-thumb {
     position: absolute;

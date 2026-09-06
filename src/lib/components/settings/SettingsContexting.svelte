@@ -13,6 +13,12 @@
 
   onMount(() => void contexting.init());
 
+  const IMAGE_MODE_OPTIONS: { value: ContextImageMode; label: string }[] = [
+    { value: "absolute", label: "Absolute path" },
+    { value: "keep", label: "Keep reference" },
+    { value: "strip", label: "Remove" },
+  ];
+
   // Live preview for the copy template, using the open note or a sample
   // stand-in. The sample carries an image so the image-handling choice is
   // visible in the preview.
@@ -59,13 +65,9 @@
   <SegmentedRow
     label="When copying, images become"
     sub="What happens to an image in the note. Absolute path lets a tool or agent that reads files find the image; keep leaves the note's own reference; remove drops it for text-only context."
-    options={[
-      { value: "absolute", label: "Absolute path" },
-      { value: "keep", label: "Keep reference" },
-      { value: "strip", label: "Remove" },
-    ]}
+    options={IMAGE_MODE_OPTIONS}
     value={contexting.imageMode}
-    onchange={(v) => contexting.setImageMode(v as ContextImageMode)}
+    onchange={(v) => contexting.setImageMode(v)}
   />
 
   <span class="field-label">Preview</span>

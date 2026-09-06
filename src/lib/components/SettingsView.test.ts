@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, fireEvent, cleanup, within } from "@testing-library/svelte";
 import SettingsView from "./SettingsView.svelte";
+import { setSetting } from "$lib/api/client";
 
 // The sub-pages init preference stores and fetch capture latency on mount;
 // stub the IPC client so they render without a Tauri backend.
@@ -76,5 +77,25 @@ describe("SettingsView", () => {
     // Second Escape from the grid: closes the whole view.
     await fireEvent.keyDown(window, { key: "Escape" });
     expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  // The Links page is the one that used to hand-roll its rows; this holds it to
+  // the shared primitives and proves the migration kept the page working.
+  it("builds the Links page from the shared rows and persists a change", async () => {
+    const { getByRole, getAllByRole, findAllByRole } = open();
+    await fireEvent.click(getByRole("button", { name: /Links/ }));
+
+    const groups = await findAllByRole("radiogroup");
+    expect(groups.map((g) => g.getAttribute("aria-label"))).toEqual([
+      "Open links with",
+      "Underline",
+    ]);
+    expect(getAllByRole("switch").map((s) => s.getAttribute("aria-label"))).toEqual([
+      "Show destination on hover",
+      expect.stringContaining("Mark external links"),
+    ]);
+
+    await fireEvent.click(within(groups[1]).getByRole("radio", { name: "Never" }));
+    expect(vi.mocked(setSetting)).toHaveBeenCalledWith("links.underline", "never");
   });
 });

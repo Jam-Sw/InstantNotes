@@ -77,7 +77,7 @@
     label="Kind"
     options={FEEDBACK_CATEGORIES}
     value={category}
-    onchange={(v) => (category = v as FeedbackCategory)}
+    onchange={(v) => (category = v)}
   />
 
   <label class="field-label" for="fb-message">Message</label>

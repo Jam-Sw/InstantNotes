@@ -3,6 +3,19 @@
   import { openUrl } from "$lib/api/client";
   import { modKey } from "$lib/platform";
   import { linkPrefs } from "$lib/stores/links.svelte";
+  import type { LinkOpenWith, LinkUnderline } from "$lib/editor";
+  import SegmentedRow from "$lib/components/settings/SegmentedRow.svelte";
+  import ToggleRow from "$lib/components/settings/ToggleRow.svelte";
+
+  const OPEN_WITH_OPTIONS: { value: LinkOpenWith; label: string }[] = [
+    { value: "click", label: "Click" },
+    { value: "modclick", label: `${modKey} Click` },
+  ];
+  const UNDERLINE_OPTIONS: { value: LinkUnderline; label: string }[] = [
+    { value: "always", label: "Always" },
+    { value: "hover", label: "On hover" },
+    { value: "never", label: "Never" },
+  ];
 
   // Track whether a Cmd/Ctrl modifier is held so the sample link shows the
   // pointer cursor exactly when a modifier-click would open it, mirroring the
@@ -59,75 +72,33 @@
       : " everywhere, so a stray click never leaves the note."}
   </p>
 
-  <div class="pref-row">
-    <span class="pref-label">Open links with</span>
-    <div class="seg" role="radiogroup" aria-label="Open links with">
-      <button
-        class="seg-btn"
-        aria-checked={linkPrefs.openWith === "click"}
-        role="radio"
-        onclick={() => linkPrefs.setOpenWith("click")}
-      >Click</button>
-      <button
-        class="seg-btn"
-        aria-checked={linkPrefs.openWith === "modclick"}
-        role="radio"
-        onclick={() => linkPrefs.setOpenWith("modclick")}
-      >{modKey} Click</button>
-    </div>
-  </div>
+  <SegmentedRow
+    label="Open links with"
+    options={OPEN_WITH_OPTIONS}
+    value={linkPrefs.openWith}
+    onchange={(v) => linkPrefs.setOpenWith(v)}
+  />
 
-  <div class="pref-row">
-    <span class="pref-label">Underline</span>
-    <div class="seg" role="radiogroup" aria-label="Underline links">
-      <button
-        class="seg-btn"
-        aria-checked={linkPrefs.underline === "always"}
-        role="radio"
-        onclick={() => linkPrefs.setUnderline("always")}
-      >Always</button>
-      <button
-        class="seg-btn"
-        aria-checked={linkPrefs.underline === "hover"}
-        role="radio"
-        onclick={() => linkPrefs.setUnderline("hover")}
-      >On hover</button>
-      <button
-        class="seg-btn"
-        aria-checked={linkPrefs.underline === "never"}
-        role="radio"
-        onclick={() => linkPrefs.setUnderline("never")}
-      >Never</button>
-    </div>
-  </div>
+  <SegmentedRow
+    label="Underline"
+    options={UNDERLINE_OPTIONS}
+    value={linkPrefs.underline}
+    onchange={(v) => linkPrefs.setUnderline(v)}
+  />
 
-  <div class="pref-row">
-    <span class="pref-label">
-      Show destination on hover
-      <span class="pref-sub">The URL stays hidden in the text; hovering reveals where a link goes.</span>
-    </span>
-    <button
-      class="switch"
-      role="switch"
-      aria-checked={linkPrefs.tooltip}
-      aria-label="Show destination on hover"
-      onclick={() => linkPrefs.setTooltip(!linkPrefs.tooltip)}
-    ><span class="switch-thumb"></span></button>
-  </div>
+  <ToggleRow
+    label="Show destination on hover"
+    sub="The URL stays hidden in the text; hovering reveals where a link goes."
+    checked={linkPrefs.tooltip}
+    onchange={(v) => linkPrefs.setTooltip(v)}
+  />
 
-  <div class="pref-row">
-    <span class="pref-label">
-      Mark external links with &#8599;
-      <span class="pref-sub">A small arrow after links that leave the app.</span>
-    </span>
-    <button
-      class="switch"
-      role="switch"
-      aria-checked={linkPrefs.externalIndicator}
-      aria-label="Mark external links"
-      onclick={() => linkPrefs.setExternalIndicator(!linkPrefs.externalIndicator)}
-    ><span class="switch-thumb"></span></button>
-  </div>
+  <ToggleRow
+    label="Mark external links with ↗"
+    sub="A small arrow after links that leave the app."
+    checked={linkPrefs.externalIndicator}
+    onchange={(v) => linkPrefs.setExternalIndicator(v)}
+  />
 </div>
 
 <style>
@@ -197,75 +168,5 @@
     margin: 8px 0 20px;
     color: var(--text-tertiary);
     font-size: 12px;
-  }
-  .pref-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 12px 0;
-    border-top: 1px solid var(--border);
-  }
-  .pref-label {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    font-size: 13px;
-    color: var(--text);
-  }
-  .pref-sub {
-    color: var(--text-tertiary);
-    font-size: 11.5px;
-  }
-  .seg {
-    display: flex;
-    flex-shrink: 0;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    overflow: hidden;
-  }
-  .seg-btn {
-    padding: 4px 12px;
-    font-size: 12px;
-    color: var(--text-secondary);
-  }
-  .seg-btn + .seg-btn {
-    border-left: 1px solid var(--border);
-  }
-  .seg-btn:hover {
-    background: var(--bg-hover);
-  }
-  .seg-btn[aria-checked="true"] {
-    background: var(--accent-soft);
-    color: var(--accent-text);
-    font-weight: 500;
-  }
-  .switch {
-    position: relative;
-    flex-shrink: 0;
-    width: 34px;
-    height: 20px;
-    border-radius: 10px;
-    background: var(--bg-hover);
-    border: 1px solid var(--border);
-    transition: background 0.15s ease;
-  }
-  .switch[aria-checked="true"] {
-    background: var(--accent);
-    border-color: var(--accent);
-  }
-  .switch-thumb {
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    background: var(--bg);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-    transition: transform 0.15s ease;
-  }
-  .switch[aria-checked="true"] .switch-thumb {
-    transform: translateX(14px);
   }
 </style>
