@@ -20,11 +20,16 @@ Already built on `0.9.0-pre` (`44bea94`):
 - `SettingsView.svelte` dashboard layout. 4 tests
 - Shared settings primitives `SegmentedRow.svelte` and `ToggleRow.svelte`
 
+Added while finishing the unit:
+
+- `PrefRow.svelte`, the row shell the two primitives were each carrying their
+  own copy of, along with `SettingsLinks.svelte` and `SettingsImages.svelte`
+- The primitives' frozen API, their keyboard behavior, and `rows.test.ts`.
+  `SettingsLinks.svelte` hand-rolled both controls and is now migrated onto them
+
 ## Remaining to done
 
 - `library_stats` is undocumented in `docs/API.md`
-- The two primitives have no tests and no frozen API, and every other settings
-  page depends on them
 - No changelog entry yet describes this accurately
 
 ## Non-goals
