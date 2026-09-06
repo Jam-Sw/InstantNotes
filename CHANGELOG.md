@@ -12,9 +12,10 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.9.0]
 
 ### Added
-- The Settings front page is now a dashboard: live counts for your notes, tags,
-  Spaces, and attachments, the capture readiness time, and the release notes for
-  the version you are running.
+- The Settings front page is now a dashboard: live counts for your notes and how
+  many are pinned, archived, or in the Trash, for your tags and Spaces, and for
+  your attachments with the space they take up, alongside how quickly capture is
+  ready and the release notes for the version you are running.
 - An Images settings page: choose whether an added image is copied into
   InstantNotes or linked from its original file, set how tall images preview,
   and see where attachments live with a button to open the folder.

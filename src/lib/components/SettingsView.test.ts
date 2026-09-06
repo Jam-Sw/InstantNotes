@@ -50,9 +50,29 @@ describe("SettingsView", () => {
     expect(getByRole("button", { name: /Feedback/ })).toBeTruthy();
   });
 
+  // A fresh install has recorded no capture timing yet; the tile still has to
+  // render rather than showing null or collapsing the grid.
+  it("shows the capture tile as unmeasured when no latency has been recorded", async () => {
+    const { findByText } = open();
+    const tile = (await findByText("Capture")).parentElement;
+    expect(tile?.textContent).toContain("-ms");
+    expect(tile?.textContent).toContain("reveal to ready");
+  });
+
   it("shows the installed version's release notes on the dashboard", async () => {
     const { findByText } = open();
     expect(await findByText(/What's new in v0\.8\.0/)).toBeTruthy();
+  });
+
+  // A build whose version has no changelog section drops the whole block
+  // rather than showing an empty "What's new".
+  it("omits What's new when the running version has no changelog section", async () => {
+    const { queryByText, findByRole } = render(SettingsView, {
+      appVersion: "9.9.9",
+      onBack: vi.fn(),
+    });
+    expect(await findByRole("button", { name: /About/ })).toBeTruthy();
+    expect(queryByText(/What's new/)).toBeNull();
   });
 
   it("opens a page from its card and shows a breadcrumb back to Settings", async () => {

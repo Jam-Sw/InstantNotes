@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { parseChangelog } from "./changelog";
+import changelogRaw from "../../CHANGELOG.md?raw";
+import pkg from "../../package.json";
 
 const SAMPLE = `# Changelog
 
@@ -19,6 +21,22 @@ const SAMPLE = `# Changelog
 
 ### Added
 - The very first thing.
+`;
+
+// 0.9.0 sits undated in the real changelog until the release is cut.
+const UNDATED = `# Changelog
+
+## [Unreleased]
+
+## [0.9.0]
+
+### Added
+- A dashboard on the Settings front page.
+
+## [0.8.0] - 2026-07-11
+
+### Added
+- Spaces.
 `;
 
 describe("parseChangelog", () => {
@@ -53,5 +71,32 @@ describe("parseChangelog", () => {
     const r = parseChangelog(SAMPLE, "Unreleased");
     expect(r).not.toBeNull();
     expect(r!.sections).toHaveLength(0);
+  });
+
+  // A release is undated for its whole pre-release life: the date is written
+  // when it is cut. The dashboard shows that section the entire time, so an
+  // undated heading has to parse like any other.
+  it("reads a release heading that carries no date", () => {
+    const r = parseChangelog(UNDATED, "0.9.0");
+    expect(r).not.toBeNull();
+    expect(r!.date).toBeNull();
+    expect(r!.sections).toEqual([
+      { heading: "Added", items: ["A dashboard on the Settings front page."] },
+    ]);
+  });
+
+  it("stops an undated release at the dated one below it", () => {
+    const r = parseChangelog(UNDATED, "0.9.0");
+    expect(r!.sections.flatMap((s) => s.items).join(" ")).not.toContain("Spaces");
+  });
+
+  // The bundled file is the input the dashboard actually parses, and the
+  // version the app reports is the section it looks for. If a release is cut
+  // without a changelog entry, "What's new" silently disappears; this fails
+  // instead.
+  it("finds a section for the running version in the bundled changelog", () => {
+    const r = parseChangelog(changelogRaw, pkg.version);
+    expect(r).not.toBeNull();
+    expect(r!.sections.length).toBeGreaterThan(0);
   });
 });

@@ -37,7 +37,7 @@ A failed command rejects with:
 { code: string, message: string }
 ```
 
-`code` is one of the stable identifiers in section 11. `message` is a
+`code` is one of the stable identifiers in section 12. `message` is a
 developer-facing description and is never shown to users verbatim.
 
 ## 4. Notes
@@ -108,7 +108,38 @@ carry no note data beyond what the user explicitly exports.
 `capture_input_ready` and `get_capture_latency` instrument the capture window's
 reveal-to-ready latency, surfaced in the About panel as a product number.
 
-## 11. Error codes
+## 11. Dashboard
+
+`library_stats` returns every number on the Settings front page in one call. The
+result is flat, but it is assembled from two places.
+
+| Field | Meaning |
+| --- | --- |
+| `notesTotal` | Notes not in the Trash (active plus archived). |
+| `notesActive` | Not trashed and not archived. |
+| `notesPinned` | Not trashed and pinned. |
+| `notesArchived` | Not trashed and archived. |
+| `notesTrashed` | In the Trash. |
+| `tags` | Rows in `tags`, including tags no live note uses. |
+| `spaces` | Rows in `workspaces`. |
+| `attachmentsCount` | Files directly inside `<app data>/attachments`. |
+| `attachmentsBytes` | Their total size in bytes. |
+
+The seven counts are one `COUNT(*)` each in `core/src/store/stats.rs`, returned
+as the core's `LibraryStats`. The two attachment numbers are not in the store at
+all: the desktop layer reads them off the filesystem and flattens them onto the
+same object, so what crosses the boundary is `LibraryStats` plus two fields. The
+frontend calls that flat shape `DashboardStats` in `types.ts`.
+
+Attachment counting is best-effort on purpose. A missing or unreadable
+attachments directory reports zero rather than failing the whole call, so the
+rest of the dashboard still renders. Every regular file at the top level counts,
+whether or not it is an image; subdirectories are neither traversed nor counted.
+
+The numbers are a snapshot taken when the page is opened. Nothing pushes an
+update, and the dashboard is not on any hot path.
+
+## 12. Error codes
 
 | Code | Meaning |
 | --- | --- |
