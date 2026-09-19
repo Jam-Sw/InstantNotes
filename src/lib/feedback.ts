@@ -43,10 +43,20 @@ const LABEL: Record<FeedbackCategory, string> = {
   other: "feedback",
 };
 
+// A GitHub "new issue" URL is handed to the OS shell (`open_url`), whose
+// length limits are far stricter than a browser's address bar in some
+// environments. The full message is always in the local feedback.jsonl
+// record regardless, so it is safe to truncate what rides in the URL.
+const MAX_URL_BODY_CHARS = 1500;
+const TRUNCATION_NOTE = "\n\n[message truncated — the full text is saved locally]";
+
 /**
  * Build a prefilled GitHub "new issue" URL from a feedback submission. The
  * title is derived from the first line of the message; the diagnostics, when
- * present, are appended under a divider.
+ * present, are appended under a divider. The message is truncated past
+ * `MAX_URL_BODY_CHARS` so a long report cannot produce a URL the OS shell
+ * refuses to open; the diagnostics block is never truncated, since it is
+ * always short.
  */
 export function githubIssueUrl(opts: {
   category: FeedbackCategory;
@@ -55,9 +65,11 @@ export function githubIssueUrl(opts: {
   repo?: string;
 }): string {
   const repo = opts.repo ?? DEFAULT_REPO;
-  const firstLine = opts.message.trim().split("\n")[0].slice(0, 60) || "Feedback";
+  const trimmed = opts.message.trim();
+  const firstLine = trimmed.split("\n")[0].slice(0, 60) || "Feedback";
   const title = `${TITLE_PREFIX[opts.category]}${firstLine}`;
-  let body = opts.message.trim();
+  const truncated = trimmed.length > MAX_URL_BODY_CHARS;
+  let body = truncated ? trimmed.slice(0, MAX_URL_BODY_CHARS) + TRUNCATION_NOTE : trimmed;
   if (opts.diagnostics) body += `\n\n---\n${opts.diagnostics}`;
   const params = new URLSearchParams({ title, body, labels: LABEL[opts.category] });
   return `https://github.com/${repo}/issues/new?${params.toString()}`;
