@@ -37,6 +37,32 @@ describe("githubIssueUrl", () => {
     ).searchParams.get("title");
     expect(fallback).toBe("Feedback");
   });
+
+  it("does not truncate a message within the URL body limit", () => {
+    const message = "x".repeat(1500);
+    const body = new URL(githubIssueUrl({ category: "bug", message })).searchParams.get("body");
+    expect(body).toBe(message);
+  });
+
+  it("truncates a very long message so the URL stays a bounded size", () => {
+    const message = "x".repeat(50_000);
+    const url = githubIssueUrl({ category: "bug", message });
+    // A generous, deliberately loose upper bound: whatever the exact cap,
+    // the URL must never scale with a 50,000-character report.
+    expect(url.length).toBeLessThan(3000);
+    const body = new URL(url).searchParams.get("body") ?? "";
+    expect(body).toContain("truncated");
+    expect(body).toContain("saved locally");
+  });
+
+  it("truncates the message but keeps the full diagnostics block", () => {
+    const message = "x".repeat(50_000);
+    const diagnostics = "- App version: 0.9.0\n- Platform: macOS\n- Notes: 1\n- Attachments: 0";
+    const body = new URL(
+      githubIssueUrl({ category: "bug", message, diagnostics }),
+    ).searchParams.get("body");
+    expect(body).toContain(diagnostics);
+  });
 });
 
 describe("diagnosticsMarkdown", () => {

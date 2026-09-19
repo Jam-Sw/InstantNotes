@@ -28,6 +28,7 @@ vi.mock("$lib/api/client", () => ({
   getAttachmentsDir: vi.fn().mockResolvedValue("/data/attachments"),
   openAttachmentsFolder: vi.fn().mockResolvedValue(undefined),
   submitFeedback: vi.fn().mockResolvedValue(undefined),
+  openFeedbackLog: vi.fn().mockResolvedValue(undefined),
   openUrl: vi.fn().mockResolvedValue(undefined),
 }));
 
