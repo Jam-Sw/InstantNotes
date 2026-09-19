@@ -301,11 +301,10 @@ impl Store {
         // written by a newer build; its schema is unknown to us, so refuse
         // rather than run queries that assume the older shape.
         if current > MIGRATIONS.len() as i64 {
-            return Err(AppError::Migration(format!(
-                "database schema v{current} was created by a newer version of \
-                 the app (this build knows up to v{})",
-                MIGRATIONS.len()
-            )));
+            return Err(AppError::SchemaTooNew {
+                found: current,
+                known: MIGRATIONS.len(),
+            });
         }
         for (idx, sql) in MIGRATIONS.iter().enumerate() {
             let target = (idx + 1) as i64;

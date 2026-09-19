@@ -120,8 +120,27 @@ pub fn run() {
             if let Some(parent) = db_path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
-            let (store, recovered) =
-                Store::open_or_recover(&db_path).map_err(|e| format!("cannot open store: {e}"))?;
+            let (store, recovered) = match Store::open_or_recover(&db_path) {
+                Ok(ok) => ok,
+                // Intact file, unknown future schema: nothing here is safe to
+                // migrate, recover, or overwrite. Tell the user and stop,
+                // rather than let the error propagate out to build().expect()
+                // (a panic there aborts the process before the dialog plugin
+                // ever gets to run its event loop).
+                Err(e) if e.is_schema_too_new() => {
+                    let handle = app.handle().clone();
+                    app.dialog()
+                        .message(
+                            "This notes library was created by a newer version of \
+                             InstantNotes. Update the app to open it.",
+                        )
+                        .title("Library too new")
+                        .kind(MessageDialogKind::Error)
+                        .show(move |_| handle.exit(1));
+                    return Ok(());
+                }
+                Err(e) => return Err(format!("cannot open store: {e}").into()),
+            };
             app.manage(AppState {
                 store: Mutex::new(store),
             });

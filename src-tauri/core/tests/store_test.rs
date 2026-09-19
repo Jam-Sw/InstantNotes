@@ -724,6 +724,32 @@ fn migrate_refuses_user_version_above_known_migrations() {
         Err(e) => e,
     };
     assert_eq!(err.code(), "MIGRATION_ERROR");
+    assert!(err.is_schema_too_new());
+}
+
+#[test]
+fn open_or_recover_does_not_treat_a_future_schema_as_corruption() {
+    // A future-schema file is intact, just unreadable by this build. Moving
+    // it aside and starting fresh, the way open_or_recover does for a
+    // genuinely corrupt file, would silently sideline a real library.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("future.db");
+    {
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.pragma_update(None, "user_version", (MIGRATIONS.len() + 1) as i64)
+            .unwrap();
+    }
+    let err = match Store::open_or_recover(&path) {
+        Ok(_) => panic!("open_or_recover should refuse a future schema version, not recover it"),
+        Err(e) => e,
+    };
+    assert!(err.is_schema_too_new());
+    // Untouched at its original path, not moved aside the way a corrupt file
+    // would be.
+    assert!(path.exists());
+    let mut moved_aside = path.as_os_str().to_os_string();
+    moved_aside.push(".corrupt-1");
+    assert!(!std::path::Path::new(&moved_aside).exists());
 }
 
 #[test]

@@ -37,6 +37,9 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the previously open note.
 - Links set to open with Cmd/Ctrl+Click now show the pointer cursor while the
   modifier is held, so it reads as clickable.
+- Opening a notes library written by a newer version of InstantNotes no longer
+  crashes the app on launch. It now shows a message telling you to update
+  instead.
 
 ## [0.8.0] - 2026-07-11
 
