@@ -8,6 +8,7 @@
   import { confirmDialog } from "$lib/stores/confirm.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
   import { importImageFile, allowImageFile } from "$lib/api/client";
+  import { attachmentMarkdown } from "$lib/editor/images";
   import { formatDate, formatExact, wordCount } from "$lib/format";
   import type { FormatKind } from "$lib/markdown-format";
   import { NO_MARKS, type ActiveMarks } from "$lib/markdown-active";
@@ -34,7 +35,7 @@
     try {
       if (imagePrefs.storage === "copy") {
         const name = await importImageFile(picked);
-        editorRef?.insertText(`![](attachments/${name})`);
+        editorRef?.insertText(attachmentMarkdown(name));
       } else {
         await allowImageFile(picked);
         editorRef?.insertText(`![](${picked})`);
