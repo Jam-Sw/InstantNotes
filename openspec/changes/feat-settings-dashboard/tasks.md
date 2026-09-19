@@ -64,10 +64,15 @@ holds the migrated Links page to the shared rows and proves a change persists.
 
 ## Dashboard
 
-- [ ] Verify every dashboard number against a library with archived, trashed,
-      and pinned notes present at once. **Left for jam in the running app**: the
-      seven counts are unit-tested in `core/src/store/stats.rs`, but agreement
-      between those counts and what the sidebar shows is only observable live
+- [x] Verify every dashboard number against a library with archived, trashed,
+      and pinned notes present at once. **Confirmed by jam in the running app**:
+      the seven counts are unit-tested in `core/src/store/stats.rs`, but
+      agreement between those counts and what the sidebar shows is only
+      observable live. Checked against `dev-0.9.0.db`, a real (not synthetic)
+      v3-schema library, after the app's own pre-migration backup mechanism
+      surfaced it as the way to test this build against real data without
+      touching the primary library (which had drifted to a v4 schema from an
+      unmerged whiteboard branch)
 - [x] Confirm the attachments count and size come from the filesystem, not the
       store, and behave when the attachments directory is missing
 - [x] Confirm capture readiness renders when no measurement has been recorded
@@ -99,4 +104,4 @@ emptying the dashboard.
 - [x] `docs/API.md`: document `library_stats` and its `LibraryStats` shape
 - [x] `CHANGELOG.md`: entry describing the dashboard as it actually shipped
 - [x] `cargo test`, `npm test`, `npm run check` pass
-- [ ] Move this change to `openspec/changes/archive/`
+- [x] Move this change to `openspec/changes/archive/`
