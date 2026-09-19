@@ -91,10 +91,32 @@ to defaults when a key is absent or malformed.
 | --- | --- |
 | `save_attachment` | Store one pasted/dropped image; raw bytes in the body, extension in `x-attachment-ext`. Returns the generated filename. |
 | `get_attachments_dir` | Absolute path of the attachments directory. |
+| `import_image_file` | Copy an image picked through a file dialog into the attachments directory (the "copy in" storage mode). Takes an absolute `path`; returns the generated filename. |
+| `allow_image_file` | Allow one existing local image file to load through the asset protocol (the "link the original file" storage mode). Takes an absolute `path` to a file that must already exist; widens the asset scope to that single file only, never a directory. Idempotent. |
+| `open_attachments_folder` | Reveal the attachments folder in the OS file manager. |
 
 Images live as files under `<app data>/attachments` and notes reference them by
 relative `attachments/<name>` markdown paths. The webview reads them back over
 the asset protocol, scoped to that directory in `tauri.conf.json`.
+
+`import_image_file` and `save_attachment` both land copied images in the same
+directory with the same `<uuid>.<ext>` naming; the former is for the toolbar's
+"Insert image..." action (an existing file on disk), the latter for paste and
+drop (bytes already in memory).
+
+Link mode (`allow_image_file`) references the original file by its absolute
+path instead of copying it, so the note body carries that path directly
+(`![](/abs/path/to/file.png)`), not an `attachments/<name>` reference. Both
+`import_image_file` and `allow_image_file` reject a path whose extension is
+outside `png`, `jpg`, `jpeg`, `gif`, `webp` with a `VALIDATION` error naming the
+rejected extension; `allow_image_file` additionally requires the file to exist.
+Cancelling the file picker never calls either command — the frontend checks the
+dialog result before invoking.
+
+Link mode is a live-editing convenience only. It is not portable: a note that
+uses it is not guaranteed to reproduce on a device without the original file at
+that same path. `feat-portable-vault-sync` resolves this at the vault
+serializer, not here — see that change's `tasks.md` for the recorded decision.
 
 ## 9. Windows and shell
 
