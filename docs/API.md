@@ -161,7 +161,31 @@ whether or not it is an image; subdirectories are neither traversed nor counted.
 The numbers are a snapshot taken when the page is opened. Nothing pushes an
 update, and the dashboard is not on any hot path.
 
-## 12. Error codes
+## 12. Feedback
+
+| Command | Purpose |
+| --- | --- |
+| `submit_feedback` | Append one feedback submission to `<app data>/feedback.jsonl`. |
+| `open_feedback_log` | Reveal `feedback.jsonl` in the OS file manager. |
+
+`submit_feedback` takes a `FeedbackInput`:
+
+| Field | Meaning |
+| --- | --- |
+| `category` | `"bug"`, `"idea"`, or `"other"`, from the Feedback page's kind selector. |
+| `message` | The submission text. Rejected with `VALIDATION` when empty after trimming. |
+| `appVersion` | Optional; the running app version. |
+| `diagnostics` | Optional opt-in snapshot (`appVersion`, `platform`, `notes`, `attachments` counts), stored verbatim as shown to the user, or omitted when the user declined it. |
+
+Each call appends one JSON line with a millisecond timestamp; nothing reads
+the file back or prunes it. `submit_feedback` never touches the network — the
+GitHub hand-off (a prefilled `issues/new` URL) runs entirely on the frontend
+through `open_url` after the local write succeeds, so feedback is durable even
+offline or when no browser opens. No note content (title, body, tags, Spaces)
+is ever included; only what `FeedbackDiagnostics` (`src/lib/feedback.ts`)
+names.
+
+## 13. Error codes
 
 | Code | Meaning |
 | --- | --- |
