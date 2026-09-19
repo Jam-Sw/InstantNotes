@@ -19,6 +19,10 @@ class EditorPrefs {
   showExactTime = $state(false);
 
   #loaded = false;
+  // A setter called while init()'s read is still in flight must win: without
+  // this, the read resolving afterward would silently overwrite the user's
+  // change back to the old persisted value.
+  #touched = new Set<string>();
 
   async init(): Promise<void> {
     if (this.#loaded) return;
@@ -29,15 +33,22 @@ class EditorPrefs {
         getSetting<boolean>(KEY_TOOLBAR),
         getSetting<boolean>(KEY_EXACT_TIME),
       ]);
-      if (typeof z === "number" && z >= MIN && z <= MAX) this.zoom = z;
-      if (typeof open === "boolean") this.toolbarOpen = open;
-      if (typeof exact === "boolean") this.showExactTime = exact;
+      if (!this.#touched.has(KEY_ZOOM) && typeof z === "number" && z >= MIN && z <= MAX) {
+        this.zoom = z;
+      }
+      if (!this.#touched.has(KEY_TOOLBAR) && typeof open === "boolean") {
+        this.toolbarOpen = open;
+      }
+      if (!this.#touched.has(KEY_EXACT_TIME) && typeof exact === "boolean") {
+        this.showExactTime = exact;
+      }
     } catch {
       // Settings are best-effort; fall back to defaults silently.
     }
   }
 
   setShowExactTime(v: boolean): void {
+    this.#touched.add(KEY_EXACT_TIME);
     this.showExactTime = v;
     void setSetting(KEY_EXACT_TIME, v);
   }
@@ -47,6 +58,7 @@ class EditorPrefs {
   }
 
   setZoom(z: number): void {
+    this.#touched.add(KEY_ZOOM);
     this.zoom = this.#clamp(z);
     void setSetting(KEY_ZOOM, this.zoom);
   }
@@ -64,6 +76,7 @@ class EditorPrefs {
   }
 
   toggleToolbar(): void {
+    this.#touched.add(KEY_TOOLBAR);
     this.toolbarOpen = !this.toolbarOpen;
     void setSetting(KEY_TOOLBAR, this.toolbarOpen);
   }
