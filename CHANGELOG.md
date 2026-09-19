@@ -9,7 +9,7 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [0.9.0]
+## [0.9.0] - 2026-09-19
 
 ### Added
 - The Settings front page is now a dashboard: live counts for your notes and how
@@ -40,6 +40,11 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Opening a notes library written by a newer version of InstantNotes no longer
   crashes the app on launch. It now shows a message telling you to update
   instead.
+- Linux: fixed a blank or corrupted window on many systems, caused by the
+  WebKit compositor. The README now lists Linux prerequisites and Arch/CachyOS
+  build notes.
+- The release script guards its Windows path check so cutting a release
+  no longer crashes there.
 
 ## [0.8.0] - 2026-07-11
 
