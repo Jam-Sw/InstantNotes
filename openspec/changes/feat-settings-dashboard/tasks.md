@@ -98,5 +98,5 @@ emptying the dashboard.
 
 - [x] `docs/API.md`: document `library_stats` and its `LibraryStats` shape
 - [x] `CHANGELOG.md`: entry describing the dashboard as it actually shipped
-- [ ] `cargo test`, `npm test`, `npm run check` pass
+- [x] `cargo test`, `npm test`, `npm run check` pass
 - [ ] Move this change to `openspec/changes/archive/`
