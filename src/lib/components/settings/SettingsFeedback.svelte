@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { getLibraryStats, submitFeedback, openUrl } from "$lib/api/client";
+  import { getLibraryStats, submitFeedback, openFeedbackLog, openUrl } from "$lib/api/client";
   import { isMac } from "$lib/platform";
   import { toasts } from "$lib/stores/toasts.svelte";
   import {
@@ -48,7 +48,16 @@
     try {
       // Durable local record first, so feedback is never lost even offline.
       await submitFeedback({ category, message: text, appVersion, diagnostics: diag });
-      // Then hand the user a prefilled GitHub issue to actually file it.
+    } catch (e) {
+      toasts.show(`Couldn't send feedback. ${e instanceof Error ? e.message : e}`);
+      sending = false;
+      return;
+    }
+    // The local record is safe from here on; message is cleared regardless of
+    // whether the GitHub hand-off below succeeds, so a browser failure never
+    // reads as feedback having been lost.
+    message = "";
+    try {
       await openUrl(
         githubIssueUrl({
           category,
@@ -57,11 +66,18 @@
         }),
       );
       toasts.show("Thanks. Saved locally, and GitHub is opening to file it.");
-      message = "";
-    } catch (e) {
-      toasts.show(`Couldn't send feedback. ${e instanceof Error ? e.message : e}`);
+    } catch {
+      toasts.show("Saved locally, but couldn't open GitHub automatically.");
     } finally {
       sending = false;
+    }
+  }
+
+  async function revealLog() {
+    try {
+      await openFeedbackLog();
+    } catch (e) {
+      toasts.show(`Couldn't open the feedback log. ${e instanceof Error ? e.message : e}`);
     }
   }
 </script>
@@ -106,7 +122,12 @@
     <button class="fb-send" disabled={!message.trim() || sending} onclick={send}>
       {sending ? "Sending…" : "Send feedback"}
     </button>
+    <button class="fb-reveal" onclick={revealLog}>Reveal saved feedback</button>
   </div>
+  <p class="fine-print">
+    Every submission is appended to a local file, kept in full, and never
+    pruned automatically.
+  </p>
 </div>
 
 <style>
@@ -165,6 +186,25 @@
   }
   .fb-actions {
     margin-top: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .fine-print {
+    margin: 8px 0 0;
+    color: var(--text-tertiary);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .fb-reveal {
+    padding: 8px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--accent);
+    font-size: 13px;
+  }
+  .fb-reveal:hover {
+    background: var(--bg-hover);
   }
   .fb-send {
     padding: 8px 18px;

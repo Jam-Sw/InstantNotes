@@ -190,6 +190,7 @@ export const openAttachmentsFolder = () =>
 export const getLibraryStats = () => call<DashboardStats>("library_stats");
 export const submitFeedback = (input: FeedbackInput) =>
   call<void>("submit_feedback", { input });
+export const openFeedbackLog = () => call<void>("open_feedback_log");
 
 // ---- app lifecycle ----
 // Answer to "app:quit-requested": pending edits are flushed, exit for real now.

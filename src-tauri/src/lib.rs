@@ -419,6 +419,7 @@ pub fn run() {
             open_attachments_folder,
             library_stats,
             submit_feedback,
+            open_feedback_log,
             open_url,
             quit_app,
             capture_input_ready,

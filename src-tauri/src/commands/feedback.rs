@@ -19,6 +19,18 @@ pub struct FeedbackInput {
     diagnostics: Option<serde_json::Value>,
 }
 
+fn feedback_log_path(app: &AppHandle) -> CmdResult<std::path::PathBuf> {
+    let dir = app.path().app_data_dir().map_err(|e| CmdError {
+        code: "STORAGE_ERROR".into(),
+        message: format!("no app data dir: {e}"),
+    })?;
+    std::fs::create_dir_all(&dir).map_err(|e| CmdError {
+        code: "STORAGE_ERROR".into(),
+        message: format!("could not create data dir: {e}"),
+    })?;
+    Ok(dir.join("feedback.jsonl"))
+}
+
 #[tauri::command(async)]
 pub fn submit_feedback(app: AppHandle, input: FeedbackInput) -> CmdResult<()> {
     let message = input.message.trim();
@@ -44,15 +56,7 @@ pub fn submit_feedback(app: AppHandle, input: FeedbackInput) -> CmdResult<()> {
         message: format!("could not encode feedback: {e}"),
     })?;
 
-    let dir = app.path().app_data_dir().map_err(|e| CmdError {
-        code: "STORAGE_ERROR".into(),
-        message: format!("no app data dir: {e}"),
-    })?;
-    std::fs::create_dir_all(&dir).map_err(|e| CmdError {
-        code: "STORAGE_ERROR".into(),
-        message: format!("could not create data dir: {e}"),
-    })?;
-    let path = dir.join("feedback.jsonl");
+    let path = feedback_log_path(&app)?;
     let mut file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -64,6 +68,27 @@ pub fn submit_feedback(app: AppHandle, input: FeedbackInput) -> CmdResult<()> {
     writeln!(file, "{line}").map_err(|e| CmdError {
         code: "STORAGE_ERROR".into(),
         message: format!("could not write feedback: {e}"),
+    })?;
+    Ok(())
+}
+
+/// Reveal `feedback.jsonl` in the OS file manager, from the Feedback settings
+/// page — the only way a user can see what has accumulated there, since
+/// nothing else surfaces or prunes it (recorded in
+/// `openspec/changes/archive/feat-in-app-feedback/tasks.md`). Reveals rather
+/// than opens: the file is meant to be located, not edited.
+#[tauri::command(async)]
+pub fn open_feedback_log(app: AppHandle) -> CmdResult<()> {
+    let path = feedback_log_path(&app)?;
+    if !path.exists() {
+        std::fs::write(&path, "").map_err(|e| CmdError {
+            code: "STORAGE_ERROR".into(),
+            message: format!("could not create feedback log: {e}"),
+        })?;
+    }
+    app.opener().reveal_item_in_dir(&path).map_err(|e| CmdError {
+        code: "STORAGE_ERROR".into(),
+        message: format!("could not reveal feedback log: {e}"),
     })?;
     Ok(())
 }

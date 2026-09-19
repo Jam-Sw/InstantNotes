@@ -27,7 +27,9 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the reference as written, or drop images entirely when you copy a note as
   context.
 - Send feedback from inside the app: the new Feedback page files a bug or idea,
-  saves a copy on your machine, and opens a prefilled GitHub issue.
+  saves a copy on your machine, and opens a prefilled GitHub issue. A "Reveal
+  saved feedback" button shows exactly what has accumulated there; nothing is
+  pruned automatically.
 
 ### Fixed
 - A stray caret no longer lingers in notes you switch between: each note now
