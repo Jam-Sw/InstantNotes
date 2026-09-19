@@ -89,6 +89,6 @@ column.
       `open_attachments_folder`
 - [x] `CHANGELOG.md`: entries for the Images page, insert-from-file, and the
       contexting modes — already present under `[0.9.0]` from `44bea94`
-- [x] `cargo test`, `npm test`, `npm run check` pass — 70 Rust tests,
+- [x] `cargo test`, `npm test`, `npm run check` pass — 92 Rust tests,
       339 frontend tests (up from 318), 0 type errors across 492 files
 - [x] Move this change to `openspec/changes/archive/`
