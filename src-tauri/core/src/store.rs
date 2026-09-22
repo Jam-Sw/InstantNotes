@@ -105,6 +105,17 @@ ALTER TABLE notes DROP COLUMN sync_state;
 ALTER TABLE notes DROP COLUMN version;
 ALTER TABLE notes DROP COLUMN last_synced_at;
 "#,
+    // v4: note surface mode, document (markdown) or whiteboard (canvas
+    // host). Carried here byte-for-byte from feat/note-whiteboard, which
+    // shipped it in pre-release builds before being lifted off this branch:
+    // libraries those builds touched are already at v4 with these columns,
+    // so v4 must mean this everywhere. Nothing reads the columns until the
+    // whiteboard returns (SEQUENCE.md unit 12); that branch drops its own
+    // copy of this migration when it rebases.
+    r#"
+ALTER TABLE notes ADD COLUMN content_kind TEXT NOT NULL DEFAULT 'document';
+ALTER TABLE notes ADD COLUMN surface_data TEXT;
+"#,
 ];
 
 const NOTE_COLUMNS: &str = "id, title, body, created_at, updated_at, last_opened_at, \
@@ -495,5 +506,47 @@ mod migration_tests {
         assert_eq!(note.body, "the body");
         let all = store.list_notes(Default::default()).unwrap();
         assert!(all.iter().any(|n| n.id == "n1"));
+    }
+
+    /// A library written by a pre-release build that carried the whiteboard
+    /// (schema v4: content_kind and surface_data) must open, not be refused
+    /// as too new, and keep its whiteboard data.
+    #[test]
+    fn a_whiteboard_v4_library_opens() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("whiteboard.db");
+        {
+            let conn = Connection::open(&path).unwrap();
+            for sql in &MIGRATIONS[..3] {
+                conn.execute_batch(sql).unwrap();
+            }
+            conn.execute_batch(
+                "ALTER TABLE notes ADD COLUMN content_kind TEXT NOT NULL DEFAULT 'document';
+                 ALTER TABLE notes ADD COLUMN surface_data TEXT;",
+            )
+            .unwrap();
+            conn.pragma_update(None, "user_version", 4i64).unwrap();
+            conn.execute(
+                "INSERT INTO notes (id, title, body, created_at, updated_at, content_kind) \
+                 VALUES ('n1', 'Board', 'the body', 't', 't', 'whiteboard')",
+                [],
+            )
+            .unwrap();
+        }
+
+        let mut store = Store::open(&path).unwrap();
+
+        let cols = note_columns(&store.conn);
+        for col in ["content_kind", "surface_data"] {
+            assert!(cols.contains(&col.to_string()), "missing {col}");
+        }
+        let kind: String = store
+            .conn
+            .query_row("SELECT content_kind FROM notes WHERE id = 'n1'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(kind, "whiteboard");
+        assert_eq!(store.get_note("n1", false).unwrap().body, "the body");
     }
 }

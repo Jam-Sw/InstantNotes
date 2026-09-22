@@ -45,6 +45,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Opening a notes library written by a newer version of InstantNotes no longer
   crashes the app on launch. It now shows a message telling you to update
   instead.
+- A library touched by a pre-release build with the whiteboard now opens
+  instead of being refused as written by a newer version.
 - Linux: fixed a blank or corrupted window on many systems, caused by the
   WebKit compositor. The README now lists Linux prerequisites and Arch/CachyOS
   build notes.
