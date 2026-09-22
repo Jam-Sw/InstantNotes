@@ -443,6 +443,37 @@ fn list_supports_limit_offset_and_title_sort() {
     assert_eq!(titles, vec!["banana", "cherry"]);
 }
 
+/// Rows tied on the sort column must still come back in one fixed order, or
+/// LIMIT/OFFSET paging (the vault export pages through every note) can skip
+/// or repeat a row that lands on a page boundary. The id breaks the tie.
+#[test]
+fn list_breaks_sort_ties_by_id_so_paging_is_stable() {
+    let mut s = store();
+    let mut ids: Vec<String> = (0..20)
+        .map(|i| create(&mut s, &format!("note {i}")).id)
+        .collect();
+    // One bulk statement stamps every note with the same updated_at.
+    s.set_notes_flags(&ids, Some(false), None).unwrap();
+    ids.sort();
+
+    let all = s.list_notes(NoteFilter::default()).unwrap();
+    let listed: Vec<String> = all.into_iter().map(|n| n.id).collect();
+    assert_eq!(listed, ids, "tied rows are not ordered by id");
+
+    let mut paged = Vec::new();
+    for offset in (0..20).step_by(2) {
+        let page = s
+            .list_notes(NoteFilter {
+                limit: Some(2),
+                offset: Some(offset),
+                ..Default::default()
+            })
+            .unwrap();
+        paged.extend(page.into_iter().map(|n| n.id));
+    }
+    assert_eq!(paged, ids);
+}
+
 // ---- search ----
 
 #[test]

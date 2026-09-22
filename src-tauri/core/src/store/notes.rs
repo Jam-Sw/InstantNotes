@@ -255,11 +255,13 @@ impl Store {
         let offset = filter.offset.unwrap_or(0).max(0);
 
         // Pinned notes float to the top of every live list; trash keeps
-        // plain recency order.
+        // plain recency order. The id is a final tiebreaker so rows equal on
+        // the sort column keep one fixed order, which LIMIT/OFFSET paging
+        // needs to never skip or repeat a row across a page boundary.
         let pinned_first = if deleted { "" } else { "is_pinned DESC, " };
         let sql = format!(
             "SELECT {NOTE_COLUMNS} FROM notes WHERE {} \
-             ORDER BY {pinned_first}{order_column} {order_dir} \
+             ORDER BY {pinned_first}{order_column} {order_dir}, id ASC \
              LIMIT {limit} OFFSET {offset}",
             conditions.join(" AND ")
         );
