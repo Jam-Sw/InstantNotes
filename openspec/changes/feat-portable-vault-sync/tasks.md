@@ -11,7 +11,7 @@ No behavior change. SQLite stays authoritative.
 - [x] `core/src/vault/write.rs`: vault root resolution via the caller's `dest`, atomic write (tmp + fsync + rename)
 - [x] `core/src/vault/serialize.rs`: `VaultNote` → Markdown + YAML frontmatter, defaults omitted
 - [x] `core/src/vault/parse.rs`: Markdown + frontmatter → `VaultNote`, tolerant of missing/extra keys
-- [ ] Excalidraw sidecar: `surface_data` envelope ↔ standard `.excalidraw` file. **Not applicable yet**: the whiteboard itself was lifted off this branch onto `feat/note-whiteboard` before this stage landed (see `SEQUENCE.md` unit 0 and unit 12). Its v4 columns now exist (stage 2 notes) but nothing writes them yet. Revisit when the whiteboard returns.
+- [x] Excalidraw sidecar: `surface_data` envelope to a standard `.excalidraw` file beside the note file, plus `kind: whiteboard` in frontmatter (`vault/board.rs`). Landed with the whiteboard's return (SEQUENCE.md unit 12, `changes/archive/feat-note-whiteboard`). Writing only: reading an edited `.excalidraw` back is stage 3.
 - [x] `instantnotes.yaml` reader/writer (tag colors, space list): `core/src/vault/manifest.rs`
 - [x] Round-trip property tests: `parse(serialize(n)) == n` for every field combination. `vault::round_trip_tests` (36 combinations plus YAML-hostile/unicode/empty-body edge cases), and a real-SQLite round trip in `core/tests/store_test.rs::vault_export`
 - [x] `export_vault` command + Settings action: write the whole library to a chosen folder. `commands::vault::export_vault`, Settings → Vault page
@@ -67,8 +67,9 @@ SQLite still authoritative. The vault is written but not read.
 - [x] Flush pending `vault_dirty` rows on startup (crash recovery), and one
       chunk on quit
 - [x] Filename slug, case-insensitive collision suffix, rename-at-flush.
-      Case-only renames rename the file rather than delete it on macOS. Sidecar
-      rename not applicable until the whiteboard returns
+      Case-only renames rename the file rather than delete it on macOS. A
+      board's `.excalidraw` file moves, trashes, and deletes with its note
+      under the same rules, tracked by `board_sha` (migration v6)
 - [x] Trash: move file to `trash/` on soft delete, back on restore, unlink on
       destroy (via tombstones, only while the file still holds our bytes)
 - [x] Only files the mirror owns are touched: a foreign file at a note's name is
@@ -86,13 +87,12 @@ SQLite still authoritative. The vault is written but not read.
 
 ## Stage 3: Filesystem authoritative
 
-**Gate before starting:** real libraries hold whiteboard notes. The
-maintainer's has 6 with canvas data in `surface_data`, written by the
-pre-release whiteboard builds. Stage 2 mirrors only their body text, which is
-harmless while SQLite is authoritative. Once the vault is the source of truth,
-a rebuild from it would drop those canvases. Either the whiteboard returns
-first (unit 12, with the sidecar), or stage 3 carries `kind` and
-`surface_data` through the vault before authority flips.
+**Gate before starting (met 2026-09-22):** real libraries hold whiteboard
+notes, and a rebuild from a vault that carried only their text would drop
+their canvases. The whiteboard returned first (unit 12): the vault now writes
+`kind: whiteboard` and each board's `.excalidraw` file. What stage 3 still
+owes boards is the other direction: ingest must read the canvas file back
+into `surface_data`, and treat a board without one as an empty scene.
 
 - [ ] `notify` watcher with 150 ms debounce, wired into the Tauri shell layer
 - [ ] Echo suppression by `file_sha` comparison per `vault_path`

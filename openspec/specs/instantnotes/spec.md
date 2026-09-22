@@ -82,6 +82,27 @@ The app SHALL provide full-text search over note title and body.
 - **THEN** the app sanitizes the query
 - **AND** does not expose a search syntax error to the user
 
+### Requirement: Whiteboard Notes
+The app SHALL let a note be a whiteboard, a freeform canvas that stays a note: listed, tagged, filed in Spaces, trashed, and searched like any other.
+
+#### Scenario: Turn a note into a whiteboard
+- **WHEN** the user turns a document into a whiteboard and confirms
+- **THEN** the note's text appears on the board as a text block
+- **AND** the note cannot be turned back into a document
+
+#### Scenario: Search a whiteboard
+- **WHEN** the user searches for words written on a board
+- **THEN** the board appears in the results
+- **AND** every result is text visible on that board
+
+#### Scenario: Never lose the last stroke
+- **WHEN** the user draws on a board and immediately switches notes, trashes the board, or quits
+- **THEN** the drawing is saved
+
+#### Scenario: A board in the vault
+- **WHEN** a vault folder is set and a board is saved
+- **THEN** the vault holds the note file and a standard `.excalidraw` file beside it with the same name
+
 ### Requirement: Privacy By Default
 The app SHALL avoid writing note content to logs or diagnostics.
 

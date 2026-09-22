@@ -70,7 +70,8 @@ touch persistence?
       `backup/0.9.0-pre-with-whiteboard`. This removed migration v4, the
       `react`/`react-dom`/`@excalidraw` runtime deps, and four defects from the
       release. See unit 12. Migration v4 alone came back on 2026-09-22 (see
-      unit 8): pre-release builds had already applied it to real libraries
+      unit 8): pre-release builds had already applied it to real libraries.
+      The whiteboard itself returned the same day, defects fixed (unit 12)
 - [x] Dependabot deferred to unit 6
 
 Verified after the lift: 298 tests, svelte-check 487 files / 0 errors, Rust green.
@@ -188,36 +189,16 @@ Nothing removes an image when the last note referencing it is destroyed.
 `feat-portable-vault-sync/design.md` section 14. After unit 9 every reference and
 every file is visible in one place. Defects go before features.
 
-## 12. Whiteboard surface
+## 12. Whiteboard surface (DONE, shipped in 0.9.0)
 
-Returns from `feat/note-whiteboard`. Its migration v4 is already in 0.9.0 (see
-unit 8), so the branch drops its own copy of it when it rebases; nothing else
-on the branch has landed.
-
-**Here, not earlier, because the ordering makes it cheaper.** Landing after the
-vault means the whiteboard sidecar is a new file type added to a format with no
-legacy data — additive. Landing before means the vault serializes an engine
-format that is not chosen, and changing the engine later migrates user data on
-disk *and* in SQLite.
-
-The engine decision is still open. Svelte Flow was wired, then swapped for
-Excalidraw; neither was chosen.
-
-Four defects found on the branch, to fix or design away when it resumes:
-
-1. **Silent canvas data loss.** `ExcalidrawCanvas.svelte` clears its 400 ms save
-   timer in `disposeRootOnly()` without firing it — on unmount, note switch, and
-   quit. The quit path flushes `library.flushPendingEdits()`, which this timer is
-   not part of. Contradicts the 0.8.0 promise that quitting cannot lose the last
-   moments of typing
-2. **Dead engine abstraction.** `registry.ts` and three interfaces in `types.ts`
-   have zero callers. Reads as though engine-swapping is supported; nothing
-   implements it
-3. **Theme ignored.** `theme: "dark"` hardcoded while the app ships six themes
-4. **Convert semantics contradict the dialog.** The confirm warns the written
-   body is lost. It is not — it stays in the row and stays FTS-indexed, just
-   invisible. Search can land on a whiteboard for text that cannot be seen.
-   `f806b6f`, despite its subject, changed only the list preview
+Returned from `feat/note-whiteboard` onto `0.9.0-pre` on 2026-09-22, after vault
+stages 1 and 2, the order this unit asked for: the canvas file is additive to
+a vault format that already existed. The engine is Excalidraw, chosen for its
+open file format. The four defects found on the branch (silent canvas loss on
+unmount and quit, a dead engine abstraction, a hardcoded dark theme, and
+searchable text hidden by convert) are each fixed or designed away; see
+`changes/archive/feat-note-whiteboard/tasks.md`. Migration v6 carries boards
+through the vault mirror.
 
 ## 13. Graph
 
@@ -249,5 +230,5 @@ authority to the filesystem and must get their own `-pre` branch.
 
 ## Safety refs
 
-- `feat/note-whiteboard` — the whiteboard work, intact
-- `backup/0.9.0-pre-with-whiteboard` — `0.9.0-pre` as it stood before the lift
+- `feat/note-whiteboard`: the pre-release whiteboard work, intact (superseded by unit 12)
+- `backup/0.9.0-pre-with-whiteboard`: `0.9.0-pre` as it stood before the lift
