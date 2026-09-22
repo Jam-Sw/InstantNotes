@@ -115,8 +115,9 @@ dialog result before invoking.
 
 Link mode is a live-editing convenience only. It is not portable: a note that
 uses it is not guaranteed to reproduce on a device without the original file at
-that same path. `feat-portable-vault-sync` resolves this at the vault
-serializer, not here — see that change's `tasks.md` for the recorded decision.
+that same path. The vault serializer (`export_vault`, §12) always materializes
+a copy at export time regardless of storage mode; see
+`feat-portable-vault-sync`'s `tasks.md` for the recorded decision.
 
 ## 9. Windows and shell
 
@@ -161,7 +162,36 @@ whether or not it is an image; subdirectories are neither traversed nor counted.
 The numbers are a snapshot taken when the page is opened. Nothing pushes an
 update, and the dashboard is not on any hot path.
 
-## 12. Feedback
+## 12. Vault export
+
+| Command | Purpose |
+| --- | --- |
+| `export_vault` | Write the whole library to `dest` (an absolute folder path) as a vault: one Markdown file per note plus `instantnotes.yaml`, per `feat-portable-vault-sync/design.md` §3. |
+
+Stage 1 only (`feat-portable-vault-sync`, `SEQUENCE.md` unit 7): a one-way,
+read-only snapshot. SQLite stays authoritative and nothing reads the folder
+back yet. `dest` is chosen by a native folder-picker dialog in JS, the same
+trust boundary as `export_note_file`.
+
+Every note, active, archived, and trashed, is included. Active and archived
+notes land at the vault root; trashed notes land under `dest/trash/`.
+Filenames are the note's title (auto-derived when the user never set one
+explicitly), sanitized for cross-platform filesystem safety, with the first
+six characters of the note's id appended on a collision. Tag colors and the
+full list of Spaces (including empty ones) go into `instantnotes.yaml`;
+everything under `<app data>/attachments` is copied into `dest/attachments`.
+
+Re-exporting to a folder that already holds a previous export does not remove
+files for notes deleted or retitled since the last run; each call only writes
+and overwrites, it never prunes. Acceptable for a one-way snapshot, recorded
+in `feat-portable-vault-sync/tasks.md` for stage 2 (the dual-write flush) to
+account for.
+
+The store-to-vault gather (`instantnotes_core::vault::collect_from_store`)
+pages through `list_notes` rather than trusting its default 500-row limit, so
+a library larger than that is not silently truncated.
+
+## 13. Feedback
 
 | Command | Purpose |
 | --- | --- |
@@ -185,7 +215,7 @@ offline or when no browser opens. No note content (title, body, tags, Spaces)
 is ever included; only what `FeedbackDiagnostics` (`src/lib/feedback.ts`)
 names.
 
-## 13. Error codes
+## 14. Error codes
 
 | Code | Meaning |
 | --- | --- |
