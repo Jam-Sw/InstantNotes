@@ -45,7 +45,9 @@ mod tests {
                 ..Default::default()
             })
             .unwrap();
-        store.set_notes_flags(&[a.id.clone()], Some(true), None).unwrap();
+        store
+            .set_notes_flags(std::slice::from_ref(&a.id), Some(true), None)
+            .unwrap();
         store.soft_delete_note(&b.id).unwrap();
         store.get_or_create_workspace("Ideas").unwrap();
 

@@ -86,9 +86,11 @@ pub fn open_feedback_log(app: AppHandle) -> CmdResult<()> {
             message: format!("could not create feedback log: {e}"),
         })?;
     }
-    app.opener().reveal_item_in_dir(&path).map_err(|e| CmdError {
-        code: "STORAGE_ERROR".into(),
-        message: format!("could not reveal feedback log: {e}"),
-    })?;
+    app.opener()
+        .reveal_item_in_dir(&path)
+        .map_err(|e| CmdError {
+            code: "STORAGE_ERROR".into(),
+            message: format!("could not reveal feedback log: {e}"),
+        })?;
     Ok(())
 }
