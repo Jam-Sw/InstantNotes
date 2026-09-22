@@ -6,7 +6,8 @@ Instantly externalize your writing. Capture and locate your thoughts.
 
 - **Quick Capture:** Global hotkey (`Opt` / `Ctrl+Shift+Space`) with drafts.
 - **Command Palette:** `Cmd/Ctrl+P` for actions, search, and themes.
-- **Flexible Organization:** Group notes with Workspaces and `#inline` tags instead of strict folders.
+- **Flexible Organization:** Group notes with Spaces and `#inline` tags instead of strict folders.
+- **Plain Markdown Vault:** Keep a live copy of every note as a Markdown file in a folder you choose, readable in any editor.
 - **100% Local & Private:** Everything lives in a local SQLite database. Zero telemetry.
 
 ## Installation
@@ -71,9 +72,9 @@ npm run tauri:dev
 ### Test
 
 ```sh
-cargo test --manifest-path src-tauri/Cargo.toml  # Rust core tests
-npm run check                                    # type-check frontend (runs svelte-kit sync)
-npm test                                         # frontend unit tests (Vitest)
+cargo test --workspace --manifest-path src-tauri/Cargo.toml  # Rust tests (app and core)
+npm run check                                                # type-check frontend (runs svelte-kit sync)
+npm test                                                     # frontend unit tests (Vitest)
 ```
 
 ### Build
