@@ -13,11 +13,15 @@
 //!   wrote (`file_sha`); a file edited outside the app is left in place.
 //! - The vault root is never created. A missing root (an unmounted drive)
 //!   fails the flush and leaves every note dirty until it returns.
+//! - A whiteboard's canvas is a `.excalidraw` file named after its note file
+//!   (`vault/board.rs`). It moves, trashes, and deletes with the note under
+//!   the same rules, tracked by its own hash in `board_sha`.
 
 use super::*;
 use crate::vault::{
-    atomic_write, candidate_filenames, parse_note, serialize_manifest, serialize_note,
-    FlushOutcome, Manifest, ManifestSpace, ManifestTag, VaultNote, VaultReport, VaultStatus,
+    atomic_write, candidate_filenames, canvas_file, canvas_rel, note_rel_of_canvas, parse_note,
+    same_canvas, serialize_manifest, serialize_note, FlushOutcome, Manifest, ManifestSpace,
+    ManifestTag, VaultNote, VaultReport, VaultStatus, CANVAS_EXT,
 };
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -80,6 +84,14 @@ fn holds_our_bytes(path: &Path, sha: Option<&str>) -> bool {
         (Ok(bytes), Some(sha)) => sha256_hex(&bytes) == sha,
         _ => false,
     }
+}
+
+/// Where a note's files were last written, and the hashes of what was
+/// written there.
+struct WrittenFiles {
+    rel: Option<String>,
+    sha: Option<String>,
+    board_sha: Option<String>,
 }
 
 impl Store {
@@ -153,6 +165,8 @@ impl Store {
             .into_iter()
             .map(|w| w.name)
             .collect();
+        let canvas = (note.content_kind == CONTENT_KIND_WHITEBOARD)
+            .then(|| canvas_file(note.surface_data.as_deref()));
         Ok(VaultNote {
             id: note.id,
             title: if title_is_auto {
@@ -168,6 +182,8 @@ impl Store {
             deleted_at: note.deleted_at,
             tags,
             spaces,
+            kind: note.content_kind,
+            canvas,
         })
     }
 
@@ -246,12 +262,25 @@ impl Store {
         };
         for (id, rel) in rows {
             report.checked += 1;
+            let expected = self.vault_note(&id)?;
             match fs::read_to_string(root.join(&rel)) {
-                Err(_) => report.missing.push(rel),
+                Err(_) => report.missing.push(rel.clone()),
                 Ok(text) => {
-                    if parse_note(&text).ok() != Some(self.vault_note(&id)?) {
-                        report.diverged.push(rel);
+                    let as_parsed = VaultNote {
+                        canvas: None,
+                        ..expected.clone()
+                    };
+                    if parse_note(&text).ok() != Some(as_parsed) {
+                        report.diverged.push(rel.clone());
                     }
+                }
+            }
+            if let Some(canvas) = &expected.canvas {
+                let crel = canvas_rel(&rel);
+                match fs::read_to_string(root.join(&crel)) {
+                    Err(_) => report.missing.push(crel),
+                    Ok(text) if !same_canvas(&text, canvas) => report.diverged.push(crel),
+                    Ok(_) => {}
                 }
             }
         }
@@ -262,12 +291,17 @@ impl Store {
             };
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().into_owned();
-                let is_note_file = name.ends_with(".md") && !name.starts_with('.');
-                if !is_note_file || !entry.file_type().is_ok_and(|t| t.is_file()) {
+                let is_vault_file =
+                    (name.ends_with(".md") || name.ends_with(CANVAS_EXT)) && !name.starts_with('.');
+                if !is_vault_file || !entry.file_type().is_ok_and(|t| t.is_file()) {
                     continue;
                 }
                 let rel = format!("{prefix}{name}");
-                if !self.vault_path_claimed(&rel, None)? {
+                let claimed = match note_rel_of_canvas(&rel) {
+                    Some(note_rel) => self.board_claims(&note_rel)?,
+                    None => self.vault_path_claimed(&rel, None)?,
+                };
+                if !claimed {
                     report.orphans.push(rel);
                 }
             }
@@ -292,7 +326,10 @@ impl Store {
     /// changes or mirroring stops: those files are no longer ours to manage.
     fn forget_vault_paths(&mut self) -> Result<()> {
         let tx = self.conn.transaction()?;
-        tx.execute("UPDATE notes SET vault_path = NULL, file_sha = NULL", [])?;
+        tx.execute(
+            "UPDATE notes SET vault_path = NULL, file_sha = NULL, board_sha = NULL",
+            [],
+        )?;
         tx.execute("DELETE FROM vault_tombstones", [])?;
         tx.commit()?;
         Ok(())
@@ -321,6 +358,21 @@ impl Store {
             .is_some())
     }
 
+    /// Whether a whiteboard has its note file at `note_rel`, which makes the
+    /// canvas file beside it that board's.
+    fn board_claims(&self, note_rel: &str) -> Result<bool> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT 1 FROM notes WHERE vault_path = ?1 COLLATE NOCASE \
+                 AND content_kind = ?2 LIMIT 1",
+                params![note_rel, CONTENT_KIND_WHITEBOARD],
+                |_| Ok(()),
+            )
+            .optional()?
+            .is_some())
+    }
+
     fn flush_into(&mut self, root: &Path, max: usize) -> Result<FlushOutcome> {
         if !root.is_dir() {
             return Err(root_missing(root));
@@ -340,7 +392,12 @@ impl Store {
         };
         for (rel, sha) in tombstones {
             let path = root.join(&rel);
-            if !self.vault_path_claimed(&rel, None)? && holds_our_bytes(&path, sha.as_deref()) {
+            // A canvas is claimed through the note file it sits beside.
+            let claimed = match note_rel_of_canvas(&rel) {
+                Some(note_rel) => self.vault_path_claimed(&note_rel, None)?,
+                None => self.vault_path_claimed(&rel, None)?,
+            };
+            if !claimed && holds_our_bytes(&path, sha.as_deref()) {
                 if let Err(e) = fs::remove_file(&path) {
                     out.errors
                         .push(io_error("cannot remove", &path, e).to_string());
@@ -354,18 +411,25 @@ impl Store {
             )?;
         }
 
-        let dirty: Vec<(String, Option<String>, Option<String>)> = {
+        let dirty: Vec<(String, WrittenFiles)> = {
             let mut stmt = self.conn.prepare(
-                "SELECT id, vault_path, file_sha FROM notes WHERE vault_dirty = 1 \
+                "SELECT id, vault_path, file_sha, board_sha FROM notes WHERE vault_dirty = 1 \
                  ORDER BY seq LIMIT ?1",
             )?;
             let rows = stmt.query_map(params![max as i64], |r| {
-                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+                Ok((
+                    r.get(0)?,
+                    WrittenFiles {
+                        rel: r.get(1)?,
+                        sha: r.get(2)?,
+                        board_sha: r.get(3)?,
+                    },
+                ))
             })?;
             rows.collect::<rusqlite::Result<_>>()?
         };
-        for (id, old_rel, old_sha) in dirty {
-            match self.write_note_file(root, &id, old_rel.as_deref(), old_sha.as_deref()) {
+        for (id, old) in dirty {
+            match self.write_note_file(root, &id, &old) {
                 Ok(()) => out.written += 1,
                 Err(e) => out.errors.push(format!("note {id}: {e}")),
             }
@@ -384,22 +448,20 @@ impl Store {
         Ok(out)
     }
 
-    /// Write one note's file, moving it when its name or trash state
-    /// changed, then record where it went and mark it clean.
-    fn write_note_file(
-        &mut self,
-        root: &Path,
-        id: &str,
-        old_rel: Option<&str>,
-        old_sha: Option<&str>,
-    ) -> Result<()> {
+    /// Write one note's file (and a whiteboard's canvas beside it), moving
+    /// them when the name or trash state changed, then record where they
+    /// went and mark the note clean.
+    fn write_note_file(&mut self, root: &Path, id: &str, old: &WrittenFiles) -> Result<()> {
         let note = self.vault_note(id)?;
         let bytes = serialize_note(&note);
+        let canvas = note.canvas.as_deref();
         let title = note
             .title
             .clone()
             .unwrap_or_else(|| domain::derive_title(&note.body));
+        let old_rel = old.rel.as_deref();
         let old_path = old_rel.map(|r| root.join(r));
+        let old_canvas = old_rel.map(|r| root.join(canvas_rel(r)));
 
         let mut chosen = None;
         for name in candidate_filenames(&title, id) {
@@ -416,14 +478,21 @@ impl Store {
                 continue;
             }
             let path = root.join(&rel);
-            let free = fs::symlink_metadata(&path).is_err();
-            let ours = free
-                || old_path.as_deref().is_some_and(|old| same_file(old, &path))
-                || fs::read_to_string(&path)
-                    .ok()
-                    .and_then(|text| parse_note(&text).ok())
-                    .is_some_and(|existing| existing.id == id);
-            if ours {
+            let adopted = fs::read_to_string(&path)
+                .ok()
+                .and_then(|text| parse_note(&text).ok())
+                .is_some_and(|existing| existing.id == id);
+            let ours = |path: &Path, old: Option<&Path>| {
+                fs::symlink_metadata(path).is_err()
+                    || old.is_some_and(|old| same_file(old, path))
+                    || adopted
+            };
+            // A canvas takes its note file's name, so a board needs both
+            // names free or already its own. A canvas beside a note file
+            // that is this note's own is its own too.
+            let canvas_ok =
+                canvas.is_none() || ours(&root.join(canvas_rel(&rel)), old_canvas.as_deref());
+            if ours(&path, old_path.as_deref()) && canvas_ok {
                 chosen = Some(rel);
                 break;
             }
@@ -431,33 +500,55 @@ impl Store {
         let rel =
             chosen.ok_or_else(|| AppError::Conflict(format!("no free filename for note {id}")))?;
         let path = root.join(&rel);
+        let canvas_path = root.join(canvas_rel(&rel));
+        let moved = old_rel.is_some_and(|r| r != rel);
 
-        if let Some(old) = old_path
-            .as_deref()
-            .filter(|_| old_rel != Some(rel.as_str()))
-        {
-            // A case-only rename of our own file: rename first, or on a
-            // case-insensitive filesystem the write below keeps the old
-            // spelling and the removal below would take the only copy.
-            if same_file(old, &path) {
-                fs::rename(old, &path).map_err(|e| io_error("cannot rename", old, e))?;
+        // A case-only rename of our own file: rename first, or on a
+        // case-insensitive filesystem the write below keeps the old spelling
+        // and the removal below would take the only copy.
+        if moved {
+            for (old, new) in [
+                (old_path.as_deref(), &path),
+                (old_canvas.as_deref(), &canvas_path),
+            ] {
+                if let Some(old) = old.filter(|old| same_file(old, new)) {
+                    fs::rename(old, new).map_err(|e| io_error("cannot rename", old, e))?;
+                }
             }
         }
         atomic_write(&path, bytes.as_bytes()).map_err(|e| io_error("cannot write", &path, e))?;
-        if let Some(old) = old_path
-            .as_deref()
-            .filter(|_| old_rel != Some(rel.as_str()))
-        {
+        if let Some(canvas) = canvas {
+            atomic_write(&canvas_path, canvas.as_bytes())
+                .map_err(|e| io_error("cannot write", &canvas_path, e))?;
+        }
+        if moved {
             // Left behind when edited outside the app: that edit is not ours
             // to discard, and verify reports the file as an orphan.
-            if !same_file(old, &path) && holds_our_bytes(old, old_sha) {
-                fs::remove_file(old).map_err(|e| io_error("cannot remove", old, e))?;
+            for (old, new, sha) in [
+                (old_path.as_deref(), &path, old.sha.as_deref()),
+                (
+                    old_canvas.as_deref(),
+                    &canvas_path,
+                    old.board_sha.as_deref(),
+                ),
+            ] {
+                if let Some(old) =
+                    old.filter(|old| !same_file(old, new) && holds_our_bytes(old, sha))
+                {
+                    fs::remove_file(old).map_err(|e| io_error("cannot remove", old, e))?;
+                }
             }
         }
 
         self.conn.execute(
-            "UPDATE notes SET vault_path = ?1, file_sha = ?2, vault_dirty = 0 WHERE id = ?3",
-            params![rel, sha256_hex(bytes.as_bytes()), id],
+            "UPDATE notes SET vault_path = ?1, file_sha = ?2, board_sha = ?3, vault_dirty = 0 \
+             WHERE id = ?4",
+            params![
+                rel,
+                sha256_hex(bytes.as_bytes()),
+                canvas.map(|c| sha256_hex(c.as_bytes())),
+                id
+            ],
         )?;
         Ok(())
     }

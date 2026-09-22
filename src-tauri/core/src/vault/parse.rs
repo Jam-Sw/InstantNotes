@@ -4,6 +4,7 @@
 //! set, which this type deliberately does not set).
 
 use super::{Frontmatter, VaultNote};
+use crate::types::CONTENT_KIND_DOCUMENT;
 use std::fmt;
 
 #[derive(Debug)]
@@ -63,5 +64,9 @@ pub fn parse_note(text: &str) -> Result<VaultNote, ParseError> {
         deleted_at: frontmatter.deleted,
         tags: frontmatter.tags,
         spaces: frontmatter.spaces,
+        kind: frontmatter
+            .kind
+            .unwrap_or_else(|| CONTENT_KIND_DOCUMENT.to_string()),
+        canvas: None,
     })
 }

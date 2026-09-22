@@ -3,6 +3,7 @@
 //! point of the format being human-readable.
 
 use super::{Frontmatter, VaultNote};
+use crate::types::CONTENT_KIND_DOCUMENT;
 
 pub fn serialize_note(note: &VaultNote) -> String {
     let frontmatter = Frontmatter {
@@ -10,6 +11,7 @@ pub fn serialize_note(note: &VaultNote) -> String {
         created: note.created_at.clone(),
         updated: note.updated_at.clone(),
         title: note.title.clone(),
+        kind: (note.kind != CONTENT_KIND_DOCUMENT).then(|| note.kind.clone()),
         pinned: note.is_pinned,
         archived: note.is_archived,
         deleted: note.deleted_at.clone(),

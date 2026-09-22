@@ -2,6 +2,7 @@
 //! This file holds the pure format; `write` and `export` do the filesystem
 //! I/O, and the stage 2 flush lives on `Store` (`store/vault.rs`). Design: openspec/changes/feat-portable-vault-sync/design.md §3.2.
 
+pub mod board;
 pub mod export;
 pub mod manifest;
 pub mod mirror;
@@ -10,6 +11,7 @@ pub mod parse;
 pub mod serialize;
 pub mod write;
 
+pub use board::{canvas_file, canvas_rel, note_rel_of_canvas, same_canvas, CANVAS_EXT};
 pub use export::{collect_from_store, export_vault};
 pub use manifest::{parse_manifest, serialize_manifest, Manifest, ManifestSpace, ManifestTag};
 pub use mirror::{check_vault_location, is_within, FlushOutcome, VaultReport, VaultStatus};
@@ -29,6 +31,9 @@ struct Frontmatter {
     updated: String,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     title: Option<String>,
+    /// `whiteboard` for a board; omitted for a document, the default.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    kind: Option<String>,
     #[serde(skip_serializing_if = "is_false", default)]
     pinned: bool,
     #[serde(skip_serializing_if = "is_false", default)]
@@ -66,11 +71,17 @@ pub struct VaultNote {
     pub deleted_at: Option<String>,
     pub tags: Vec<String>,
     pub spaces: Vec<String>,
+    /// `document` or `whiteboard` (`types::CONTENT_KIND_*`).
+    pub kind: String,
+    /// A whiteboard's `.excalidraw` file, written beside the note file and
+    /// never inside it, so parsing a note file always yields `None`.
+    pub canvas: Option<String>,
 }
 
 #[cfg(test)]
 mod round_trip_tests {
     use super::*;
+    use crate::types::{CONTENT_KIND_DOCUMENT, CONTENT_KIND_WHITEBOARD};
 
     fn base(id: &str) -> VaultNote {
         VaultNote {
@@ -84,6 +95,8 @@ mod round_trip_tests {
             deleted_at: None,
             tags: Vec::new(),
             spaces: Vec::new(),
+            kind: CONTENT_KIND_DOCUMENT.to_string(),
+            canvas: None,
         }
     }
 
@@ -119,6 +132,15 @@ mod round_trip_tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn a_whiteboard_round_trips_its_kind() {
+        let mut n = base("id-wb");
+        n.kind = CONTENT_KIND_WHITEBOARD.to_string();
+        let text = serialize_note(&n);
+        assert!(text.contains("\nkind: whiteboard\n"), "{text}");
+        assert_eq!(parse_note(&text).unwrap(), n);
     }
 
     #[test]

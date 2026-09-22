@@ -179,6 +179,34 @@ CREATE TRIGGER workspaces_vault_au AFTER UPDATE OF name ON workspaces
     WHERE id IN (SELECT note_id FROM note_workspaces WHERE workspace_id = new.id);
 END;
 "#,
+    // v6: whiteboards in the vault. A board's canvas is a `.excalidraw` file
+    // beside its note file (vault/board.rs); board_sha is the sha256 of the
+    // canvas bytes last written, so the canvas gets the same "only remove
+    // what still holds our bytes" rule as the note file. The update trigger
+    // now also watches the whiteboard columns, and a hard delete queues the
+    // canvas for removal alongside the note file.
+    r#"
+ALTER TABLE notes ADD COLUMN board_sha TEXT;
+
+DROP TRIGGER notes_vault_au;
+CREATE TRIGGER notes_vault_au AFTER UPDATE OF
+  title, title_is_auto, body, created_at, updated_at,
+  is_pinned, is_archived, is_deleted, deleted_at,
+  content_kind, surface_data ON notes BEGIN
+  UPDATE notes SET vault_dirty = 1 WHERE seq = new.seq;
+END;
+
+DROP TRIGGER notes_vault_ad;
+CREATE TRIGGER notes_vault_ad AFTER DELETE ON notes
+  WHEN old.vault_path IS NOT NULL BEGIN
+  INSERT OR REPLACE INTO vault_tombstones (vault_path, file_sha)
+    VALUES (old.vault_path, old.file_sha);
+  INSERT OR REPLACE INTO vault_tombstones (vault_path, file_sha)
+    SELECT substr(old.vault_path, 1, length(old.vault_path) - 3) || '.excalidraw',
+           old.board_sha
+    WHERE old.board_sha IS NOT NULL;
+END;
+"#,
 ];
 
 const NOTE_COLUMNS: &str = "id, title, body, created_at, updated_at, last_opened_at, \
@@ -621,6 +649,48 @@ mod migration_tests {
             .unwrap();
         assert_eq!(kind, "whiteboard");
         assert_eq!(store.get_note("n1", false).unwrap().body, "the body");
+    }
+
+    /// A library at v5 (the vault mirror without whiteboards) gains the
+    /// canvas hash column, and a board's canvas is tombstoned with its note.
+    #[test]
+    fn v6_tracks_whiteboard_canvases_in_the_vault() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("v5.db");
+        {
+            let conn = Connection::open(&path).unwrap();
+            for sql in &MIGRATIONS[..5] {
+                conn.execute_batch(sql).unwrap();
+            }
+            conn.pragma_update(None, "user_version", 5i64).unwrap();
+        }
+
+        let store = Store::open(&path).unwrap();
+        assert!(note_columns(&store.conn).contains(&"board_sha".to_string()));
+        store
+            .conn
+            .execute_batch(
+                "INSERT INTO notes (id, title, body, created_at, updated_at, vault_path, \
+                 file_sha, board_sha) VALUES ('n1', 'B', '', 't', 't', 'B.md', 'a', 'b');
+                 DELETE FROM notes WHERE id = 'n1';",
+            )
+            .unwrap();
+        let mut stmt = store
+            .conn
+            .prepare("SELECT vault_path, file_sha FROM vault_tombstones ORDER BY vault_path")
+            .unwrap();
+        let rows: Vec<(String, String)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        assert_eq!(
+            rows,
+            vec![
+                ("B.excalidraw".to_string(), "b".to_string()),
+                ("B.md".to_string(), "a".to_string()),
+            ]
+        );
     }
 
     /// A 0.8/0.9-era library (schema v3) gains the vault mirror columns on

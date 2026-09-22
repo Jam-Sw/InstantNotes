@@ -4,8 +4,8 @@
 //! which is the one that knows where `<app data>/attachments` is.
 
 use super::{
-    atomic_write, collision_key, note_filename, serialize_manifest, serialize_note, Manifest,
-    VaultNote,
+    atomic_write, canvas_rel, collision_key, note_filename, serialize_manifest, serialize_note,
+    Manifest, VaultNote,
 };
 use crate::domain;
 use crate::error::Result;
@@ -98,12 +98,11 @@ pub fn export_vault(notes: &[VaultNote], manifest: &Manifest, dest: &Path) -> io
         let filename = note_filename(&display_title, &note.id, taken);
         taken.insert(collision_key(&filename));
 
-        let path = if is_trashed {
-            trash_dir.join(&filename)
-        } else {
-            dest.join(&filename)
-        };
-        atomic_write(&path, serialize_note(note).as_bytes())?;
+        let dir = if is_trashed { &trash_dir } else { dest };
+        atomic_write(&dir.join(&filename), serialize_note(note).as_bytes())?;
+        if let Some(canvas) = &note.canvas {
+            atomic_write(&dir.join(canvas_rel(&filename)), canvas.as_bytes())?;
+        }
     }
 
     atomic_write(
@@ -131,6 +130,8 @@ mod tests {
             deleted_at: deleted.then(|| "2026-01-02T00:00:00.000000Z".to_string()),
             tags: Vec::new(),
             spaces: Vec::new(),
+            kind: crate::types::CONTENT_KIND_DOCUMENT.to_string(),
+            canvas: None,
         }
     }
 
