@@ -45,16 +45,22 @@ fn locked<'a>(
     })
 }
 
+// Every write command announces itself through one of these, and no read
+// does, so they double as the vault mirror's flush trigger (shell/mirror.rs).
+
 fn emit_notes_changed(app: &AppHandle) {
     let _ = app.emit("notes:changed", ());
+    request_vault_flush(app);
 }
 
 fn emit_tags_changed(app: &AppHandle) {
     let _ = app.emit("tags:changed", ());
+    request_vault_flush(app);
 }
 
 fn emit_workspaces_changed(app: &AppHandle) {
     let _ = app.emit("workspaces:changed", ());
+    request_vault_flush(app);
 }
 
 // ---- shortcut status ----
@@ -70,7 +76,7 @@ pub(crate) struct ShortcutStatus {
 mod commands;
 mod shell;
 use commands::{feedback::*, notes::*, settings::*, stats::*, tags::*, vault::*, workspaces::*};
-use shell::{capture::*, files::*, quit::*, windows::*};
+use shell::{capture::*, files::*, mirror::*, quit::*, windows::*};
 
 // ---- app shell ----
 
@@ -120,7 +126,7 @@ pub fn run() {
             if let Some(parent) = db_path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
-            let (store, recovered) = match Store::open_or_recover(&db_path) {
+            let (mut store, recovered) = match Store::open_or_recover(&db_path) {
                 Ok(ok) => ok,
                 // Intact file, unknown future schema: nothing here is safe to
                 // migrate, recover, or overwrite. Tell the user and stop,
@@ -141,10 +147,25 @@ pub fn run() {
                 }
                 Err(e) => return Err(format!("cannot open store: {e}").into()),
             };
+            // Resume the live vault mirror, if one is set. A setting that
+            // cannot be read leaves mirroring off rather than failing launch.
+            if store.attach_saved_vault().is_err() {
+                eprintln!("vault mirror setting unreadable; mirroring stays off");
+            }
             app.manage(AppState {
                 store: Mutex::new(store),
             });
             app.manage(CaptureMetrics::default());
+            app.manage(start_vault_flusher(app.handle()));
+            // Catch up anything a crash or a missing drive left pending, and
+            // any attachment added while mirroring was paused.
+            {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    let _ = mirror_attachments(&handle);
+                    request_vault_flush(&handle);
+                });
+            }
             if recovered {
                 // Non-blocking on purpose: setup must finish (single-instance
                 // handshake, window creation) whether or not the user has
@@ -438,6 +459,9 @@ pub fn run() {
             open_attachments_folder,
             library_stats,
             export_vault,
+            get_vault_status,
+            set_vault_folder,
+            verify_vault,
             submit_feedback,
             open_feedback_log,
             open_url,

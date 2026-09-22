@@ -14,6 +14,11 @@ pub(crate) static QUIT_READY: AtomicBool = AtomicBool::new(false);
 /// How long a quit waits for the webview flush before exiting anyway.
 const QUIT_FLUSH_GRACE_MS: u64 = 800;
 
+/// The vault mirror gets one chunk on the way out: enough for anything just
+/// typed, without making quit wait on a large first mirror, which the next
+/// launch resumes from the pending rows.
+const QUIT_VAULT_CHUNKS: usize = 1;
+
 /// Ask the webviews to flush, then exit. The fallback timer exists because
 /// quit must not block forever on a dead webview: if the frontend never
 /// answers with quit_app, exit anyway after the grace period.
@@ -25,6 +30,7 @@ pub(crate) fn request_quit(app: &AppHandle) {
         // swap keeps the fallback and quit_app from racing: whichever runs
         // first marks the handshake done and the other becomes a no-op.
         if !QUIT_READY.swap(true, Ordering::AcqRel) {
+            flush_vault_now(&handle, Some(QUIT_VAULT_CHUNKS));
             handle.exit(0);
         }
     });
@@ -34,6 +40,7 @@ pub(crate) fn request_quit(app: &AppHandle) {
 #[tauri::command]
 pub fn quit_app(app: AppHandle) {
     QUIT_READY.store(true, Ordering::Release);
+    flush_vault_now(&app, Some(QUIT_VAULT_CHUNKS));
     app.exit(0);
 }
 

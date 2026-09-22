@@ -141,6 +141,8 @@ pub fn save_attachment(app: AppHandle, request: tauri::ipc::Request<'_>) -> CmdR
         code: "STORAGE_ERROR".into(),
         message: format!("could not write attachment: {e}"),
     })?;
+    // Best effort: a vault that can't take it now gets it at next launch.
+    let _ = mirror_attachments(&app);
     Ok(name)
 }
 
@@ -188,6 +190,7 @@ pub fn import_image_file(app: AppHandle, path: String) -> CmdResult<String> {
         code: "STORAGE_ERROR".into(),
         message: format!("could not write attachment: {e}"),
     })?;
+    let _ = mirror_attachments(&app);
     Ok(name)
 }
 

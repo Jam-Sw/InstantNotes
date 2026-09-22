@@ -43,7 +43,7 @@
     { id: "images", title: "Images", desc: "How images are stored, shown, and shared." },
     { id: "links", title: "Links", desc: "How links in your notes look and open." },
     { id: "contexting", title: "Contexting", desc: "Shape what copying a note hands to other tools and AI." },
-    { id: "vault", title: "Vault", desc: "Export every note as plain Markdown files." },
+    { id: "vault", title: "Vault", desc: "Your notes as plain Markdown files in a folder." },
     { id: "feedback", title: "Feedback", desc: "Report a bug or send an idea." },
   ];
 

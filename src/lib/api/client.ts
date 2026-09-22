@@ -13,6 +13,8 @@ import type {
   Tag,
   TagWithCount,
   UpdateNotePatch,
+  VaultReport,
+  VaultStatus,
   Workspace,
   WorkspaceWithCount,
 } from "./types";
@@ -192,6 +194,15 @@ export const openAttachmentsFolder = () =>
 // this folder back yet. The destination is chosen by a native folder-picker
 // dialog in JS, same trust boundary as exportNoteFile.
 export const exportVault = (dest: string) => call<void>("export_vault", { dest });
+
+// ---- live vault mirror ----
+// Stage 2: every change is written into the chosen folder shortly after it
+// happens. SQLite stays authoritative; the folder is written, never read.
+export const getVaultStatus = () => call<VaultStatus>("get_vault_status");
+/** Start, move, or (with null) stop the mirror. */
+export const setVaultFolder = (path: string | null) =>
+  call<VaultStatus>("set_vault_folder", { path });
+export const verifyVault = () => call<VaultReport>("verify_vault");
 
 // ---- dashboard + feedback ----
 export const getLibraryStats = () => call<DashboardStats>("library_stats");

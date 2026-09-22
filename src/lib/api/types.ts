@@ -108,3 +108,26 @@ export interface FeedbackInput {
   /** Opt-in diagnostics snapshot the user agreed to attach. */
   diagnostics?: unknown;
 }
+
+/** The live vault mirror (API.md §12). `path` is null when mirroring is off. */
+export interface VaultStatus {
+  path: string | null;
+  /** Notes changed since their file was last written. */
+  pending: number;
+  lastError: string | null;
+  lastFlushedAt: string | null;
+}
+
+/** A read-only comparison of the vault folder with the library. Paths are
+ *  relative to the vault folder. */
+export interface VaultReport {
+  checked: number;
+  /** Notes whose file is gone. */
+  missing: string[];
+  /** Files that no longer match their note (edited outside the app). */
+  diverged: string[];
+  /** Markdown files in the folder that are not notes the mirror wrote. */
+  orphans: string[];
+  pending: number;
+  manifestOk: boolean;
+}

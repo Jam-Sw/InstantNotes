@@ -30,11 +30,14 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   saves a copy on your machine, and opens a prefilled GitHub issue. A "Reveal
   saved feedback" button shows exactly what has accumulated there; nothing is
   pruned automatically.
-- A new Vault settings page can export a full copy of your library: every note
-  as a plain Markdown file with its tags and Spaces, plus your attachments, to
-  a folder you choose. Readable and editable with InstantNotes closed, in any
-  editor, on any device. This is a one-way snapshot for now: InstantNotes still
-  keeps its own copy, and nothing is synced back in yet.
+- A Vault: keep every note as a plain Markdown file, with its tags and Spaces,
+  in a folder you choose. Readable in any editor, with InstantNotes closed, on
+  any device. Changes reach the folder a moment after you make them, trashed
+  notes move to its trash folder, and your attachments come along. Point it at
+  a synced folder to carry your notes elsewhere. "Check vault" confirms every
+  file matches its note. For now InstantNotes writes the folder but does not
+  read it back, so edit your notes in the app. A one-time "Export a copy" is
+  there too.
 
 ### Fixed
 - A stray caret no longer lingers in notes you switch between: each note now
