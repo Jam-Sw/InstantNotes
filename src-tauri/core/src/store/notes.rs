@@ -33,6 +33,22 @@ impl Store {
         self.fetch_note(&id)
     }
 
+    /// Whether the note's title is still auto-derived from its body rather
+    /// than set explicitly. Not on `Note` itself: IPC callers never need
+    /// it; the vault serializer does (design.md §3.2: frontmatter omits
+    /// `title` exactly when this is true).
+    pub fn title_is_auto(&self, id: &str) -> Result<bool> {
+        self.conn
+            .query_row(
+                "SELECT title_is_auto FROM notes WHERE id = ?1",
+                params![id],
+                |r| r.get::<_, i64>(0),
+            )
+            .optional()?
+            .map(|v| v != 0)
+            .ok_or_else(|| AppError::NotFound(format!("note {id} not found")))
+    }
+
     /// Fetch a note. When `touch` is true, updates `last_opened_at`.
     pub fn get_note(&mut self, id: &str, touch: bool) -> Result<Note> {
         if touch {
