@@ -52,6 +52,7 @@ developer-facing description and is never shown to users verbatim.
 | `permanently_delete_note` | Destroy a note and its rows for good. |
 | `list_notes` | List notes for a status/space/tag filter. Rows carry `contentKind` but not `surfaceData`. |
 | `search_notes` | Full-text search over title and body (section 7 of DATA_MODEL.md). |
+| `library_graph` | Live notes, every tag and Space, and one link per note-to-tag or note-to-Space membership, for the Graph view. Derived on every call; nothing about the graph is stored. Trashed and archived notes are left out. |
 
 `contentKind` is `document` or `whiteboard`. `update_note` rejects turning a
 whiteboard back into a document and `surfaceData` on a document, both with
