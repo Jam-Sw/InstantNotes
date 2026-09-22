@@ -48,6 +48,7 @@ describe("SettingsView", () => {
     expect(getByRole("button", { name: /Images/ })).toBeTruthy();
     expect(getByRole("button", { name: /Links/ })).toBeTruthy();
     expect(getByRole("button", { name: /Contexting/ })).toBeTruthy();
+    expect(getByRole("button", { name: /Vault/ })).toBeTruthy();
     expect(getByRole("button", { name: /Feedback/ })).toBeTruthy();
   });
 
