@@ -30,7 +30,7 @@ The app SHALL store notes, tags, settings, and search index data locally in SQLi
 - **AND** keeps a manually entered title unless the title is edited again
 
 ### Requirement: Library Organization
-The app SHALL provide a library window for browsing, editing, tagging, archiving, and deleting notes, with a sidebar offering exactly two sections: All Notes and Workspaces.
+The app SHALL provide a library window for browsing, editing, tagging, archiving, and deleting notes, with a sidebar offering All Notes, Graph, and Workspaces (shown as Spaces), plus Revisit while there are captures to revisit.
 
 #### Scenario: Browse all notes
 - **WHEN** the user chooses All Notes
@@ -50,6 +50,18 @@ The app SHALL provide a library window for browsing, editing, tagging, archiving
 - **WHEN** the user adds or removes a tag from a note
 - **THEN** the sidebar tag counts update
 - **AND** selecting a tag filters the note list to matching notes
+
+### Requirement: Graph View
+The app SHALL draw the library as a graph of notes, tags, and Spaces, linked by the tags and Spaces each note carries, derived from the notes at read time with nothing about the graph stored.
+
+#### Scenario: See how notes connect
+- **WHEN** the user opens Graph
+- **THEN** every live note with a tag or a Space appears, joined to those tags and Spaces
+- **AND** the app says how many notes have neither and are left out
+
+#### Scenario: Go from the graph
+- **WHEN** the user chooses a note, a tag, or a Space on the graph
+- **THEN** the app opens that note, filters by that tag, or opens that Space
 
 ### Requirement: Workspaces
 The app SHALL let the user create named workspaces that collect notes and help organize them.

@@ -203,11 +203,15 @@ searchable text hidden by convert) are each fixed or designed away; see
 `changes/archive/feat-note-whiteboard/tasks.md`. Migration v6 carries boards
 through the vault mirror.
 
-## 13. Graph
+## 13. Graph (DONE, shipped in 0.9.0)
 
-Consumes note state and adds none, provided it is derived at read time. Storing
-edges or node positions makes it persistence work and moves it by the insertion
-rule. Keep it derived.
+Consumes note state and adds none: `library_graph` derives notes, tags, Spaces,
+and their memberships from the existing tables on every read, and the layout
+is computed in the view from positions seeded by id. Nothing is stored,
+positions included, so the insertion rule does not move it. Landed on
+`0.9.0-pre` on 2026-09-22. Edges are tags and Spaces only, by decision; links
+between notes would be a body syntax (and a vault concern), and are not part
+of this unit. See `changes/archive/feat-graph-view/tasks.md`.
 
 ## 14. Local AI
 
