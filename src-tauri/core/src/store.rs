@@ -182,7 +182,12 @@ END;
 ];
 
 const NOTE_COLUMNS: &str = "id, title, body, created_at, updated_at, last_opened_at, \
-     is_pinned, is_archived, is_deleted, deleted_at";
+     is_pinned, is_archived, is_deleted, deleted_at, content_kind, surface_data";
+
+/// `NOTE_COLUMNS` for list queries: the whiteboard canvas stays out of list
+/// rows (see `Note::surface_data`).
+const LIST_COLUMNS: &str = "id, title, body, created_at, updated_at, last_opened_at, \
+     is_pinned, is_archived, is_deleted, deleted_at, content_kind, NULL";
 
 pub struct Store {
     conn: Connection,
@@ -210,6 +215,8 @@ fn row_to_note(row: &rusqlite::Row<'_>) -> rusqlite::Result<Note> {
         is_archived: row.get::<_, i64>(7)? != 0,
         is_deleted: row.get::<_, i64>(8)? != 0,
         deleted_at: row.get(9)?,
+        content_kind: row.get(10)?,
+        surface_data: row.get(11)?,
     })
 }
 
