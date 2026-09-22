@@ -85,7 +85,7 @@ pub fn export_note_file(path: String, contents: String) -> CmdResult<()> {
 
 const ATTACHMENT_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp"];
 
-fn attachments_dir(app: &AppHandle) -> CmdResult<std::path::PathBuf> {
+pub fn attachments_dir(app: &AppHandle) -> CmdResult<std::path::PathBuf> {
     let dir = app
         .path()
         .app_data_dir()

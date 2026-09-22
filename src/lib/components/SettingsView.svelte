@@ -11,6 +11,7 @@
   import SettingsContexting from "$lib/components/settings/SettingsContexting.svelte";
   import SettingsLinks from "$lib/components/settings/SettingsLinks.svelte";
   import SettingsFeedback from "$lib/components/settings/SettingsFeedback.svelte";
+  import SettingsVault from "$lib/components/settings/SettingsVault.svelte";
   import { getLibraryStats, getCaptureLatency, openUrl } from "$lib/api/client";
   import type { DashboardStats } from "$lib/api/types";
   import { formatBytes } from "$lib/format";
@@ -25,7 +26,15 @@
     onBack: () => void;
   } = $props();
 
-  type Page = "home" | "about" | "editor" | "images" | "links" | "contexting" | "feedback";
+  type Page =
+    | "home"
+    | "about"
+    | "editor"
+    | "images"
+    | "links"
+    | "contexting"
+    | "feedback"
+    | "vault";
   let page = $state<Page>("home");
 
   const CATEGORIES: { id: Page; title: string; desc: string }[] = [
@@ -34,6 +43,7 @@
     { id: "images", title: "Images", desc: "How images are stored, shown, and shared." },
     { id: "links", title: "Links", desc: "How links in your notes look and open." },
     { id: "contexting", title: "Contexting", desc: "Shape what copying a note hands to other tools and AI." },
+    { id: "vault", title: "Vault", desc: "Export every note as plain Markdown files." },
     { id: "feedback", title: "Feedback", desc: "Report a bug or send an idea." },
   ];
 
@@ -44,6 +54,7 @@
     images: "Images",
     contexting: "Contexting",
     links: "Links",
+    vault: "Vault",
     feedback: "Feedback",
   };
 
@@ -172,6 +183,8 @@
         <SettingsContexting />
       {:else if page === "links"}
         <SettingsLinks />
+      {:else if page === "vault"}
+        <SettingsVault />
       {:else if page === "feedback"}
         <SettingsFeedback {appVersion} />
       {/if}

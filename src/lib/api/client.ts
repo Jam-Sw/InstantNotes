@@ -186,6 +186,13 @@ export const allowImageFile = (path: string) =>
 export const openAttachmentsFolder = () =>
   call<void>("open_attachments_folder");
 
+// ---- vault export ----
+// Stage 1 of the portable vault (openspec/changes/feat-portable-vault-sync):
+// a one-way, read-only snapshot. SQLite stays authoritative; nothing reads
+// this folder back yet. The destination is chosen by a native folder-picker
+// dialog in JS, same trust boundary as exportNoteFile.
+export const exportVault = (dest: string) => call<void>("export_vault", { dest });
+
 // ---- dashboard + feedback ----
 export const getLibraryStats = () => call<DashboardStats>("library_stats");
 export const submitFeedback = (input: FeedbackInput) =>

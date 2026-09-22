@@ -30,6 +30,11 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   saves a copy on your machine, and opens a prefilled GitHub issue. A "Reveal
   saved feedback" button shows exactly what has accumulated there; nothing is
   pruned automatically.
+- A new Vault settings page can export a full copy of your library: every note
+  as a plain Markdown file with its tags and Spaces, plus your attachments, to
+  a folder you choose. Readable and editable with InstantNotes closed, in any
+  editor, on any device. This is a one-way snapshot for now: InstantNotes still
+  keeps its own copy, and nothing is synced back in yet.
 
 ### Fixed
 - A stray caret no longer lingers in notes you switch between: each note now
