@@ -513,6 +513,7 @@ impl Store {
 }
 
 mod attachments;
+mod graph;
 mod notes;
 mod settings;
 mod stats;

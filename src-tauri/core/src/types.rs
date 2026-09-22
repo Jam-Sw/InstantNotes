@@ -140,3 +140,49 @@ pub struct AttachmentCleanup {
     pub count: usize,
     pub bytes: u64,
 }
+
+/// The library as a graph (SEQUENCE.md unit 13): live notes, the tags and
+/// Spaces they carry, and one link per note-to-tag or note-to-Space edge.
+/// Derived from the existing tables on every read; nothing is stored.
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LibraryGraph {
+    pub notes: Vec<GraphNote>,
+    pub tags: Vec<GraphTag>,
+    pub spaces: Vec<GraphSpace>,
+    pub links: Vec<GraphLink>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphNote {
+    pub id: String,
+    pub title: String,
+    pub content_kind: String,
+    pub is_pinned: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphTag {
+    pub id: String,
+    pub name: String,
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphSpace {
+    pub id: String,
+    pub name: String,
+}
+
+/// A note's membership: `kind` is `tag` or `space`, and `target_id` is that
+/// tag's or Space's id.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphLink {
+    pub note_id: String,
+    pub target_id: String,
+    pub kind: String,
+}
