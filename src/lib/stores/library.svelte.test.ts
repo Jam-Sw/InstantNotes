@@ -82,6 +82,14 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(),
 }));
 
+// Converting a note lays its text onto the board through Excalidraw's own
+// element builder; the stand-in keeps each skeleton and stamps an id.
+vi.mock("@excalidraw/excalidraw", () => ({
+  convertToExcalidrawElements: vi.fn((skeletons: object[]) =>
+    skeletons.map((sk, i) => ({ ...sk, id: `el${i}`, version: 1 })),
+  ),
+}));
+
 const mockCreateNote = vi.mocked(createNote);
 const mockGetNote = vi.mocked(getNote);
 const mockUpdateNote = vi.mocked(updateNote);
@@ -802,5 +810,139 @@ describe("revisit mode (open-loop resurfacing)", () => {
     library.setStatusFilter("archived");
     expect(library.revisitMode).toBe(false);
     await vi.advanceTimersByTimeAsync(0);
+  });
+});
+
+describe("whiteboards", () => {
+  const BOARD = JSON.stringify({
+    v: 1,
+    engine: "excalidraw",
+    data: { elements: [], appState: {}, files: {} },
+  });
+
+  it("queues a board save like a body edit and persists canvas and text together", async () => {
+    const library = await load();
+    await selectNote(library, "b1", { contentKind: "whiteboard", surfaceData: BOARD });
+    mockUpdateNote.mockResolvedValue(mkNote("b1", { contentKind: "whiteboard" }));
+
+    library.editBoard("b1", { surfaceData: "next", body: "words" });
+    expect(library.saveState).toBe("saving");
+    expect(library.selected?.surfaceData).toBe("next");
+    expect(library.selected?.body).toBe("words");
+
+    await vi.advanceTimersByTimeAsync(400);
+    expect(mockUpdateNote).toHaveBeenCalledWith("b1", { surfaceData: "next", body: "words" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.saveState).toBe("saved");
+    // The reply leaves the canvas out; the open note keeps its own copy.
+    expect(library.selected?.surfaceData).toBe("next");
+  });
+
+  it("quit collects a board's unsent change before flushing", async () => {
+    const library = await load();
+    await selectNote(library, "b1", { contentKind: "whiteboard", surfaceData: BOARD });
+    mockUpdateNote.mockResolvedValue(mkNote("b1", { contentKind: "whiteboard" }));
+    const off = library.onBeforeFlush(() =>
+      library.editBoard("b1", { surfaceData: "last stroke", body: "" }),
+    );
+
+    await library.flushPendingEdits();
+    expect(mockUpdateNote).toHaveBeenCalledWith("b1", { surfaceData: "last stroke", body: "" });
+
+    off();
+    mockUpdateNote.mockClear();
+    await library.flushPendingEdits();
+    expect(mockUpdateNote).not.toHaveBeenCalled();
+  });
+
+  it("switching notes collects the board's unsent change for the board, not the next note", async () => {
+    const library = await load();
+    await selectNote(library, "b1", { contentKind: "whiteboard", surfaceData: BOARD });
+    mockUpdateNote.mockResolvedValue(mkNote("b1", { contentKind: "whiteboard" }));
+    library.onBeforeFlush(() => library.editBoard("b1", { surfaceData: "drawn", body: "" }));
+
+    await selectNote(library, "n2");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockUpdateNote).toHaveBeenCalledWith("b1", { surfaceData: "drawn", body: "" });
+    expect(library.selected?.id).toBe("n2");
+    expect(library.selected?.surfaceData).toBeUndefined();
+  });
+
+  it("reopening a board with an unsaved change shows the change, not the disk copy", async () => {
+    const library = await load();
+    await selectNote(library, "b1", { contentKind: "whiteboard", surfaceData: BOARD });
+    mockUpdateNote.mockReturnValue(new Promise(() => {}));
+    library.editBoard("b1", { surfaceData: "unsaved", body: "text" });
+    await selectNote(library, "n2");
+    await selectNote(library, "b1", { contentKind: "whiteboard", surfaceData: BOARD });
+    expect(library.selected?.surfaceData).toBe("unsaved");
+    expect(library.selected?.body).toBe("text");
+  });
+
+  it("converting lays the note's text onto the board as one text element", async () => {
+    const library = await load();
+    await selectNote(library, "n1", { body: "Roadmap\nship it" });
+    mockUpdateNote.mockResolvedValue(mkNote("n1", { contentKind: "whiteboard" }));
+
+    library.editBody("Roadmap\nship it today");
+    await library.convertToWhiteboard();
+
+    const calls = mockUpdateNote.mock.calls;
+    // The pending body edit lands first, so nothing typed is lost.
+    expect(calls[0]).toEqual(["n1", { body: "Roadmap\nship it today" }]);
+    const [id, patch] = calls[calls.length - 1];
+    expect(id).toBe("n1");
+    expect(patch.contentKind).toBe("whiteboard");
+    const board = JSON.parse(patch.surfaceData as string);
+    expect(board.engine).toBe("excalidraw");
+    expect(board.data.elements).toHaveLength(1);
+    expect(board.data.elements[0]).toMatchObject({
+      type: "text",
+      text: "Roadmap\nship it today",
+    });
+    expect(library.selected?.contentKind).toBe("whiteboard");
+    expect(library.selected?.surfaceData).toBe(patch.surfaceData);
+  });
+
+  it("converting an empty note gives an empty board", async () => {
+    const library = await load();
+    await selectNote(library, "n1", { body: "   " });
+    mockUpdateNote.mockResolvedValue(mkNote("n1", { contentKind: "whiteboard" }));
+    await library.convertToWhiteboard();
+    const patch = mockUpdateNote.mock.calls[0][1];
+    expect(JSON.parse(patch.surfaceData as string).data.elements).toEqual([]);
+  });
+
+  it("does not convert a trashed note or a board", async () => {
+    const library = await load();
+    await selectNote(library, "n1", { isDeleted: true });
+    await library.convertToWhiteboard();
+    await selectNote(library, "b1", { contentKind: "whiteboard" });
+    await library.convertToWhiteboard();
+    expect(mockUpdateNote).not.toHaveBeenCalled();
+  });
+
+  it("New whiteboard never converts the open note when creating the new one fails", async () => {
+    const library = await load();
+    await selectNote(library, "n1", { body: "my writing" });
+    mockCreateNote.mockRejectedValue(new Error("disk full"));
+    await library.newWhiteboard();
+    expect(mockUpdateNote).not.toHaveBeenCalled();
+    expect(library.selected?.contentKind).toBe("document");
+  });
+
+  it("New whiteboard creates a note and opens it as an empty board", async () => {
+    const library = await load();
+    mockCreateNote.mockResolvedValue(mkNote("new1"));
+    mockGetNote.mockResolvedValue(mkNote("new1"));
+    mockUpdateNote.mockResolvedValue(mkNote("new1", { contentKind: "whiteboard" }));
+
+    await library.newWhiteboard();
+
+    expect(mockCreateNote).toHaveBeenCalled();
+    const [id, patch] = mockUpdateNote.mock.calls[0];
+    expect(id).toBe("new1");
+    expect(patch.contentKind).toBe("whiteboard");
+    expect(library.selected?.contentKind).toBe("whiteboard");
   });
 });
