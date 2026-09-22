@@ -41,8 +41,11 @@ content rowid; `id` is the public UUID):
 | `body` | Markdown body. |
 | `created_at`, `updated_at`, `last_opened_at` | Lifecycle timestamps. |
 | `is_pinned`, `is_archived`, `is_deleted`, `deleted_at` | Status flags. |
+| `content_kind`, `surface_data` | Surface mode (`document` by default) and whiteboard data. Added by v4 and not read yet; see section 9. |
+| `vault_path`, `file_sha`, `vault_dirty` | The live vault mirror (section 10). |
 
-Indexes cover `updated_at`, `created_at`, and the status-flag triple.
+Indexes cover `updated_at`, `created_at`, the status-flag triple, pending
+vault writes, and `vault_path`.
 
 ## 4. Tags
 
@@ -82,3 +85,43 @@ the code default.
 `MIGRATIONS` is an ordered list of SQL scripts; `user_version` records how many
 have run, so a database upgrades forward exactly once per version. The list is
 public so tests can build fixtures at a historical schema version.
+
+| Version | Change |
+| --- | --- |
+| v1 | Notes, tags, settings, FTS. |
+| v2 | Workspaces (Spaces). |
+| v3 | Drop the unused sync scaffolding columns. |
+| v4 | `content_kind`, `surface_data`: the whiteboard's surface mode. |
+| v5 | The vault mirror: columns, `vault_tombstones`, and triggers (section 10). |
+
+v4 exists because pre-release builds that carried the whiteboard already
+migrated some libraries to it before the whiteboard was lifted off the 0.9.0
+branch. A version number must mean one schema everywhere, so v4 ships as
+those builds wrote it, and nothing reads its columns until the whiteboard
+returns.
+
+Before migrating an existing library, `Store::open` snapshots it next to
+itself as `<file>.backup-v<old version>`. A library at a version newer than
+the build knows is refused, never migrated.
+
+## 10. Vault mirror
+
+When a vault folder is set (the device-local setting `vault.path`), every
+note is also written there as Markdown
+(`openspec/changes/feat-portable-vault-sync/design.md`). SQLite stays
+authoritative: the folder is written, never read back.
+
+- `vault_path`: where the note's file was last written, relative to the
+  vault folder (`trash/` for deleted notes).
+- `file_sha`: sha256 of the bytes last written there.
+- `vault_dirty`: 1 while the file is behind the database.
+
+Triggers set `vault_dirty` in the same transaction as the write that changed
+the note's file contents: the note's own columns (not `last_opened_at`,
+which is device-local), its tag and Space edges (including the cascades from
+deleting a tag or a Space), and a rename of a tag or Space it carries. A
+permanent delete queues the file in `vault_tombstones` (`vault_path`,
+`file_sha`). The flush writes pending notes, removes tombstoned files that
+still hold the bytes it wrote, and clears the flags. A crash between the
+commit and the file write leaves the flag set, and the next launch catches
+up.
