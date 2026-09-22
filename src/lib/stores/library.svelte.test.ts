@@ -946,3 +946,48 @@ describe("whiteboards", () => {
     expect(library.selected?.contentKind).toBe("whiteboard");
   });
 });
+
+describe("graph view", () => {
+  it("is its own place: entering it leaves every other view", async () => {
+    const library = await load();
+    library.selectWorkspace("ws1");
+    library.selectGraph();
+    expect(library.graphMode).toBe(true);
+    expect(library.activeWorkspaceId).toBeNull();
+    expect(library.revisitMode).toBe(false);
+    await vi.advanceTimersByTimeAsync(0);
+  });
+
+  it("any other place in the sidebar leaves it", async () => {
+    const library = await load();
+    for (const go of [
+      () => library.selectWorkspace(null),
+      () => library.selectWorkspace("ws1"),
+      () => library.selectRevisit(),
+      () => library.setTagFilter("t1"),
+      () => library.setStatusFilter("archived"),
+    ]) {
+      library.selectGraph();
+      go();
+      expect(library.graphMode).toBe(false);
+    }
+    await vi.advanceTimersByTimeAsync(0);
+  });
+
+  it("opening a note leaves it, so the note is what shows", async () => {
+    const library = await load();
+    library.selectGraph();
+    await selectNote(library, "n1");
+    expect(library.graphMode).toBe(false);
+    expect(library.selected?.id).toBe("n1");
+  });
+
+  it("creating a note leaves it", async () => {
+    const library = await load();
+    mockCreateNote.mockResolvedValue(mkNote("new1"));
+    mockGetNote.mockResolvedValue(mkNote("new1"));
+    library.selectGraph();
+    await library.newNote();
+    expect(library.graphMode).toBe(false);
+  });
+});
