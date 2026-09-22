@@ -37,7 +37,7 @@ A failed command rejects with:
 { code: string, message: string }
 ```
 
-`code` is one of the stable identifiers in section 12. `message` is a
+`code` is one of the stable identifiers in section 14. `message` is a
 developer-facing description and is never shown to users verbatim.
 
 ## 4. Notes
@@ -162,34 +162,75 @@ whether or not it is an image; subdirectories are neither traversed nor counted.
 The numbers are a snapshot taken when the page is opened. Nothing pushes an
 update, and the dashboard is not on any hot path.
 
-## 12. Vault export
+## 12. Vault
 
 | Command | Purpose |
 | --- | --- |
 | `export_vault` | Write the whole library to `dest` (an absolute folder path) as a vault: one Markdown file per note plus `instantnotes.yaml`, per `feat-portable-vault-sync/design.md` §3. |
+| `get_vault_status` | The live mirror's state: `{ path, pending, lastError, lastFlushedAt }`. `path` is null when mirroring is off. |
+| `set_vault_folder` | Start mirroring into `path` (an absolute folder), move the mirror to a new folder, or stop it with `path: null`. Returns the new status. |
+| `verify_vault` | Flush anything pending, then compare every file with the library: `{ checked, missing, diverged, orphans, pending, manifestOk }`. Read-only. |
 
-Stage 1 only (`feat-portable-vault-sync`, `SEQUENCE.md` unit 7): a one-way,
-read-only snapshot. SQLite stays authoritative and nothing reads the folder
-back yet. `dest` is chosen by a native folder-picker dialog in JS, the same
-trust boundary as `export_note_file`.
+| Event | Payload | Meaning |
+| --- | --- | --- |
+| `vault:status` | none | A mirror flush finished; re-read `get_vault_status`. |
+
+SQLite stays authoritative for both the export and the mirror; nothing reads a
+vault folder back yet. Folders are chosen by a native folder-picker dialog in
+JS, the same trust boundary as `export_note_file`.
+
+### 12.1 Export (stage 1)
 
 Every note, active, archived, and trashed, is included. Active and archived
 notes land at the vault root; trashed notes land under `dest/trash/`.
 Filenames are the note's title (auto-derived when the user never set one
-explicitly), sanitized for cross-platform filesystem safety, with the first
-six characters of the note's id appended on a collision. Tag colors and the
-full list of Spaces (including empty ones) go into `instantnotes.yaml`;
-everything under `<app data>/attachments` is copied into `dest/attachments`.
+explicitly), sanitized for cross-platform filesystem safety. Names collide
+case-insensitively, since macOS and Windows filesystems are: on a collision
+the first six characters of the note's id are appended, or the whole id if
+even that is taken. Tag colors and the full list of Spaces (including empty
+ones) go into `instantnotes.yaml`; everything under `<app data>/attachments`
+is copied into `dest/attachments`.
 
 Re-exporting to a folder that already holds a previous export does not remove
 files for notes deleted or retitled since the last run; each call only writes
-and overwrites, it never prunes. Acceptable for a one-way snapshot, recorded
-in `feat-portable-vault-sync/tasks.md` for stage 2 (the dual-write flush) to
-account for.
+and overwrites, it never prunes. An export into the live mirror's folder (or
+inside it) is refused with `STORAGE_ERROR`: the mirror already keeps it
+current.
 
 The store-to-vault gather (`instantnotes_core::vault::collect_from_store`)
 pages through `list_notes` rather than trusting its default 500-row limit, so
 a library larger than that is not silently truncated.
+
+### 12.2 Live mirror (stage 2)
+
+`set_vault_folder` validates the folder (absolute, existing, and not inside or
+around the app data folder, which holds the database) and returns at once.
+Setting a new folder marks every note pending; a background writer then
+flushes them, 50 notes per hold of the store lock, and emits `vault:status`
+after each flush. From then on every note, tag, and Space write marks the
+affected notes pending (in the database, by trigger) and pokes the writer,
+which flushes once writes pause for 300 ms (at most 2 s later). Quitting
+flushes one more chunk; anything left is flushed at the next launch.
+
+Filenames follow §12.1. A note moves when its title or trash state changes; a
+permanent delete removes its file. The mirror only writes or removes files it
+owns: a path it recorded, or a file whose frontmatter `id` is the note's. A
+file with a different or missing `id` at a note's name is left alone, and the
+note takes a suffixed name. A file edited outside the app is replaced the next
+time its note changes, but is never removed by a move or delete. Attachments
+missing from `<vault>/attachments` are copied in on setup, at launch, and
+after each image is saved; existing names are never overwritten.
+
+A missing folder (an unmounted drive) pauses the mirror: `lastError` reads
+`vault folder not found: <path>`, notes stay pending, the folder is never
+recreated, and the next flush after it returns catches up. Stopping the
+mirror leaves the written files in place.
+
+In `verify_vault`, `missing` are notes whose file is gone, `diverged` are
+files whose contents no longer parse to their note, and `orphans` are `.md`
+files at the vault root or in `trash/` that the mirror did not write. Pending
+notes are counted, not compared. With no folder set it fails with
+`VALIDATION_ERROR`; with the folder missing, `STORAGE_ERROR`.
 
 ## 13. Feedback
 
