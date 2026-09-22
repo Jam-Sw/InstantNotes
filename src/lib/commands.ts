@@ -73,6 +73,12 @@ export function buildCommands(): Command[] {
       run: () => library.newWhiteboard(),
     },
     {
+      id: "view.graph",
+      title: "Show graph",
+      group: "View",
+      run: () => library.selectGraph(),
+    },
+    {
       id: "view.sidebar",
       title: sidebar.collapsed ? "Show sidebar" : "Hide sidebar",
       group: "View",

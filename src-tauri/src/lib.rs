@@ -469,6 +469,7 @@ pub fn run() {
             import_image_file,
             allow_image_file,
             open_attachments_folder,
+            library_graph,
             unused_attachments,
             remove_unused_attachments,
             library_stats,

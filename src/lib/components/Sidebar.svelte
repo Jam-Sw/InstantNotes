@@ -86,7 +86,10 @@
   <nav class="sections">
     <button
       class="nav-item"
-      class:active={!library.activeWorkspaceId && !library.activeTagId && !library.revisitMode}
+      class:active={!library.activeWorkspaceId &&
+        !library.activeTagId &&
+        !library.revisitMode &&
+        !library.graphMode}
       onclick={() => library.selectWorkspace(null)}
     >
       All Notes
@@ -105,6 +108,14 @@
         <span class="nav-count">{library.revisitCount}</span>
       </button>
     {/if}
+    <button
+      class="nav-item"
+      class:active={library.graphMode}
+      title="Your notes, tags, and Spaces, and how they connect"
+      onclick={() => library.selectGraph()}
+    >
+      Graph
+    </button>
   </nav>
   <div class="tags-header" bind:this={spacesHeader} tabindex="-1">Spaces</div>
   <nav class="workspaces">

@@ -133,6 +133,12 @@ pub fn destroy_notes(
     Ok(())
 }
 
+/// The library as a graph of notes, tags, and Spaces, for the Graph view.
+#[tauri::command(async)]
+pub fn library_graph(state: State<'_, AppState>) -> CmdResult<LibraryGraph> {
+    Ok(locked(&state)?.library_graph()?)
+}
+
 /// Destroy notes for good, and with them the images only they used. The
 /// store stays locked from reading their references to removing the files,
 /// so no save can start referencing an image in between. A cleanup failure

@@ -12,6 +12,7 @@
   import NoteEditor from "$lib/components/NoteEditor.svelte";
   import BulkActions from "$lib/components/BulkActions.svelte";
   import WelcomeScreen from "$lib/components/WelcomeScreen.svelte";
+  import GraphView from "$lib/components/GraphView.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
   import UpdatePanel from "$lib/components/UpdatePanel.svelte";
   import SettingsView from "$lib/components/SettingsView.svelte";
@@ -164,6 +165,8 @@
       }
       return;
     }
+    // The note list is hidden behind the graph; its keys would act unseen.
+    if (library.graphMode) return;
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault();
@@ -306,16 +309,23 @@
         onkeydown={onHandleKeydown}
       ></div>
     {/if}
-    <NoteList />
-    <section class="editor-pane">
-      {#if library.multiSelected.size > 1}
-        <BulkActions />
-      {:else if library.selected}
-        <NoteEditor />
-      {:else}
-        <WelcomeScreen {appVersion} onShowUpdate={() => (updatePanelOpen = true)} />
-      {/if}
-    </section>
+    {#if library.graphMode}
+      <!-- The graph takes the list and editor columns together. -->
+      <section class="graph-span">
+        <GraphView />
+      </section>
+    {:else}
+      <NoteList />
+      <section class="editor-pane">
+        {#if library.multiSelected.size > 1}
+          <BulkActions />
+        {:else if library.selected}
+          <NoteEditor />
+        {:else}
+          <WelcomeScreen {appVersion} onShowUpdate={() => (updatePanelOpen = true)} />
+        {/if}
+      </section>
+    {/if}
   </div>
 {/if}
 
@@ -357,6 +367,11 @@
   .editor-pane {
     display: flex;
     flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+  }
+  .graph-span {
+    grid-column: span 2;
     min-width: 0;
     min-height: 0;
   }

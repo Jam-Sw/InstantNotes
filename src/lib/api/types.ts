@@ -148,3 +148,12 @@ export interface AttachmentCleanup {
   count: number;
   bytes: number;
 }
+
+/** The library as a graph: live notes, the tags and Spaces they carry, and
+ *  one link per membership. Derived on every read; nothing is stored. */
+export interface LibraryGraph {
+  notes: { id: string; title: string; contentKind: ContentKind; isPinned: boolean }[];
+  tags: { id: string; name: string; color?: string | null }[];
+  spaces: { id: string; name: string }[];
+  links: { noteId: string; targetId: string; kind: "tag" | "space" }[];
+}

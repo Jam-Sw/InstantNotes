@@ -45,6 +45,11 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   board is saved as a standard .excalidraw file next to its note, and Export
   Note saves it the same way.
 
+- Graph: a new place in the sidebar that draws your notes, tags, and Spaces and
+  how they connect. Hover a note to light up what it shares with others, then
+  click through to open a note, filter by a tag, or go into a Space. It opens
+  around the note you have open.
+
 ### Fixed
 - Images no longer pile up forever: deleting a note for good also deletes the
   images only it used. Settings > Images shows how many images no note uses any

@@ -76,6 +76,8 @@ class LibraryStore {
   // Revisit: capture-born notes never opened in the library. The count keeps
   // the sidebar entry honest (hidden at zero); the mode filters the list.
   revisitMode = $state(false);
+  /** The Graph view: the library drawn as notes, tags, and Spaces. */
+  graphMode = $state(false);
   revisitCount = $state(0);
   searchText = $state("");
   notes = $state<Note[]>([]);
@@ -252,6 +254,7 @@ class LibraryStore {
     // so it clears revisit and search but keeps the space/tag scope.
     this.statusFilter = filter;
     this.revisitMode = false;
+    this.graphMode = false;
     this.searchText = "";
     this.clearMultiSelect();
     void this.refresh();
@@ -269,9 +272,17 @@ class LibraryStore {
     this.scopedTagId = null;
     this.workspaceTags = [];
     this.revisitMode = false;
+    this.graphMode = false;
     this.statusFilter = "active";
     this.searchText = "";
     this.clearMultiSelect();
+  }
+
+  /** Show the library as a graph. */
+  selectGraph(): void {
+    this.#resetForNavigation();
+    this.graphMode = true;
+    void this.refresh();
   }
 
   /** Show All Notes (null) or one workspace's collected notes. */
@@ -360,6 +371,9 @@ class LibraryStore {
   }
 
   async select(id: string): Promise<void> {
+    // Opening a note shows it, wherever it was chosen from (the graph, the
+    // palette), so the graph steps aside.
+    this.graphMode = false;
     this.#selection.reset([id], id);
     await this.#open(id);
   }

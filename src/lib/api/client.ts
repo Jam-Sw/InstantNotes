@@ -4,6 +4,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AttachmentCleanup,
+  LibraryGraph,
   CaptureLatencySummary,
   CreateNoteInput,
   DashboardStats,
@@ -55,6 +56,7 @@ export const softDeleteNote = (id: string) =>
 export const restoreNote = (id: string) => call<Note>("restore_note", { id });
 export const permanentlyDeleteNote = (id: string, confirm: boolean) =>
   call<void>("permanently_delete_note", { id, confirm });
+export const libraryGraph = () => call<LibraryGraph>("library_graph");
 export const listNotes = (filter: NoteFilter = {}) =>
   call<Note[]>("list_notes", { filter });
 export const searchNotes = (text: string, limit = 50) =>
