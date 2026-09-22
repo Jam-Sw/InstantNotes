@@ -2,12 +2,15 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import Editor from "$lib/components/Editor.svelte";
   import FormatToolbar from "$lib/components/FormatToolbar.svelte";
+  import WhiteboardCanvas from "$lib/components/whiteboard/WhiteboardCanvas.svelte";
   import { library } from "$lib/stores/library.svelte";
   import { editorPrefs } from "$lib/stores/editor.svelte";
   import { imagePrefs } from "$lib/stores/images.svelte";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
-  import { importImageFile, allowImageFile } from "$lib/api/client";
+  import { importImageFile, allowImageFile, openUrl } from "$lib/api/client";
+  import { theme } from "$lib/stores/theme.svelte";
+  import { effectiveVariant } from "$lib/themes/apply";
   import { attachmentMarkdown } from "$lib/editor/images";
   import { formatDate, formatExact, wordCount } from "$lib/format";
   import type { FormatKind } from "$lib/markdown-format";
@@ -21,6 +24,11 @@
     insertText: (t: string) => void;
   }>();
   let active = $state<ActiveMarks>({ ...NO_MARKS });
+
+  const isBoard = $derived(library.selected?.contentKind === "whiteboard");
+  // The board follows the app's light or dark look, including themes that
+  // only come in one of the two.
+  const boardTheme = $derived(effectiveVariant(theme.activeTheme, theme.resolvedVariant));
 
   // Insert an image from a file the user picks. Honors the storage setting:
   // "copy" reads it into the attachments folder; "link" references it in place
@@ -85,22 +93,24 @@
         <button class="action" onclick={() => library.restoreSelected()}>Restore</button>
         <button class="action danger" onclick={confirmDestroy}>Delete Forever</button>
       {:else}
-        <button
-          class="action"
-          title="Insert image from a file"
-          onclick={insertImage}
-        >
-          Image
-        </button>
-        <button
-          class="action"
-          class:active={editorPrefs.toolbarOpen}
-          title="Formatting tools"
-          aria-pressed={editorPrefs.toolbarOpen}
-          onclick={() => editorPrefs.toggleToolbar()}
-        >
-          Aa
-        </button>
+        {#if !isBoard}
+          <button
+            class="action"
+            title="Insert image from a file"
+            onclick={insertImage}
+          >
+            Image
+          </button>
+          <button
+            class="action"
+            class:active={editorPrefs.toolbarOpen}
+            title="Formatting tools"
+            aria-pressed={editorPrefs.toolbarOpen}
+            onclick={() => editorPrefs.toggleToolbar()}
+          >
+            Aa
+          </button>
+        {/if}
         <button
           class="action"
           title={library.selected.isPinned ? "Unpin" : "Pin"}
@@ -153,22 +163,39 @@
       {/each}
     </datalist>
   </div>
-  {#if editorPrefs.toolbarOpen}
-    <FormatToolbar {active} onFormat={(k) => editorRef?.applyFormat(k)} />
+  {#if isBoard}
+    <div class="editor-body board-body">
+      <!-- One canvas per note: a new id mounts a fresh board. -->
+      {#key library.selected.id}
+        <WhiteboardCanvas
+          noteId={library.selected.id}
+          surfaceData={library.selected.surfaceData}
+          readonly={library.selected.isDeleted}
+          theme={boardTheme}
+          onchange={(id, edit) => library.editBoard(id, edit)}
+          registerFlush={(flush) => library.onBeforeFlush(flush)}
+          onlinkopen={(url) => void openUrl(url)}
+        />
+      {/key}
+    </div>
+  {:else}
+    {#if editorPrefs.toolbarOpen}
+      <FormatToolbar {active} onFormat={(k) => editorRef?.applyFormat(k)} />
+    {/if}
+    <div
+      class="editor-body"
+      style="--editor-zoom: {editorPrefs.zoom}; --image-max-height: {imagePrefs.maxPreviewHeight}px"
+    >
+      <Editor
+        bind:this={editorRef}
+        value={library.selected.body}
+        placeholder="Start writing… use #tags to organize"
+        previewMode={!editorPrefs.toolbarOpen}
+        onchange={(v) => library.editBody(v)}
+        onactive={(a) => (active = a)}
+      />
+    </div>
   {/if}
-  <div
-    class="editor-body"
-    style="--editor-zoom: {editorPrefs.zoom}; --image-max-height: {imagePrefs.maxPreviewHeight}px"
-  >
-    <Editor
-      bind:this={editorRef}
-      value={library.selected.body}
-      placeholder="Start writing… use #tags to organize"
-      previewMode={!editorPrefs.toolbarOpen}
-      onchange={(v) => library.editBody(v)}
-      onactive={(a) => (active = a)}
-    />
-  </div>
   <div class="status-bar">
     <span
       class="save-state"
@@ -180,6 +207,8 @@
     </span>
     {#if library.error}
       <span class="error">{library.error}</span>
+    {:else if isBoard}
+      <span>Whiteboard</span>
     {:else}
       {@const n = wordCount(library.selected.body)}
       <span>{n} {n === 1 ? "word" : "words"}</span>
@@ -297,6 +326,10 @@
   .editor-body {
     flex: 1;
     min-height: 0;
+  }
+  .board-body {
+    position: relative;
+    border-top: 1px solid var(--border);
   }
   .status-bar {
     display: flex;

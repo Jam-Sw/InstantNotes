@@ -26,9 +26,12 @@ pub fn update_note(
     id: String,
     patch: UpdateNotePatch,
 ) -> CmdResult<Note> {
-    let note = locked(&state)?.update_note(&id, patch)?;
+    let mut note = locked(&state)?.update_note(&id, patch)?;
     emit_notes_changed(&app);
     emit_tags_changed(&app);
+    // The caller already holds the canvas it just saved; echoing it back
+    // would ship the whole board, pasted images included, on every save.
+    note.surface_data = None;
     Ok(note)
 }
 

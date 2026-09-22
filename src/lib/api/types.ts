@@ -1,6 +1,9 @@
 // IPC contract types shared by the Svelte UI and the Rust desktop layer.
 // Field names are camelCase over the wire (serde).
 
+/** A Markdown document, or a whiteboard whose text is kept in `body`. */
+export type ContentKind = "document" | "whiteboard";
+
 export interface Note {
   id: string;
   title: string;
@@ -12,6 +15,10 @@ export interface Note {
   isArchived: boolean;
   isDeleted: boolean;
   deletedAt?: string | null;
+  contentKind: ContentKind;
+  /** A whiteboard's canvas (JSON). Only `getNote` carries it: list rows and
+   *  `updateNote`'s reply leave it out, since a board can hold images. */
+  surfaceData?: string | null;
 }
 
 export interface Tag {
@@ -48,6 +55,10 @@ export interface UpdateNotePatch {
   body?: string;
   isPinned?: boolean;
   isArchived?: boolean;
+  /** Only ever "whiteboard": converting is one-way. */
+  contentKind?: ContentKind;
+  /** A whiteboard's canvas; rejected on a document. */
+  surfaceData?: string;
 }
 
 export interface NoteFilter {

@@ -38,9 +38,14 @@ import type {
 } from "$lib/api/types";
 import { debounce } from "$lib/debounce";
 import { friendlyMessage } from "$lib/errors";
-import { SaveQueue, type SaveState } from "$lib/stores/library/save-queue.svelte";
+import {
+  SaveQueue,
+  type QueuedEdit,
+  type SaveState,
+} from "$lib/stores/library/save-queue.svelte";
 import { SelectionModel } from "$lib/stores/library/selection.svelte";
 import { toasts } from "$lib/stores/toasts.svelte";
+import { boardFromText } from "$lib/whiteboard/excalidraw";
 import { listen } from "@tauri-apps/api/event";
 
 export type { SaveState };
@@ -91,21 +96,38 @@ class LibraryStore {
     return this.#selection.ids;
   }
 
-  // Body persistence (debounce, retry, flush) lives in its own single-writer
+  // Edit persistence (debounce, retry, flush) lives in its own single-writer
   // unit; the store composes one and delegates. A confirmed write updates the
   // open note; a terminal failure surfaces an error.
   #saveQueue = new SaveQueue({
     onPersisted: async (id, updated) => {
       if (this.selected?.id === id) {
-        // Keep local body if the user kept typing past this save.
-        const localBody = this.selected.body;
-        this.selected = { ...updated, body: localBody };
+        // Keep the local body and canvas: the user may have kept editing
+        // past this save, and the reply never carries the canvas.
+        const { body, surfaceData } = this.selected;
+        this.selected = { ...updated, body, surfaceData };
         this.selectedTags = await tagsForNote(id);
       }
       this.error = null;
     },
     onError: (e) => this.#fail(e),
   });
+
+  // Editors that hold an edit not yet handed to the queue (a whiteboard
+  // batches canvas changes before serializing them) register here, and are
+  // asked to hand it over before any flush, trash, or note switch.
+  #beforeFlush = new Set<() => void>();
+
+  /** Register a hook run before every flush, trash, and note switch;
+   *  returns the unregister function. */
+  onBeforeFlush(hook: () => void): () => void {
+    this.#beforeFlush.add(hook);
+    return () => this.#beforeFlush.delete(hook);
+  }
+
+  #collectPending(): void {
+    for (const hook of this.#beforeFlush) hook();
+  }
 
   #initialized = false;
 
@@ -344,13 +366,14 @@ class LibraryStore {
 
   async #open(id: string): Promise<void> {
     // Flush any pending edit of the previous note before switching.
+    this.#collectPending();
     this.#saveQueue.flushDebounce();
     try {
       const note = await getNote(id, true);
       // A queued edit (debounced or awaiting retry) is newer than what disk
       // returned; showing the disk body would fork the note's history.
       const queued = this.#saveQueue.peek(id);
-      this.selected = queued !== undefined ? { ...note, body: queued } : note;
+      this.selected = queued !== undefined ? { ...note, ...queued } : note;
       [this.selectedTags, this.selectedWorkspaces] = await Promise.all([
         tagsForNote(id),
         workspacesForNote(id),
@@ -450,6 +473,7 @@ class LibraryStore {
     const ids = [...this.multiSelected];
     // Trash is reversible and Undo promises fidelity: persist any pending
     // edit first, so a restored note holds the user's last keystrokes.
+    this.#collectPending();
     this.#saveQueue.cancelDebounce();
     await this.#saveQueue.flushIds(ids);
     this.#saveQueue.drop(ids);
@@ -520,7 +544,9 @@ class LibraryStore {
     }
   }
 
-  async newNote(): Promise<void> {
+  /** Create a note and open it. Resolves to its id, or null if creating
+   *  failed (the error is already surfaced). */
+  async newNote(): Promise<string | null> {
     try {
       const activeTag = this.activeTagId
         ? this.tags.find((t) => t.id === this.activeTagId)
@@ -542,8 +568,10 @@ class LibraryStore {
       this.searchText = "";
       void this.refresh();
       await this.select(note.id);
+      return note.id;
     } catch (e) {
       this.#fail(e);
+      return null;
     }
   }
 
@@ -666,7 +694,47 @@ class LibraryStore {
     // Optimistic local state; persistence is debounced. The note is dirty
     // from this moment until a write of this (or a newer) body succeeds.
     this.selected.body = body;
-    this.#saveQueue.queue(this.selected.id, body);
+    this.#saveQueue.queue(this.selected.id, { body });
+  }
+
+  /**
+   * A whiteboard save: the canvas and the text written on it, queued like a
+   * body edit (debounced, retried, flushed on switch and quit). Takes the id
+   * because a board hands over its last change while the library is already
+   * switching away from it.
+   */
+  editBoard(id: string, edit: Required<QueuedEdit>): void {
+    if (this.selected?.id === id) {
+      this.selected.surfaceData = edit.surfaceData;
+      this.selected.body = edit.body;
+    }
+    this.#saveQueue.queue(id, edit);
+  }
+
+  /**
+   * Turn the open note into a whiteboard, for good. Its text goes onto the
+   * board as a text block, so nothing written disappears; the confirm lives
+   * with the callers (whiteboard/convert.ts).
+   */
+  async convertToWhiteboard(): Promise<void> {
+    const note = this.selected;
+    if (!note || note.isDeleted || note.contentKind === "whiteboard") return;
+    await this.flushPendingEdits();
+    const current = this.selected;
+    if (current?.id !== note.id) return;
+    try {
+      const surfaceData = await boardFromText(current.body);
+      await this.#applyUpdate(note.id, { contentKind: "whiteboard", surfaceData });
+    } catch (e) {
+      this.#fail(e);
+    }
+  }
+
+  /** A new note, opened as an empty whiteboard. Converts only the note it
+   *  just created: if creating failed, the open note is someone's writing. */
+  async newWhiteboard(): Promise<void> {
+    const id = await this.newNote();
+    if (id && this.selected?.id === id) await this.convertToWhiteboard();
   }
 
   editTitle(title: string): void {
@@ -695,6 +763,7 @@ class LibraryStore {
     const id = this.selected.id;
     // Trash is reversible and Undo promises fidelity: persist any pending
     // edit first, so a restored note holds the user's last keystrokes.
+    this.#collectPending();
     this.#saveQueue.cancelDebounce();
     await this.#saveQueue.flushIds([id]);
     this.#saveQueue.drop([id]);
@@ -750,6 +819,7 @@ class LibraryStore {
    * queued for the next flush.
    */
   async flushPendingEdits(): Promise<void> {
+    this.#collectPending();
     await this.#saveQueue.flushAll();
   }
 
@@ -779,9 +849,14 @@ class LibraryStore {
     try {
       const updated = await updateNote(id, patch);
       if (this.selected?.id === id) {
-        // Keep local body if user kept typing past this save.
-        const localBody = this.selected.body;
-        this.selected = { ...updated, body: patch.body ?? localBody };
+        // Keep local body if user kept typing past this save, and the local
+        // canvas, which the reply never carries.
+        const { body, surfaceData } = this.selected;
+        this.selected = {
+          ...updated,
+          body: patch.body ?? body,
+          surfaceData: patch.surfaceData ?? surfaceData,
+        };
         this.selectedTags = await tagsForNote(id);
       }
       this.error = null;

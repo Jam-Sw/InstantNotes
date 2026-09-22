@@ -38,6 +38,12 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   file matches its note. For now InstantNotes writes the folder but does not
   read it back, so edit your notes in the app. A one-time "Export a copy" is
   there too.
+- Whiteboards: a note can be a freeform canvas for boxes, arrows, frames, and
+  sketches. Start one with New Whiteboard (Cmd+Shift+N), or turn a note into
+  one from the command palette; its text moves onto the board. Words written on
+  a board stay searchable and #tags on it still tag the note. In your vault a
+  board is saved as a standard .excalidraw file next to its note, and Export
+  Note saves it the same way.
 
 ### Fixed
 - A stray caret no longer lingers in notes you switch between: each note now
@@ -49,7 +55,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   crashes the app on launch. It now shows a message telling you to update
   instead.
 - A library touched by a pre-release build with the whiteboard now opens
-  instead of being refused as written by a newer version.
+  instead of being refused as written by a newer version, and its boards open
+  as whiteboards again.
 - Linux: fixed a blank or corrupted window on many systems, caused by the
   WebKit compositor. The README now lists Linux prerequisites and Arch/CachyOS
   build notes.

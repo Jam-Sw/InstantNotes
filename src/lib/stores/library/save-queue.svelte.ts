@@ -1,6 +1,7 @@
-// The library's body-save queue: debounced writes, one quiet retry, and
+// The library's edit-save queue: debounced writes, one quiet retry, and
 // flush-on-switch/blur/quit, kept as a single-writer unit apart from the rest
-// of the store. It owns every "is this note persisted" decision; the store
+// of the store. A queued edit is a document's body, or a whiteboard's canvas
+// with the text on it; either way the newest edit per note replaces the last. It owns every "is this note persisted" decision; the store
 // composes one instance and delegates.
 //
 // The only outward coupling is the open note: a confirmed write updates it, and
@@ -15,12 +16,16 @@ import {
   withoutSetEntries,
 } from "$lib/reactive-collections";
 import { updateNote } from "$lib/api/client";
-import type { Note } from "$lib/api/types";
+import type { Note, UpdateNotePatch } from "$lib/api/types";
+
+/** What the queue persists for a note: `{ body }` for a document,
+ *  `{ surfaceData, body }` for a whiteboard. */
+export type QueuedEdit = Pick<UpdateNotePatch, "body" | "surfaceData">;
 
 /** Selected-note save status for the editor status bar. */
 export type SaveState = "saved" | "saving" | "failed";
 
-// One quiet retry this long after a failed body save; most failures (a
+// One quiet retry this long after a failed save; most failures (a
 // competing writer briefly holding the database lock) clear well within it.
 const SAVE_RETRY_MS = 2000;
 
@@ -33,19 +38,19 @@ export interface SaveQueueDeps {
 }
 
 export class SaveQueue {
-  // Bodies not yet confirmed persisted, by note id. An entry is only removed by
+  // Edits not yet confirmed persisted, by note id. An entry is only removed by
   // a successful write, so a failed save stays queued for the next flush (note
   // switch, blur, quit) instead of being silently dropped. Reassigned on change
   // so the status bar tracks it reactively.
-  #unsaved = $state(new Map<string, string>());
+  #unsaved = $state(new Map<string, QueuedEdit>());
   // Note ids whose save failed even after the retry; drives "Not saved".
   #failed = $state(new Set<string>());
   // Scheduled retry per note id, so a newer write, a drop, or a flush can
   // cancel it before it fires a stray write behind the caller's back.
   #retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-  #debounced = debounce((id: string, body: string) => {
-    void this.#persist(id, body, true);
+  #debounced = debounce((id: string, edit: QueuedEdit) => {
+    void this.#persist(id, edit, true);
   }, 400);
 
   #deps: SaveQueueDeps;
@@ -54,9 +59,9 @@ export class SaveQueue {
     this.#deps = deps;
   }
 
-  /** The queued (freshest) body for an id, or undefined; lets the opener show
+  /** The queued (freshest) edit for an id, or undefined; lets the opener show
    *  it instead of the disk copy, which would fork the note's history. */
-  peek(id: string): string | undefined {
+  peek(id: string): QueuedEdit | undefined {
     return this.#unsaved.get(id);
   }
 
@@ -67,9 +72,9 @@ export class SaveQueue {
   }
 
   /** Queue an optimistic edit; the write is debounced (400ms). */
-  queue(id: string, body: string): void {
-    this.#unsaved = withMapEntry(this.#unsaved, id, body);
-    this.#debounced(id, body);
+  queue(id: string, edit: QueuedEdit): void {
+    this.#unsaved = withMapEntry(this.#unsaved, id, edit);
+    this.#debounced(id, edit);
   }
 
   /** Run the pending debounced write now, e.g. before switching notes. */
@@ -81,14 +86,14 @@ export class SaveQueue {
    * Persist every queued edit now, no retry (note switch, window blur, export,
    * quit). Cancels the debounce rather than flushing it: the retry-enabled path
    * could otherwise fire a stray write after this resolves. #unsaved already
-   * holds the latest body for every note, so one no-retry write per note covers
+   * holds the latest edit for every note, so one no-retry write per note covers
    * the just-typed edit too.
    */
   async flushAll(): Promise<void> {
     this.#debounced.cancel();
     await Promise.all(
-      [...this.#unsaved.entries()].map(([id, body]) =>
-        this.#persist(id, body, false),
+      [...this.#unsaved.entries()].map(([id, edit]) =>
+        this.#persist(id, edit, false),
       ),
     );
   }
@@ -99,7 +104,7 @@ export class SaveQueue {
     await Promise.all(
       ids
         .filter((id) => this.#unsaved.has(id))
-        .map((id) => this.#persist(id, this.#unsaved.get(id) as string, false)),
+        .map((id) => this.#persist(id, this.#unsaved.get(id) as QueuedEdit, false)),
     );
   }
 
@@ -116,15 +121,15 @@ export class SaveQueue {
     for (const id of ids) this.#clearRetryTimer(id);
   }
 
-  async #persist(id: string, body: string, canRetry: boolean): Promise<void> {
+  async #persist(id: string, edit: QueuedEdit, canRetry: boolean): Promise<void> {
     // Any write attempt for this id, whether from the debounce, a retry, or a
     // flush, supersedes an outstanding scheduled retry for the same id.
     this.#clearRetryTimer(id);
     try {
-      const updated = await updateNote(id, { body });
+      const updated = await updateNote(id, edit);
       // Confirmed on disk. Clear the queue entry unless a newer edit superseded
-      // the body this write carried.
-      if (this.#unsaved.get(id) === body) {
+      // the one this write carried.
+      if (this.#unsaved.get(id) === edit) {
         this.#unsaved = withoutMapKeys(this.#unsaved, [id]);
       }
       if (this.#failed.has(id)) {

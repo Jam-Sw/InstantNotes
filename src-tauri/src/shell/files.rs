@@ -59,11 +59,11 @@ fn validate_export_path(path: &str) -> CmdResult<()> {
     let is_allowed = p
         .extension()
         .and_then(|e| e.to_str())
-        .is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "md" | "txt"));
+        .is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "md" | "txt" | "excalidraw"));
     if !is_allowed {
         return Err(CmdError {
             code: "STORAGE_ERROR".into(),
-            message: "export file must have a .md or .txt extension".into(),
+            message: "export file must have a .md, .txt, or .excalidraw extension".into(),
         });
     }
     Ok(())
@@ -262,7 +262,17 @@ pub fn attachments_stats(app: &AppHandle) -> (i64, i64) {
 
 #[cfg(test)]
 mod tests {
-    use super::{export_theme_file, import_theme_file};
+    use super::{export_theme_file, import_theme_file, validate_export_path};
+
+    #[test]
+    fn note_export_accepts_markdown_text_and_excalidraw_only() {
+        for ok in ["/tmp/a.md", "/tmp/a.TXT", "/tmp/board.excalidraw"] {
+            assert!(validate_export_path(ok).is_ok(), "{ok}");
+        }
+        for bad in ["/tmp/a.json", "/tmp/a", "relative/a.md"] {
+            assert!(validate_export_path(bad).is_err(), "{bad}");
+        }
+    }
 
     #[test]
     fn theme_file_round_trip() {

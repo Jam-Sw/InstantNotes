@@ -25,6 +25,8 @@
   import { linkPrefs as linkPrefsStore } from "$lib/stores/links.svelte";
   import { contexting } from "$lib/stores/contexting.svelte";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
+  import { isWhiteboardTarget } from "$lib/whiteboard/keys";
+  import { excalidrawFile, parseBoard } from "$lib/whiteboard/document";
 
   let appVersion = $state("");
   let paletteOpen = $state(false);
@@ -59,6 +61,12 @@
       void library.newNote();
     }).then((un) => (unlistenNewNote = un));
 
+    let unlistenNewBoard: (() => void) | undefined;
+    void listen("menu:new-whiteboard", () => {
+      settingsOpen = false;
+      void library.newWhiteboard();
+    }).then((un) => (unlistenNewBoard = un));
+
     let unlistenExport: (() => void) | undefined;
     void listen("menu:export-note", () => {
       void exportSelectedNote();
@@ -75,15 +83,18 @@
     const flush = () => void library.flushPendingEdits();
     window.addEventListener("blur", flush);
     window.addEventListener("keydown", onKeydown);
+    window.addEventListener("keydown", onBoardPaletteKey, true);
     return () => {
       updater.stop();
       unlistenCheck?.();
       unlistenSettings?.();
       unlistenNewNote?.();
+      unlistenNewBoard?.();
       unlistenExport?.();
       unlistenQuit?.();
       window.removeEventListener("blur", flush);
       window.removeEventListener("keydown", onKeydown);
+      window.removeEventListener("keydown", onBoardPaletteKey, true);
     };
   });
 
@@ -92,6 +103,17 @@
       t instanceof HTMLElement &&
       (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)
     );
+  }
+
+  // ⌘K on a board is still the palette. Excalidraw binds it to "add link"
+  // and hears keys before the window does, so claim it on the way down;
+  // stopping it here also keeps onKeydown from toggling the palette twice.
+  function onBoardPaletteKey(e: KeyboardEvent) {
+    if ((e.metaKey || e.ctrlKey) && e.key === "k" && isWhiteboardTarget(e.target)) {
+      e.preventDefault();
+      e.stopPropagation();
+      paletteOpen = !paletteOpen;
+    }
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -106,6 +128,15 @@
       paletteOpen = !paletteOpen;
       return;
     }
+    // ⌘\ toggles the sidebar from anywhere, including input fields and boards.
+    if (mod && e.key === "\\") {
+      e.preventDefault();
+      sidebar.toggle();
+      return;
+    }
+    // Every other key aimed at a whiteboard is the board's: arrows, ⌘A, and
+    // ⌘= act on shapes there, not on the note list or the text zoom.
+    if (isWhiteboardTarget(e.target)) return;
     if (mod && (e.key === "=" || e.key === "+")) {
       e.preventDefault();
       editorPrefs.zoomIn();
@@ -119,12 +150,6 @@
     if (mod && e.key === "0") {
       e.preventDefault();
       editorPrefs.resetZoom();
-      return;
-    }
-    // ⌘\ toggles the sidebar from anywhere, including input fields.
-    if (mod && e.key === "\\") {
-      e.preventDefault();
-      sidebar.toggle();
       return;
     }
     if (isTypingTarget(e.target)) {
@@ -188,12 +213,18 @@
     if (!note) return;
     await library.flushPendingEdits();
     const filename = (note.title || "Untitled").replace(/[/\\?%*:|"<>]/g, "-");
+    // A board exports as the drawing itself, openable in Excalidraw.
+    const board = note.contentKind === "whiteboard";
     const path = await save({
-      defaultPath: `${filename}.md`,
-      filters: [{ name: "Markdown", extensions: ["md"] }],
+      defaultPath: `${filename}.${board ? "excalidraw" : "md"}`,
+      filters: board
+        ? [{ name: "Excalidraw", extensions: ["excalidraw"] }]
+        : [{ name: "Markdown", extensions: ["md"] }],
     });
     if (!path) return;
-    await exportNoteFile(path, note.body);
+    // `note`, not library.selected: the selection can move while the dialog
+    // is open, and the flush above already brought `note` up to date.
+    await exportNoteFile(path, board ? excalidrawFile(parseBoard(note.surfaceData)) : note.body);
   }
 
   // Sidebar resize: pointer capture keeps the gesture on the handle even when

@@ -112,9 +112,17 @@
         >
           <div class="row-title">
             {#if note.isPinned}<span class="pin">📌</span>{/if}
+            {#if note.contentKind === "whiteboard"}
+              <svg class="board-cue" viewBox="0 0 16 16" aria-label="Whiteboard" role="img">
+                <rect x="1.5" y="2.5" width="13" height="11" rx="2" />
+                <path d="M4.5 10.5 7 7.5l2 2 2.5-3" />
+              </svg>
+            {/if}
             {note.title}
           </div>
-          <div class="row-preview">{preview(note.body) || "Empty note"}</div>
+          <div class="row-preview">
+            {preview(note.body) || (note.contentKind === "whiteboard" ? "Empty whiteboard" : "Empty note")}
+          </div>
           <div class="row-date" title={formatExact(note.updatedAt)}>{formatDate(note.updatedAt)}</div>
         </button>
       {/snippet}
@@ -266,6 +274,17 @@
   }
   .note-row.selected {
     background: var(--accent-soft);
+  }
+  .board-cue {
+    width: 12px;
+    height: 12px;
+    margin-right: 4px;
+    vertical-align: -1px;
+    fill: none;
+    stroke: var(--text-tertiary);
+    stroke-width: 1.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
   .row-title {
     font-weight: 600;

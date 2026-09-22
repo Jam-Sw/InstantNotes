@@ -212,11 +212,19 @@ pub fn run() {
                 .build()?;
             let new_note_item =
                 MenuItem::with_id(app, "new_note", "New Note", true, Some("CmdOrCtrl+N"))?;
+            let new_board_item = MenuItem::with_id(
+                app,
+                "new_whiteboard",
+                "New Whiteboard",
+                true,
+                Some("CmdOrCtrl+Shift+N"),
+            )?;
             let export_item =
                 MenuItem::with_id(app, "export_note", "Export Note As…", true, None::<&str>)?;
             let file_submenu = {
                 let builder = SubmenuBuilder::new(app, "File")
                     .item(&new_note_item)
+                    .item(&new_board_item)
                     .separator()
                     .item(&export_item);
                 #[cfg(not(target_os = "macos"))]
@@ -253,6 +261,10 @@ pub fn run() {
                 "new_note" => {
                     show_library_window(app);
                     let _ = app.emit("menu:new-note", ());
+                }
+                "new_whiteboard" => {
+                    show_library_window(app);
+                    let _ = app.emit("menu:new-whiteboard", ());
                 }
                 "export_note" => {
                     show_library_window(app);
