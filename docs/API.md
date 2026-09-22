@@ -99,6 +99,8 @@ to defaults when a key is absent or malformed.
 | `import_image_file` | Copy an image picked through a file dialog into the attachments directory (the "copy in" storage mode). Takes an absolute `path`; returns the generated filename. |
 | `allow_image_file` | Allow one existing local image file to load through the asset protocol (the "link the original file" storage mode). Takes an absolute `path` to a file that must already exist; widens the asset scope to that single file only, never a directory. Idempotent. |
 | `open_attachments_folder` | Reveal the attachments folder in the OS file manager. |
+| `unused_attachments` | `{ count, bytes }` of stored images no note references, older than an hour. |
+| `remove_unused_attachments` | Remove those images, and their unchanged copies in the live vault's `attachments/`. Returns what it removed as `{ count, bytes }`. |
 
 Images live as files under `<app data>/attachments` and notes reference them by
 relative `attachments/<name>` markdown paths. The webview reads them back over
@@ -117,6 +119,16 @@ outside `png`, `jpg`, `jpeg`, `gif`, `webp` with a `VALIDATION` error naming the
 rejected extension; `allow_image_file` additionally requires the file to exist.
 Cancelling the file picker never calls either command — the frontend checks the
 dialog result before invoking.
+
+Cleanup. `permanently_delete_note` and `destroy_notes` also remove the copied
+images only the destroyed notes referenced. An image stays while anything
+references it as `attachments/<name>`: any note in any state (the Trash and the
+Archive included), a whiteboard's canvas, or the capture draft. The match
+ignores case. The store stays locked from the reference check to the removal,
+so no save can start using an image mid-cleanup, and a cleanup failure never
+fails the delete. The unused-images commands cover what older versions left
+behind; they skip images added in the last hour, since a fresh paste can
+belong to an edit that has not saved yet. Linked originals are never touched.
 
 Link mode is a live-editing convenience only. It is not portable: a note that
 uses it is not guaranteed to reproduce on a device without the original file at
