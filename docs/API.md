@@ -45,13 +45,18 @@ developer-facing description and is never shown to users verbatim.
 | Command | Purpose |
 | --- | --- |
 | `create_note` | Create a note; title is derived from the body (see DATA_MODEL.md section 6). |
-| `get_note` | Fetch one note by id. |
-| `update_note` | Patch title/body/flags; an empty patch is a no-op. |
+| `get_note` | Fetch one note by id, including a whiteboard's `surfaceData`. |
+| `update_note` | Patch title/body/flags, `contentKind`, and `surfaceData`; an empty patch is a no-op. The reply omits `surfaceData`: the caller already holds the canvas it saved. |
 | `soft_delete_note` | Move a note to trash (`is_deleted = 1`). |
 | `restore_note` | Restore a trashed note. |
 | `permanently_delete_note` | Destroy a note and its rows for good. |
-| `list_notes` | List notes for a status/space/tag filter. |
+| `list_notes` | List notes for a status/space/tag filter. Rows carry `contentKind` but not `surfaceData`. |
 | `search_notes` | Full-text search over title and body (section 7 of DATA_MODEL.md). |
+
+`contentKind` is `document` or `whiteboard`. `update_note` rejects turning a
+whiteboard back into a document and `surfaceData` on a document, both with
+`VALIDATION_ERROR`. A whiteboard's `body` is the text on its board, written
+by the app with each canvas save (DATA_MODEL.md section 3.1).
 
 ## 5. Tags
 
@@ -124,7 +129,11 @@ a copy at export time regardless of storage mode; see
 `hide_capture`, `open_library`, `set_window_vibrancy`, `set_window_theme`,
 `export_theme_file`, `import_theme_file`, `export_note_file`, `open_url`,
 `quit_app`. These drive native windows, theme file I/O, and external links; they
-carry no note data beyond what the user explicitly exports.
+carry no note data beyond what the user explicitly exports. `export_note_file`
+writes `.md`, `.txt`, or `.excalidraw` (a whiteboard's canvas).
+
+The File menu announces itself to the library window with `menu:new-note`,
+`menu:new-whiteboard`, and `menu:export-note` (no payload).
 
 ## 10. Capture
 
