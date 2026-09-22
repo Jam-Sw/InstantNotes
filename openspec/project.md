@@ -18,6 +18,8 @@ Anti-goal: InstantNotes is not a task manager. Dates, checkboxes, and notificati
 - Tauri 2 desktop shell
 - Rust core for persistence, search, and command handling
 - SQLite with FTS5 for local storage and full-text search
+- Markdown files with YAML frontmatter (`serde_norway`) for the vault export
+  and live mirror, with sha256 (`sha2`) to know which files the mirror wrote
 - Svelte 5 and TypeScript for the webview UI
 - CodeMirror 6 for the library editor
 - Vitest, svelte-check, and cargo test for verification

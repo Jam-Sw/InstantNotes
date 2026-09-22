@@ -69,7 +69,8 @@ touch persistence?
       on `feat/note-whiteboard`; the pre-lift state is on
       `backup/0.9.0-pre-with-whiteboard`. This removed migration v4, the
       `react`/`react-dom`/`@excalidraw` runtime deps, and four defects from the
-      release. See unit 12
+      release. See unit 12. Migration v4 alone came back on 2026-09-22 (see
+      unit 8): pre-release builds had already applied it to real libraries
 - [x] Dependabot deferred to unit 6
 
 Verified after the lift: 298 tests, svelte-check 487 files / 0 errors, Rust green.
@@ -123,6 +124,9 @@ for what stage 1 actually covers and the drift it records against this file
 (migration numbering, the Excalidraw sidecar being inapplicable until unit
 12). Units 5-6 below still gate on 1-4, not on unit 7.
 
+**By decision (2026-09-22), unit 8 (dual-write, stage 2) also landed on
+`0.9.0-pre`**, on top of unit 7 and before this cut. See unit 8.
+
 ## 6. Dependency baseline
 
 The three dependabot branches, rebased onto `main` after `v0.9.0`. Not merged
@@ -148,13 +152,23 @@ on every supported platform.
 field of every note, and the exported folder reads correctly in a plain Markdown
 editor.
 
-## 8. Dual-write
+## 8. Dual-write (BUILT, shipped in 0.9.0; see §5)
 
 Stage 2. The last point at which the vault can be wrong for free. The
 verification command is the unit's real output.
 
 **Done when** it reports zero divergence across a real library after sustained
-ordinary use.
+ordinary use. Not yet met: "Check vault" reports zero divergence on a copy of
+the maintainer's library right after a full mirror, which proves the format and
+the flush but not sustained use. Close this once the mirror has run on a real
+library for a while and Check vault still comes back clean.
+
+Building it surfaced a schema collision. Pre-release builds carrying the
+whiteboard had migrated real libraries to v4 (`content_kind`, `surface_data`),
+and `0.9.0-pre`, with the whiteboard lifted off, refused those libraries as
+too new. The whiteboard's v4 now ships in 0.9.0 exactly as it was written,
+columns only, and the vault is v5, as `design.md` §5 always said. See
+`feat-portable-vault-sync/tasks.md`.
 
 ## 9. Filesystem authoritative
 
@@ -176,7 +190,9 @@ every file is visible in one place. Defects go before features.
 
 ## 12. Whiteboard surface
 
-Returns from `feat/note-whiteboard`.
+Returns from `feat/note-whiteboard`. Its migration v4 is already in 0.9.0 (see
+unit 8), so the branch drops its own copy of it when it rebases; nothing else
+on the branch has landed.
 
 **Here, not earlier, because the ordering makes it cheaper.** Landing after the
 vault means the whiteboard sidecar is a new file type added to a format with no
@@ -224,10 +240,12 @@ A `<version>-pre` branch collects a release, `feat/*` branches merge into it, th
 release merges to `main` and is tagged. One unit per branch, in general: the
 vault units past stage 1 should still get their own `-pre` branch rather than
 sharing one with unrelated feature work, since that separation is what makes
-the working rule enforceable rather than aspirational. Unit 7 (stage 1) is the
-recorded exception, landed on `0.9.0-pre` by decision (§5) rather than waiting
-for its own branch, because it is pure addition with no shared write path to
-protect yet.
+the working rule enforceable rather than aspirational. Units 7 and 8 (stages 1
+and 2) are the recorded exceptions, landed on `0.9.0-pre` by decision (§5).
+Stage 1 is pure addition. Stage 2 adds a second write path, but SQLite stays
+authoritative and nothing reads the vault back, so the worst a stage 2 bug can
+do is write a wrong file, which Check vault reports. Stages 3 and 4 flip
+authority to the filesystem and must get their own `-pre` branch.
 
 ## Safety refs
 

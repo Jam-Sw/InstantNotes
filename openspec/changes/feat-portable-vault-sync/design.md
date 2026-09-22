@@ -182,58 +182,78 @@ every body change (`notes.rs:120-137`).
 
 Additive only. Migration v3 dropped the unused sync scaffolding with the note
 that "a real sync feature will design its own schema when it lands"
-(`store.rs:102`); this is that schema.
+(`store.rs`); this is that schema. v4 is the whiteboard's `content_kind` and
+`surface_data`, which pre-release builds had already written into real
+libraries, so it ships ahead of this one unchanged.
 
 ```sql
 ALTER TABLE notes ADD COLUMN vault_path  TEXT;
 ALTER TABLE notes ADD COLUMN file_sha    TEXT;
 ALTER TABLE notes ADD COLUMN vault_dirty INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE vault_tombstones (vault_path TEXT PRIMARY KEY, file_sha TEXT);
+-- plus the dirty triggers (§6) and indexes on vault_dirty and vault_path
 ```
 
-- `vault_path` — path relative to the vault root; detects moves and renames
-- `file_sha` — sha256 of the bytes we last wrote; drives echo suppression (§7)
-- `vault_dirty` — survives a crash between the DB commit and the file write
+- `vault_path`: path relative to the vault root; detects moves and renames
+- `file_sha`: sha256 of the bytes we last wrote; drives echo suppression (§7),
+  and in stage 2 decides whether a file may be removed (it may only while it
+  still holds our bytes)
+- `vault_dirty`: survives a crash between the DB commit and the file write
+- `vault_tombstones`: a permanently deleted note leaves no row to flag, so its
+  file is queued here for the flush to remove
 
 ## 6. Store changes
 
 ```rust
 pub struct Store {
     conn: Connection,
-    vault: Option<Vault>,     // None = legacy DB-only mode
-    dirty: HashSet<String>,   // note ids awaiting flush
+    vault: Option<VaultState>,   // None = no mirror configured
 }
 ```
 
-Of the 31 public store functions:
+Dirty tracking lives in SQL, not in `Store` methods. Triggers set
+`vault_dirty` in the same transaction as the write that changes a note's file:
 
-- **10 read functions are unchanged.** `list_notes`, `search_notes`,
-  `list_tags`, `library_stats`, `workspaces_for_note` and peers keep the same
-  SQL, the same FTS5 triggers, and the same `NoteFilter`. Nothing parses
-  Markdown at query time.
-- **13 note-writing functions gain one line each** — `self.dirty.insert(id)`.
-  `create_note`, `update_note`, `soft_delete_note`, `restore_note`,
-  `permanently_delete_note`, `set_notes_flags`, `soft_delete_notes`,
-  `restore_notes`, `destroy_notes`, `add_tag_to_note`, `remove_tag_from_note`,
-  `add_note_to_workspace`, `remove_note_from_workspace`.
-- **8 tag/space/settings writers** update `instantnotes.yaml` or, for settings,
-  nothing at all.
+- `notes` insert, and updates of every column the file carries (not
+  `last_opened_at`, §7.2)
+- `note_tags` and `note_workspaces` inserts and deletes, which also covers the
+  cascades from deleting a tag or a space
+- a rename of a tag or space, for every note carrying it (a color change
+  touches only `instantnotes.yaml`)
+- a `notes` delete with a `vault_path` queues a tombstone
 
-The `Store` is already documented as the single writer for all persistent state
-(`store.rs:1`), which is what makes one choke point sufficient. No public
-signature changes, so `store_test.rs` (1132 lines) keeps passing unmodified.
+The first draft of this design put one `self.dirty.insert(id)` line in each of
+the 13 note-writing functions plus an in-memory `HashSet`. Triggers do the same
+job with no second source of truth, cannot be forgotten by a future writer,
+and are crash-safe by construction. No public signature changes, so
+`store_test.rs` keeps passing unmodified, and the 10 read functions keep the
+same SQL, the same FTS5 triggers, and the same `NoteFilter`.
 
-`flush_vault()` runs after each command returns:
+`flush_vault(max)` writes up to `max` pending notes:
 
 ```
-for id in dirty:
-    note  = fetch_note(id)
-    path  = target_path(note)          # trash/ vs root; slug from title
-    bytes = serialize(note)
-    atomic_write(path, bytes)          # tmp in same dir, fsync, rename
-    if note.vault_path != path:
-        remove old file; rename sidecar
+remove each tombstoned file that still holds its recorded sha
+for id in pending (oldest first, up to max):
+    note  = vault_note(id)
+    path  = first free of <slug>.md, <slug>-<id6>.md, <slug>-<id>.md
+            (under trash/ when deleted); a path is usable when it is the
+            note's own, unclaimed and absent, or holds a file whose id is ours
+    atomic_write(path, serialize(note))   # tmp in same dir, fsync, rename
+    if path moved: remove the old file only if it still holds our bytes
     UPDATE notes SET vault_path=?, file_sha=sha256(bytes), vault_dirty=0
+rewrite instantnotes.yaml only if its bytes changed
 ```
+
+Collisions compare case-insensitively, and a case-only rename renames the file
+first, because on macOS `notes.md` and `Notes.md` are one file. The vault root
+is never created: a missing root fails the flush and every note stays pending.
+
+In the desktop shell, every write command already calls one of the
+`emit_*_changed` helpers, which also poke a background writer. It flushes after
+300 ms of quiet (at most 2 s), 50 notes per hold of the store lock, so typing
+an auto-titled first line settles into one rename and a large first mirror
+never stalls an autosave. Startup flushes whatever a crash left pending; quit
+flushes one more chunk.
 
 Renaming a tag or a space rewrites the frontmatter of every note carrying it.
 That is bounded and it is the price of names rather than opaque ids in the file.
@@ -350,7 +370,7 @@ built-in transport rather than the optional one.
 | R1 | Two-writer echo loops or lost writes | §7 sha comparison; dual-write stage proves round-tripping before authority flips |
 | R2 | Filename churn from auto-derived titles | Rename only at flush, only when the slug actually changes |
 | R3 | Tag or space rename rewrites many files | Bounded and accepted; it is what keeps names in the files |
-| R4 | Data loss during migration | Stage 1 is export-only. `backup_before_migration` (`store.rs`) already snapshots the DB before v5 runs |
+| R4 | Data loss during migration | Stage 1 is export-only. `backup_before_migration` (`store.rs`) snapshots the DB before v5 runs |
 | R5 | Vault on a WAL-hostile mount | Cache stays in app data (D4), so `store.rs:250` is never exercised against the vault |
 | R6 | Private repo means the host can read notes | Out of scope. Recorded in §14 |
 
