@@ -109,10 +109,19 @@ checked; they need a changelog line at release, not a unit.
 
 Mechanical once units 1-4 are done.
 
-- [ ] `npm run bump 0.9.0` — all five manifests still read `0.8.0`
-- [ ] Changelog: date `[0.9.0]`, and correct every entry to what shipped. The
-      current section is a draft written ahead of the work
+- [x] `npm run bump 0.9.0`: all five manifests bumped
+- [x] Changelog: date `[0.9.0]`, and correct every entry to what shipped
 - [ ] Merge to `main`, tag `v0.9.0`
+
+**By decision (2026-09-19), unit 7 (vault serializer and export, stage 1 of
+`feat-portable-vault-sync`) landed on `0.9.0-pre` ahead of this cut**, out of
+the order this file states below. The insertion rule's reasoning for unit
+7's position (§"Insertion rule": persisted-shape changes go before it) still
+holds; what changed is that it now ships as part of 0.9.0 rather than
+waiting for units 5-6 to close first. See `feat-portable-vault-sync/tasks.md`
+for what stage 1 actually covers and the drift it records against this file
+(migration numbering, the Excalidraw sidecar being inapplicable until unit
+12). Units 5-6 below still gate on 1-4, not on unit 7.
 
 ## 6. Dependency baseline
 
@@ -131,7 +140,7 @@ as separate units.
 **Done when** the suite passes on the new toolchain and a release bundle builds
 on every supported platform.
 
-## 7. Vault serializer and export
+## 7. Vault serializer and export (DONE, shipped in 0.9.0; see §5)
 
 `feat-portable-vault-sync` stage 1. Pure addition; SQLite stays authoritative.
 
@@ -212,9 +221,13 @@ gives local AI somewhere to surface results.
 ## Branch model
 
 A `<version>-pre` branch collects a release, `feat/*` branches merge into it, the
-release merges to `main` and is tagged. One unit per branch. The vault units get
-their own `-pre` branch rather than sharing one with feature work, which is what
-makes the working rule enforceable rather than aspirational.
+release merges to `main` and is tagged. One unit per branch, in general: the
+vault units past stage 1 should still get their own `-pre` branch rather than
+sharing one with unrelated feature work, since that separation is what makes
+the working rule enforceable rather than aspirational. Unit 7 (stage 1) is the
+recorded exception, landed on `0.9.0-pre` by decision (§5) rather than waiting
+for its own branch, because it is pure addition with no shared write path to
+protect yet.
 
 ## Safety refs
 
