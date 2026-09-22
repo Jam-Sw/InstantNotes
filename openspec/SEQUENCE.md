@@ -183,11 +183,14 @@ backup by folder copy, folder-sync tools work by construction.
 Stage 4. **Cuts 0.11.0.** Split from unit 9 so that if the vault runs long,
 portability has already shipped and only sync slips.
 
-## 11. Attachment garbage collection
+## 11. Attachment garbage collection (DONE, shipped in 0.9.0)
 
-Nothing removes an image when the last note referencing it is destroyed.
-`feat-portable-vault-sync/design.md` section 14. After unit 9 every reference and
-every file is visible in one place. Defects go before features.
+Landed on `0.9.0-pre` on 2026-09-22, ahead of unit 9, by decision: every
+reference already lives in SQLite (note bodies, whiteboard canvases, the
+capture draft), so the defect did not need the vault's view to be fixed.
+Destroying notes removes the images only they used, and Settings > Images
+clears what older versions left behind. See
+`changes/archive/feat-attachment-cleanup/tasks.md`.
 
 ## 12. Whiteboard surface (DONE, shipped in 0.9.0)
 

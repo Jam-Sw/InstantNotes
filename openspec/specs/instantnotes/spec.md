@@ -82,6 +82,18 @@ The app SHALL provide full-text search over note title and body.
 - **THEN** the app sanitizes the query
 - **AND** does not expose a search syntax error to the user
 
+### Requirement: Image Cleanup
+The app SHALL remove a copied-in image once no note, in any state, and no capture draft references it any more, and SHALL never remove an image something still references.
+
+#### Scenario: Delete the last note using an image
+- **WHEN** the user deletes a note for good and no other note references its images
+- **THEN** those images are removed from the attachments folder
+- **AND** from the vault's attachments folder when its copy is unchanged
+
+#### Scenario: Keep images a trashed note uses
+- **WHEN** an image is referenced only by a note in the Trash or the Archive
+- **THEN** the image is kept
+
 ### Requirement: Whiteboard Notes
 The app SHALL let a note be a whiteboard, a freeform canvas that stays a note: listed, tagged, filed in Spaces, trashed, and searched like any other.
 

@@ -406,6 +406,6 @@ superseded `docs/PORTABLE_VAULT_AND_SYNC_SPEC.md`.
 2. Multiple vaults, or one per install? Assume one until there is a reason.
 3. Encryption at the remote. A private repo is probably enough; `age` or
    `git-crypt` on the remote only would keep the local vault plaintext. Deferred.
-4. Attachment garbage collection. Nothing currently removes an image when the
-   last note referencing it is destroyed. Pre-existing, and the vault makes it
-   visible; worth its own change.
+4. Attachment garbage collection. Resolved in 0.9.0 as its own change
+   (`changes/archive/feat-attachment-cleanup`): destroying the last note that
+   references an image removes it, and the vault's unchanged copy with it.
