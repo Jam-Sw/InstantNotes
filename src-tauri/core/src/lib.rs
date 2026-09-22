@@ -1,3 +1,4 @@
+pub mod attachments;
 pub mod domain;
 pub mod error;
 pub mod sensitive;

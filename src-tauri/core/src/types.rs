@@ -132,3 +132,11 @@ pub struct SearchResult {
     pub score: f64,
     pub updated_at: String,
 }
+
+/// What an attachment cleanup removed (or, for a preview, would remove).
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AttachmentCleanup {
+    pub count: usize,
+    pub bytes: u64,
+}
