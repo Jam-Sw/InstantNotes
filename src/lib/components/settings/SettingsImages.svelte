@@ -1,7 +1,15 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { imagePrefs, IMAGE_HEIGHT_RANGE, type ImageStorage } from "$lib/stores/images.svelte";
-  import { getLibraryStats, getAttachmentsDir, openAttachmentsFolder } from "$lib/api/client";
+  import {
+    getLibraryStats,
+    getAttachmentsDir,
+    openAttachmentsFolder,
+    unusedAttachments,
+    removeUnusedAttachments,
+  } from "$lib/api/client";
+  import type { AttachmentCleanup } from "$lib/api/types";
+  import { confirmDialog } from "$lib/stores/confirm.svelte";
   import { formatBytes } from "$lib/format";
   import { toasts } from "$lib/stores/toasts.svelte";
   import PrefRow from "$lib/components/settings/PrefRow.svelte";
@@ -19,19 +27,53 @@
   let attachmentsCount = $state<number | null>(null);
   let attachmentsBytes = $state(0);
   let attachmentsDir = $state("");
+  let unused = $state<AttachmentCleanup | null>(null);
+  let removing = $state(false);
 
-  onMount(() => {
-    void imagePrefs.init();
+  const plural = (n: number) => `${n} ${n === 1 ? "image" : "images"}`;
+
+  function loadCounts() {
     void getLibraryStats()
       .then((s) => {
         attachmentsCount = s.attachmentsCount;
         attachmentsBytes = s.attachmentsBytes;
       })
       .catch(() => {});
+    void unusedAttachments()
+      .then((u) => (unused = u))
+      .catch(() => {});
+  }
+
+  onMount(() => {
+    void imagePrefs.init();
+    loadCounts();
     void getAttachmentsDir()
       .then((d) => (attachmentsDir = d))
       .catch(() => {});
   });
+
+  // Deleting a note for good already takes the images only it used; this
+  // clears what older versions left behind, or what a note stopped using.
+  async function removeUnused() {
+    if (!unused?.count || removing) return;
+    const ok = await confirmDialog.ask({
+      title: `Remove ${plural(unused.count)} no note uses?`,
+      body: "They are deleted from the attachments folder for good. Images used by notes in the Trash or the Archive are kept, and anything added in the last hour is left alone.",
+      confirmLabel: "Remove",
+      tone: "danger",
+    });
+    if (!ok) return;
+    removing = true;
+    try {
+      const done = await removeUnusedAttachments();
+      toasts.show(`Removed ${done.count} unused ${done.count === 1 ? "image" : "images"} (${formatBytes(done.bytes)}).`);
+    } catch (e) {
+      toasts.show(`Couldn't remove unused images. ${e instanceof Error ? e.message : e}`);
+    } finally {
+      removing = false;
+      loadCounts();
+    }
+  }
 
   async function openFolder() {
     try {
@@ -102,10 +144,21 @@
       <span class="attach-val">{formatBytes(attachmentsBytes)}</span>
     </div>
     <div class="attach-row">
+      <span class="attach-key">Unused</span>
+      <span class="attach-val">
+        {#if !unused}-{:else if unused.count === 0}None{:else}{plural(unused.count)}, {formatBytes(unused.bytes)}{/if}
+      </span>
+    </div>
+    <div class="attach-row">
       <span class="attach-key">Location</span>
       <span class="attach-path" title={attachmentsDir}>{attachmentsDir || "-"}</span>
     </div>
-    <button class="folder-btn" onclick={openFolder}>Open attachments folder</button>
+    <div class="attach-actions">
+      <button class="folder-btn" onclick={openFolder}>Open attachments folder</button>
+      <button class="folder-btn" disabled={!unused?.count || removing} onclick={removeUnused}>
+        Remove unused…
+      </button>
+    </div>
   </div>
 </div>
 
@@ -195,7 +248,14 @@
     color: var(--accent);
     font-size: 13px;
   }
-  .folder-btn:hover {
+  .folder-btn:hover:not(:disabled) {
     background: var(--bg-hover);
+  }
+  .folder-btn:disabled {
+    opacity: 0.5;
+  }
+  .attach-actions {
+    display: flex;
+    gap: 8px;
   }
 </style>

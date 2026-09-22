@@ -3,6 +3,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AttachmentCleanup,
   CaptureLatencySummary,
   CreateNoteInput,
   DashboardStats,
@@ -187,6 +188,11 @@ export const allowImageFile = (path: string) =>
   call<void>("allow_image_file", { path });
 export const openAttachmentsFolder = () =>
   call<void>("open_attachments_folder");
+// Images no note references any more (older than an hour), and removing
+// them along with their unchanged copies in the live vault.
+export const unusedAttachments = () => call<AttachmentCleanup>("unused_attachments");
+export const removeUnusedAttachments = () =>
+  call<AttachmentCleanup>("remove_unused_attachments");
 
 // ---- vault export ----
 // Stage 1 of the portable vault (openspec/changes/feat-portable-vault-sync):

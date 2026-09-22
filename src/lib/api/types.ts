@@ -142,3 +142,9 @@ export interface VaultReport {
   pending: number;
   manifestOk: boolean;
 }
+
+/** What an attachment cleanup removed, or would remove. */
+export interface AttachmentCleanup {
+  count: number;
+  bytes: number;
+}

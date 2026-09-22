@@ -46,6 +46,10 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Note saves it the same way.
 
 ### Fixed
+- Images no longer pile up forever: deleting a note for good also deletes the
+  images only it used. Settings > Images shows how many images no note uses any
+  more and can remove them. Images used by notes in the Trash or the Archive
+  are always kept.
 - A stray caret no longer lingers in notes you switch between: each note now
   loads with its own clean editing state, and undo no longer reaches back into
   the previously open note.

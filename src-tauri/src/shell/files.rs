@@ -238,6 +238,62 @@ pub fn open_attachments_folder(app: AppHandle) -> CmdResult<()> {
     Ok(())
 }
 
+/// How long the Settings cleanup leaves a new image alone: a fresh paste can
+/// belong to an edit that has not saved yet.
+const CLEANUP_GRACE: std::time::Duration = std::time::Duration::from_secs(3600);
+
+/// Stored images nothing references, older than `CLEANUP_GRACE`, with their
+/// total size.
+fn unused_attachment_files(
+    store: &Store,
+    dir: &std::path::Path,
+) -> CmdResult<(Vec<String>, AttachmentCleanup)> {
+    let cutoff = std::time::SystemTime::now() - CLEANUP_GRACE;
+    let files =
+        instantnotes_core::attachments::list_attachments(dir, Some(cutoff)).map_err(|e| {
+            CmdError {
+                code: "STORAGE_ERROR".into(),
+                message: format!("could not list attachments: {e}"),
+            }
+        })?;
+    let unused = store.unreferenced_attachments(files.iter().map(|(n, _)| n.clone()))?;
+    let bytes = files
+        .iter()
+        .filter(|(n, _)| unused.contains(n))
+        .map(|(_, size)| size)
+        .sum();
+    let summary = AttachmentCleanup {
+        count: unused.len(),
+        bytes,
+    };
+    Ok((unused, summary))
+}
+
+/// How many stored images no note uses any more, for Settings > Images.
+#[tauri::command(async)]
+pub fn unused_attachments(
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> CmdResult<AttachmentCleanup> {
+    let dir = attachments_dir(&app)?;
+    let store = locked(&state)?;
+    Ok(unused_attachment_files(&store, &dir)?.1)
+}
+
+/// Remove the stored images no note uses (and their unchanged copies in the
+/// live vault). The store stays locked throughout, so nothing can start
+/// referencing one of them mid-cleanup.
+#[tauri::command(async)]
+pub fn remove_unused_attachments(
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> CmdResult<AttachmentCleanup> {
+    let dir = attachments_dir(&app)?;
+    let store = locked(&state)?;
+    let (unused, _) = unused_attachment_files(&store, &dir)?;
+    Ok(store.remove_unreferenced_attachments(&dir, unused)?)
+}
+
 /// Best-effort count and total byte size of stored attachments, for the
 /// dashboard. A missing or unreadable directory reports zero rather than
 /// failing the whole stats call.
