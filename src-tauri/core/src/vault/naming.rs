@@ -6,9 +6,16 @@ use std::collections::HashSet;
 
 const INVALID: &[char] = &['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
 
+/// Bytes of title kept in a filename. Names are capped at 255 bytes; the
+/// longest candidate adds `-<36-char id>.md` (40 bytes) and the atomic
+/// write's temp name adds `.` and `.tmp-<pid>-<seq>` (up to 37), which leaves
+/// 178. The rest is margin.
+const MAX_BASE_BYTES: usize = 150;
+
 /// Strip characters that are illegal in a filename on any of Windows/macOS/
-/// Linux, collapse the result to something non-empty, and trim trailing
-/// dots/spaces (Windows rejects trailing dots).
+/// Linux, cut it to `MAX_BASE_BYTES` on a character boundary, collapse the
+/// result to something non-empty, and trim trailing dots/spaces (Windows
+/// rejects trailing dots).
 fn sanitize(title: &str) -> String {
     let cleaned: String = title
         .chars()
@@ -20,7 +27,11 @@ fn sanitize(title: &str) -> String {
             }
         })
         .collect();
-    let trimmed = cleaned.trim().trim_end_matches(['.', ' ']).trim();
+    let mut end = cleaned.len().min(MAX_BASE_BYTES);
+    while !cleaned.is_char_boundary(end) {
+        end -= 1;
+    }
+    let trimmed = cleaned[..end].trim().trim_end_matches(['.', ' ']).trim();
     if trimmed.is_empty() {
         "Untitled".to_string()
     } else {
@@ -35,18 +46,28 @@ pub fn collision_key(name: &str) -> String {
     name.to_lowercase()
 }
 
-/// The `.md` filename for a note, unique against `taken` (the
-/// `collision_key`s of names already assigned earlier in the same
-/// export/flush pass). On collision, appends the first six characters of the
-/// note's id; if even that is taken (a note literally titled that way), the
-/// whole id, which is unique by construction.
-pub fn note_filename(title: &str, id: &str, taken: &HashSet<String>) -> String {
+/// A note's filenames in order of preference: the title, then the title
+/// with the first six characters of the id, then with the whole id, which is
+/// unique by construction.
+pub fn candidate_filenames(title: &str, id: &str) -> [String; 3] {
     let base = sanitize(title);
     let short: String = id.chars().take(6).collect();
-    [format!("{base}.md"), format!("{base}-{short}.md")]
+    [
+        format!("{base}.md"),
+        format!("{base}-{short}.md"),
+        format!("{base}-{id}.md"),
+    ]
+}
+
+/// The `.md` filename for a note, unique against `taken` (the
+/// `collision_key`s of names already assigned earlier in the same export
+/// pass): the first of `candidate_filenames` not already taken.
+pub fn note_filename(title: &str, id: &str, taken: &HashSet<String>) -> String {
+    let [plain, short, full] = candidate_filenames(title, id);
+    [plain, short]
         .into_iter()
         .find(|name| !taken.contains(&collision_key(name)))
-        .unwrap_or_else(|| format!("{base}-{id}.md"))
+        .unwrap_or(full)
 }
 
 #[cfg(test)]
@@ -82,6 +103,21 @@ mod tests {
     fn trims_trailing_dots_and_spaces() {
         let taken = HashSet::new();
         assert_eq!(note_filename("Notes.  ", "id1", &taken), "Notes.md");
+    }
+
+    /// Filenames are capped at 255 bytes on every supported filesystem, and
+    /// the atomic write's temp name adds a prefix and suffix on top. An
+    /// explicit title has no length limit, so the name must be budgeted or a
+    /// long title fails every write of its note.
+    #[test]
+    fn a_very_long_title_still_fits_a_filename_with_its_temp_suffix() {
+        let title = "é".repeat(300);
+        let id = "018f6c3a-8b29-7c10-9824-3a2e1d0f5b6a";
+        for name in candidate_filenames(&title, id) {
+            let temp_name = format!(".{name}.tmp-4294967295-18446744073709551615");
+            assert!(temp_name.len() <= 255, "{} bytes: {name}", temp_name.len());
+            assert!(name.starts_with("éé"));
+        }
     }
 
     #[test]

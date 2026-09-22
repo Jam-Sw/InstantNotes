@@ -1,9 +1,10 @@
 //! The vault format: a note as Markdown + YAML frontmatter, and back.
-//! Pure functions only here: no filesystem I/O (see stage 2 for atomic
-//! writes and flush). Design: openspec/changes/feat-portable-vault-sync/design.md §3.2.
+//! This file holds the pure format; `write` and `export` do the filesystem
+//! I/O, and the stage 2 flush lives on `Store` (`store/vault.rs`). Design: openspec/changes/feat-portable-vault-sync/design.md §3.2.
 
 pub mod export;
 pub mod manifest;
+pub mod mirror;
 pub mod naming;
 pub mod parse;
 pub mod serialize;
@@ -11,10 +12,11 @@ pub mod write;
 
 pub use export::{collect_from_store, export_vault};
 pub use manifest::{parse_manifest, serialize_manifest, Manifest, ManifestSpace, ManifestTag};
-pub use naming::{collision_key, note_filename};
+pub use mirror::{check_vault_location, is_within, FlushOutcome, VaultReport, VaultStatus};
+pub use naming::{candidate_filenames, collision_key, note_filename};
 pub use parse::{parse_note, ParseError};
 pub use serialize::serialize_note;
-pub use write::{atomic_write, copy_dir_recursive};
+pub use write::{atomic_write, copy_dir_recursive, copy_missing_files};
 
 use serde::{Deserialize, Serialize};
 

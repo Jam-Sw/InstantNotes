@@ -7,6 +7,11 @@
 use std::fs::{self, File};
 use std::io;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// Distinguishes temp files within one process, so two writers to the same
+/// target (an export into a folder the mirror is flushing) never share one.
+static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// Write `bytes` to `path` atomically. `path`'s parent directory must
 /// already exist.
@@ -15,11 +20,12 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> io::Result<()> {
         io::Error::new(io::ErrorKind::InvalidInput, "path has no parent directory")
     })?;
     let tmp_path = dir.join(format!(
-        ".{}.tmp-{}",
+        ".{}.tmp-{}-{}",
         path.file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("vault-write"),
-        std::process::id()
+        std::process::id(),
+        TMP_SEQ.fetch_add(1, Ordering::Relaxed)
     ));
 
     let mut tmp = File::create(&tmp_path)?;
@@ -48,6 +54,25 @@ pub fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
         }
     }
     Ok(())
+}
+
+/// Copy each file directly under `src` that `dst` does not already have,
+/// creating `dst` if needed. Returns how many were copied.
+pub fn copy_missing_files(src: &Path, dst: &Path) -> io::Result<usize> {
+    fs::create_dir_all(dst)?;
+    let mut copied = 0;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_file() {
+            continue;
+        }
+        let target = dst.join(entry.file_name());
+        if fs::symlink_metadata(&target).is_err() {
+            fs::copy(entry.path(), target)?;
+            copied += 1;
+        }
+    }
+    Ok(copied)
 }
 
 #[cfg(test)]
@@ -107,6 +132,26 @@ mod tests {
             fs::read(dst.join("nested").join("b.png")).unwrap(),
             b"b-bytes"
         );
+    }
+
+    /// The live mirror (stage 2) re-runs this at every launch: attachment
+    /// names are uuids, so an existing name is already the same image and
+    /// must never be rewritten.
+    #[test]
+    fn copy_missing_files_copies_only_what_the_destination_lacks() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src");
+        let dst = dir.path().join("dst");
+        fs::create_dir_all(&src).unwrap();
+        fs::create_dir_all(&dst).unwrap();
+        fs::write(src.join("new.png"), b"new").unwrap();
+        fs::write(src.join("have.png"), b"source").unwrap();
+        fs::write(dst.join("have.png"), b"already there").unwrap();
+
+        assert_eq!(copy_missing_files(&src, &dst).unwrap(), 1);
+        assert_eq!(fs::read(dst.join("new.png")).unwrap(), b"new");
+        assert_eq!(fs::read(dst.join("have.png")).unwrap(), b"already there");
+        assert_eq!(copy_missing_files(&src, &dst).unwrap(), 0);
     }
 
     #[test]

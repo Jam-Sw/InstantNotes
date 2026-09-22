@@ -116,6 +116,69 @@ ALTER TABLE notes DROP COLUMN last_synced_at;
 ALTER TABLE notes ADD COLUMN content_kind TEXT NOT NULL DEFAULT 'document';
 ALTER TABLE notes ADD COLUMN surface_data TEXT;
 "#,
+    // v5: the vault mirror (feat-portable-vault-sync stage 2, design.md §5).
+    // vault_path is where the note's file was last written, relative to the
+    // vault root; file_sha is the sha256 of those bytes. vault_dirty is set
+    // by the triggers below in the same transaction as any write that
+    // changes what the note's file holds, so a crash between the commit and
+    // the file write still leaves the note marked for the next flush.
+    // last_opened_at is deliberately absent from the watched columns: it is
+    // device-local and never written to the vault (design.md §7.2).
+    r#"
+ALTER TABLE notes ADD COLUMN vault_path  TEXT;
+ALTER TABLE notes ADD COLUMN file_sha    TEXT;
+ALTER TABLE notes ADD COLUMN vault_dirty INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX idx_notes_vault_dirty ON notes(vault_dirty) WHERE vault_dirty = 1;
+CREATE INDEX idx_notes_vault_path ON notes(vault_path COLLATE NOCASE)
+  WHERE vault_path IS NOT NULL;
+
+-- A hard-deleted note leaves no row to flag, so its file is queued here.
+CREATE TABLE vault_tombstones (
+  vault_path TEXT PRIMARY KEY,
+  file_sha   TEXT
+);
+
+CREATE TRIGGER notes_vault_ai AFTER INSERT ON notes BEGIN
+  UPDATE notes SET vault_dirty = 1 WHERE seq = new.seq;
+END;
+CREATE TRIGGER notes_vault_au AFTER UPDATE OF
+  title, title_is_auto, body, created_at, updated_at,
+  is_pinned, is_archived, is_deleted, deleted_at ON notes BEGIN
+  UPDATE notes SET vault_dirty = 1 WHERE seq = new.seq;
+END;
+CREATE TRIGGER notes_vault_ad AFTER DELETE ON notes
+  WHEN old.vault_path IS NOT NULL BEGIN
+  INSERT OR REPLACE INTO vault_tombstones (vault_path, file_sha)
+    VALUES (old.vault_path, old.file_sha);
+END;
+
+-- Edge changes, including the cascades from deleting a tag or a space.
+CREATE TRIGGER note_tags_vault_ai AFTER INSERT ON note_tags BEGIN
+  UPDATE notes SET vault_dirty = 1 WHERE id = new.note_id;
+END;
+CREATE TRIGGER note_tags_vault_ad AFTER DELETE ON note_tags BEGIN
+  UPDATE notes SET vault_dirty = 1 WHERE id = old.note_id;
+END;
+CREATE TRIGGER note_workspaces_vault_ai AFTER INSERT ON note_workspaces BEGIN
+  UPDATE notes SET vault_dirty = 1 WHERE id = new.note_id;
+END;
+CREATE TRIGGER note_workspaces_vault_ad AFTER DELETE ON note_workspaces BEGIN
+  UPDATE notes SET vault_dirty = 1 WHERE id = old.note_id;
+END;
+
+-- Names are what the frontmatter carries; a color change touches only
+-- instantnotes.yaml, which the flush compares on its own.
+CREATE TRIGGER tags_vault_au AFTER UPDATE OF name ON tags
+  WHEN old.name IS NOT new.name BEGIN
+  UPDATE notes SET vault_dirty = 1
+    WHERE id IN (SELECT note_id FROM note_tags WHERE tag_id = new.id);
+END;
+CREATE TRIGGER workspaces_vault_au AFTER UPDATE OF name ON workspaces
+  WHEN old.name IS NOT new.name BEGIN
+  UPDATE notes SET vault_dirty = 1
+    WHERE id IN (SELECT note_id FROM note_workspaces WHERE workspace_id = new.id);
+END;
+"#,
 ];
 
 const NOTE_COLUMNS: &str = "id, title, body, created_at, updated_at, last_opened_at, \
@@ -123,6 +186,8 @@ const NOTE_COLUMNS: &str = "id, title, body, created_at, updated_at, last_opened
 
 pub struct Store {
     conn: Connection,
+    /// The live vault mirror (stage 2), when one is configured.
+    vault: Option<vault::VaultState>,
 }
 
 fn now_iso() -> String {
@@ -299,7 +364,7 @@ impl Store {
                 "database integrity check failed: {check}"
             )));
         }
-        let mut store = Store { conn };
+        let mut store = Store { conn, vault: None };
         store.migrate()?;
         Ok(store)
     }
@@ -416,6 +481,7 @@ mod notes;
 mod settings;
 mod stats;
 mod tags;
+mod vault;
 mod workspaces;
 
 #[cfg(test)]
@@ -510,9 +576,9 @@ mod migration_tests {
 
     /// A library written by a pre-release build that carried the whiteboard
     /// (schema v4: content_kind and surface_data) must open, not be refused
-    /// as too new, and keep its whiteboard data.
+    /// as too new, and gain the vault columns on top.
     #[test]
-    fn a_whiteboard_v4_library_opens() {
+    fn a_whiteboard_v4_library_migrates_to_the_vault_schema() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("whiteboard.db");
         {
@@ -537,7 +603,7 @@ mod migration_tests {
         let mut store = Store::open(&path).unwrap();
 
         let cols = note_columns(&store.conn);
-        for col in ["content_kind", "surface_data"] {
+        for col in ["content_kind", "surface_data", "vault_path", "vault_dirty"] {
             assert!(cols.contains(&col.to_string()), "missing {col}");
         }
         let kind: String = store
@@ -547,6 +613,43 @@ mod migration_tests {
             })
             .unwrap();
         assert_eq!(kind, "whiteboard");
+        assert_eq!(store.get_note("n1", false).unwrap().body, "the body");
+    }
+
+    /// A 0.8/0.9-era library (schema v3) gains the vault mirror columns on
+    /// open. Existing notes survive and start clean: nothing is pending
+    /// until a vault is configured, which marks every note itself.
+    #[test]
+    fn v3_library_gains_vault_columns_and_preserves_notes() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("v3.db");
+        {
+            let conn = Connection::open(&path).unwrap();
+            for sql in &MIGRATIONS[..3] {
+                conn.execute_batch(sql).unwrap();
+            }
+            conn.pragma_update(None, "user_version", 3i64).unwrap();
+            conn.execute(
+                "INSERT INTO notes (id, title, body, created_at, updated_at) \
+                 VALUES ('n1', 'Kept', 'the body', 't', 't')",
+                [],
+            )
+            .unwrap();
+        }
+
+        let mut store = Store::open(&path).unwrap();
+
+        let cols = note_columns(&store.conn);
+        for col in ["vault_path", "file_sha", "vault_dirty"] {
+            assert!(cols.contains(&col.to_string()), "missing {col}");
+        }
+        let dirty: i64 = store
+            .conn
+            .query_row("SELECT vault_dirty FROM notes WHERE id = 'n1'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(dirty, 0);
         assert_eq!(store.get_note("n1", false).unwrap().body, "the body");
     }
 }

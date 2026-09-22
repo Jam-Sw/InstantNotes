@@ -5,7 +5,7 @@
 
 use super::{
     atomic_write, collision_key, note_filename, serialize_manifest, serialize_note, Manifest,
-    ManifestSpace, ManifestTag, VaultNote,
+    VaultNote,
 };
 use crate::domain;
 use crate::error::Result;
@@ -65,54 +65,11 @@ pub fn collect_from_store(store: &Store) -> Result<(Vec<VaultNote>, Manifest)> {
         notes.extend(list_all(store, filter)?);
     }
 
-    let mut vault_notes = Vec::with_capacity(notes.len());
-    for note in notes {
-        let title_is_auto = store.title_is_auto(&note.id)?;
-        let tags = store
-            .tags_for_note(&note.id)?
-            .into_iter()
-            .map(|t| t.name)
-            .collect();
-        let spaces = store
-            .workspaces_for_note(&note.id)?
-            .into_iter()
-            .map(|w| w.name)
-            .collect();
-        vault_notes.push(VaultNote {
-            id: note.id,
-            title: if title_is_auto {
-                None
-            } else {
-                Some(note.title)
-            },
-            body: note.body,
-            created_at: note.created_at,
-            updated_at: note.updated_at,
-            is_pinned: note.is_pinned,
-            is_archived: note.is_archived,
-            deleted_at: note.deleted_at,
-            tags,
-            spaces,
-        });
-    }
-
-    let mut manifest = Manifest::default();
-    for t in store.list_tags()? {
-        manifest.tags.insert(
-            t.tag.name,
-            ManifestTag {
-                color: t.tag.color,
-                created: t.tag.created_at,
-            },
-        );
-    }
-    for w in store.list_workspaces()? {
-        manifest.spaces.push(ManifestSpace {
-            name: w.workspace.name,
-            created: w.workspace.created_at,
-        });
-    }
-
+    let vault_notes = notes
+        .iter()
+        .map(|note| store.vault_note(&note.id))
+        .collect::<Result<Vec<_>>>()?;
+    let manifest = store.vault_manifest()?;
     Ok((vault_notes, manifest))
 }
 
