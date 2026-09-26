@@ -39,6 +39,12 @@ const UNDATED = `# Changelog
 - Spaces.
 `;
 
+// Force CRLF whatever the input already has. On a Windows checkout the bundled
+// CHANGELOG.md arrives as CRLF, so replacing "\n" alone would make it "\r\r\n"
+// and test something no checkout produces. Template literals in this file are
+// always LF: the language normalizes line endings inside them when parsing.
+const toCRLF = (s: string) => s.replace(/\r?\n/g, "\r\n");
+
 describe("parseChangelog", () => {
   it("extracts the section for a version with its date", () => {
     const r = parseChangelog(SAMPLE, "0.8.0");
@@ -96,7 +102,7 @@ describe("parseChangelog", () => {
   // dashboard showed an empty "What's new" on Windows only.
   it("parses a CRLF changelog the same as an LF one", () => {
     const lf = parseChangelog(SAMPLE, "0.8.0");
-    const crlf = parseChangelog(SAMPLE.replace(/\n/g, "\r\n"), "0.8.0");
+    const crlf = parseChangelog(toCRLF(SAMPLE), "0.8.0");
     expect(crlf).toEqual(lf);
     expect(crlf!.sections[0].items[0]).toBe(
       "Spaces: a place you go rather than a label you hunt for.",
@@ -104,7 +110,7 @@ describe("parseChangelog", () => {
   });
 
   it("finds the running version's section in a CRLF copy of the bundled file", () => {
-    const r = parseChangelog(changelogRaw.replace(/\n/g, "\r\n"), pkg.version);
+    const r = parseChangelog(toCRLF(changelogRaw), pkg.version);
     expect(r).not.toBeNull();
     expect(r!.sections.length).toBeGreaterThan(0);
   });
