@@ -80,6 +80,13 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The update dialog's "Remind me later" options are gone: an update is now a
   place you can simply ignore rather than a reminder you have to silence.
 
+### Changed
+- Under the hood, the names the two halves of the app use for each other - the
+  error codes and the event names - each live in exactly one place per half now,
+  with a test that holds the two halves equal. Nothing looks or behaves
+  differently; it means a whole class of silent breakage, where one half is
+  renamed and the other quietly stops listening, can no longer happen.
+
 ## [0.8.0] - 2026-07-11
 
 ### Added

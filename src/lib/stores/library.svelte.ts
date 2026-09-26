@@ -37,7 +37,9 @@ import type {
   WorkspaceWithCount,
 } from "$lib/api/types";
 import { debounce } from "$lib/debounce";
-import { friendlyMessage } from "$lib/errors";
+import { ERROR_CODES } from "$lib/api/error-codes";
+import { EVENTS } from "$lib/api/events";
+import { friendlyMessage, GENERIC_MESSAGE } from "$lib/errors";
 import { isUpdateSpaceId, isVirtualNoteId } from "$lib/update/space";
 import {
   SaveQueue,
@@ -151,12 +153,12 @@ class LibraryStore {
     // Listeners before the initial fetches: a change event arriving during
     // startup must trigger a re-query, not be dropped.
     await Promise.all([
-      listen("notes:changed", () => {
+      listen(EVENTS.NOTES_CHANGED, () => {
         this.#refreshDebounced();
         this.#revisitCountDebounced();
       }),
-      listen("tags:changed", () => void this.refreshTags()),
-      listen("workspaces:changed", () => void this.refreshWorkspaces()),
+      listen(EVENTS.TAGS_CHANGED, () => void this.refreshTags()),
+      listen(EVENTS.WORKSPACES_CHANGED, () => void this.refreshWorkspaces()),
     ]);
     await Promise.all([
       this.refresh(),
@@ -362,7 +364,8 @@ class LibraryStore {
       this.workspaceTags = [];
       // The workspace can be deleted between the list refresh and this
       // query; refreshWorkspaces resets the selection, nothing to surface.
-      if (!(e instanceof ApiError && e.code === "NOT_FOUND")) this.#fail(e);
+      if (!(e instanceof ApiError && e.code === ERROR_CODES.NOT_FOUND))
+        this.#fail(e);
     }
   }
 
@@ -710,7 +713,7 @@ class LibraryStore {
       const message =
         e instanceof ApiError
           ? friendlyMessage(e.code, e.message)
-          : friendlyMessage("");
+          : GENERIC_MESSAGE;
       return { ok: false, message };
     }
   }
@@ -924,7 +927,7 @@ class LibraryStore {
     this.error =
       e instanceof ApiError
         ? friendlyMessage(e.code, e.message)
-        : friendlyMessage("");
+        : GENERIC_MESSAGE;
   }
 }
 

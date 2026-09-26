@@ -2,6 +2,7 @@
 // Every command is a typed wrapper; errors become ApiError with API.md codes.
 
 import { invoke } from "@tauri-apps/api/core";
+import { ERROR_CODES, isErrorCode, type ErrorCode } from "./error-codes";
 import type {
   AttachmentCleanup,
   LibraryGraph,
@@ -22,12 +23,28 @@ import type {
 } from "./types";
 
 export class ApiError extends Error {
-  code: string;
-  constructor(code: string, message: string) {
+  code: ErrorCode;
+  constructor(code: ErrorCode, message: string) {
     super(message);
     this.name = "ApiError";
     this.code = code;
   }
+}
+
+// The one place a rejection becomes an ApiError, so an unknown code can only
+// be mishandled once. A rejection that is not the { code, message } shape
+// never left the core (a dropped IPC call, a thrown string), which is a
+// failure to complete the operation: STORAGE_ERROR.
+function asApiError(e: unknown): ApiError {
+  if (e && typeof e === "object" && "code" in e && "message" in e) {
+    const code = String(e.code);
+    const message = String(e.message);
+    if (isErrorCode(code)) return new ApiError(code, message);
+    // The backend sent a code this build does not know, so no friendly copy
+    // exists for it; keep it in the message rather than losing it.
+    return new ApiError(ERROR_CODES.STORAGE_ERROR, `${code}: ${message}`);
+  }
+  return new ApiError(ERROR_CODES.STORAGE_ERROR, String(e));
 }
 
 async function call<T>(
@@ -37,10 +54,7 @@ async function call<T>(
   try {
     return await invoke<T>(cmd, args);
   } catch (e) {
-    if (e && typeof e === "object" && "code" in e && "message" in e) {
-      throw new ApiError(String(e.code), String(e.message));
-    }
-    throw new ApiError("STORAGE_ERROR", String(e));
+    throw asApiError(e);
   }
 }
 
@@ -174,10 +188,7 @@ export const saveAttachment = async (
       headers: { "x-attachment-ext": ext },
     });
   } catch (e) {
-    if (e && typeof e === "object" && "code" in e && "message" in e) {
-      throw new ApiError(String(e.code), String(e.message));
-    }
-    throw new ApiError("STORAGE_ERROR", String(e));
+    throw asApiError(e);
   }
 };
 export const getAttachmentsDir = () => call<string>("get_attachments_dir");

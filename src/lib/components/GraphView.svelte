@@ -5,6 +5,7 @@
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import { libraryGraph } from "$lib/api/client";
+  import { LIBRARY_CHANGED_EVENTS } from "$lib/api/events";
   import { library } from "$lib/stores/library.svelte";
   import { debounce } from "$lib/debounce";
   import {
@@ -170,9 +171,7 @@
     // page from scrolling while it zooms.
     host.addEventListener("wheel", onWheel, { passive: false });
     const unlisten = Promise.all(
-      ["notes:changed", "tags:changed", "workspaces:changed"].map((event) =>
-        listen(event, () => reload()),
-      ),
+      LIBRARY_CHANGED_EVENTS.map((event) => listen(event, () => reload())),
     );
     void load();
     return () => {

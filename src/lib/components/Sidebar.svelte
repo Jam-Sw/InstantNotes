@@ -1,7 +1,7 @@
 <script lang="ts">
   import { library } from "$lib/stores/library.svelte";
   import { ApiError, deleteTag, updateTag } from "$lib/api/client";
-  import { friendlyMessage } from "$lib/errors";
+  import { friendlyMessage, GENERIC_MESSAGE } from "$lib/errors";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
   import SidebarEntityRow from "$lib/components/SidebarEntityRow.svelte";
@@ -47,7 +47,7 @@
       return { ok: true };
     } catch (e) {
       const message =
-        e instanceof ApiError ? friendlyMessage(e.code, e.message) : friendlyMessage("");
+        e instanceof ApiError ? friendlyMessage(e.code, e.message) : GENERIC_MESSAGE;
       return { ok: false, message };
     }
   }
@@ -75,7 +75,7 @@
       // The refresh below re-syncs the list, but the user completed a
       // two-step confirm; a failure must say so rather than vanish.
       const message =
-        e instanceof ApiError ? friendlyMessage(e.code, e.message) : friendlyMessage("");
+        e instanceof ApiError ? friendlyMessage(e.code, e.message) : GENERIC_MESSAGE;
       toasts.show(`Couldn't delete #${tag.name}. ${message}`);
     }
     await Promise.all([library.refreshTags(), library.refresh()]);

@@ -23,7 +23,7 @@ const QUIT_VAULT_CHUNKS: usize = 1;
 /// quit must not block forever on a dead webview: if the frontend never
 /// answers with quit_app, exit anyway after the grace period.
 pub(crate) fn request_quit(app: &AppHandle) {
-    let _ = app.emit("app:quit-requested", ());
+    let _ = app.emit(events::APP_QUIT_REQUESTED, ());
     let handle = app.clone();
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(QUIT_FLUSH_GRACE_MS));

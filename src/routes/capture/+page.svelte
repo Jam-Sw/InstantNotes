@@ -5,6 +5,7 @@
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { EVENTS } from "$lib/api/events";
   import {
     captureInputReady,
     createNote,
@@ -46,7 +47,7 @@
   onMount(() => {
     void theme.init();
     void restoreDraft();
-    const unlisten = listen("capture:shown", () => {
+    const unlisten = listen(EVENTS.CAPTURE_SHOWN, () => {
       // Re-read the theme: it may have changed in the library while hidden.
       void theme.init();
       void restoreDraft();
@@ -70,7 +71,7 @@
     // Quit handshake: push a debounced draft write through before the process
     // exits, so the draft is not 300ms stale on the next launch. Only the
     // library window answers with quit_app.
-    const unlistenQuit = listen("app:quit-requested", () => {
+    const unlistenQuit = listen(EVENTS.APP_QUIT_REQUESTED, () => {
       persistDraft.flush();
     });
     textarea?.focus();

@@ -33,6 +33,7 @@ import {
   workspacesForNote,
 } from "$lib/api/client";
 import { listen } from "@tauri-apps/api/event";
+import { EVENTS } from "$lib/api/events";
 import { UPDATE_NOTE_ID, UPDATE_SPACE_ID } from "$lib/update/space";
 import type {
   Note,
@@ -531,9 +532,9 @@ describe("init ordering", () => {
     const initPromise = library.init();
 
     expect(mockListen.mock.calls.map((c) => c[0])).toEqual([
-      "notes:changed",
-      "tags:changed",
-      "workspaces:changed",
+      EVENTS.NOTES_CHANGED,
+      EVENTS.TAGS_CHANGED,
+      EVENTS.WORKSPACES_CHANGED,
     ]);
     expect(mockListNotes).not.toHaveBeenCalled();
     expect(mockListTags).not.toHaveBeenCalled();
@@ -568,7 +569,7 @@ describe("init ordering", () => {
     mockListNotes.mockClear();
 
     const handler = mockListen.mock.calls.find(
-      (c) => c[0] === "notes:changed",
+      (c) => c[0] === EVENTS.NOTES_CHANGED,
     )?.[1] as (() => void) | undefined;
     expect(handler).toBeTypeOf("function");
     handler!();

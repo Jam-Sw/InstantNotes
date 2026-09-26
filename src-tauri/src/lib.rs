@@ -3,7 +3,7 @@
 //! No business logic lives here — that's instantnotes-core's job.
 
 use instantnotes_core::types::*;
-use instantnotes_core::{AppError, Store};
+use instantnotes_core::Store;
 use serde::Serialize;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
@@ -17,49 +17,30 @@ struct AppState {
     store: Mutex<Store>,
 }
 
-/// Serializable error per API.md §3.6 / §11.
-#[derive(Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct CmdError {
-    code: String,
-    message: String,
-}
-
-impl From<AppError> for CmdError {
-    fn from(e: AppError) -> Self {
-        CmdError {
-            code: e.code().to_string(),
-            message: e.to_string(),
-        }
-    }
-}
-
-type CmdResult<T> = Result<T, CmdError>;
-
 fn locked<'a>(
     state: &'a State<'_, AppState>,
 ) -> Result<std::sync::MutexGuard<'a, Store>, CmdError> {
-    state.store.lock().map_err(|_| CmdError {
-        code: "STORAGE_ERROR".into(),
-        message: "internal state lock poisoned".into(),
-    })
+    state
+        .store
+        .lock()
+        .map_err(|_| CmdError::storage("internal state lock poisoned"))
 }
 
 // Every write command announces itself through one of these, and no read
 // does, so they double as the vault mirror's flush trigger (shell/mirror.rs).
 
 fn emit_notes_changed(app: &AppHandle) {
-    let _ = app.emit("notes:changed", ());
+    let _ = app.emit(events::NOTES_CHANGED, ());
     request_vault_flush(app);
 }
 
 fn emit_tags_changed(app: &AppHandle) {
-    let _ = app.emit("tags:changed", ());
+    let _ = app.emit(events::TAGS_CHANGED, ());
     request_vault_flush(app);
 }
 
 fn emit_workspaces_changed(app: &AppHandle) {
-    let _ = app.emit("workspaces:changed", ());
+    let _ = app.emit(events::WORKSPACES_CHANGED, ());
     request_vault_flush(app);
 }
 
@@ -74,8 +55,11 @@ pub(crate) struct ShortcutStatus {
 }
 
 mod commands;
+mod error;
+mod events;
 mod shell;
 use commands::{feedback::*, notes::*, settings::*, stats::*, tags::*, vault::*, workspaces::*};
+use error::{CmdError, CmdResult};
 use shell::{capture::*, files::*, mirror::*, quit::*, windows::*};
 
 // ---- app shell ----
@@ -256,19 +240,19 @@ pub fn run() {
             app.on_menu_event(|app, event| match event.id().as_ref() {
                 "settings" => {
                     show_library_window(app);
-                    let _ = app.emit("settings:open", ());
+                    let _ = app.emit(events::SETTINGS_OPEN, ());
                 }
                 "new_note" => {
                     show_library_window(app);
-                    let _ = app.emit("menu:new-note", ());
+                    let _ = app.emit(events::MENU_NEW_NOTE, ());
                 }
                 "new_whiteboard" => {
                     show_library_window(app);
-                    let _ = app.emit("menu:new-whiteboard", ());
+                    let _ = app.emit(events::MENU_NEW_WHITEBOARD, ());
                 }
                 "export_note" => {
                     show_library_window(app);
-                    let _ = app.emit("menu:export-note", ());
+                    let _ = app.emit(events::MENU_EXPORT_NOTE, ());
                 }
                 "quit" => request_quit(app),
                 _ => {}
@@ -340,7 +324,7 @@ pub fn run() {
                     "open_library" => show_library_window(app),
                     "check_updates" => {
                         show_library_window(app);
-                        let _ = app.emit("updater:check", ());
+                        let _ = app.emit(events::UPDATER_CHECK, ());
                     }
                     "open_repo" => {
                         let _ = app.opener().open_url(REPO_URL, None::<&str>);
@@ -393,7 +377,7 @@ pub fn run() {
                 shortcut_label.to_string()
             });
             if let Some(label) = &shortcut_failure {
-                let _ = app.emit("shortcut:failed", label.clone());
+                let _ = app.emit(events::SHORTCUT_FAILED, label.clone());
             }
             app.manage(ShortcutStatus {
                 failed: shortcut_failure,

@@ -7,6 +7,7 @@
   import { listen } from "@tauri-apps/api/event";
   import { save } from "@tauri-apps/plugin-dialog";
   import { exportNoteFile, quitApp } from "$lib/api/client";
+  import { EVENTS } from "$lib/api/events";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import NoteList from "$lib/components/NoteList.svelte";
   import NoteEditor from "$lib/components/NoteEditor.svelte";
@@ -73,38 +74,38 @@
     // Tray "Check for Updates…": run a manual check, then show the update
     // Space if one turned up. The check itself toasts either outcome.
     let unlistenCheck: (() => void) | undefined;
-    void listen("updater:check", async () => {
+    void listen(EVENTS.UPDATER_CHECK, async () => {
       await updater.checkNow({ manual: true });
       if (updater.pendingUpdate) openUpdate();
     }).then((un) => (unlistenCheck = un));
 
     // Menu bar events.
     let unlistenSettings: (() => void) | undefined;
-    void listen("settings:open", () => {
+    void listen(EVENTS.SETTINGS_OPEN, () => {
       settingsOpen = true;
     }).then((un) => (unlistenSettings = un));
 
     let unlistenNewNote: (() => void) | undefined;
-    void listen("menu:new-note", () => {
+    void listen(EVENTS.MENU_NEW_NOTE, () => {
       settingsOpen = false;
       void library.newNote();
     }).then((un) => (unlistenNewNote = un));
 
     let unlistenNewBoard: (() => void) | undefined;
-    void listen("menu:new-whiteboard", () => {
+    void listen(EVENTS.MENU_NEW_WHITEBOARD, () => {
       settingsOpen = false;
       void library.newWhiteboard();
     }).then((un) => (unlistenNewBoard = un));
 
     let unlistenExport: (() => void) | undefined;
-    void listen("menu:export-note", () => {
+    void listen(EVENTS.MENU_EXPORT_NOTE, () => {
       void exportSelectedNote();
     }).then((un) => (unlistenExport = un));
 
     // Quit handshake: persist the debounced edit, then tell Rust to exit for
     // real. If this webview is hung the Rust-side fallback exits anyway.
     let unlistenQuit: (() => void) | undefined;
-    void listen("app:quit-requested", async () => {
+    void listen(EVENTS.APP_QUIT_REQUESTED, async () => {
       await library.flushPendingEdits();
       await quitApp();
     }).then((un) => (unlistenQuit = un));

@@ -77,7 +77,7 @@ pub(crate) fn flush_vault_now(app: &AppHandle, max_chunks: Option<usize>) {
             break;
         }
     }
-    let _ = app.emit("vault:status", ());
+    let _ = app.emit(events::VAULT_STATUS, ());
 }
 
 /// Copy attachments the vault does not have yet into `<vault>/attachments`.
@@ -94,8 +94,5 @@ pub(crate) fn mirror_attachments(app: &AppHandle) -> CmdResult<()> {
     };
     vault::copy_missing_files(&attachments_dir(app)?, &root.join("attachments"))
         .map(|_| ())
-        .map_err(|e| CmdError {
-            code: "STORAGE_ERROR".into(),
-            message: format!("could not copy attachments into the vault: {e}"),
-        })
+        .map_err(|e| CmdError::storage(format!("could not copy attachments into the vault: {e}")))
 }

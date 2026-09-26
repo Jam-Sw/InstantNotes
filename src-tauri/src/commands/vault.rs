@@ -14,21 +14,11 @@
 use crate::*;
 use instantnotes_core::vault::{self, VaultReport, VaultStatus};
 
-fn storage_error(message: impl Into<String>) -> CmdError {
-    CmdError {
-        code: "STORAGE_ERROR".into(),
-        message: message.into(),
-    }
-}
-
 /// The destination is chosen by the user through a native folder-picker
 /// dialog in JS, same trust boundary as `export_note_file`.
 fn validate_vault_dest(path: &str) -> CmdResult<()> {
     if !std::path::Path::new(path).is_absolute() {
-        return Err(CmdError {
-            code: "STORAGE_ERROR".into(),
-            message: "vault folder path must be absolute".into(),
-        });
+        return Err(CmdError::storage("vault folder path must be absolute"));
     }
     Ok(())
 }
@@ -46,7 +36,7 @@ pub fn export_vault(state: State<'_, AppState>, app: AppHandle, dest: String) ->
             .vault_root()
             .is_some_and(|root| vault::is_within(dest_path, root))
         {
-            return Err(storage_error(
+            return Err(CmdError::storage(
                 "that folder is your live vault, which is already up to date; \
                  choose another folder for the copy",
             ));
@@ -54,19 +44,13 @@ pub fn export_vault(state: State<'_, AppState>, app: AppHandle, dest: String) ->
         vault::collect_from_store(&store)?
     };
 
-    vault::export_vault(&notes, &manifest, dest_path).map_err(|e| CmdError {
-        code: "STORAGE_ERROR".into(),
-        message: format!("could not write vault: {e}"),
-    })?;
+    vault::export_vault(&notes, &manifest, dest_path)
+        .map_err(|e| CmdError::storage(format!("could not write vault: {e}")))?;
 
     let attachments_src = attachments_dir(&app)?;
     if attachments_src.is_dir() {
-        vault::copy_dir_recursive(&attachments_src, &dest_path.join("attachments")).map_err(
-            |e| CmdError {
-                code: "STORAGE_ERROR".into(),
-                message: format!("could not copy attachments: {e}"),
-            },
-        )?;
+        vault::copy_dir_recursive(&attachments_src, &dest_path.join("attachments"))
+            .map_err(|e| CmdError::storage(format!("could not copy attachments: {e}")))?;
     }
     Ok(())
 }
@@ -91,9 +75,9 @@ pub fn set_vault_folder(
         let app_data = app
             .path()
             .app_data_dir()
-            .map_err(|e| storage_error(format!("no app data dir: {e}")))?;
+            .map_err(|e| CmdError::storage(format!("no app data dir: {e}")))?;
         vault::check_vault_location(std::path::Path::new(path), &app_data)
-            .map_err(storage_error)?;
+            .map_err(CmdError::storage)?;
     }
     locked(&state)?.configure_vault(path.as_deref().map(std::path::Path::new))?;
     if path.is_some() {

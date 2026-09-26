@@ -20,14 +20,12 @@ pub struct FeedbackInput {
 }
 
 fn feedback_log_path(app: &AppHandle) -> CmdResult<std::path::PathBuf> {
-    let dir = app.path().app_data_dir().map_err(|e| CmdError {
-        code: "STORAGE_ERROR".into(),
-        message: format!("no app data dir: {e}"),
-    })?;
-    std::fs::create_dir_all(&dir).map_err(|e| CmdError {
-        code: "STORAGE_ERROR".into(),
-        message: format!("could not create data dir: {e}"),
-    })?;
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| CmdError::storage(format!("no app data dir: {e}")))?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| CmdError::storage(format!("could not create data dir: {e}")))?;
     Ok(dir.join("feedback.jsonl"))
 }
 
@@ -35,10 +33,7 @@ fn feedback_log_path(app: &AppHandle) -> CmdResult<std::path::PathBuf> {
 pub fn submit_feedback(app: AppHandle, input: FeedbackInput) -> CmdResult<()> {
     let message = input.message.trim();
     if message.is_empty() {
-        return Err(CmdError {
-            code: "VALIDATION".into(),
-            message: "feedback message is empty".into(),
-        });
+        return Err(CmdError::validation("feedback message is empty"));
     }
     let at = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -51,24 +46,17 @@ pub fn submit_feedback(app: AppHandle, input: FeedbackInput) -> CmdResult<()> {
         "appVersion": input.app_version,
         "diagnostics": input.diagnostics,
     });
-    let line = serde_json::to_string(&entry).map_err(|e| CmdError {
-        code: "STORAGE_ERROR".into(),
-        message: format!("could not encode feedback: {e}"),
-    })?;
+    let line = serde_json::to_string(&entry)
+        .map_err(|e| CmdError::storage(format!("could not encode feedback: {e}")))?;
 
     let path = feedback_log_path(&app)?;
     let mut file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(&path)
-        .map_err(|e| CmdError {
-            code: "STORAGE_ERROR".into(),
-            message: format!("could not open feedback log: {e}"),
-        })?;
-    writeln!(file, "{line}").map_err(|e| CmdError {
-        code: "STORAGE_ERROR".into(),
-        message: format!("could not write feedback: {e}"),
-    })?;
+        .map_err(|e| CmdError::storage(format!("could not open feedback log: {e}")))?;
+    writeln!(file, "{line}")
+        .map_err(|e| CmdError::storage(format!("could not write feedback: {e}")))?;
     Ok(())
 }
 
@@ -81,16 +69,11 @@ pub fn submit_feedback(app: AppHandle, input: FeedbackInput) -> CmdResult<()> {
 pub fn open_feedback_log(app: AppHandle) -> CmdResult<()> {
     let path = feedback_log_path(&app)?;
     if !path.exists() {
-        std::fs::write(&path, "").map_err(|e| CmdError {
-            code: "STORAGE_ERROR".into(),
-            message: format!("could not create feedback log: {e}"),
-        })?;
+        std::fs::write(&path, "")
+            .map_err(|e| CmdError::storage(format!("could not create feedback log: {e}")))?;
     }
     app.opener()
         .reveal_item_in_dir(&path)
-        .map_err(|e| CmdError {
-            code: "STORAGE_ERROR".into(),
-            message: format!("could not reveal feedback log: {e}"),
-        })?;
+        .map_err(|e| CmdError::storage(format!("could not reveal feedback log: {e}")))?;
     Ok(())
 }

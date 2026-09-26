@@ -15,6 +15,13 @@ and translate failures into an `ApiError`. Data mutations happen only through
 these commands; the frontend re-queries on `notes:changed`, `tags:changed`,
 and `workspaces:changed` events rather than mutating local state optimistically.
 
+Neither side writes an event name or an error code as a literal. Both live in
+one registry per language — `src-tauri/src/events.rs` and
+`src-tauri/src/error.rs` on the Rust side, `src/lib/api/events.ts` and
+`src/lib/api/error-codes.ts` on the frontend — and `src/lib/api/contract.test.ts`
+holds the registries, this document, and the core's `AppError::code()` equal,
+since no type can cross the IPC boundary.
+
 ## 2. Invocation
 
 Each wrapper calls `invoke(name, args)` and returns a typed result. Arguments
@@ -26,8 +33,11 @@ header (see section 8).
 
 Commands return a `Result`. On failure the core produces an `AppError`, which
 serializes to a plain object and is rethrown by the client as an `ApiError`
-carrying the same `code`. `src/lib/errors.ts` maps each code to user-facing
-copy; unknown codes fall back to a generic message.
+carrying the same `code`, typed as `ErrorCode`. `src/lib/errors.ts` maps each
+code to user-facing copy, exhaustively, so a new code does not compile until it
+has copy. A code the frontend does not know can only come from a mismatched
+backend; `client.ts` reports it as `STORAGE_ERROR` and keeps the original code
+in the developer-facing message.
 
 ### 3.6 Error object shape
 
@@ -146,7 +156,8 @@ carry no note data beyond what the user explicitly exports. `export_note_file`
 writes `.md`, `.txt`, or `.excalidraw` (a whiteboard's canvas).
 
 The File menu announces itself to the library window with `menu:new-note`,
-`menu:new-whiteboard`, and `menu:export-note` (no payload).
+`menu:new-whiteboard`, and `menu:export-note` (no payload). Every event name the
+shell emits is declared in `src-tauri/src/events.rs`.
 
 ## 10. Capture
 
@@ -288,7 +299,11 @@ names.
 | `STORAGE_ERROR` | A persistence failure, including a corrupt database file. |
 | `MIGRATION_ERROR` | The schema could not be upgraded. |
 
-These are the only codes callers may branch on; they are asserted in
-`src-tauri/core/src/error.rs`. Database corruption is reported as
+These are the only codes callers may branch on, and the only values
+`ErrorCode` has on either side. The core's `AppError::code()`
+(`src-tauri/core/src/error.rs`) is the authority for the strings; the shell
+builds every error through `CmdError::storage`/`::validation` or
+`From<AppError>`, so no call site can name a code itself, and this table is
+asserted against both registries by `src/lib/api/contract.test.ts`. Database corruption is reported as
 `STORAGE_ERROR` externally, while the core keeps it distinct internally so it
 can set aside a damaged file and start fresh.

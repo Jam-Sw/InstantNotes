@@ -1,6 +1,9 @@
 // IPC contract types shared by the Svelte UI and the Rust desktop layer.
 // Field names are camelCase over the wire (serde).
 
+import type { ErrorCode } from "./error-codes";
+import type { FeedbackCategory } from "$lib/feedback";
+
 /** A Markdown document, or a whiteboard whose text is kept in `body`. */
 export type ContentKind = "document" | "whiteboard";
 
@@ -87,7 +90,7 @@ export interface SearchResult {
 }
 
 export interface AppErrorPayload {
-  code: string;
+  code: ErrorCode;
   message: string;
 }
 
@@ -113,7 +116,7 @@ export interface DashboardStats {
 
 /** One in-app feedback submission, persisted to the local log by the backend. */
 export interface FeedbackInput {
-  category: string;
+  category: FeedbackCategory;
   message: string;
   appVersion?: string | null;
   /** Opt-in diagnostics snapshot the user agreed to attach. */

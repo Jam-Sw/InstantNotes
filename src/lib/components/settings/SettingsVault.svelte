@@ -4,6 +4,7 @@
   import { exportVaultToFolder } from "$lib/vault-export";
   import { chooseVaultFolder, describeVaultReport } from "$lib/vault-mirror";
   import { getVaultStatus, setVaultFolder, verifyVault } from "$lib/api/client";
+  import { EVENTS } from "$lib/api/events";
   import type { VaultStatus } from "$lib/api/types";
   import { toasts } from "$lib/stores/toasts.svelte";
   import PrefRow from "$lib/components/settings/PrefRow.svelte";
@@ -28,7 +29,7 @@
     void refresh();
     // The background writer announces every flush, so pending counts and
     // errors stay current while this page is open.
-    const unlisten = listen("vault:status", () => void refresh());
+    const unlisten = listen(EVENTS.VAULT_STATUS, () => void refresh());
     return () => void unlisten.then((off) => off());
   });
 

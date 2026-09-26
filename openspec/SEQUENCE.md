@@ -213,6 +213,16 @@ positions included, so the insertion rule does not move it. Landed on
 between notes would be a body syntax (and a vault concern), and are not part
 of this unit. See `changes/archive/feat-graph-view/tasks.md`.
 
+## 13a. `chore-boundary-registries` (DONE, shipped in 0.9.0)
+
+Error codes and event names each get one registry per language, and one test
+that holds the two sides equal (`src/lib/api/contract.test.ts`). Adds no
+persisted state and does not touch the store API, so the insertion rule puts it
+in any slot; it took its own. From `docs/CODE_SMELL_AUDIT.md` (2026-09-25),
+phases 0-4 and 6; branded id types (phase 5) and collapsing the two-file IPC
+command surface are deliberately not part of it. Landed on `0.9.0-pre` on
+2026-09-25. See `changes/archive/chore-boundary-registries/tasks.md`.
+
 ## 14. Local AI
 
 Needs embedding storage, so it cannot precede unit 10. Embeddings are a

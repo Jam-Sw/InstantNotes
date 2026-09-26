@@ -12,20 +12,14 @@ use crate::*;
 fn validate_theme_path(path: &str) -> CmdResult<()> {
     let p = std::path::Path::new(path);
     if !p.is_absolute() {
-        return Err(CmdError {
-            code: "STORAGE_ERROR".into(),
-            message: "theme path must be absolute".into(),
-        });
+        return Err(CmdError::storage("theme path must be absolute"));
     }
     let is_json = p
         .extension()
         .and_then(|e| e.to_str())
         .is_some_and(|e| e.eq_ignore_ascii_case("json"));
     if !is_json {
-        return Err(CmdError {
-            code: "STORAGE_ERROR".into(),
-            message: "theme file must have a .json extension".into(),
-        });
+        return Err(CmdError::storage("theme file must have a .json extension"));
     }
     Ok(())
 }
@@ -33,38 +27,30 @@ fn validate_theme_path(path: &str) -> CmdResult<()> {
 #[tauri::command(async)]
 pub fn export_theme_file(path: String, contents: String) -> CmdResult<()> {
     validate_theme_path(&path)?;
-    std::fs::write(&path, contents).map_err(|e| CmdError {
-        code: "STORAGE_ERROR".into(),
-        message: format!("could not write theme file: {e}"),
-    })
+    std::fs::write(&path, contents)
+        .map_err(|e| CmdError::storage(format!("could not write theme file: {e}")))
 }
 
 #[tauri::command(async)]
 pub fn import_theme_file(path: String) -> CmdResult<String> {
     validate_theme_path(&path)?;
-    std::fs::read_to_string(&path).map_err(|e| CmdError {
-        code: "STORAGE_ERROR".into(),
-        message: format!("could not read theme file: {e}"),
-    })
+    std::fs::read_to_string(&path)
+        .map_err(|e| CmdError::storage(format!("could not read theme file: {e}")))
 }
 
 fn validate_export_path(path: &str) -> CmdResult<()> {
     let p = std::path::Path::new(path);
     if !p.is_absolute() {
-        return Err(CmdError {
-            code: "STORAGE_ERROR".into(),
-            message: "export path must be absolute".into(),
-        });
+        return Err(CmdError::storage("export path must be absolute"));
     }
     let is_allowed = p
         .extension()
         .and_then(|e| e.to_str())
         .is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "md" | "txt" | "excalidraw"));
     if !is_allowed {
-        return Err(CmdError {
-            code: "STORAGE_ERROR".into(),
-            message: "export file must have a .md, .txt, or .excalidraw extension".into(),
-        });
+        return Err(CmdError::storage(
+            "export file must have a .md, .txt, or .excalidraw extension",
+        ));
     }
     Ok(())
 }
@@ -72,10 +58,8 @@ fn validate_export_path(path: &str) -> CmdResult<()> {
 #[tauri::command(async)]
 pub fn export_note_file(path: String, contents: String) -> CmdResult<()> {
     validate_export_path(&path)?;
-    std::fs::write(&path, contents).map_err(|e| CmdError {
-        code: "STORAGE_ERROR".into(),
-        message: format!("could not write export file: {e}"),
-    })
+    std::fs::write(&path, contents)
+        .map_err(|e| CmdError::storage(format!("could not write export file: {e}")))
 }
 
 // Pasted/dropped images live as files under <app data>/attachments and notes
@@ -89,15 +73,10 @@ pub fn attachments_dir(app: &AppHandle) -> CmdResult<std::path::PathBuf> {
     let dir = app
         .path()
         .app_data_dir()
-        .map_err(|e| CmdError {
-            code: "STORAGE_ERROR".into(),
-            message: format!("no app data dir: {e}"),
-        })?
+        .map_err(|e| CmdError::storage(format!("no app data dir: {e}")))?
         .join("attachments");
-    std::fs::create_dir_all(&dir).map_err(|e| CmdError {
-        code: "STORAGE_ERROR".into(),
-        message: format!("could not create attachments dir: {e}"),
-    })?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| CmdError::storage(format!("could not create attachments dir: {e}")))?;
     Ok(dir)
 }
 
@@ -118,29 +97,20 @@ pub fn save_attachment(app: AppHandle, request: tauri::ipc::Request<'_>) -> CmdR
         .map(str::to_ascii_lowercase)
         .unwrap_or_default();
     if !ATTACHMENT_EXTS.contains(&ext.as_str()) {
-        return Err(CmdError {
-            code: "VALIDATION".into(),
-            message: format!("unsupported attachment type: {ext:?}"),
-        });
+        return Err(CmdError::validation(format!(
+            "unsupported attachment type: {ext:?}"
+        )));
     }
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
-        return Err(CmdError {
-            code: "VALIDATION".into(),
-            message: "attachment body must be raw bytes".into(),
-        });
+        return Err(CmdError::validation("attachment body must be raw bytes"));
     };
     if bytes.is_empty() {
-        return Err(CmdError {
-            code: "VALIDATION".into(),
-            message: "attachment is empty".into(),
-        });
+        return Err(CmdError::validation("attachment is empty"));
     }
     let name = format!("{}.{ext}", uuid::Uuid::new_v4());
     let path = attachments_dir(&app)?.join(&name);
-    std::fs::write(&path, bytes).map_err(|e| CmdError {
-        code: "STORAGE_ERROR".into(),
-        message: format!("could not write attachment: {e}"),
-    })?;
+    std::fs::write(&path, bytes)
+        .map_err(|e| CmdError::storage(format!("could not write attachment: {e}")))?;
     // Best effort: a vault that can't take it now gets it at next launch.
     let _ = mirror_attachments(&app);
     Ok(name)
@@ -153,10 +123,9 @@ fn image_ext(path: &std::path::Path) -> CmdResult<String> {
         .map(str::to_ascii_lowercase)
         .unwrap_or_default();
     if !ATTACHMENT_EXTS.contains(&ext.as_str()) {
-        return Err(CmdError {
-            code: "VALIDATION".into(),
-            message: format!("unsupported image type: {ext:?}"),
-        });
+        return Err(CmdError::validation(format!(
+            "unsupported image type: {ext:?}"
+        )));
     }
     Ok(ext)
 }
@@ -168,28 +137,18 @@ fn image_ext(path: &std::path::Path) -> CmdResult<String> {
 pub fn import_image_file(app: AppHandle, path: String) -> CmdResult<String> {
     let src = std::path::Path::new(&path);
     if !src.is_absolute() {
-        return Err(CmdError {
-            code: "VALIDATION".into(),
-            message: "image path must be absolute".into(),
-        });
+        return Err(CmdError::validation("image path must be absolute"));
     }
     let ext = image_ext(src)?;
-    let bytes = std::fs::read(src).map_err(|e| CmdError {
-        code: "STORAGE_ERROR".into(),
-        message: format!("could not read image: {e}"),
-    })?;
+    let bytes =
+        std::fs::read(src).map_err(|e| CmdError::storage(format!("could not read image: {e}")))?;
     if bytes.is_empty() {
-        return Err(CmdError {
-            code: "VALIDATION".into(),
-            message: "image is empty".into(),
-        });
+        return Err(CmdError::validation("image is empty"));
     }
     let name = format!("{}.{ext}", uuid::Uuid::new_v4());
     let dest = attachments_dir(&app)?.join(&name);
-    std::fs::write(&dest, bytes).map_err(|e| CmdError {
-        code: "STORAGE_ERROR".into(),
-        message: format!("could not write attachment: {e}"),
-    })?;
+    std::fs::write(&dest, bytes)
+        .map_err(|e| CmdError::storage(format!("could not write attachment: {e}")))?;
     let _ = mirror_attachments(&app);
     Ok(name)
 }
@@ -202,24 +161,15 @@ pub fn import_image_file(app: AppHandle, path: String) -> CmdResult<String> {
 pub fn allow_image_file(app: AppHandle, path: String) -> CmdResult<()> {
     let p = std::path::Path::new(&path);
     if !p.is_absolute() {
-        return Err(CmdError {
-            code: "VALIDATION".into(),
-            message: "image path must be absolute".into(),
-        });
+        return Err(CmdError::validation("image path must be absolute"));
     }
     image_ext(p)?;
     if !p.is_file() {
-        return Err(CmdError {
-            code: "STORAGE_ERROR".into(),
-            message: "image file not found".into(),
-        });
+        return Err(CmdError::storage("image file not found"));
     }
     app.asset_protocol_scope()
         .allow_file(p)
-        .map_err(|e| CmdError {
-            code: "STORAGE_ERROR".into(),
-            message: format!("could not allow image: {e}"),
-        })?;
+        .map_err(|e| CmdError::storage(format!("could not allow image: {e}")))?;
     Ok(())
 }
 
@@ -231,10 +181,7 @@ pub fn open_attachments_folder(app: AppHandle) -> CmdResult<()> {
     let dir = attachments_dir(&app)?;
     app.opener()
         .open_path(dir.to_string_lossy(), None::<&str>)
-        .map_err(|e| CmdError {
-            code: "STORAGE_ERROR".into(),
-            message: format!("could not open attachments folder: {e}"),
-        })?;
+        .map_err(|e| CmdError::storage(format!("could not open attachments folder: {e}")))?;
     Ok(())
 }
 
@@ -249,13 +196,8 @@ fn unused_attachment_files(
     dir: &std::path::Path,
 ) -> CmdResult<(Vec<String>, AttachmentCleanup)> {
     let cutoff = std::time::SystemTime::now() - CLEANUP_GRACE;
-    let files =
-        instantnotes_core::attachments::list_attachments(dir, Some(cutoff)).map_err(|e| {
-            CmdError {
-                code: "STORAGE_ERROR".into(),
-                message: format!("could not list attachments: {e}"),
-            }
-        })?;
+    let files = instantnotes_core::attachments::list_attachments(dir, Some(cutoff))
+        .map_err(|e| CmdError::storage(format!("could not list attachments: {e}")))?;
     let unused = store.unreferenced_attachments(files.iter().map(|(n, _)| n.clone()))?;
     let bytes = files
         .iter()
@@ -351,7 +293,7 @@ mod tests {
     fn import_missing_file_errors() {
         let res = import_theme_file("/nonexistent/path/theme.intheme.json".into());
         assert!(res.is_err());
-        assert_eq!(res.unwrap_err().code, "STORAGE_ERROR");
+        assert_eq!(res.unwrap_err().code(), crate::error::ErrorCode::Storage);
     }
 
     #[test]

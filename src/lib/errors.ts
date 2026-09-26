@@ -1,5 +1,9 @@
-/** Single place mapping AppError codes (API.md §11) to user-facing copy. */
-const MESSAGES: Record<string, string> = {
+import type { ErrorCode } from "$lib/api/error-codes";
+
+/** Single place mapping error codes (API.md §14) to user-facing copy. The
+ *  Record is exhaustive on purpose: a new code does not compile until it has
+ *  copy here. */
+const MESSAGES: Record<ErrorCode, string> = {
   NOT_FOUND: "That note couldn't be found — it may have been deleted.",
   VALIDATION_ERROR: "That didn't look right. Please check the input and try again.",
   CONFLICT: "That name is already in use.",
@@ -7,6 +11,9 @@ const MESSAGES: Record<string, string> = {
   MIGRATION_ERROR: "The notes database needs attention — your data is safe, but the app couldn't upgrade it.",
 };
 
-export function friendlyMessage(code: string, fallback?: string): string {
-  return MESSAGES[code] ?? fallback ?? "Something went wrong. Please try again.";
+/** What to say when nothing more specific is known. */
+export const GENERIC_MESSAGE = "Something went wrong. Please try again.";
+
+export function friendlyMessage(code: ErrorCode, fallback?: string): string {
+  return MESSAGES[code] ?? fallback ?? GENERIC_MESSAGE;
 }
