@@ -20,7 +20,7 @@ A unit is done when all of these are true:
 
 - [ ] The feature works end to end. No stubs, no dead branches, no code paths
       only reachable by a flag nobody sets
-- [ ] Every design decision it depends on is **decided**, not deferred — a
+- [ ] Every design decision it depends on is **decided**, not deferred: a
       chosen library is chosen, not "currently wired up"
 - [ ] `cargo test`, `npm test`, and `npm run check` pass
 - [ ] `docs/DATA_MODEL.md` and `docs/API.md` match reality if the unit changed
@@ -37,7 +37,7 @@ finished and none of them was.
 
 ## Insertion rule
 
-Anything not listed below takes its position from one question — where does it
+Anything not listed below takes its position from one question: where does it
 touch persistence?
 
 - **Changes the shape of persisted note state, or the API the store is written
@@ -46,13 +46,13 @@ touch persistence?
 - **Adds persisted state without changing note shape** -> after unit 9.
   Units 7 through 9 rewrite the store's write path, and anything built against
   the old one gets built again.
-- **View only** — theming, editor behavior, palette, layout, list rendering,
+- **View only**: theming, editor behavior, palette, layout, list rendering,
   settings pages on the existing key/value table -> any slot between units. It
   takes a slot of its own; it does not run alongside an open unit.
 
 ---
 
-## 0. Branch hygiene — DONE
+## 0. Branch hygiene (DONE)
 
 `0.9.0-pre` held ten entangled streams and stated one of them.
 
@@ -65,9 +65,10 @@ touch persistence?
       also removed an editor block the whiteboard merge had duplicated. Only the
       bump-version half survives, as `dff86b6`
 - [x] **Whiteboard lifted off the branch.** Its six commits were local-only, so
-      no published history was rewritten and no force-push is needed. Preserved
-      on `feat/note-whiteboard`; the pre-lift state is on
-      `backup/0.9.0-pre-with-whiteboard`. This removed migration v4, the
+      no published history was rewritten and no force-push is needed. Preserved at
+      the time on `feat/note-whiteboard`, with the pre-lift state on
+      `backup/0.9.0-pre-with-whiteboard`; both refs are gone now, see
+      "Safety refs". This removed migration v4, the
       `react`/`react-dom`/`@excalidraw` runtime deps, and four defects from the
       release. See unit 12. Migration v4 alone came back on 2026-09-22 (see
       unit 8): pre-release builds had already applied it to real libraries.
@@ -101,7 +102,7 @@ question of where the local copy lives and what prunes it.
 ## 4. `feat-editor-settings-and-fixes`
 
 Streams 4 and 8. Smallest. Exists as its own unit mainly because the caret/undo
-isolation fix has **no regression test** — the `undo` coverage is workspace
+isolation fix has **no regression test**: the `undo` coverage is workspace
 undo, the `caret` coverage is fold behavior.
 
 Streams 9 (Linux) and 10 (bump-version guard) are finished by every measure
@@ -130,20 +131,32 @@ for what stage 1 actually covers and the drift it records against this file
 
 ## 6. Dependency baseline
 
-The three dependabot branches, rebased onto `main` after `v0.9.0`. Not merged
-into 0.9.0: all three branch from `main` before the whiteboard work and carry a
-stale `package.json`.
+Dependabot's three grouped PRs were closed on 2026-09-25 rather than merged, so
+the groups regenerate against `main` after `v0.9.0`. Each was addressed on its
+own terms:
 
-Not routine patches — npm: vite 6->8, vitest 3->4, typescript 5.6->7.0,
-vite-plugin-svelte 5->7, jsdom 29->30, jest-dom 6->7, `@types/node` 25->26.
-cargo: rusqlite 0.32->0.40, window-vibrancy 0.6->0.8. github-actions: CI only.
+- **cargo (#52): superseded.** Both manifest bumps in the group, rusqlite
+  0.32->0.40 and window-vibrancy 0.6->0.8, shipped in 0.9.0 as part of
+  `6197b97`, leaving only `Cargo.lock` churn against a base that had moved.
+- **npm (#53): deferred, and stale.** It predates the whiteboard and updater
+  work and proposed `@tauri-apps/plugin-updater` ^2.11.0 where 0.9.0 already
+  carries 2.12.0. The majors are the real unit: vite 6->8, vitest 3->4,
+  typescript 5.6->7.0, vite-plugin-svelte 5->7, jsdom 29->30, jest-dom 6->7,
+  `@types/node` 25->26.
+- **github-actions (#43): deferred, and it gates the release.** Not "CI only",
+  as this file previously said: `tauri-apps/tauri-action` v0->v1 is a major bump
+  of the action that builds and publishes the release artifacts, and
+  `dtolnay/rust-toolchain` 1.91.1->1.100.0 moves the compiler. Also
+  `actions/checkout` and `actions/setup-node` v4->v7.
 
-**Here, and not later, because rusqlite 0.32->0.40 changes the API `store.rs` is
-written against**, and units 7 through 9 rewrite that file. Take cargo and npm
-as separate units.
+rusqlite 0.32->0.40 was why this unit sat before units 7 through 9: it changes
+the API `store.rs` is written against. That bump is in 0.9.0 now, so what is
+left here is the npm majors and the workflow actions. Take them as separate
+units.
 
 **Done when** the suite passes on the new toolchain and a release bundle builds
-on every supported platform.
+on every supported platform, which is also the only thing that can prove
+tauri-action v1 and the newer compiler.
 
 ## 7. Vault serializer and export (DONE, shipped in 0.9.0; see §5)
 
@@ -201,7 +214,13 @@ open file format. The four defects found on the branch (silent canvas loss on
 unmount and quit, a dead engine abstraction, a hardcoded dark theme, and
 searchable text hidden by convert) are each fixed or designed away; see
 `changes/archive/feat-note-whiteboard/tasks.md`. Migration v6 carries boards
-through the vault mirror.
+through the vault mirror. `feat/note-whiteboard` was deleted on
+2026-09-25, after confirming 0.9.0 carries the better implementation: 27
+frontend tests and 4 Rust tests (round trip, the v4 migration, v6 vault
+tracking, canvas images), Excalidraw fonts bundled at `predev`/`prebuild`, and
+`docs/DATA_MODEL.md` section 3.1 documenting the envelope. The branch's
+`ARCHITECTURE.md` described files 0.9.0 deliberately dropped, and its
+`registry.ts` was the dead engine abstraction this unit designed away.
 
 ## 13. Graph (DONE, shipped in 0.9.0)
 
@@ -240,7 +259,7 @@ command surface are deliberately not part of it. Landed on `0.9.0-pre` on
 
 Needs embedding storage, so it cannot precede unit 10. Embeddings are a
 rebuildable cache artifact and belong beside `instantnotes.db`, never in the
-vault — a distinction the vault establishes. Graph precedes it because a graph
+vault, a distinction the vault establishes. Graph precedes it because a graph
 gives local AI somewhere to surface results.
 
 ---
@@ -260,5 +279,14 @@ authority to the filesystem and must get their own `-pre` branch.
 
 ## Safety refs
 
-- `feat/note-whiteboard`: the pre-release whiteboard work, intact (superseded by unit 12)
-- `backup/0.9.0-pre-with-whiteboard`: `0.9.0-pre` as it stood before the lift
+Both were deleted on 2026-09-25, once 0.9.0 was confirmed to carry every piece
+of work they held:
+
+- `feat/note-whiteboard`: the pre-release whiteboard work, superseded by unit 12,
+  which returned it with its four defects fixed.
+- `backup/0.9.0-pre-with-whiteboard`: `0.9.0-pre` as it stood before the lift.
+  Its nine commits are all represented on `0.9.0-pre`: the five whiteboard
+  commits by unit 12, the Linux fix by `ffb7f90`, the bump-version guard by
+  `dff86b6`, and the sequence and vault design docs by the files themselves.
+
+`v0.8.0`, and the `v0.9.0` tag when it is cut, are the rollback points now.
