@@ -4,6 +4,9 @@
   // first item on open and returns to the invoker when the menu goes away.
   interface MenuItem {
     label: string;
+    /** Keyboard equivalent, shown dimmed on the right so the menu teaches
+     *  the shortcut rather than replacing it. */
+    hint?: string;
     danger?: boolean;
     run: () => void;
   }
@@ -12,8 +15,18 @@
     x,
     y,
     items,
+    anchor,
     onclose,
-  }: { x: number; y: number; items: MenuItem[]; onclose: () => void } = $props();
+  }: {
+    x: number;
+    y: number;
+    items: MenuItem[];
+    /** The control that opened the menu, when one did. Presses on it do not
+     *  count as "outside", so that control can own the toggle instead of the
+     *  menu closing on press and its click reopening. */
+    anchor?: HTMLElement;
+    onclose: () => void;
+  } = $props();
 
   let menuEl = $state<HTMLDivElement>();
   let left = $state(-9999);
@@ -36,7 +49,8 @@
   });
 
   function onWindowEvent(e: Event) {
-    if (e.target instanceof Node && menuEl?.contains(e.target)) return;
+    if (!(e.target instanceof Node)) return onclose();
+    if (menuEl?.contains(e.target) || anchor?.contains(e.target)) return;
     onclose();
   }
 
@@ -93,7 +107,8 @@
         queueMicrotask(item.run);
       }}
     >
-      {item.label}
+      <span class="label">{item.label}</span>
+      {#if item.hint}<span class="hint">{item.hint}</span>{/if}
     </button>
   {/each}
 </div>
@@ -112,6 +127,9 @@
     box-shadow: var(--shadow-lg);
   }
   .item {
+    display: flex;
+    align-items: baseline;
+    gap: 18px;
     text-align: left;
     padding: 5px 12px;
     border-radius: var(--radius);
@@ -122,6 +140,13 @@
   .item:focus-visible {
     background: var(--bg-hover);
     outline: none;
+  }
+  .label {
+    flex: 1;
+  }
+  .hint {
+    color: var(--text-tertiary);
+    font-size: 12px;
   }
   .item.danger {
     color: var(--danger);

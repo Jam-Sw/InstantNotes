@@ -1,9 +1,10 @@
 <script lang="ts">
   import { library, type StatusFilter } from "$lib/stores/library.svelte";
   import { formatDate, formatExact, preview } from "$lib/format";
-  import { captureShortcut, modKey } from "$lib/platform";
+  import { captureShortcut, modKey, shiftKey } from "$lib/platform";
   import { parseHighlightSegments } from "$lib/highlight";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
+  import ContextMenu from "$lib/components/ContextMenu.svelte";
   import { groupNotes } from "$lib/note-groups";
   import { updateSpace } from "$lib/stores/update-space";
   import { isUpdateSpaceId } from "$lib/update/space";
@@ -21,6 +22,19 @@
   const groups = $derived(
     library.revisitMode ? null : groupNotes(library.notes, new Date()),
   );
+
+  // The kinds of note this toolbar can create. Clicking ＋ makes a document,
+  // the common case, in one click. The chevron (or a right-click anywhere on
+  // the control) opens the list, which is the only visible place a whiteboard
+  // can be started from.
+  let newMenu = $state<{ x: number; y: number } | null>(null);
+  let newControl = $state<HTMLDivElement>();
+
+  function openNewMenu() {
+    const rect = newControl?.getBoundingClientRect();
+    if (!rect) return;
+    newMenu = { x: rect.left, y: rect.bottom + 4 };
+  }
 
   function rowClick(e: MouseEvent, id: string) {
     if (e.metaKey || e.ctrlKey) {
@@ -52,7 +66,27 @@
       value={library.searchText}
       oninput={(e) => library.setSearch(e.currentTarget.value)}
     />
-    <button class="new-note" title={`New note (${modKey}N)`} onclick={() => library.newNote()}>＋</button>
+    <div
+      class="new-control"
+      bind:this={newControl}
+      oncontextmenu={(e) => {
+        e.preventDefault();
+        openNewMenu();
+      }}
+      role="presentation"
+    >
+      <button class="new-note" title={`New note (${modKey}N)`} onclick={() => library.newNote()}>＋</button>
+      <button
+        class="new-kind"
+        title="Choose what to create"
+        aria-label="Choose what to create"
+        aria-haspopup="menu"
+        aria-expanded={newMenu !== null}
+        onclick={() => (newMenu ? (newMenu = null) : openNewMenu())}
+      >
+        <svg viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1.5 5 5 9 1.5" /></svg>
+      </button>
+    </div>
   </div>
   {#if library.activeWorkspaceId && !library.searchResults && library.workspaceTags.length > 0}
     <!-- Tags found on this space's notes; a chip filters within the space,
@@ -176,6 +210,23 @@
   </div>
 </section>
 
+{#if newMenu}
+  <ContextMenu
+    x={newMenu.x}
+    y={newMenu.y}
+    anchor={newControl}
+    items={[
+      { label: "New note", hint: `${modKey}N`, run: () => void library.newNote() },
+      {
+        label: "New whiteboard",
+        hint: `${modKey}${shiftKey}N`,
+        run: () => void library.newWhiteboard(),
+      },
+    ]}
+    onclose={() => (newMenu = null)}
+  />
+{/if}
+
 <style>
   .list-pane {
     border-right: 1px solid var(--border);
@@ -201,14 +252,36 @@
   .search:focus {
     border-color: var(--accent);
   }
-  .new-note {
-    width: 28px;
+  /* One object, two targets: a hairline divides the segments so the chevron
+     reads as part of the ＋ button rather than a second control beside it. */
+  .new-control {
+    display: flex;
     border: 1px solid var(--border);
     border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .new-note {
+    width: 28px;
     font-size: 15px;
     color: var(--accent-text);
   }
-  .new-note:hover {
+  .new-kind {
+    display: grid;
+    place-items: center;
+    width: 16px;
+    border-left: 1px solid var(--border);
+    color: var(--text-secondary);
+  }
+  .new-kind svg {
+    width: 8px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .new-note:hover,
+  .new-kind:hover {
     background: var(--bg-hover);
   }
   .status-filter {
