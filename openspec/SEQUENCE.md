@@ -213,7 +213,20 @@ positions included, so the insertion rule does not move it. Landed on
 between notes would be a body syntax (and a vault concern), and are not part
 of this unit. See `changes/archive/feat-graph-view/tasks.md`.
 
-## 13a. `chore-boundary-registries` (DONE, shipped in 0.9.0)
+## 13a. Update notification (DONE, shipped in 0.9.0)
+
+`feat-update-notification`. View only: it renders the updater's state and stores
+nothing, so the insertion rule puts it in any slot between units; it took its
+own. An available update is a synthetic Space rather than a modal - two notes
+carrying the version pair, the size delta read from the GitHub release assets,
+the install button, and the release notes. Nothing is written to SQLite or the
+vault, so the notification cannot be searched, tagged, filed, exported, or left
+behind, and it disappears with the update. "Remind me later" is gone by
+decision: the notification carries no timer and is answered by updating or
+ignored by doing nothing. Landed on `0.9.0-pre` on 2026-09-24. See
+`changes/archive/feat-update-notification/tasks.md`.
+
+## 13b. `chore-boundary-registries` (DONE, shipped in 0.9.0)
 
 Error codes and event names each get one registry per language, and one test
 that holds the two sides equal (`src/lib/api/contract.test.ts`). Adds no
