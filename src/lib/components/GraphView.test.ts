@@ -70,7 +70,7 @@ describe("GraphView", () => {
 
   it("says how many notes it leaves out, and why", async () => {
     const { findByText } = render(GraphView);
-    expect(await findByText(/1 note with no tags or Spaces isn't shown/)).toBeTruthy();
+    expect(await findByText(/1 note with no tags or Spaces isn't shown\. This feature is a W\.I\.P\./)).toBeTruthy();
   });
 
   it("opens a note, filters by a tag, and goes into a Space", async () => {

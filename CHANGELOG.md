@@ -49,6 +49,12 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   how they connect. Hover a note to light up what it shares with others, then
   click through to open a note, filter by a tag, or go into a Space. It opens
   around the note you have open.
+- An update is now a notification instead of a dialog: an Update Space with a
+  green `*` that appears at the top of your Spaces. It holds two notes - the
+  version you are going to and the one you are coming from, how much larger or
+  smaller the download is, and the button to install it, plus the release notes
+  kept as a note you can read. Answering the finished install with Ok dismisses
+  the Space; the update applies the next time you open the app.
 
 ### Fixed
 - Images no longer pile up forever: deleting a note for good also deletes the
@@ -71,6 +77,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   build notes.
 - The release script guards its Windows path check so cutting a release
   no longer crashes there.
+- The update dialog's "Remind me later" options are gone: an update is now a
+  place you can simply ignore rather than a reminder you have to silence.
 
 ## [0.8.0] - 2026-07-11
 

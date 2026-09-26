@@ -3,15 +3,21 @@
   // renames in place, right-click (or Shift+F10) opens the row's context menu.
   // No resting chrome; a row is just the entity. Shared by spaces and tags,
   // parameterized by the count field, an optional prefix (# for tags), and the
-  // name normalizer each uses.
+  // name normalizer each uses. A read-only row (the synthetic Update Space) is
+  // the same row with the management gestures switched off, and an optional
+  // `suffix` snippet can trail the label.
+  import type { Snippet } from "svelte";
+
   let {
     name,
     count,
     prefix = "",
+    suffix,
     normalize,
     noun,
     active,
     editing,
+    readonly = false,
     onSelect,
     onStartRename,
     onRename,
@@ -21,10 +27,12 @@
     name: string;
     count: number;
     prefix?: string;
+    suffix?: Snippet;
     normalize: (raw: string) => string | null;
     noun: string;
     active: boolean;
     editing: boolean;
+    readonly?: boolean;
     onSelect: () => void;
     onStartRename: () => void;
     onRename: (
@@ -128,13 +136,15 @@
     class="nav-item entity-item"
     class:active
     bind:this={selectButton}
-    title={`${countLabel} · Double-click renames, right-click for options`}
+    title={readonly
+      ? countLabel
+      : `${countLabel} · Double-click renames, right-click for options`}
     onclick={onSelect}
-    ondblclick={onStartRename}
-    oncontextmenu={onContextMenu}
-    onkeydown={onRowKeydown}
+    ondblclick={readonly ? undefined : onStartRename}
+    oncontextmenu={readonly ? undefined : onContextMenu}
+    onkeydown={readonly ? undefined : onRowKeydown}
   >
-    <span class="entity-name">{prefix}{name}</span>
+    <span class="entity-name">{prefix}{name}{#if suffix}{@render suffix()}{/if}</span>
     <span class="entity-count">{count}</span>
   </button>
 {/if}

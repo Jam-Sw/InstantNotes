@@ -5,7 +5,7 @@
   import { updater } from "$lib/stores/updater.svelte";
   import { captureShortcut, modKey } from "$lib/platform";
 
-  let { appVersion, onShowUpdate }: { appVersion: string; onShowUpdate: () => void } =
+  let { appVersion, onOpenUpdate }: { appVersion: string; onOpenUpdate: () => void } =
     $props();
 
   // Set when the global capture hotkey could not be registered at startup
@@ -29,32 +29,34 @@
     <h2>
       InstantNotes
       {#if appVersion}<span class="version-badge">v{appVersion}</span>{/if}
-      {#if updater.status === "available"}
-        <button
-          class="update-pill"
-          title={`Update available: v${updater.version}`}
-          onclick={onShowUpdate}
-        >
-          Update available
-        </button>
-      {:else if updater.status === "downloading"}
-        <span class="update-pill passive">
-          Downloading{updater.progress != null
-            ? ` ${Math.round(updater.progress * 100)}%`
-            : "…"}
-        </span>
-      {:else if updater.status === "ready"}
-        <button class="update-pill" onclick={onShowUpdate}>
-          Restart to update
-        </button>
-      {:else if updater.status === "error"}
-        <button
-          class="update-pill failed"
-          title={updater.error}
-          onclick={onShowUpdate}
-        >
-          Update failed
-        </button>
+      {#if updater.pendingUpdate}
+        {#if updater.status === "downloading"}
+          <button class="update-pill" onclick={onOpenUpdate}>
+            Updating{updater.progress != null
+              ? ` ${Math.round(updater.progress * 100)}%`
+              : "…"}
+          </button>
+        {:else if updater.status === "ready"}
+          <button class="update-pill" onclick={onOpenUpdate}>
+            Update ready
+          </button>
+        {:else if updater.status === "error"}
+          <button
+            class="update-pill failed"
+            title={updater.error}
+            onclick={onOpenUpdate}
+          >
+            Update failed
+          </button>
+        {:else}
+          <button
+            class="update-pill"
+            title={`Update available: v${updater.version}`}
+            onclick={onOpenUpdate}
+          >
+            Update available
+          </button>
+        {/if}
       {/if}
     </h2>
     <p>Select a note, or press <kbd>{captureShortcut}</kbd> anywhere to capture.</p>
@@ -135,10 +137,6 @@
     font-weight: 400;
     letter-spacing: 0.3px;
     cursor: pointer;
-  }
-  .update-pill.passive {
-    cursor: default;
-    opacity: 0.8;
   }
   .update-pill.failed {
     border-color: #d05656;

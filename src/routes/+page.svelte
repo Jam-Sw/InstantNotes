@@ -1,6 +1,6 @@
 <script lang="ts">
   // Library window composition root: lays out the three panes and owns the
-  // app-chrome state (command palette, update panel) plus the global keyboard
+  // app-chrome state (command palette, settings) plus the global keyboard
   // shortcuts. Each pane lives in its own component under $lib/components.
   import { onMount } from "svelte";
   import { getVersion } from "@tauri-apps/api/app";
@@ -10,11 +10,11 @@
   import Sidebar from "$lib/components/Sidebar.svelte";
   import NoteList from "$lib/components/NoteList.svelte";
   import NoteEditor from "$lib/components/NoteEditor.svelte";
+  import UpdateNote from "$lib/components/UpdateNote.svelte";
   import BulkActions from "$lib/components/BulkActions.svelte";
   import WelcomeScreen from "$lib/components/WelcomeScreen.svelte";
   import GraphView from "$lib/components/GraphView.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
-  import UpdatePanel from "$lib/components/UpdatePanel.svelte";
   import SettingsView from "$lib/components/SettingsView.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import Toast from "$lib/components/Toast.svelte";
@@ -28,11 +28,38 @@
   import { confirmDialog } from "$lib/stores/confirm.svelte";
   import { isWhiteboardTarget } from "$lib/whiteboard/keys";
   import { excalidrawFile, parseBoard } from "$lib/whiteboard/document";
+  import { updateSpace } from "$lib/stores/update-space";
+  import {
+    isUpdateNoteId,
+    isUpdateSpaceId,
+    isVirtualNoteId,
+    UPDATE_SPACE_ID,
+  } from "$lib/update/space";
 
   let appVersion = $state("");
   let paletteOpen = $state(false);
-  let updatePanelOpen = $state(false);
   let settingsOpen = $state(false);
+
+  // The update Space is synthetic: once the update is gone (installed and
+  // answered, or no longer offered) there is no note behind it, so leave it
+  // rather than render a pane pointing at something that does not exist.
+  $effect(() => {
+    if (updateSpace.visible) return;
+    if (
+      isUpdateSpaceId(library.activeWorkspaceId) ||
+      isVirtualNoteId(library.selected?.id)
+    ) {
+      library.selectWorkspace(null);
+    }
+  });
+
+  /** Take the welcome pill or a tray check into the update Space. */
+  function openUpdate() {
+    settingsOpen = false;
+    library.selectWorkspace(UPDATE_SPACE_ID);
+    const lead = updateSpace.leadNote;
+    if (lead) library.selectVirtual(lead);
+  }
 
   onMount(() => {
     void library.init();
@@ -43,11 +70,12 @@
     void contexting.init();
     void getVersion().then((v) => (appVersion = v));
     updater.start();
-    // Tray "Check for Updates…" opens the panel and runs a manual check.
+    // Tray "Check for Updates…": run a manual check, then show the update
+    // Space if one turned up. The check itself toasts either outcome.
     let unlistenCheck: (() => void) | undefined;
-    void listen("updater:check", () => {
-      updatePanelOpen = true;
-      void updater.checkNow({ manual: true });
+    void listen("updater:check", async () => {
+      await updater.checkNow({ manual: true });
+      if (updater.pendingUpdate) openUpdate();
     }).then((un) => (unlistenCheck = un));
 
     // Menu bar events.
@@ -320,9 +348,13 @@
         {#if library.multiSelected.size > 1}
           <BulkActions />
         {:else if library.selected}
-          <NoteEditor />
+          {#if isUpdateNoteId(library.selected.id)}
+            <UpdateNote />
+          {:else}
+            <NoteEditor />
+          {/if}
         {:else}
-          <WelcomeScreen {appVersion} onShowUpdate={() => (updatePanelOpen = true)} />
+          <WelcomeScreen {appVersion} onOpenUpdate={openUpdate} />
         {/if}
       </section>
     {/if}
@@ -330,7 +362,6 @@
 {/if}
 
 <CommandPalette bind:open={paletteOpen} />
-<UpdatePanel bind:open={updatePanelOpen} currentVersion={appVersion} />
 <ConfirmDialog />
 <Toast />
 

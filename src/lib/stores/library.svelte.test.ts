@@ -33,6 +33,7 @@ import {
   workspacesForNote,
 } from "$lib/api/client";
 import { listen } from "@tauri-apps/api/event";
+import { UPDATE_NOTE_ID, UPDATE_SPACE_ID } from "$lib/update/space";
 import type {
   Note,
   SearchResult,
@@ -989,5 +990,49 @@ describe("graph view", () => {
     library.selectGraph();
     await library.newNote();
     expect(library.graphMode).toBe(false);
+  });
+});
+
+describe("the update Space (synthetic)", () => {
+  it("is never queried and holds no store rows of its own", async () => {
+    const library = await load();
+    mockListNotes.mockClear();
+
+    library.selectWorkspace(UPDATE_SPACE_ID);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(library.activeWorkspaceId).toBe(UPDATE_SPACE_ID);
+    expect(mockListNotes).not.toHaveBeenCalled();
+    expect(library.notes).toEqual([]);
+  });
+
+  it("opens a synthetic note without fetching it, and keeps its edits local", async () => {
+    const library = await load();
+    const note = mkNote(UPDATE_NOTE_ID, { title: "update 0.9.0 → 0.10.0" });
+
+    library.selectVirtual(note);
+    expect(library.selected?.id).toBe(UPDATE_NOTE_ID);
+    expect(library.selectedTags).toEqual([]);
+    expect(mockGetNote).not.toHaveBeenCalled();
+
+    library.editBody("typed into the release notes");
+    expect(library.selected?.body).toBe("typed into the release notes");
+    // Nothing is ever written: a synthetic note is not user data.
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(mockUpdateNote).not.toHaveBeenCalled();
+    expect(library.saveState).not.toBe("saving");
+  });
+
+  it("a new note is not filed under the synthetic Space", async () => {
+    const library = await load();
+    mockCreateNote.mockResolvedValue(mkNote("new1"));
+    mockGetNote.mockResolvedValue(mkNote("new1"));
+    library.selectWorkspace(UPDATE_SPACE_ID);
+    await vi.advanceTimersByTimeAsync(0);
+
+    await library.newNote();
+
+    expect(library.activeWorkspaceId).toBeNull();
+    expect(mockAddNoteToWorkspace).not.toHaveBeenCalled();
   });
 });

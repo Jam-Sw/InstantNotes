@@ -7,6 +7,8 @@
   import SidebarEntityRow from "$lib/components/SidebarEntityRow.svelte";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
   import { normalizeTagInput } from "$lib/tag-name";
+  import { updateSpace } from "$lib/stores/update-space";
+  import { UPDATE_SPACE_ID, UPDATE_SPACE_NAME } from "$lib/update/space";
   import type { TagWithCount, WorkspaceWithCount } from "$lib/api/types";
 
   let newSpaceInput = $state("");
@@ -119,6 +121,30 @@
   </nav>
   <div class="tags-header" bind:this={spacesHeader} tabindex="-1">Spaces</div>
   <nav class="workspaces">
+    <!-- The update notification, first: the same row as any Space, with a green
+         asterisk and no management gestures. It exists only while an update is
+         offered, so it is rendered rather than listed. -->
+    {#if updateSpace.visible}
+      <SidebarEntityRow
+        name={UPDATE_SPACE_NAME}
+        count={updateSpace.notes.length}
+        normalize={(s) => s.trim()}
+        noun="Space"
+        active={library.activeWorkspaceId === UPDATE_SPACE_ID}
+        editing={false}
+        readonly
+        onSelect={() =>
+          library.selectWorkspace(
+            library.activeWorkspaceId === UPDATE_SPACE_ID ? null : UPDATE_SPACE_ID,
+          )}
+        onStartRename={() => {}}
+        onRename={async () => ({ ok: true as const })}
+        onDoneRename={() => {}}
+        onMenu={() => {}}
+      >
+        {#snippet suffix()}<span class="update-star" aria-hidden="true">*</span>{/snippet}
+      </SidebarEntityRow>
+    {/if}
     {#each library.workspaces as ws (ws.id)}
       <SidebarEntityRow
         name={ws.name}
@@ -243,6 +269,12 @@
     padding: 4px 10px;
     color: var(--text-tertiary);
     font-size: 12px;
+  }
+  /* The notification's invitation: a saturated go-green, not the theme accent,
+     so it reads as "something is ready" in every theme. */
+  .update-star {
+    color: #2ecc71;
+    font-weight: 700;
   }
 
   /* spaces */

@@ -38,6 +38,7 @@ import type {
 } from "$lib/api/types";
 import { debounce } from "$lib/debounce";
 import { friendlyMessage } from "$lib/errors";
+import { isUpdateSpaceId, isVirtualNoteId } from "$lib/update/space";
 import {
   SaveQueue,
   type QueuedEdit,
@@ -195,6 +196,16 @@ class LibraryStore {
 
   async refresh(): Promise<void> {
     const token = ++this.#refreshToken;
+    // The update Space is synthetic: its two notes come from the updater, not
+    // the store, so there is nothing to query. A search still runs globally,
+    // which is why it is the one thing that takes precedence over the Space.
+    if (isUpdateSpaceId(this.activeWorkspaceId) && !this.searchText.trim()) {
+      this.searchResults = null;
+      this.notes = [];
+      this.workspaceTags = [];
+      this.error = null;
+      return;
+    }
     try {
       const text = this.searchText.trim();
       if (text) {
@@ -376,6 +387,22 @@ class LibraryStore {
     this.graphMode = false;
     this.#selection.reset([id], id);
     await this.#open(id);
+  }
+
+  /**
+   * Open one of the update Space's synthetic notes. It has no row in the store,
+   * so there is nothing to fetch and nothing to persist; the pending edit of
+   * the note being left is still flushed first, exactly as a real switch does.
+   */
+  selectVirtual(note: Note): void {
+    this.graphMode = false;
+    this.#collectPending();
+    this.#saveQueue.flushDebounce();
+    this.#selection.reset([note.id], note.id);
+    this.selected = note;
+    this.selectedTags = [];
+    this.selectedWorkspaces = [];
+    this.error = null;
   }
 
   async #open(id: string): Promise<void> {
@@ -566,6 +593,13 @@ class LibraryStore {
         ? this.tags.find((t) => t.id === this.activeTagId)
         : null;
 
+      // A note cannot be born in the synthetic update Space; creating one there
+      // drops the view back to All Notes rather than filing the note under a
+      // workspace id that is not in the database.
+      if (isUpdateSpaceId(this.activeWorkspaceId)) {
+        this.activeWorkspaceId = null;
+      }
+
       const note = await createNote(
         activeTag ? { tags: [activeTag.name] } : {},
       );
@@ -708,6 +742,9 @@ class LibraryStore {
     // Optimistic local state; persistence is debounced. The note is dirty
     // from this moment until a write of this (or a newer) body succeeds.
     this.selected.body = body;
+    // A synthetic note (the update Space's release notes) is not user data:
+    // the edit lives while the note is open and is gone when it closes.
+    if (isVirtualNoteId(this.selected.id)) return;
     this.#saveQueue.queue(this.selected.id, { body });
   }
 
@@ -755,6 +792,10 @@ class LibraryStore {
     if (!this.selected) return;
     const trimmed = title.trim();
     if (!trimmed || trimmed === this.selected.title) return;
+    if (isVirtualNoteId(this.selected.id)) {
+      this.selected.title = trimmed;
+      return;
+    }
     void this.#applyUpdate(this.selected.id, { title: trimmed });
   }
 

@@ -146,3 +146,22 @@ The app SHALL expose a macOS-oriented desktop shell with a tray entry, library w
 - **WHEN** the user closes the library window
 - **THEN** the app hides the window
 - **AND** keeps the desktop app running from the tray
+
+### Requirement: Software Updates
+The app SHALL offer an available update as a notification - a synthetic Space in the sidebar, not a modal dialog - and SHALL store nothing about it.
+
+#### Scenario: An update is offered
+- **WHEN** the app finds a newer release
+- **THEN** an Update Space marked with a green asterisk appears first in the sidebar
+- **AND** it holds the version jump, the size difference against the running version when known, and a button to install
+- **AND** its release-notes note can be read in the ordinary editor
+- **AND** neither note is written to the database or the vault
+
+#### Scenario: Answering an update
+- **WHEN** the user answers a finished install with Ok
+- **THEN** the Update Space disappears
+- **AND** the installed update applies the next time the app opens
+
+#### Scenario: A manual check finds nothing
+- **WHEN** the user asks to check for updates and none is available
+- **THEN** the app says it is up to date, without a dialog

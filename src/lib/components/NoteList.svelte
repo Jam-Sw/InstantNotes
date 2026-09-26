@@ -5,6 +5,8 @@
   import { parseHighlightSegments } from "$lib/highlight";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
   import { groupNotes } from "$lib/note-groups";
+  import { updateSpace } from "$lib/stores/update-space";
+  import { isUpdateSpaceId } from "$lib/update/space";
 
   const statusFilters: { id: StatusFilter; label: string }[] = [
     { id: "active", label: "Active" },
@@ -101,6 +103,22 @@
         </button>
       {:else}
         <div class="empty-state">No notes match your search.</div>
+      {/each}
+    {:else if isUpdateSpaceId(library.activeWorkspaceId)}
+      <!-- The update Space's two synthetic notes: the version jump and the
+           release notes. They have no rows in the store, so they are rendered
+           from the updater rather than listed. -->
+      {#each updateSpace.notes as note (note.id)}
+        <button
+          class="note-row"
+          data-note-id={note.id}
+          class:selected={library.isSelected(note.id)}
+          onclick={() => library.selectVirtual(note)}
+        >
+          <div class="row-title">{note.title}</div>
+          <div class="row-preview">{preview(note.body) || "Empty note"}</div>
+          <div class="row-date" title={formatExact(note.updatedAt)}>{formatDate(note.updatedAt)}</div>
+        </button>
       {/each}
     {:else}
       {#snippet noteRow(note: (typeof library.notes)[number])}

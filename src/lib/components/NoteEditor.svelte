@@ -15,6 +15,7 @@
   import { formatDate, formatExact, wordCount } from "$lib/format";
   import type { FormatKind } from "$lib/markdown-format";
   import { NO_MARKS, type ActiveMarks } from "$lib/markdown-active";
+  import { isVirtualNoteId } from "$lib/update/space";
 
   let tagInput = $state("");
   let workspaceInput = $state("");
@@ -26,6 +27,9 @@
   let active = $state<ActiveMarks>({ ...NO_MARKS });
 
   const isBoard = $derived(library.selected?.contentKind === "whiteboard");
+  // A synthetic note (the update Space's release notes) is not user data: its
+  // body can be typed in, but it has no tags, no Space, and no lifecycle.
+  const isVirtual = $derived(isVirtualNoteId(library.selected?.id));
   // The board follows the app's light or dark look, including themes that
   // only come in one of the two.
   const boardTheme = $derived(effectiveVariant(theme.activeTheme, theme.resolvedVariant));
@@ -85,9 +89,11 @@
     <input
       class="title-input"
       value={library.selected.title}
+      readonly={isVirtual}
       onchange={(e) => library.editTitle(e.currentTarget.value)}
       aria-label="Note title"
     />
+    {#if !isVirtual}
     <div class="actions">
       {#if library.selected.isDeleted}
         <button class="action" onclick={() => library.restoreSelected()}>Restore</button>
@@ -124,7 +130,9 @@
         <button class="action danger" onclick={() => library.deleteSelected()}>Delete</button>
       {/if}
     </div>
+    {/if}
   </div>
+  {#if !isVirtual}
   <div class="tag-bar">
     {#each library.selectedTags as tag (tag.id)}
       <span class="chip">
@@ -163,6 +171,7 @@
       {/each}
     </datalist>
   </div>
+  {/if}
   {#if isBoard}
     <div class="editor-body board-body">
       <!-- One canvas per note: a new id mounts a fresh board. -->
@@ -197,6 +206,7 @@
     </div>
   {/if}
   <div class="status-bar">
+    {#if !isVirtual}
     <span
       class="save-state"
       class:saving={library.saveState === "saving"}
@@ -205,6 +215,7 @@
     >
       {#if library.saveState === "saving"}<span class="save-dot"></span>Saving…{:else if library.saveState === "failed"}Not saved{:else}Saved · {editorPrefs.showExactTime ? formatExact(library.selected.updatedAt) : formatDate(library.selected.updatedAt)}{/if}
     </span>
+    {/if}
     {#if library.error}
       <span class="error">{library.error}</span>
     {:else if isBoard}

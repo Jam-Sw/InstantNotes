@@ -275,6 +275,7 @@
     <p class="graph-foot">
       {plural(graph.unconnectedNotes, "note", "notes")} with no tags or Spaces
       {graph.unconnectedNotes === 1 ? "isn't" : "aren't"} shown.
+      This feature is a W.I.P.
     </p>
   {/if}
 </section>
