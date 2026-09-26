@@ -5,7 +5,7 @@ description = "InstantNotes core: domain logic, persistence, search. No UI, no T
 edition = "2021"
 
 [dependencies]
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 thiserror = "2"
