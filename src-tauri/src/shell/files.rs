@@ -264,12 +264,24 @@ mod tests {
 
     #[test]
     fn note_export_accepts_markdown_text_and_excalidraw_only() {
-        for ok in ["/tmp/a.md", "/tmp/a.TXT", "/tmp/board.excalidraw"] {
-            assert!(validate_export_path(ok).is_ok(), "{ok}");
+        // What counts as absolute is platform specific: on Windows a leading
+        // separator is not enough without a drive prefix, so "/tmp/a.md" is a
+        // relative path there and would fail the absolute check before the
+        // extension is ever looked at. Build the fixtures from temp_dir(),
+        // which is absolute everywhere.
+        let dir = std::env::temp_dir();
+        let path = |name: &str| dir.join(name).to_string_lossy().into_owned();
+
+        for name in ["a.md", "a.TXT", "board.excalidraw"] {
+            let p = path(name);
+            assert!(validate_export_path(&p).is_ok(), "{p}");
         }
-        for bad in ["/tmp/a.json", "/tmp/a", "relative/a.md"] {
-            assert!(validate_export_path(bad).is_err(), "{bad}");
+        for name in ["a.json", "a"] {
+            let p = path(name);
+            assert!(validate_export_path(&p).is_err(), "{p}");
         }
+        // A relative path is refused whatever its extension.
+        assert!(validate_export_path("relative/a.md").is_err());
     }
 
     #[test]
