@@ -90,6 +90,25 @@ describe("parseChangelog", () => {
     expect(r!.sections.flatMap((s) => s.items).join(" ")).not.toContain("Spaces");
   });
 
+  // A Windows checkout converts the file to CRLF, so the parser sees a trailing
+  // \r on every line. `.` does not match \r and the bullet pattern has no `\s*`
+  // before its `$`, so splitting on "\n" alone dropped every item and the
+  // dashboard showed an empty "What's new" on Windows only.
+  it("parses a CRLF changelog the same as an LF one", () => {
+    const lf = parseChangelog(SAMPLE, "0.8.0");
+    const crlf = parseChangelog(SAMPLE.replace(/\n/g, "\r\n"), "0.8.0");
+    expect(crlf).toEqual(lf);
+    expect(crlf!.sections[0].items[0]).toBe(
+      "Spaces: a place you go rather than a label you hunt for.",
+    );
+  });
+
+  it("finds the running version's section in a CRLF copy of the bundled file", () => {
+    const r = parseChangelog(changelogRaw.replace(/\n/g, "\r\n"), pkg.version);
+    expect(r).not.toBeNull();
+    expect(r!.sections.length).toBeGreaterThan(0);
+  });
+
   // The bundled file is the input the dashboard actually parses, and the
   // version the app reports is the section it looks for. If a release is cut
   // without a changelog entry, "What's new" silently disappears; this fails

@@ -34,7 +34,10 @@ const BULLET_RE = /^[-*]\s+(.+)$/;
  * the `## [..]` heading). Returns null when that version is not present.
  */
 export function parseChangelog(md: string, version: string): ChangelogRelease | null {
-  const lines = md.split("\n");
+  // Split on either ending: a Windows checkout gets CRLF, and a trailing \r is
+  // not whitespace to `.`, so a bullet's `(.+)$` would never reach the end of
+  // the line and every item would be dropped.
+  const lines = md.split(/\r?\n/);
   let i = 0;
 
   // Find the target release heading.
