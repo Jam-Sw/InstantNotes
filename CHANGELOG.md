@@ -9,7 +9,7 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [0.9.0] - 2026-09-19
+## [0.9.0] - 2026-09-25
 
 ### Added
 - The Settings front page is now a dashboard: live counts for your notes and how
@@ -39,12 +39,13 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   read it back, so edit your notes in the app. A one-time "Export a copy" is
   there too.
 - Whiteboards: a note can be a freeform canvas for boxes, arrows, frames, and
-  sketches. Start one with New Whiteboard (Cmd+Shift+N), or turn a note into
-  one from the command palette; its text moves onto the board. Words written on
-  a board stay searchable and #tags on it still tag the note. In your vault a
-  board is saved as a standard .excalidraw file next to its note, and Export
-  Note saves it the same way.
-
+  sketches. Start one from the note list: the + button now has a chevron beside
+  it that offers New note and New whiteboard, and a right-click anywhere on the
+  button opens the same choice. New Whiteboard (Cmd+Shift+N) and the File menu
+  still work, and the command palette can still turn an existing note into one;
+  its text moves onto the board. Words written on a board stay searchable and
+  #tags on it still tag the note. In your vault a board is saved as a standard
+  .excalidraw file next to its note, and Export Note saves it the same way.
 - Graph: a new place in the sidebar that draws your notes, tags, and Spaces and
   how they connect. Hover a note to light up what it shares with others, then
   click through to open a note, filter by a tag, or go into a Space. It opens
