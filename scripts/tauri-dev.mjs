@@ -19,6 +19,11 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+// This project's Vite dev port. Keep in sync with vite.config.js and
+// src-tauri/tauri.conf.json (build.devUrl). Each Tauri project uses its own
+// port so several can run side by side.
+const DEV_PORT = 1422;
+
 function sh(cmd) {
   try {
     return execSync(cmd, { encoding: "utf8" });
@@ -53,9 +58,11 @@ if (process.platform !== "win32") {
     }
   }
 
-  // 2) Free the Vite dev port so a fresh server is used (not a stale one).
-  const onPort = sh("lsof -ti tcp:1420").trim();
-  if (onPort) for (const pid of onPort.split("\n")) killPid(pid, "stale dev server on :1420");
+  // 2) Free this project's Vite dev port so a fresh server is used (not a
+  // stale one). Only InstantNotes' own port is touched, so dev servers of
+  // other Tauri projects - each on their own port - keep running.
+  const onPort = sh(`lsof -ti tcp:${DEV_PORT}`).trim();
+  if (onPort) for (const pid of onPort.split("\n")) killPid(pid, `stale dev server on :${DEV_PORT}`);
 }
 
 // 3) Launch fresh, pointed at the real notes DB (the installed app's
