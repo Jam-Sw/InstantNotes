@@ -82,6 +82,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   place you can simply ignore rather than a reminder you have to silence.
 
 ### Changed
+- A new app icon: a lightning bolt striking a note, for notes that are there the
+  instant you need them. The menu bar icon is now the same bolt.
 - Under the hood, the names the two halves of the app use for each other - the
   error codes and the event names - each live in exactly one place per half now,
   with a test that holds the two halves equal. Nothing looks or behaves
