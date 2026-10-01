@@ -12,6 +12,7 @@
   import SettingsLinks from "$lib/components/settings/SettingsLinks.svelte";
   import SettingsFeedback from "$lib/components/settings/SettingsFeedback.svelte";
   import SettingsVault from "$lib/components/settings/SettingsVault.svelte";
+  import SettingsAgents from "$lib/components/settings/SettingsAgents.svelte";
   import { getLibraryStats, getCaptureLatency, openUrl } from "$lib/api/client";
   import type { DashboardStats } from "$lib/api/types";
   import { formatBytes } from "$lib/format";
@@ -34,7 +35,8 @@
     | "links"
     | "contexting"
     | "feedback"
-    | "vault";
+    | "vault"
+    | "agents";
   let page = $state<Page>("home");
 
   const CATEGORIES: { id: Page; title: string; desc: string }[] = [
@@ -44,6 +46,7 @@
     { id: "links", title: "Links", desc: "How links in your notes look and open." },
     { id: "contexting", title: "Contexting", desc: "Shape what copying a note hands to other tools and AI." },
     { id: "vault", title: "Vault", desc: "Your notes as plain Markdown files in a folder." },
+    { id: "agents", title: "Agents", desc: "Let Claude Code and other agents read and write your notes." },
     { id: "feedback", title: "Feedback", desc: "Report a bug or send an idea." },
   ];
 
@@ -55,6 +58,7 @@
     contexting: "Contexting",
     links: "Links",
     vault: "Vault",
+    agents: "Agents",
     feedback: "Feedback",
   };
 
@@ -185,6 +189,8 @@
         <SettingsLinks />
       {:else if page === "vault"}
         <SettingsVault />
+      {:else if page === "agents"}
+        <SettingsAgents />
       {:else if page === "feedback"}
         <SettingsFeedback {appVersion} />
       {/if}

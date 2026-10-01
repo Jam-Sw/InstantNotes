@@ -3,6 +3,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { ERROR_CODES, isErrorCode, type ErrorCode } from "./error-codes";
+import type { AgentConnection } from "$lib/agent-activity";
 import type {
   AttachmentCleanup,
   LibraryGraph,
@@ -96,8 +97,6 @@ export const destroyNotes = (ids: string[], confirm: boolean) =>
 
 // ---- tags ----
 export const listTags = () => call<TagWithCount[]>("list_tags");
-export const getOrCreateTag = (name: string) =>
-  call<Tag>("get_or_create_tag", { name });
 export const updateTag = (id: string, name?: string, color?: string) =>
   call<Tag>("update_tag", { id, name, color });
 export const deleteTag = (id: string) => call<void>("delete_tag", { id });
@@ -255,3 +254,9 @@ export const quitApp = () => call<void>("quit_app");
 // webview has listeners attached, so an event would be lost.
 export const getShortcutFailure = () =>
   call<string | null>("get_shortcut_failure");
+
+// ---- agents ----
+// The app executable (which is also the MCP server) and the live library, so
+// Settings > Agents prints a connect command that works as shown.
+export const getAgentConnection = () =>
+  call<AgentConnection>("agent_connection");

@@ -33,15 +33,21 @@
     allowImageFile,
   } from "$lib/api/client";
   import { toasts } from "$lib/stores/toasts.svelte";
+  import { applyExternalEdit, externalEdit } from "$lib/external-edit";
 
   let {
     value = "",
+    docKey,
     placeholder = "",
     previewMode = false,
     onchange,
     onactive,
   }: {
     value?: string;
+    /** Which document `value` belongs to (the note id). A new key loads a
+     *  clean state; a new value under the same key is an outside edit and
+     *  lands as a change, keeping the caret and the undo history. */
+    docKey?: string;
     placeholder?: string;
     previewMode?: boolean;
     onchange?: (v: string) => void;
@@ -51,6 +57,7 @@
   let container: HTMLDivElement;
   let view: EditorView | undefined;
   let applyingExternal = false;
+  let loadedKey: string | undefined;
   // Built once and reused for every note load, so each note gets a fresh state
   // (clean selection, its own undo history) with identical behavior.
   let extensions: Extension[] = [];
@@ -61,6 +68,7 @@
   onMount(() => {
     extensions = [
           history(),
+          externalEdit,
           // Formatting shortcuts take precedence over the defaults. Cmd-K is the
           // command palette (handled at the window level), so link uses Cmd-Shift-K.
           keymap.of([
@@ -115,6 +123,7 @@
       state: EditorState.create({ doc: value, selection: { anchor: 0 }, extensions }),
       parent: container,
     });
+    loadedKey = docKey;
     // Seed the toolbar before the first edit or selection change.
     onactive?.(activeMarks(view.state));
     // Attachment images can only resolve once Rust reports where they live;
@@ -147,7 +156,7 @@
   // in notes being switched between, and it stops an undo from reaching back
   // into the previously open note. Linked (absolute-path) images are permitted
   // into the asset scope before the state renders so they load on first paint.
-  async function loadDoc(next: string): Promise<void> {
+  async function loadDoc(next: string, key: string | undefined): Promise<void> {
     // Guard edit echoes to the OUTGOING note across the (possible) async gap
     // while linked images are permitted, and across the state swap itself.
     applyingExternal = true;
@@ -163,6 +172,7 @@
       view.setState(
         EditorState.create({ doc: next, selection: { anchor: 0 }, extensions }),
       );
+      loadedKey = key;
       view.dispatch({ effects: seedEffects() });
       onactive?.(activeMarks(view.state));
     } finally {
@@ -171,11 +181,24 @@
   }
 
   $effect(() => {
-    // Sync external value changes (note switching) into the editor by loading
-    // a clean state for the new body.
+    // Sync external value changes into the editor. Another note loads a clean
+    // state, even when its text happens to match the last one's; the same
+    // note changed from outside (an agent's edit) lands as a change.
     const next = value;
-    if (view && next !== view.state.doc.toString()) {
-      void loadDoc(next);
+    const key = docKey;
+    if (!view) return;
+    const changed = next !== view.state.doc.toString();
+    if (key !== undefined && key === loadedKey) {
+      if (!changed) return;
+      applyingExternal = true;
+      try {
+        applyExternalEdit(view, next);
+      } finally {
+        applyingExternal = false;
+      }
+    } else if (changed || key !== loadedKey) {
+      // Without a key, any new text is a new document, as before keys.
+      void loadDoc(next, key);
     }
   });
 

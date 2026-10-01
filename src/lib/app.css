@@ -148,3 +148,63 @@ html[data-vibrancy] .editor-pane {
     opacity: 0;
   }
 }
+
+/* Agent presence. What an agent connected over MCP is reading or changing
+   right now is drawn on the thing itself: a note row, a Space or tag, the
+   open note. Components only set data-agent="read" | "write" from the agents
+   store (src/lib/stores/agents.svelte.ts), which clears it a few seconds
+   after the last call; every rule for how it looks lives here. A read is a
+   light passing over; a write holds a firmer outline. */
+[data-agent] {
+  position: relative;
+}
+[data-agent]::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: var(--radius);
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    color-mix(in srgb, var(--accent) 18%, transparent) 50%,
+    transparent 70%
+  );
+  background-size: 300% 100%;
+  animation:
+    agent-in 160ms ease-out,
+    agent-scan 1.6s ease-in-out infinite;
+}
+[data-agent="write"]::after {
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+  background-color: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+/* The open note: an outline around the page, no sweep across the text. */
+.editor-body[data-agent]::after {
+  inset: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent),
+    inset 0 0 24px color-mix(in srgb, var(--accent) 10%, transparent);
+  animation: agent-in 160ms ease-out;
+}
+@keyframes agent-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes agent-scan {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-agent]::after {
+    animation: none;
+  }
+}

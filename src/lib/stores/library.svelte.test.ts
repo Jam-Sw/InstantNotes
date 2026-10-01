@@ -220,7 +220,12 @@ describe("save queue", () => {
     expect(mockUpdateNote).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(400);
-    expect(mockUpdateNote).toHaveBeenCalledWith("n1", { body: "new body" });
+    // A document save names the version it was based on (the one opened), so
+    // an agent's write in between is caught rather than overwritten.
+    expect(mockUpdateNote).toHaveBeenCalledWith("n1", {
+      body: "new body",
+      expectedUpdatedAt: "2026-01-01T00:00:00Z",
+    });
     // Write still in flight: must not claim "saved" over unpersisted data.
     expect(library.saveState).toBe("saving");
 
@@ -283,7 +288,10 @@ describe("flushPendingEdits", () => {
     library.editBody("flush me");
     const flushed = library.flushPendingEdits();
     // The write must fire synchronously off the flush, not off the timer.
-    expect(mockUpdateNote).toHaveBeenCalledWith("n1", { body: "flush me" });
+    expect(mockUpdateNote).toHaveBeenCalledWith("n1", {
+      body: "flush me",
+      expectedUpdatedAt: "2026-01-01T00:00:00Z",
+    });
 
     write.resolve(mkNote("n1", { body: "flush me" }));
     await flushed;
@@ -391,7 +399,10 @@ describe("destroy paths drop queued edits (regression: fixed 2026-07-08)", () =>
     library.editBody("kept");
     await vi.advanceTimersByTimeAsync(400);
 
-    expect(mockUpdateNote).toHaveBeenCalledWith("n1", { body: "kept" });
+    expect(mockUpdateNote).toHaveBeenCalledWith("n1", {
+      body: "kept",
+      expectedUpdatedAt: "2026-01-01T00:00:00Z",
+    });
   });
 });
 
@@ -407,6 +418,7 @@ describe("soft delete flushes queued edits (Undo restores the last keystrokes)",
 
     expect(mockUpdateNote).toHaveBeenCalledWith("n1", {
       body: "last keystrokes",
+      expectedUpdatedAt: "2026-01-01T00:00:00Z",
     });
     expect(mockSoftDeleteNote).toHaveBeenCalledWith("n1");
     // The write must land before the trash, or a restore loses the edit.
@@ -431,6 +443,7 @@ describe("soft delete flushes queued edits (Undo restores the last keystrokes)",
 
     expect(mockUpdateNote).toHaveBeenCalledWith("n1", {
       body: "unsaved bulk edit",
+      expectedUpdatedAt: "2026-01-01T00:00:00Z",
     });
     expect(mockSoftDeleteNotes).toHaveBeenCalledWith(["n1"]);
     await vi.advanceTimersByTimeAsync(3000);
@@ -548,6 +561,7 @@ describe("init ordering", () => {
       EVENTS.TAGS_CHANGED,
       EVENTS.WORKSPACES_CHANGED,
       EVENTS.STICKIES_CHANGED,
+      EVENTS.LIBRARY_EXTERNAL_CHANGE,
     ]);
     expect(mockListNotes).not.toHaveBeenCalled();
     expect(mockListTags).not.toHaveBeenCalled();
@@ -569,7 +583,7 @@ describe("init ordering", () => {
     const p2 = library.init();
     await Promise.all([p1, p2]);
 
-    expect(mockListen).toHaveBeenCalledTimes(4);
+    expect(mockListen).toHaveBeenCalledTimes(5);
     // Two listNotes calls: the visible list and the revisit count.
     expect(mockListNotes).toHaveBeenCalledTimes(2);
     expect(mockListTags).toHaveBeenCalledTimes(1);
@@ -904,7 +918,10 @@ describe("whiteboards", () => {
 
     const calls = mockUpdateNote.mock.calls;
     // The pending body edit lands first, so nothing typed is lost.
-    expect(calls[0]).toEqual(["n1", { body: "Roadmap\nship it today" }]);
+    expect(calls[0]).toEqual([
+      "n1",
+      { body: "Roadmap\nship it today", expectedUpdatedAt: "2026-01-01T00:00:00Z" },
+    ]);
     const [id, patch] = calls[calls.length - 1];
     expect(id).toBe("n1");
     expect(patch.contentKind).toBe("whiteboard");
@@ -1061,7 +1078,10 @@ describe("stickies", () => {
 
     await library.popOut("n1");
 
-    expect(mockUpdateNote).toHaveBeenCalledWith("n1", { body: "typed" });
+    expect(mockUpdateNote).toHaveBeenCalledWith("n1", {
+      body: "typed",
+      expectedUpdatedAt: "2026-01-01T00:00:00Z",
+    });
     expect(mockUpdateNote.mock.invocationCallOrder[0]).toBeLessThan(
       mockPopOutNote.mock.invocationCallOrder[0],
     );

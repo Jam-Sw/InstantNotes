@@ -268,6 +268,18 @@ a second writer to reconcile. Built on `0.9.0-pre` on 2026-09-30 with its
 tests green; it stays open until the in-app checks in
 `changes/feat-sticky-notes/tasks.md` pass, then archives.
 
+## 13d. `feat-agent-access` (BUILT, open until checked in the app)
+
+Agents connect over MCP through the app's own binary (`instantnotes mcp`).
+The insertion rule places it anywhere: no migration, no change to note shape,
+and it reaches the library only through `Store`'s public API, so unit 9's
+write-path rewrite sits beneath it rather than under it. The one store API
+change is additive (`update_note`'s optional version check). Built in its own
+worktree while the sticky-notes unit was in flight, then rebased onto it and
+landed on `0.9.0-pre` on 2026-09-30. It precedes unit 14 on purpose: local AI
+adds one tool to this surface instead of inventing its own. See
+`changes/feat-agent-access/`.
+
 ## 14. Local AI
 
 Needs embedding storage, so it cannot precede unit 10. Embeddings are a

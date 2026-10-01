@@ -60,7 +60,7 @@ mod events;
 mod shell;
 use commands::{feedback::*, notes::*, settings::*, stats::*, tags::*, vault::*, workspaces::*};
 use error::{CmdError, CmdResult};
-use shell::{capture::*, files::*, mirror::*, quit::*, stickies::*, windows::*};
+use shell::{agents::*, capture::*, files::*, mirror::*, quit::*, stickies::*, windows::*};
 
 // ---- app shell ----
 
@@ -141,6 +141,7 @@ pub fn run() {
             });
             app.manage(CaptureMetrics::default());
             app.manage(start_vault_flusher(app.handle()));
+            app.manage(start_agent_watcher(app.handle(), db_path.clone()));
             // Catch up anything a crash or a missing drive left pending, and
             // any attachment added while mirroring was paused.
             {
@@ -440,7 +441,6 @@ pub fn run() {
             restore_notes,
             destroy_notes,
             list_tags,
-            get_or_create_tag,
             update_tag,
             delete_tag,
             add_tag_to_note,
@@ -491,7 +491,8 @@ pub fn run() {
             get_sticky_view,
             set_sticky_level,
             set_sticky_collapsed,
-            save_sticky_geometry
+            save_sticky_geometry,
+            agent_connection
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

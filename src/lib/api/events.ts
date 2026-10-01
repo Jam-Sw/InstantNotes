@@ -19,6 +19,7 @@ export const EVENTS = {
   MENU_TOGGLE_STICKY: "menu:toggle-sticky",
   STICKIES_CHANGED: "stickies:changed",
   STICKY_CLOSE_REQUESTED: "sticky:close-requested",
+  LIBRARY_EXTERNAL_CHANGE: "library:external-change",
 } as const;
 
 export type AppEvent = (typeof EVENTS)[keyof typeof EVENTS];

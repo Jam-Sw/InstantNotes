@@ -1,5 +1,6 @@
 <script lang="ts">
   import { library, type StatusFilter } from "$lib/stores/library.svelte";
+  import { agents } from "$lib/stores/agents.svelte";
   import { formatDate, formatExact, preview } from "$lib/format";
   import { captureShortcut, modKey, shiftKey } from "$lib/platform";
   import { parseHighlightSegments } from "$lib/highlight";
@@ -131,6 +132,7 @@
         <button
           class="note-row"
           data-note-id={hit.noteId}
+          data-agent={agents.noteMark(hit.noteId)}
           class:selected={library.isSelected(hit.noteId)}
           onclick={(e) => rowClick(e, hit.noteId)}
         >
@@ -162,6 +164,7 @@
         <button
           class="note-row"
           data-note-id={note.id}
+          data-agent={agents.noteMark(note.id)}
           class:selected={library.isSelected(note.id)}
           onclick={(e) => rowClick(e, note.id)}
           oncontextmenu={(e) => {

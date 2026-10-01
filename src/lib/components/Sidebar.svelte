@@ -1,5 +1,7 @@
 <script lang="ts">
   import { library } from "$lib/stores/library.svelte";
+  import { agents } from "$lib/stores/agents.svelte";
+  import { clientLabel, describeActivity } from "$lib/agent-activity";
   import { ApiError, deleteTag, updateTag } from "$lib/api/client";
   import { friendlyMessage, GENERIC_MESSAGE } from "$lib/errors";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
@@ -96,6 +98,25 @@
     >
       All Notes
     </button>
+    <!-- An agent at work: who, and what, in one line that exists only while
+         it is happening. The rows it touches light up on their own; this
+         says in words what the light means. Opens the note it names. -->
+    <div class="agent-live" role="status" aria-live="polite">
+      {#if agents.current}
+        {@const act = agents.current}
+        <button
+          class="agent-line"
+          data-kind={act.kind}
+          title="An agent connected to InstantNotes. Settings > Agents controls what it may do."
+          onclick={() => act.noteIds.length === 1 && void library.select(act.noteIds[0])}
+        >
+          <span class="agent-dot" aria-hidden="true"></span>
+          <span class="agent-text"
+            ><strong>{clientLabel(act.client)}</strong> {describeActivity(act)}</span
+          >
+        </button>
+      {/if}
+    </div>
     <!-- Open loops: capture-born notes never opened since. Hidden at zero
          (useful by default, invisible when there's nothing to do), but held
          visible while active so the row doesn't vanish mid burn-down. -->
@@ -152,6 +173,7 @@
         normalize={(s) => s.trim()}
         noun="Space"
         active={library.activeWorkspaceId === ws.id}
+        agent={agents.spaceActive(ws.name)}
         editing={renamingSpaceId === ws.id}
         onSelect={() =>
           library.selectWorkspace(library.activeWorkspaceId === ws.id ? null : ws.id)}
@@ -181,6 +203,7 @@
         normalize={normalizeTagInput}
         noun="Tag"
         active={library.activeTagId === tag.id}
+        agent={agents.tagActive(tag.name)}
         editing={renamingTagId === tag.id}
         onSelect={() =>
           library.setTagFilter(library.activeTagId === tag.id ? null : tag.id)}
@@ -246,6 +269,62 @@
     background: var(--accent-soft);
     color: var(--accent-text);
     font-weight: 500;
+  }
+  .agent-line {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    width: 100%;
+    margin: 2px 0 4px;
+    padding: 4px 10px;
+    border-radius: var(--radius);
+    text-align: left;
+    font-size: 12px;
+    line-height: 1.35;
+    color: var(--text-secondary);
+    animation: agent-line-in 180ms ease-out;
+  }
+  .agent-line:hover {
+    background: var(--bg-hover);
+  }
+  .agent-line strong {
+    color: var(--accent-text);
+    font-weight: 600;
+  }
+  .agent-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .agent-dot {
+    flex: none;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    transform: translateY(-1px);
+    animation: agent-dot 1.2s ease-in-out infinite;
+  }
+  .agent-line[data-kind="write"] .agent-dot {
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  @keyframes agent-line-in {
+    from {
+      opacity: 0;
+      transform: translateY(-2px);
+    }
+  }
+  @keyframes agent-dot {
+    50% {
+      opacity: 0.35;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .agent-line,
+    .agent-dot {
+      animation: none;
+    }
   }
   .tags-header {
     margin: 16px 10px 4px;

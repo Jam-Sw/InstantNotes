@@ -124,6 +124,20 @@ impl Store {
 
         let now = now_iso();
         let tx = self.conn.transaction()?;
+        // Checked inside the (immediate) transaction, so no other writer can
+        // land between the check and the update.
+        if let Some(expected) = &patch.expected_updated_at {
+            let current: String = tx.query_row(
+                "SELECT updated_at FROM notes WHERE id = ?1",
+                params![id],
+                |r| r.get(0),
+            )?;
+            if &current != expected {
+                return Err(AppError::Conflict(format!(
+                    "note {id} changed since it was read"
+                )));
+            }
+        }
         tx.execute(
             "UPDATE notes SET \
                title = COALESCE(?1, title), \

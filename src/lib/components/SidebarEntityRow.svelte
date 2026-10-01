@@ -18,6 +18,7 @@
     active,
     editing,
     readonly = false,
+    agent = false,
     onSelect,
     onStartRename,
     onRename,
@@ -33,6 +34,8 @@
     active: boolean;
     editing: boolean;
     readonly?: boolean;
+    /** An agent is looking through this Space or tag right now. */
+    agent?: boolean;
     onSelect: () => void;
     onStartRename: () => void;
     onRename: (
@@ -135,6 +138,7 @@
   <button
     class="nav-item entity-item"
     class:active
+    data-agent={agent ? "read" : null}
     bind:this={selectButton}
     title={readonly
       ? countLabel

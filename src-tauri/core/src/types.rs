@@ -83,6 +83,11 @@ pub struct UpdateNotePatch {
     pub content_kind: Option<String>,
     /// A whiteboard's canvas; rejected on a document.
     pub surface_data: Option<String>,
+    /// Optimistic concurrency: when set, the update applies only if the
+    /// note's `updated_at` still equals it, and fails with `Conflict`
+    /// otherwise. Lets a writer that read the note refuse to overwrite a
+    /// change it has not seen.
+    pub expected_updated_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

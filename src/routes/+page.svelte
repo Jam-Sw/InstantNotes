@@ -26,6 +26,7 @@
   import { sidebar } from "$lib/stores/sidebar.svelte";
   import { linkPrefs as linkPrefsStore } from "$lib/stores/links.svelte";
   import { contexting } from "$lib/stores/contexting.svelte";
+  import { agents } from "$lib/stores/agents.svelte";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
   import { isWhiteboardTarget } from "$lib/whiteboard/keys";
   import { excalidrawFile, parseBoard } from "$lib/whiteboard/document";
@@ -69,6 +70,7 @@
     void sidebar.init();
     void linkPrefsStore.init();
     void contexting.init();
+    void agents.init();
     void getVersion().then((v) => (appVersion = v));
     updater.start();
     // Tray "Check for Updates…": run a manual check, then show the update

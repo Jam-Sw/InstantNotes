@@ -33,3 +33,7 @@ pub const MENU_TOGGLE_STICKY: &str = "menu:toggle-sticky";
 pub const STICKIES_CHANGED: &str = "stickies:changed";
 /// Pop in: the sticky flushes, then answers `answer_pop_in` (that window only).
 pub const STICKY_CLOSE_REQUESTED: &str = "sticky:close-requested";
+/// Another process wrote to the library (an agent, via `instantnotes mcp`);
+/// payload is the new agent activity entries, oldest first. See
+/// `shell/agents.rs`.
+pub const LIBRARY_EXTERNAL_CHANGE: &str = "library:external-change";

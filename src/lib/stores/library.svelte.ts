@@ -51,6 +51,8 @@ import {
 } from "$lib/stores/library/save-queue.svelte";
 import { SelectionModel } from "$lib/stores/library/selection.svelte";
 import { toasts } from "$lib/stores/toasts.svelte";
+import { agents } from "$lib/stores/agents.svelte";
+import { clientLabel, parseActivityLog, type AgentActivity } from "$lib/agent-activity";
 import { boardFromText } from "$lib/whiteboard/excalidraw";
 import { listen } from "@tauri-apps/api/event";
 
@@ -122,6 +124,15 @@ class LibraryStore {
       this.error = null;
     },
     onError: (e) => this.#fail(e),
+    // The user's typing replaced an agent's edit. Say so, by name, and offer
+    // it back; the restore is itself an edit, so Cmd-Z undoes it.
+    onOverwrote: (id, theirs) => {
+      const who = clientLabel(agents.lastWriter(id) ?? "");
+      toasts.show(`${who}'s change to this note was replaced by your typing.`, {
+        label: "Restore theirs",
+        run: () => this.#restoreExternal(id, theirs),
+      });
+    },
   });
 
   // Editors that hold an edit not yet handed to the queue (a whiteboard
@@ -166,6 +177,9 @@ class LibraryStore {
       listen(EVENTS.TAGS_CHANGED, () => void this.refreshTags()),
       listen(EVENTS.WORKSPACES_CHANGED, () => void this.refreshWorkspaces()),
       listen(EVENTS.STICKIES_CHANGED, () => void this.refreshStickies()),
+      listen<unknown>(EVENTS.LIBRARY_EXTERNAL_CHANGE, (e) => {
+        void this.#adoptExternal(parseActivityLog(e.payload));
+      }),
     ]);
     await Promise.all([
       this.refresh(),
@@ -492,6 +506,7 @@ class LibraryStore {
     this.#saveQueue.flushDebounce();
     try {
       const note = await getNote(id, true);
+      this.#saveQueue.known(note);
       // A queued edit (debounced or awaiting retry) is newer than what disk
       // returned; showing the disk body would fork the note's history.
       const queued = this.#saveQueue.peek(id);
@@ -984,12 +999,58 @@ class LibraryStore {
     toasts.show(message);
   }
 
+  /**
+   * Another process (an agent) wrote while a note is open. With nothing
+   * unsaved, the open note takes the new version and the editor applies it
+   * as a change under the caret. With unsaved typing it is left alone: that
+   * save meets the other write through the version check (SaveQueue).
+   */
+  async #adoptExternal(entries: AgentActivity[]): Promise<void> {
+    const open = this.selected;
+    if (!open || isVirtualNoteId(open.id) || open.contentKind === "whiteboard") return;
+    // No entries means a write the log does not describe (a second copy of
+    // the app), which may have touched anything.
+    const touched =
+      entries.length === 0 ||
+      entries.some((e) => e.kind === "write" && e.noteIds.includes(open.id));
+    if (!touched || this.#saveQueue.peek(open.id) !== undefined) return;
+    const shown = open.body;
+    let fresh: Note;
+    try {
+      fresh = await getNote(open.id, false);
+    } catch {
+      return;
+    }
+    // The user may have typed, or moved on, while this was read.
+    const now = this.selected;
+    if (now?.id !== open.id || now.body !== shown || this.#saveQueue.peek(open.id) !== undefined) {
+      return;
+    }
+    this.#saveQueue.known(fresh);
+    this.selected = { ...fresh, surfaceData: now.surfaceData };
+    [this.selectedTags, this.selectedWorkspaces] = await Promise.all([
+      tagsForNote(open.id),
+      workspacesForNote(open.id),
+    ]);
+  }
+
+  /** "Restore theirs": put an agent's overwritten body back, as an edit. */
+  #restoreExternal(id: string, body: string): void {
+    if (this.selected?.id === id) {
+      this.selected.body = body;
+      this.#saveQueue.queue(id, { body });
+    } else {
+      void this.#applyUpdate(id, { body });
+    }
+  }
+
   async #applyUpdate(
     id: string,
     patch: Parameters<typeof updateNote>[1],
   ): Promise<void> {
     try {
       const updated = await updateNote(id, patch);
+      this.#saveQueue.known(updated);
       if (this.selected?.id === id) {
         // Keep local body if user kept typing past this save, and the local
         // canvas, which the reply never carries.

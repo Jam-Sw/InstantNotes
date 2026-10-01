@@ -1,0 +1,644 @@
+//! The tools an agent can call: what each one is, as `tools/list` describes
+//! it, and what it does.
+//!
+//! Every tool maps onto a public `Store` method, so an agent's write goes
+//! through the same rules as a keystroke in the app. The surface says
+//! "space" (the product term); the core underneath says "workspace".
+//!
+//! Deliberately absent, at every access level: permanent delete, settings,
+//! the vault, and whiteboard canvases.
+
+use crate::access::Access;
+use crate::activity::{self, Scope};
+use crate::fail;
+use instantnotes_core::domain::{normalize_tag_name, normalize_workspace_name};
+use instantnotes_core::types::{
+    CreateNoteInput, Note, NoteFilter, UpdateNotePatch, CONTENT_KIND_WHITEBOARD,
+};
+use instantnotes_core::{AppError, Store};
+use serde::de::DeserializeOwned;
+use serde::Deserialize;
+use serde_json::{json, Value};
+use std::path::PathBuf;
+
+const SNIPPET_CHARS: usize = 160;
+const DEFAULT_LIMIT: i64 = 50;
+const MAX_LIMIT: i64 = 200;
+/// append_to_note re-reads and retries when the user saves in between.
+const APPEND_ATTEMPTS: usize = 3;
+/// A capture is an open loop once it has gone unopened this long. Matches
+/// `REVISIT_AFTER_MS` in src/lib/stores/library.svelte.ts.
+const REVISIT_AFTER_MS: i64 = 3 * 24 * 60 * 60 * 1000;
+
+type ToolResult = Result<Value, String>;
+
+pub(crate) struct Tools<'a> {
+    store: &'a mut Store,
+    attachments_dir: Option<PathBuf>,
+    /// `clientInfo.name` from `initialize`, shown to the user as who is
+    /// acting ("claude-code", "cursor").
+    client: String,
+}
+
+struct ToolDef {
+    name: &'static str,
+    /// Shown to the user by clients that display tools.
+    title: &'static str,
+    level: Access,
+    /// MCP `destructiveHint`, for writes: the tool can remove or replace
+    /// something, rather than only add. Undoable still counts.
+    destructive: bool,
+    /// MCP `idempotentHint`, for writes: repeating the call with the same
+    /// arguments changes nothing more.
+    idempotent: bool,
+    description: &'static str,
+    schema: fn() -> Value,
+}
+
+const TOOLS: &[ToolDef] = &[
+    ToolDef {
+        name: "search_notes",
+        title: "Search notes",
+        level: Access::Read,
+        destructive: false,
+        idempotent: true,
+        description: "Full-text search over note titles and bodies. Returns ids, titles, and a matching excerpt.",
+        schema: || object(json!({
+            "query": { "type": "string", "description": "Words to search for." },
+            "limit": limit_param()
+        }), &["query"]),
+    },
+    ToolDef {
+        name: "list_notes",
+        title: "List notes",
+        level: Access::Read,
+        destructive: false,
+        idempotent: true,
+        description: "List notes, most recently updated first, optionally within a space or tag. Returns summaries, not full bodies.",
+        schema: || object(json!({
+            "space": space_param(),
+            "tag": tag_param(),
+            "status": {
+                "type": "string",
+                "enum": ["active", "pinned", "archived", "trash", "revisit"],
+                "default": "active",
+                "description": "revisit: open loops, captures never opened in the app and older than three days, oldest first."
+            },
+            "limit": limit_param(),
+            "offset": { "type": "integer", "minimum": 0, "default": 0 }
+        }), &[]),
+    },
+    ToolDef {
+        name: "get_note",
+        title: "Read a note",
+        level: Access::Read,
+        destructive: false,
+        idempotent: true,
+        description: "Read one note in full: body, tags, spaces, and updatedAt (pass it to update_note). Reading does not mark the note as opened.",
+        schema: || object(json!({ "id": id_param() }), &["id"]),
+    },
+    ToolDef {
+        name: "list_tags",
+        title: "List tags",
+        level: Access::Read,
+        destructive: false,
+        idempotent: true,
+        description: "Every tag with how many notes use it.",
+        schema: || object(json!({}), &[]),
+    },
+    ToolDef {
+        name: "list_spaces",
+        title: "List Spaces",
+        level: Access::Read,
+        destructive: false,
+        idempotent: true,
+        description: "Every space with how many notes it holds.",
+        schema: || object(json!({}), &[]),
+    },
+    ToolDef {
+        name: "create_note",
+        title: "Create a note",
+        level: Access::Write,
+        destructive: false,
+        idempotent: false,
+        description: "Create a note. The title is taken from the first line unless given. #words in the body become tags.",
+        schema: || object(json!({
+            "body": { "type": "string", "description": "Markdown." },
+            "title": { "type": "string", "description": "Only to override the first line as the title." },
+            "tags": { "type": "array", "items": tag_param() },
+            "space": { "type": "string", "description": "Space to file it in; created if new." }
+        }), &["body"]),
+    },
+    ToolDef {
+        name: "update_note",
+        title: "Rewrite a note",
+        level: Access::Write,
+        destructive: true,
+        idempotent: true,
+        description: "Replace a note's title and/or body. expectedUpdatedAt must be the updatedAt from get_note; a CONFLICT means the note changed since, so read it again.",
+        schema: || object(json!({
+            "id": id_param(),
+            "expectedUpdatedAt": { "type": "string", "description": "The note's updatedAt, exactly as get_note returned it." },
+            "title": { "type": "string" },
+            "body": { "type": "string", "description": "Markdown; replaces the whole body." }
+        }), &["id", "expectedUpdatedAt"]),
+    },
+    ToolDef {
+        name: "append_to_note",
+        title: "Add to a note",
+        level: Access::Write,
+        destructive: false,
+        idempotent: false,
+        description: "Add text to the end of a note on a new line, without replacing what is there.",
+        schema: || object(json!({
+            "id": id_param(),
+            "text": { "type": "string", "description": "Markdown." }
+        }), &["id", "text"]),
+    },
+    ToolDef {
+        name: "tag_note",
+        title: "Tag a note",
+        level: Access::Write,
+        destructive: false,
+        idempotent: true,
+        description: "Add a tag to a note.",
+        schema: || object(json!({ "id": id_param(), "tag": tag_param() }), &["id", "tag"]),
+    },
+    ToolDef {
+        name: "untag_note",
+        title: "Untag a note",
+        level: Access::Write,
+        destructive: true,
+        idempotent: true,
+        description: "Remove a tag from a note. A #tag still written in the body comes back on the next edit.",
+        schema: || object(json!({ "id": id_param(), "tag": tag_param() }), &["id", "tag"]),
+    },
+    ToolDef {
+        name: "add_to_space",
+        title: "Add a note to a Space",
+        level: Access::Write,
+        destructive: false,
+        idempotent: true,
+        description: "Add a note to a space, creating the space if it is new.",
+        schema: || object(json!({ "id": id_param(), "space": space_param() }), &["id", "space"]),
+    },
+    ToolDef {
+        name: "remove_from_space",
+        title: "Take a note out of a Space",
+        level: Access::Write,
+        destructive: true,
+        idempotent: true,
+        description: "Take a note out of a space. The note itself is kept.",
+        schema: || object(json!({ "id": id_param(), "space": space_param() }), &["id", "space"]),
+    },
+    ToolDef {
+        name: "trash_note",
+        title: "Move a note to the Trash",
+        level: Access::Write,
+        destructive: true,
+        idempotent: true,
+        description: "Move a note to the Trash. The user can restore it; nothing is deleted for good.",
+        schema: || object(json!({ "id": id_param() }), &["id"]),
+    },
+    ToolDef {
+        name: "restore_note",
+        title: "Restore a note from the Trash",
+        level: Access::Write,
+        destructive: false,
+        idempotent: true,
+        description: "Bring a note back from the Trash.",
+        schema: || object(json!({ "id": id_param() }), &["id"]),
+    },
+];
+
+// Parameter schemas several tools share.
+fn id_param() -> Value {
+    json!({ "type": "string", "description": "A note id, as search_notes, list_notes, or get_note return it." })
+}
+
+fn tag_param() -> Value {
+    json!({ "type": "string", "description": "Tag name, with or without #." })
+}
+
+fn space_param() -> Value {
+    json!({ "type": "string", "description": "Space name; case does not matter." })
+}
+
+fn limit_param() -> Value {
+    json!({ "type": "integer", "minimum": 1, "maximum": MAX_LIMIT, "default": DEFAULT_LIMIT })
+}
+
+/// An input schema as MCP wants it: an object that accepts exactly these
+/// properties, since the server rejects any other.
+fn object(properties: Value, required: &[&str]) -> Value {
+    let mut schema =
+        json!({ "type": "object", "properties": properties, "additionalProperties": false });
+    if !required.is_empty() {
+        schema["required"] = json!(required);
+    }
+    schema
+}
+
+impl<'a> Tools<'a> {
+    pub(crate) fn new(store: &'a mut Store, attachments_dir: Option<PathBuf>) -> Self {
+        Tools {
+            store,
+            attachments_dir,
+            client: "agent".into(),
+        }
+    }
+
+    pub(crate) fn set_client(&mut self, name: &str) {
+        if !name.trim().is_empty() {
+            self.client = name.trim().to_string();
+        }
+    }
+
+    /// Every tool, in a fixed order so a client's cache and prompt stay
+    /// stable. The title is given twice: top level for 2025-06-18 and later,
+    /// in the annotations for 2025-03-26.
+    pub(crate) fn list(&self) -> Vec<Value> {
+        TOOLS
+            .iter()
+            .map(|t| {
+                json!({
+                    "name": t.name,
+                    "title": t.title,
+                    "description": t.description,
+                    "inputSchema": (t.schema)(),
+                    "annotations": {
+                        "title": t.title,
+                        "readOnlyHint": t.level == Access::Read,
+                        "destructiveHint": t.destructive,
+                        "idempotentHint": t.idempotent,
+                        // Only this library, never the wider world.
+                        "openWorldHint": false,
+                    },
+                })
+            })
+            .collect()
+    }
+
+    pub(crate) fn knows(&self, name: &str) -> bool {
+        TOOLS.iter().any(|t| t.name == name)
+    }
+
+    /// Run a tool that exists (see `knows`). Failures are tool results with
+    /// `isError`, which the model sees and can act on. A success carries its
+    /// JSON twice, as MCP asks: structured, and as text for older clients.
+    pub(crate) fn call(&mut self, name: &str, args: Value) -> Value {
+        let outcome = match TOOLS.iter().find(|t| t.name == name) {
+            None => Err(format!("unknown tool: {name}")),
+            Some(def) => Access::check(self.store, def.level).and_then(|()| {
+                let scope = Scope::of(&args);
+                let value = self.dispatch(name, args)?;
+                let wrote = def.level == Access::Write;
+                activity::record(self.store, &self.client, def.name, wrote, &scope, &value);
+                Ok(value)
+            }),
+        };
+        match outcome {
+            Ok(value) => json!({
+                "content": [{ "type": "text", "text": pretty(&value) }],
+                "structuredContent": value,
+                "isError": false,
+            }),
+            Err(message) => json!({
+                "content": [{ "type": "text", "text": message }],
+                "isError": true,
+            }),
+        }
+    }
+
+    fn dispatch(&mut self, name: &str, args: Value) -> ToolResult {
+        match name {
+            "search_notes" => self.search_notes(parse(args)?),
+            "list_notes" => self.list_notes(parse(args)?),
+            "get_note" => {
+                let a: IdArgs = parse(args)?;
+                self.note_view(&a.id)
+            }
+            "list_tags" => {
+                let tags = self.store.list_tags().map_err(fail)?;
+                Ok(json!({ "tags": tags.iter().map(|t| json!({
+                    "name": t.tag.name, "notes": t.usage_count
+                })).collect::<Vec<_>>() }))
+            }
+            "list_spaces" => {
+                let spaces = self.store.list_workspaces().map_err(fail)?;
+                Ok(json!({ "spaces": spaces.iter().map(|w| json!({
+                    "name": w.workspace.name, "notes": w.note_count
+                })).collect::<Vec<_>>() }))
+            }
+            "create_note" => self.create_note(parse(args)?),
+            "update_note" => self.update_note(parse(args)?),
+            "append_to_note" => self.append_to_note(parse(args)?),
+            "tag_note" => {
+                let a: TagArgs = parse(args)?;
+                self.store.add_tag_to_note(&a.id, &a.tag).map_err(fail)?;
+                self.note_view(&a.id)
+            }
+            "untag_note" => {
+                let a: TagArgs = parse(args)?;
+                let tag_id = self.tag_id(&a.tag)?;
+                self.store
+                    .remove_tag_from_note(&a.id, &tag_id)
+                    .map_err(fail)?;
+                self.note_view(&a.id)
+            }
+            "add_to_space" => {
+                let a: SpaceArgs = parse(args)?;
+                self.store.get_note(&a.id, false).map_err(fail)?;
+                let ws = self.store.get_or_create_workspace(&a.space).map_err(fail)?;
+                self.store
+                    .add_note_to_workspace(&a.id, &ws.id)
+                    .map_err(fail)?;
+                self.note_view(&a.id)
+            }
+            "remove_from_space" => {
+                let a: SpaceArgs = parse(args)?;
+                let space_id = self.space_id(&a.space)?;
+                self.store
+                    .remove_note_from_workspace(&a.id, &space_id)
+                    .map_err(fail)?;
+                self.note_view(&a.id)
+            }
+            "trash_note" => {
+                let a: IdArgs = parse(args)?;
+                self.store.soft_delete_note(&a.id).map_err(fail)?;
+                self.note_view(&a.id)
+            }
+            "restore_note" => {
+                let a: IdArgs = parse(args)?;
+                self.store.restore_note(&a.id).map_err(fail)?;
+                self.note_view(&a.id)
+            }
+            _ => Err(format!("unknown tool: {name}")),
+        }
+    }
+
+    fn search_notes(&mut self, a: SearchArgs) -> ToolResult {
+        let hits = self
+            .store
+            .search_notes(&a.query, clamp_limit(a.limit))
+            .map_err(fail)?;
+        Ok(json!({ "results": hits.iter().map(|h| json!({
+            "id": h.note_id,
+            "title": unmark(&h.title),
+            "excerpt": unmark(&h.excerpt),
+            "updatedAt": h.updated_at,
+        })).collect::<Vec<_>>() }))
+    }
+
+    fn list_notes(&mut self, a: ListArgs) -> ToolResult {
+        let mut filter = NoteFilter {
+            limit: Some(clamp_limit(a.limit)),
+            offset: a.offset.map(|o| o.max(0)),
+            ..Default::default()
+        };
+        match a.status.as_deref().unwrap_or("active") {
+            "active" => {}
+            "pinned" => filter.is_pinned = Some(true),
+            "archived" => filter.is_archived = Some(true),
+            "trash" => filter.is_deleted = Some(true),
+            // The app's Revisit view, same filter (library.svelte.ts).
+            "revisit" => {
+                let cutoff = chrono::Utc::now() - chrono::Duration::milliseconds(REVISIT_AFTER_MS);
+                filter.never_opened = Some(true);
+                // Same form as stored timestamps, which compare as strings.
+                filter.created_before =
+                    Some(cutoff.to_rfc3339_opts(chrono::SecondsFormat::Micros, true));
+                filter.sort_by = Some("createdAt".into());
+                filter.sort_order = Some("asc".into());
+            }
+            other => return Err(format!("unknown status: {other}")),
+        }
+        if let Some(space) = &a.space {
+            filter.workspace_id = Some(self.space_id(space)?);
+        }
+        if let Some(tag) = &a.tag {
+            filter.tag_ids = vec![self.tag_id(tag)?];
+        }
+        let notes = self.store.list_notes(filter).map_err(fail)?;
+        Ok(json!({ "notes": notes.iter().map(summary).collect::<Vec<_>>() }))
+    }
+
+    fn create_note(&mut self, a: CreateArgs) -> ToolResult {
+        let note = self
+            .store
+            .create_note(CreateNoteInput {
+                title: a.title,
+                body: Some(a.body),
+                tags: a.tags,
+            })
+            .map_err(fail)?;
+        if let Some(space) = &a.space {
+            let ws = self.store.get_or_create_workspace(space).map_err(fail)?;
+            self.store
+                .add_note_to_workspace(&note.id, &ws.id)
+                .map_err(fail)?;
+        }
+        self.note_view(&note.id)
+    }
+
+    fn update_note(&mut self, a: UpdateArgs) -> ToolResult {
+        if a.title.is_none() && a.body.is_none() {
+            return Err("give a title, a body, or both".into());
+        }
+        let current = self.store.get_note(&a.id, false).map_err(fail)?;
+        if a.body.is_some() {
+            refuse_whiteboard(&current)?;
+        }
+        self.store
+            .update_note(
+                &a.id,
+                UpdateNotePatch {
+                    title: a.title,
+                    body: a.body,
+                    expected_updated_at: Some(a.expected_updated_at),
+                    ..Default::default()
+                },
+            )
+            .map_err(fail)?;
+        self.note_view(&a.id)
+    }
+
+    fn append_to_note(&mut self, a: AppendArgs) -> ToolResult {
+        for _ in 0..APPEND_ATTEMPTS {
+            let current = self.store.get_note(&a.id, false).map_err(fail)?;
+            refuse_whiteboard(&current)?;
+            let body = appended(&current.body, &a.text);
+            let patch = UpdateNotePatch {
+                body: Some(body),
+                expected_updated_at: Some(current.updated_at),
+                ..Default::default()
+            };
+            match self.store.update_note(&a.id, patch) {
+                Ok(_) => return self.note_view(&a.id),
+                Err(AppError::Conflict(_)) => continue,
+                Err(e) => return Err(fail(e)),
+            }
+        }
+        Err("CONFLICT: the note kept changing while appending; try again".into())
+    }
+
+    /// A note in full, as every read and write tool returns it.
+    fn note_view(&mut self, id: &str) -> ToolResult {
+        let note = self.store.get_note(id, false).map_err(fail)?;
+        let tags = self.store.tags_for_note(id).map_err(fail)?;
+        let spaces = self.store.workspaces_for_note(id).map_err(fail)?;
+        let mut view = json!({
+            "id": note.id,
+            "title": note.title,
+            "kind": note.content_kind,
+            "body": note.body,
+            "tags": tags.iter().map(|t| &t.name).collect::<Vec<_>>(),
+            "spaces": spaces.iter().map(|w| &w.name).collect::<Vec<_>>(),
+            "createdAt": note.created_at,
+            "updatedAt": note.updated_at,
+            "isPinned": note.is_pinned,
+            "isArchived": note.is_archived,
+            "isDeleted": note.is_deleted,
+        });
+        // Bodies reference images as `attachments/<file>`; this is where
+        // those files are, for an agent that can read them.
+        if let Some(dir) = &self.attachments_dir {
+            view["attachmentsDir"] = json!(dir);
+        }
+        Ok(view)
+    }
+
+    fn tag_id(&self, raw: &str) -> Result<String, String> {
+        let name = normalize_tag_name(raw).ok_or("tag name must not be empty")?;
+        let tags = self.store.list_tags().map_err(fail)?;
+        tags.into_iter()
+            .find(|t| t.tag.name == name)
+            .map(|t| t.tag.id)
+            .ok_or_else(|| format!("NOT_FOUND: no tag named {name}"))
+    }
+
+    fn space_id(&self, raw: &str) -> Result<String, String> {
+        let name = normalize_workspace_name(raw).ok_or("space name must not be empty")?;
+        let spaces = self.store.list_workspaces().map_err(fail)?;
+        spaces
+            .into_iter()
+            .find(|w| w.workspace.name.eq_ignore_ascii_case(&name))
+            .map(|w| w.workspace.id)
+            .ok_or_else(|| format!("NOT_FOUND: no space named {name}"))
+    }
+}
+
+fn summary(note: &Note) -> Value {
+    let collapsed = note.body.split_whitespace().collect::<Vec<_>>().join(" ");
+    let snippet: String = collapsed.chars().take(SNIPPET_CHARS).collect();
+    json!({
+        "id": note.id,
+        "title": note.title,
+        "kind": note.content_kind,
+        "snippet": snippet,
+        "createdAt": note.created_at,
+        "updatedAt": note.updated_at,
+        "isPinned": note.is_pinned,
+        "isArchived": note.is_archived,
+        "isDeleted": note.is_deleted,
+    })
+}
+
+/// A whiteboard's body is the text on its canvas, rewritten by every canvas
+/// save, so writing it would be silently undone.
+fn refuse_whiteboard(note: &Note) -> Result<(), String> {
+    if note.content_kind == CONTENT_KIND_WHITEBOARD {
+        return Err("this note is a whiteboard; its text can only be edited in the app".into());
+    }
+    Ok(())
+}
+
+fn appended(body: &str, text: &str) -> String {
+    if body.is_empty() {
+        text.to_string()
+    } else if body.ends_with('\n') {
+        format!("{body}{text}")
+    } else {
+        format!("{body}\n{text}")
+    }
+}
+
+fn clamp_limit(limit: Option<i64>) -> i64 {
+    limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT)
+}
+
+/// Search marks matches with \u{1} and \u{2} for the app to highlight.
+fn unmark(s: &str) -> String {
+    s.replace(['\u{1}', '\u{2}'], "")
+}
+
+fn pretty(value: &Value) -> String {
+    serde_json::to_string_pretty(value).unwrap_or_default()
+}
+
+fn parse<T: DeserializeOwned>(args: Value) -> Result<T, String> {
+    serde_json::from_value(args).map_err(|e| format!("invalid arguments: {e}"))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct IdArgs {
+    id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SearchArgs {
+    query: String,
+    limit: Option<i64>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ListArgs {
+    space: Option<String>,
+    tag: Option<String>,
+    status: Option<String>,
+    limit: Option<i64>,
+    offset: Option<i64>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CreateArgs {
+    body: String,
+    title: Option<String>,
+    #[serde(default)]
+    tags: Vec<String>,
+    space: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct UpdateArgs {
+    id: String,
+    expected_updated_at: String,
+    title: Option<String>,
+    body: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AppendArgs {
+    id: String,
+    text: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TagArgs {
+    id: String,
+    tag: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SpaceArgs {
+    id: String,
+    space: String,
+}

@@ -66,6 +66,8 @@ export interface UpdateNotePatch {
   contentKind?: ContentKind;
   /** A whiteboard's canvas; rejected on a document. */
   surfaceData?: string;
+  /** Apply only if the note's updatedAt still equals this; CONFLICT if not. */
+  expectedUpdatedAt?: string;
 }
 
 export interface NoteFilter {

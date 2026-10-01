@@ -4,6 +4,7 @@
   import FormatToolbar from "$lib/components/FormatToolbar.svelte";
   import WhiteboardCanvas from "$lib/components/whiteboard/WhiteboardCanvas.svelte";
   import { library } from "$lib/stores/library.svelte";
+  import { agents } from "$lib/stores/agents.svelte";
   import { editorPrefs } from "$lib/stores/editor.svelte";
   import { imagePrefs } from "$lib/stores/images.svelte";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
@@ -216,11 +217,13 @@
     {/if}
     <div
       class="editor-body"
+      data-agent={agents.noteMark(library.selected.id)}
       style="--editor-zoom: {editorPrefs.zoom}; --image-max-height: {imagePrefs.maxPreviewHeight}px"
     >
       <Editor
         bind:this={editorRef}
         value={library.selected.body}
+        docKey={library.selected.id}
         placeholder="Start writing… use #tags to organize"
         previewMode={!editorPrefs.toolbarOpen}
         onchange={(v) => library.editBody(v)}

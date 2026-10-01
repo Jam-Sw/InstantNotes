@@ -12,16 +12,26 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.9.0] - 2026-09-25
 
 ### Added
+- Connect an agent. Claude Code, Codex, Cursor, or any app that speaks the
+  Model Context Protocol can search, read, and, if you allow it, write your
+  notes, using the same search and rules you do. Settings > Agents turns it
+  on (it starts off), sets read or read-and-write, and gives the one line to
+  paste into Claude Code or the settings for other apps.
+- You see an agent at work as it happens: the notes, Spaces, and tags it is
+  reading light up, a line under All Notes says who is doing what, and text it
+  adds to the note you have open appears in place, highlighted, without moving
+  your cursor. Cmd-Z takes it back out.
+- If you are typing in a note when an agent changes it, your typing wins and
+  you are told, with a button to restore the agent's version.
 - Sticky notes: pop any note or whiteboard out of the library into its own
   small window and put it anywhere. Keep it on top of everything, let it sit
   like any other window, or lay it on the desktop under your windows like a
   widget. Move it by its header, and double-click the header to roll it up to
   a single line, as in Stickies. Edit it right there; it saves as you type.
   Bring it back with one click and it opens in the library exactly as you left
-  it. Use the Sticky
-  button, right-click a note in the list, the command palette, or
-  File > Pop Out as Sticky (⌘⇧O). Stickies come back where you left them the
-  next time InstantNotes starts.
+  it. Use the Sticky button, right-click a note in the list, the command
+  palette, or File > Pop Out as Sticky (⌘⇧O). Stickies come back where you
+  left them the next time InstantNotes starts.
 - The Settings front page is now a dashboard: live counts for your notes and how
   many are pinned, archived, or in the Trash, for your tags and Spaces, and for
   your attachments with the space they take up, alongside how quickly capture is

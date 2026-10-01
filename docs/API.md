@@ -60,6 +60,7 @@ developer-facing description and is never shown to users verbatim.
 | `soft_delete_note` | Move a note to trash (`is_deleted = 1`). |
 | `restore_note` | Restore a trashed note. |
 | `permanently_delete_note` | Destroy a note and its rows for good. |
+| `set_notes_flags` / `soft_delete_notes` / `restore_notes` / `destroy_notes` | The same for a multi-selection (`ids`), each in one transaction. `set_notes_flags` takes optional `isPinned` and `isArchived`; `destroy_notes` refuses without `confirm: true`. |
 | `list_notes` | List notes for a status/space/tag filter. Rows carry `contentKind` but not `surfaceData`. |
 | `search_notes` | Full-text search over title and body (section 7 of DATA_MODEL.md). |
 | `library_graph` | Live notes, every tag and Space, and one link per note-to-tag or note-to-Space membership, for the Graph view. Derived on every call; nothing about the graph is stored. Trashed and archived notes are left out. |
@@ -69,12 +70,17 @@ whiteboard back into a document and `surfaceData` on a document, both with
 `VALIDATION_ERROR`. A whiteboard's `body` is the text on its board, written
 by the app with each canvas save (DATA_MODEL.md section 3.1).
 
+`update_note` takes an optional `expectedUpdatedAt`. When given, the patch
+applies only if the note's `updatedAt` still equals it, checked inside the
+write transaction; otherwise it fails with `CONFLICT` and changes nothing. The
+editor's document saves send the version they were based on, so a write from
+another process in between (an agent, section 15) is noticed, not overwritten.
+
 ## 5. Tags
 
 | Command | Purpose |
 | --- | --- |
 | `list_tags` | All tags with usage counts. |
-| `get_or_create_tag` | Resolve a normalized tag name to a tag, creating it if new. |
 | `update_tag` | Rename or recolor a tag. |
 | `delete_tag` | Remove a tag and its note associations. |
 | `add_tag_to_note` / `remove_tag_from_note` | Attach or detach a tag. |
@@ -154,6 +160,8 @@ a copy at export time regardless of storage mode; see
 `quit_app`. These drive native windows, theme file I/O, and external links; they
 carry no note data beyond what the user explicitly exports. `export_note_file`
 writes `.md`, `.txt`, or `.excalidraw` (a whiteboard's canvas).
+`get_shortcut_failure` returns why the global capture shortcut could not be
+registered at launch, or `null`; the welcome screen shows it.
 
 The File menu announces itself to the library window with `menu:new-note`,
 `menu:new-whiteboard`, `menu:export-note`, and `menu:toggle-sticky` (no
@@ -330,7 +338,7 @@ names.
 | --- | --- |
 | `NOT_FOUND` | The requested record does not exist. |
 | `VALIDATION_ERROR` | Input failed a rule (empty name, bad type). |
-| `CONFLICT` | A uniqueness constraint was violated (duplicate name). |
+| `CONFLICT` | A uniqueness constraint was violated (duplicate name), or a note changed since the version an `update_note` named. |
 | `STORAGE_ERROR` | A persistence failure, including a corrupt database file. |
 | `MIGRATION_ERROR` | The schema could not be upgraded. |
 
@@ -342,3 +350,67 @@ builds every error through `CmdError::storage`/`::validation` or
 asserted against both registries by `src/lib/api/contract.test.ts`. Database corruption is reported as
 `STORAGE_ERROR` externally, while the core keeps it distinct internally so it
 can set aside a damaged file and start fresh.
+
+## 15. Agents
+
+Agents reach the library through the Model Context Protocol, served by the
+app's own binary in a second mode (`src-tauri/agents`, crate
+`instantnotes-agents`):
+
+```
+instantnotes mcp --db <library.db> [--attachments <dir>]
+```
+
+`main()` checks for `mcp` before Tauri starts, so this process never opens a
+window or meets the single-instance plugin. It opens the library with
+`Store::open` (never `open_or_recover`), speaks newline-delimited JSON-RPC 2.0
+on stdio, and writes nothing but protocol to stdout and no note content to
+stderr. It works whether or not the app is running.
+
+It serves both eras of the specification. A request whose `_meta` names
+`2026-07-28` is served statelessly: `server/discover` describes the server,
+every result carries `resultType: "complete"` and the server's identity, and
+an unknown version is refused with `-32022` and the supported list. Anything
+else follows the `initialize` handshake of 2025-11-25 back to 2024-11-05,
+including a JSON-RPC batch on one line. An unknown tool, or `arguments` that
+are not an object, is a JSON-RPC error (`-32602`); everything a tool refuses
+is a result with `isError`, which the model sees. Successful results carry
+their JSON as `structuredContent` and again as text. Every response is
+checked against the official MCP JSON Schema of its revision.
+
+| Tool | Access | Store call |
+| --- | --- | --- |
+| `search_notes`, `list_notes`, `get_note`, `list_tags`, `list_spaces` | read | `search_notes`, `list_notes`, `get_note(id, false)`, `list_tags`, `list_workspaces` |
+| `create_note`, `update_note`, `append_to_note` | write | `create_note`, `update_note` with `expectedUpdatedAt` |
+| `tag_note`, `untag_note`, `add_to_space`, `remove_from_space` | write | the tag and workspace membership calls |
+| `trash_note`, `restore_note` | write | `soft_delete_note`, `restore_note` |
+
+Every tool declares a `title`, an input schema that rejects unknown
+properties, and annotations: `readOnlyHint` for reads, `destructiveHint` for
+the writes that remove or replace (`update_note`, `untag_note`,
+`remove_from_space`, `trash_note`), `idempotentHint`, and `openWorldHint:
+false`, since a tool only ever touches this library.
+
+`list_notes` with `status: "revisit"` is the Revisit view's filter. Reads never
+set `lastOpenedAt`. There is no permanent delete, no settings, no vault, and
+no whiteboard canvas at any access level; writing a whiteboard's text is
+refused.
+
+Two settings keys belong to this surface:
+
+| Key | Written by | Meaning |
+| --- | --- | --- |
+| `agents.access` | Settings > Agents | `"off"` (default), `"read"`, or `"write"`; re-read on every call. |
+| `agents.activity` | the MCP process | The last 30 successful calls, newest first: `at` (epoch ms), `client` (the client's name, from the handshake or the request), `tool`, `kind`, `noteIds`, `noteCount`, `titles` (first three), `space`, `tag`, `query`. |
+
+| Command | Purpose |
+| --- | --- |
+| `agent_connection` | The running executable, the live library path, and the attachments dir, for the connect commands on Settings > Agents. |
+
+The app notices another process's commits through SQLite's `data_version`,
+read every 400 ms by `shell/agents.rs`. When it moves, the new
+`agents.activity` entries go to the webview as `library:external-change`
+(oldest first); if any was a write, or none describes the change, the three
+change events fire and the vault mirror flushes, as after the app's own
+writes. Write transactions begin `IMMEDIATE` so two processes queue on the
+busy timeout instead of failing on a lock upgrade.

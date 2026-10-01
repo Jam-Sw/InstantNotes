@@ -391,8 +391,14 @@ impl Store {
         Self::init(conn)
     }
 
-    fn init(conn: Connection) -> Result<Self> {
+    fn init(mut conn: Connection) -> Result<Self> {
         conn.pragma_update(None, "foreign_keys", "ON")?;
+        // Take the write lock when a transaction begins, not at its first
+        // write. The library is also opened by agent processes
+        // (`instantnotes mcp`); a deferred transaction that reads and then
+        // writes fails at once with SQLITE_BUSY on the upgrade instead of
+        // waiting out the busy timeout.
+        conn.set_transaction_behavior(rusqlite::TransactionBehavior::Immediate);
         let check: String = conn.query_row("PRAGMA quick_check", [], |r| r.get(0))?;
         if check != "ok" {
             return Err(AppError::Corruption(format!(
@@ -498,6 +504,26 @@ impl Store {
             }
         }
         Ok(())
+    }
+
+    /// SQLite's `data_version`: moves only when another connection (an agent
+    /// process, say) commits to this file. This connection's own writes never
+    /// move it, so a change means someone else wrote.
+    pub fn data_version(&self) -> Result<i64> {
+        Ok(self
+            .conn
+            .query_row("PRAGMA data_version", [], |r| r.get(0))?)
+    }
+
+    /// Whether the file is still at the schema this build migrated it to. A
+    /// long-lived second process (an agent server) checks this before each
+    /// write, so a newer app that migrated the file meanwhile is never
+    /// written to through older code.
+    pub fn schema_is_current(&self) -> Result<bool> {
+        let version: i64 = self
+            .conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        Ok(version == MIGRATIONS.len() as i64)
     }
 
     fn fetch_note(&self, id: &str) -> Result<Note> {
