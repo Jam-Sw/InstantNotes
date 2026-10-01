@@ -9,7 +9,7 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [0.9.0] - 2026-09-25
+## [0.9.0] - 2026-09-30
 
 ### Added
 - License and EULA: on first launch they open as two notes in a License Space;
