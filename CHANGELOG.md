@@ -9,12 +9,6 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Fixed
-- A note whose first line is bold, italic, or struck through no longer carries
-  the asterisks or tildes into its title.
-- A note that starts with an image takes its title from its first line of
-  words, not from the image's file path.
-
 ## [0.9.0] - 2026-09-25
 
 ### Added
@@ -82,6 +76,11 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   smaller the download is, and the button to install it, plus the release notes
   kept as a note you can read. Answering the finished install with Ok dismisses
   the Space; the update applies the next time you open the app.
+- Bring your Apple Stickies into InstantNotes (Mac). Settings > Import shows
+  every sticky in its own color; choose which ones come in and the Space they
+  go to. Formatting, lists, links, images, and each sticky's original dates
+  come along, and Stickies keeps its own copies. Importing again brings in only
+  the new ones.
 
 ### Fixed
 - Images no longer pile up forever: deleting a note for good also deletes the
@@ -106,6 +105,10 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   no longer crashes there.
 - The update dialog's "Remind me later" options are gone: an update is now a
   place you can simply ignore rather than a reminder you have to silence.
+- A note whose first line is bold, italic, or struck through no longer carries
+  the asterisks or tildes into its title.
+- A note that starts with an image takes its title from its first line of
+  words, not from the image's file path.
 
 ### Changed
 - A new app icon: a lightning bolt striking a note, for notes that are there the

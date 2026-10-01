@@ -11,10 +11,12 @@ import type {
   CreateNoteInput,
   DashboardStats,
   FeedbackInput,
+  ImportOutcome,
   Note,
   NoteFilter,
   SearchResult,
   StickyLevel,
+  StickiesScan,
   Tag,
   TagWithCount,
   UpdateNotePatch,
@@ -239,6 +241,15 @@ export const getVaultStatus = () => call<VaultStatus>("get_vault_status");
 export const setVaultFolder = (path: string | null) =>
   call<VaultStatus>("set_vault_folder", { path });
 export const verifyVault = () => call<VaultReport>("verify_vault");
+
+// ---- import (Settings > Import) ----
+// The folder comes from a native folder picker, which is also what lets the
+// app read another app's data on macOS. Rust only ever reads it.
+/** Where Stickies keeps its notes, for the picker to open at; null off macOS. */
+export const stickiesLocation = () => call<string | null>("stickies_location");
+export const scanStickies = (folder: string) => call<StickiesScan>("scan_stickies", { folder });
+export const importStickies = (folder: string, ids: string[], space: string | null) =>
+  call<ImportOutcome>("import_stickies", { folder, ids, space });
 
 // ---- dashboard + feedback ----
 export const getLibraryStats = () => call<DashboardStats>("library_stats");

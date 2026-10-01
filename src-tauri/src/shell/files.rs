@@ -107,13 +107,77 @@ pub fn save_attachment(app: AppHandle, request: tauri::ipc::Request<'_>) -> CmdR
     if bytes.is_empty() {
         return Err(CmdError::validation("attachment is empty"));
     }
-    let name = format!("{}.{ext}", uuid::Uuid::new_v4());
-    let path = attachments_dir(&app)?.join(&name);
-    std::fs::write(&path, bytes)
-        .map_err(|e| CmdError::storage(format!("could not write attachment: {e}")))?;
+    let name = write_attachment(&attachments_dir(&app)?, bytes, &ext)?;
     // Best effort: a vault that can't take it now gets it at next launch.
     let _ = mirror_attachments(&app);
     Ok(name)
+}
+
+/// Write one image into the attachments folder under a new name. The caller
+/// builds `attachments/<name>` and mirrors the folder into the vault.
+fn write_attachment(dir: &std::path::Path, bytes: &[u8], ext: &str) -> CmdResult<String> {
+    let name = format!("{}.{ext}", uuid::Uuid::new_v4());
+    std::fs::write(dir.join(&name), bytes)
+        .map_err(|e| CmdError::storage(format!("could not write attachment: {e}")))?;
+    Ok(name)
+}
+
+/// Store image bytes brought in from elsewhere (an imported sticky): PNG,
+/// JPEG, GIF, and WebP as they are, known by their first bytes rather than a
+/// file name; anything else converted to PNG where the system can.
+pub(crate) fn store_image(dir: &std::path::Path, bytes: &[u8]) -> CmdResult<String> {
+    if let Some(ext) = sniff_image(bytes) {
+        return write_attachment(dir, bytes, ext);
+    }
+    let png =
+        to_png(bytes).ok_or_else(|| CmdError::validation("not an image this app can show"))?;
+    write_attachment(dir, &png, "png")
+}
+
+/// The attachment extension for bytes in a format every webview shows.
+fn sniff_image(b: &[u8]) -> Option<&'static str> {
+    if b.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("png")
+    } else if b.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("jpg")
+    } else if b.starts_with(b"GIF87a") || b.starts_with(b"GIF89a") {
+        Some("gif")
+    } else if b.len() >= 12 && &b[..4] == b"RIFF" && &b[8..12] == b"WEBP" {
+        Some("webp")
+    } else {
+        None
+    }
+}
+
+/// TIFF (a pasted "Pasted Graphic.tiff"), HEIC, BMP, and the rest ImageIO
+/// reads, as PNG, by the system's own `sips`. It works on a copy in a fresh
+/// temporary folder, so it never reads the folder the image came from.
+#[cfg(target_os = "macos")]
+fn to_png(bytes: &[u8]) -> Option<Vec<u8>> {
+    use std::process::{Command, Stdio};
+    let tmp = std::env::temp_dir().join(format!("instantnotes-image-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&tmp).ok()?;
+    let (src, out) = (tmp.join("source"), tmp.join("converted.png"));
+    let png = std::fs::write(&src, bytes).ok().and_then(|()| {
+        let converted = Command::new("/usr/bin/sips")
+            .args(["-s", "format", "png"])
+            .arg(&src)
+            .arg("--out")
+            .arg(&out)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .ok()?
+            .success();
+        converted.then(|| std::fs::read(&out).ok()).flatten()
+    });
+    let _ = std::fs::remove_dir_all(&tmp);
+    png.filter(|png| sniff_image(png) == Some("png"))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn to_png(_bytes: &[u8]) -> Option<Vec<u8>> {
+    None
 }
 
 fn image_ext(path: &std::path::Path) -> CmdResult<String> {
@@ -145,10 +209,7 @@ pub fn import_image_file(app: AppHandle, path: String) -> CmdResult<String> {
     if bytes.is_empty() {
         return Err(CmdError::validation("image is empty"));
     }
-    let name = format!("{}.{ext}", uuid::Uuid::new_v4());
-    let dest = attachments_dir(&app)?.join(&name);
-    std::fs::write(&dest, bytes)
-        .map_err(|e| CmdError::storage(format!("could not write attachment: {e}")))?;
+    let name = write_attachment(&attachments_dir(&app)?, &bytes, &ext)?;
     let _ = mirror_attachments(&app);
     Ok(name)
 }
@@ -260,7 +321,65 @@ pub fn attachments_stats(app: &AppHandle) -> (i64, i64) {
 
 #[cfg(test)]
 mod tests {
-    use super::{export_theme_file, import_theme_file, validate_export_path};
+    use super::{
+        export_theme_file, import_theme_file, sniff_image, store_image, validate_export_path,
+    };
+
+    /// A real PNG, the one `textutil` put in the Stickies fixture.
+    const PNG: &[u8] = include_bytes!(
+        "../../core/tests/fixtures/stickies/6E2F9C31-8B4A-4D7E-A1C5-2D9E7F3B8A64.rtfd/Attachment.png"
+    );
+
+    #[test]
+    fn image_formats_are_known_by_their_first_bytes() {
+        assert_eq!(sniff_image(PNG), Some("png"));
+        assert_eq!(sniff_image(b"\xFF\xD8\xFF\xE0rest"), Some("jpg"));
+        assert_eq!(sniff_image(b"GIF89a..."), Some("gif"));
+        assert_eq!(sniff_image(b"RIFF\0\0\0\0WEBPVP8 "), Some("webp"));
+        assert_eq!(sniff_image(b"II*\0 a tiff"), None);
+        assert_eq!(sniff_image(b""), None);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_tiff_is_stored_as_a_png() {
+        let dir = std::env::temp_dir().join(format!("instantnotes-tiff-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // A genuine TIFF, as a pasted "Pasted Graphic.tiff" would be.
+        let (png, tiff) = (dir.join("in.png"), dir.join("in.tiff"));
+        std::fs::write(&png, PNG).unwrap();
+        let made = std::process::Command::new("/usr/bin/sips")
+            .args(["-s", "format", "tiff"])
+            .arg(&png)
+            .arg("--out")
+            .arg(&tiff)
+            .output()
+            .unwrap();
+        assert!(made.status.success());
+        let tiff_bytes = std::fs::read(&tiff).unwrap();
+        assert_eq!(sniff_image(&tiff_bytes), None, "not a web format as it is");
+
+        let attachments = dir.join("attachments");
+        std::fs::create_dir(&attachments).unwrap();
+        let stored = store_image(&attachments, &tiff_bytes).unwrap();
+        assert!(stored.ends_with(".png"), "{stored}");
+        let written = std::fs::read(attachments.join(&stored)).unwrap();
+        assert_eq!(sniff_image(&written), Some("png"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn bytes_that_are_no_image_are_refused() {
+        let dir = std::env::temp_dir().join(format!("instantnotes-noimg-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(store_image(&dir, b"just some text").is_err());
+        assert_eq!(
+            std::fs::read_dir(&dir).unwrap().count(),
+            0,
+            "nothing written"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn note_export_accepts_markdown_text_and_excalidraw_only() {

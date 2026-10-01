@@ -281,6 +281,18 @@ landed on `0.9.0-pre` on 2026-09-30. It precedes unit 14 on purpose: local AI
 adds one tool to this surface instead of inventing its own. See
 `changes/feat-agent-access/`.
 
+## 13e. `feat-stickies-import` (BUILT, open until checked in the app)
+
+Settings > Import, with Apple Stickies as its one source (macOS). The
+insertion rule puts new persisted state after unit 9; this adds one settings
+key (`import.stickies`), no migration, and no change to note shape, and lands
+now because the maintainer asked for it. What unit 9 inherits is kept small on
+purpose: `Store::import_notes` writes through `insert_note`, the one insert
+path it shares with `create_note`, so moving the write path moves both. Built
+in its own worktree while sticky notes (13c) and agent access (13d) were in
+flight, then rebased onto both and landed on `0.9.0-pre` on 2026-09-30. See
+`changes/feat-stickies-import/`.
+
 ## 14. Local AI
 
 Needs embedding storage, so it cannot precede unit 10. Embeddings are a

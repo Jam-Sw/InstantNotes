@@ -152,6 +152,37 @@ export interface VaultReport {
   manifestOk: boolean;
 }
 
+/** One Apple Sticky as Settings > Import previews it (API.md §16). */
+export interface StickyPreview {
+  id: string;
+  /** The title the note will get. */
+  title: string;
+  /** The start of the note's Markdown. */
+  text: string;
+  /** The sticky's paper, `#rrggbb`, when Stickies recorded it. */
+  color: string | null;
+  createdAt: string;
+  updatedAt: string;
+  images: number;
+  /** Imported before, and its note still exists. */
+  imported: boolean;
+}
+
+/** A Stickies folder, read. `readable` is false when macOS refused access. */
+export interface StickiesScan {
+  folder: string;
+  readable: boolean;
+  stickies: StickyPreview[];
+}
+
+export interface ImportOutcome {
+  imported: number;
+  /** Imported before, and their note still exists. */
+  skipped: number;
+  /** The Space they were filed in, when one was named and any landed. */
+  workspaceId: string | null;
+}
+
 /** What an attachment cleanup removed, or would remove. */
 export interface AttachmentCleanup {
   count: number;

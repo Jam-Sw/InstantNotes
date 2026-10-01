@@ -111,6 +111,12 @@ logical pixels (`x`/`y` null means centered; `level` is `float`, `normal`, or
 is window state, not note data: it never reaches the vault, and losing it only
 means stickies reopen in the library.
 
+It also holds one record per import source, `import.<source>`: an object
+mapping each imported item's id in the app it came from to the note it
+became. `import.stickies` is the only one (API.md §16). It is written in the
+same transaction as the notes, and an entry whose note no longer exists is
+ignored, so destroying an imported note for good lets it be imported again.
+
 ## 9. Migrations
 
 `MIGRATIONS` is an ordered list of SQL scripts; `user_version` records how many

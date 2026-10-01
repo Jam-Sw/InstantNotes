@@ -36,7 +36,7 @@ afterEach(cleanup);
 
 function open() {
   const onBack = vi.fn();
-  const view = render(SettingsView, { appVersion: "0.8.0", onBack });
+  const view = render(SettingsView, { appVersion: "0.8.0", onBack, onShowSpace: vi.fn() });
   return { onBack, ...view };
 }
 
@@ -50,6 +50,12 @@ describe("SettingsView", () => {
     expect(getByRole("button", { name: /Contexting/ })).toBeTruthy();
     expect(getByRole("button", { name: /Vault/ })).toBeTruthy();
     expect(getByRole("button", { name: /Feedback/ })).toBeTruthy();
+  });
+
+  it("has no Import page where there is no Apple Stickies", () => {
+    // jsdom's user agent names no Mac, like Windows and Linux.
+    const { queryByRole } = open();
+    expect(queryByRole("button", { name: /^Import/ })).toBeNull();
   });
 
   // A fresh install has recorded no capture timing yet; the tile still has to
@@ -72,6 +78,7 @@ describe("SettingsView", () => {
     const { queryByText, findByRole } = render(SettingsView, {
       appVersion: "9.9.9",
       onBack: vi.fn(),
+      onShowSpace: vi.fn(),
     });
     expect(await findByRole("button", { name: /About/ })).toBeTruthy();
     expect(queryByText(/What's new/)).toBeNull();

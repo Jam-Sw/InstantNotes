@@ -2,21 +2,12 @@
 // picking its folder, and turning a verify report into sentences for the
 // Vault settings page. The writing itself happens in Rust.
 
-import { open } from "@tauri-apps/plugin-dialog";
+import { pickFolder, type FolderChoice } from "$lib/folder-picker";
 import type { VaultReport } from "$lib/api/types";
 
-export type FolderChoice = { path: string } | { cancelled: true } | { error: string };
-
 /** Prompt for the folder the mirror writes into. */
-export async function chooseVaultFolder(): Promise<FolderChoice> {
-  let picked: string | string[] | null;
-  try {
-    picked = await open({ directory: true, multiple: false, title: "Choose a vault folder" });
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "Could not open the folder picker." };
-  }
-  if (!picked || typeof picked !== "string") return { cancelled: true };
-  return { path: picked };
+export function chooseVaultFolder(): Promise<FolderChoice> {
+  return pickFolder({ title: "Choose a vault folder" });
 }
 
 const NAMED = 3;

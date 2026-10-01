@@ -58,7 +58,9 @@ mod commands;
 mod error;
 mod events;
 mod shell;
-use commands::{feedback::*, notes::*, settings::*, stats::*, tags::*, vault::*, workspaces::*};
+use commands::{
+    feedback::*, import::*, notes::*, settings::*, stats::*, tags::*, vault::*, workspaces::*,
+};
 use error::{CmdError, CmdResult};
 use shell::{agents::*, capture::*, files::*, mirror::*, quit::*, stickies::*, windows::*};
 
@@ -477,6 +479,9 @@ pub fn run() {
             get_vault_status,
             set_vault_folder,
             verify_vault,
+            stickies_location,
+            scan_stickies,
+            import_stickies,
             submit_feedback,
             open_feedback_log,
             open_url,

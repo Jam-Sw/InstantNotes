@@ -2,29 +2,62 @@
 
 use super::*;
 
+/// A note about to be written by `insert_note`.
+pub(super) struct NewNote<'a> {
+    pub body: &'a str,
+    /// Set explicitly; otherwise derived from the body.
+    pub title: Option<String>,
+    pub created_at: &'a str,
+    pub updated_at: &'a str,
+    pub last_opened_at: Option<&'a str>,
+}
+
+/// The one place a note row is inserted, inside the caller's transaction:
+/// its title (explicit, or derived from the body) and its inline `#tags`.
+/// Returns the new note's id.
+pub(super) fn insert_note(conn: &Connection, note: NewNote<'_>) -> Result<String> {
+    let explicit_title = note
+        .title
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty());
+    let title_is_auto = explicit_title.is_none();
+    let title = explicit_title.unwrap_or_else(|| domain::derive_title(note.body));
+    let id = new_id();
+    conn.execute(
+        "INSERT INTO notes (id, title, title_is_auto, body, created_at, updated_at, \
+         last_opened_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            id,
+            title,
+            i64::from(title_is_auto),
+            note.body,
+            note.created_at,
+            note.updated_at,
+            note.last_opened_at
+        ],
+    )?;
+    for name in domain::extract_inline_tags(note.body) {
+        let tag = tag_get_or_create(conn, &name)?;
+        attach_tag(conn, &id, &tag.id, "inline")?;
+    }
+    Ok(id)
+}
+
 impl Store {
     pub fn create_note(&mut self, input: CreateNoteInput) -> Result<Note> {
         let body = input.body.unwrap_or_default();
-        let explicit_title = input
-            .title
-            .map(|t| t.trim().to_string())
-            .filter(|t| !t.is_empty());
-        let title_is_auto = explicit_title.is_none();
-        let title = explicit_title.unwrap_or_else(|| domain::derive_title(&body));
-        let inline_tags = domain::extract_inline_tags(&body);
         let now = now_iso();
-        let id = new_id();
-
         let tx = self.conn.transaction()?;
-        tx.execute(
-            "INSERT INTO notes (id, title, title_is_auto, body, created_at, updated_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
-            params![id, title, i64::from(title_is_auto), body, now],
+        let id = insert_note(
+            &tx,
+            NewNote {
+                body: &body,
+                title: input.title,
+                created_at: &now,
+                updated_at: &now,
+                last_opened_at: None,
+            },
         )?;
-        for name in &inline_tags {
-            let tag = tag_get_or_create(&tx, name)?;
-            attach_tag(&tx, &id, &tag.id, "inline")?;
-        }
         for name in &input.tags {
             let tag = tag_get_or_create(&tx, name)?;
             attach_tag(&tx, &id, &tag.id, "manual")?;

@@ -13,18 +13,23 @@
   import SettingsFeedback from "$lib/components/settings/SettingsFeedback.svelte";
   import SettingsVault from "$lib/components/settings/SettingsVault.svelte";
   import SettingsAgents from "$lib/components/settings/SettingsAgents.svelte";
+  import SettingsImport from "$lib/components/settings/SettingsImport.svelte";
   import { getLibraryStats, getCaptureLatency, openUrl } from "$lib/api/client";
   import type { DashboardStats } from "$lib/api/types";
   import { formatBytes } from "$lib/format";
+  import { isMac } from "$lib/platform";
   import { parseChangelog } from "$lib/changelog";
   import changelogRaw from "../../../CHANGELOG.md?raw";
 
   let {
     appVersion,
     onBack,
+    onShowSpace,
   }: {
     appVersion: string;
     onBack: () => void;
+    /** Leave Settings for a Space (after an import fills one). */
+    onShowSpace: (workspaceId: string) => void;
   } = $props();
 
   type Page =
@@ -36,7 +41,8 @@
     | "contexting"
     | "feedback"
     | "vault"
-    | "agents";
+    | "agents"
+    | "import";
   let page = $state<Page>("home");
 
   const CATEGORIES: { id: Page; title: string; desc: string }[] = [
@@ -47,6 +53,10 @@
     { id: "contexting", title: "Contexting", desc: "Shape what copying a note hands to other tools and AI." },
     { id: "vault", title: "Vault", desc: "Your notes as plain Markdown files in a folder." },
     { id: "agents", title: "Agents", desc: "Let Claude Code and other agents read and write your notes." },
+    // Its only source is Apple Stickies, so it exists where Stickies does.
+    ...(isMac
+      ? [{ id: "import" as const, title: "Import", desc: "Bring in your Apple Stickies as notes." }]
+      : []),
     { id: "feedback", title: "Feedback", desc: "Report a bug or send an idea." },
   ];
 
@@ -59,6 +69,7 @@
     links: "Links",
     vault: "Vault",
     agents: "Agents",
+    import: "Import",
     feedback: "Feedback",
   };
 
@@ -191,6 +202,8 @@
         <SettingsVault />
       {:else if page === "agents"}
         <SettingsAgents />
+      {:else if page === "import"}
+        <SettingsImport {onShowSpace} />
       {:else if page === "feedback"}
         <SettingsFeedback {appVersion} />
       {/if}

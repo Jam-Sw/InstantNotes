@@ -224,7 +224,13 @@ pub struct Store {
 }
 
 fn now_iso() -> String {
-    Utc::now().to_rfc3339_opts(SecondsFormat::Micros, true)
+    iso(std::time::SystemTime::now())
+}
+
+/// The one timestamp format the store writes (and callers show), which also
+/// sorts as text.
+pub fn iso(t: std::time::SystemTime) -> String {
+    chrono::DateTime::<Utc>::from(t).to_rfc3339_opts(SecondsFormat::Micros, true)
 }
 
 fn new_id() -> String {
@@ -293,6 +299,34 @@ fn tag_get_or_create(conn: &Connection, raw_name: &str) -> Result<Tag> {
         id,
         name,
         color: None,
+        created_at: now.clone(),
+        updated_at: now,
+    })
+}
+
+/// Get-or-create a workspace inside an existing transaction/connection.
+fn workspace_get_or_create(conn: &Connection, raw_name: &str) -> Result<Workspace> {
+    let name = domain::normalize_workspace_name(raw_name)
+        .ok_or_else(|| AppError::Validation("workspace name must not be empty".into()))?;
+    if let Some(ws) = conn
+        .query_row(
+            &format!("SELECT {WORKSPACE_COLUMNS} FROM workspaces WHERE name = ?1"),
+            params![name],
+            row_to_workspace,
+        )
+        .optional()?
+    {
+        return Ok(ws);
+    }
+    let now = now_iso();
+    let id = new_id();
+    conn.execute(
+        "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES (?1, ?2, ?3, ?3)",
+        params![id, name, now],
+    )?;
+    Ok(Workspace {
+        id,
+        name,
         created_at: now.clone(),
         updated_at: now,
     })
@@ -540,6 +574,7 @@ impl Store {
 
 mod attachments;
 mod graph;
+mod import;
 mod notes;
 mod settings;
 mod stats;

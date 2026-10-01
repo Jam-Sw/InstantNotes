@@ -414,3 +414,32 @@ read every 400 ms by `shell/agents.rs`. When it moves, the new
 change events fire and the vault mirror flushes, as after the app's own
 writes. Write transactions begin `IMMEDIATE` so two processes queue on the
 busy timeout instead of failing on a lock upgrade.
+
+## 16. Import
+
+Settings > Import, shown on macOS. Its one source is Apple Stickies
+(`openspec/changes/feat-stickies-import/design.md`).
+
+| Command | Purpose |
+| --- | --- |
+| `stickies_location` | Where Stickies keeps its notes, for the folder picker to open at; `null` off macOS. |
+| `scan_stickies` | Read the folder the user picked, or the Stickies folder inside it, and preview each sticky: `id`, `title` (the one the note will get), `text` (the start of its Markdown), `color` (`#rrggbb` or `null`), `createdAt`, `updatedAt`, `images`, and `imported`. When macOS refuses access this is `readable: false`, not an error. |
+| `import_stickies` | Import the stickies `ids` from `folder` in one transaction, filed in the Space named `space` (none when blank or `null`). Returns `{ imported, skipped, workspaceId }`; `skipped` counts stickies imported before. |
+
+The folder comes from the webview, chosen with the native picker, which is
+also what gives the app access to another app's data on macOS. These commands
+only read it: `*.rtfd` packages (a flat `.rtfd` file, which is a sticky not
+saved yet, or a symlink is skipped), `TXT.rtf` up to 16 MiB, the
+`.SavedStickiesState` colors, and the images a sticky names. An image must be
+a plain file name inside its own package, a regular file, at most 50 MiB, and
+an image by its first bytes. PNG, JPEG, GIF, and WebP are copied into the
+attachments folder as they are, anything else becomes PNG through `sips` on
+macOS, and otherwise the note says `[Not imported: <name>]` where the image
+was. Nothing is ever written under the chosen folder.
+
+Each note keeps the sticky's dates, gets its title from its first line and
+tags from its `#words` as any note does, and is stamped as opened, so an
+import does not fill Revisit. The settings key `import.stickies` maps each
+imported sticky's UUID to its note, written in the same transaction. A sticky
+whose note still exists, in the Trash or not, is not imported again; one whose
+note was destroyed for good is.

@@ -72,6 +72,26 @@ pub struct CreateNoteInput {
     pub tags: Vec<String>,
 }
 
+/// One note to bring in from another app (`Store::import_notes`).
+#[derive(Debug, Clone)]
+pub struct ImportItem {
+    /// Its id in the app it came from. Each is imported once per library.
+    pub source_id: String,
+    pub body: String,
+    pub created_at: std::time::SystemTime,
+    pub updated_at: std::time::SystemTime,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportOutcome {
+    pub imported: usize,
+    /// Imported before, and their note still exists (the Trash counts).
+    pub skipped: usize,
+    /// The Space they were filed in, when one was named and any landed.
+    pub workspace_id: Option<String>,
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct UpdateNotePatch {

@@ -316,7 +316,14 @@
 </script>
 
 {#if settingsOpen}
-  <SettingsView {appVersion} onBack={() => (settingsOpen = false)} />
+  <SettingsView
+    {appVersion}
+    onBack={() => (settingsOpen = false)}
+    onShowSpace={(id) => {
+      library.selectWorkspace(id);
+      settingsOpen = false;
+    }}
+  />
 {:else}
   <div
     class="layout"

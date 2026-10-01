@@ -1,4 +1,5 @@
 pub mod feedback;
+pub mod import;
 pub mod notes;
 pub mod settings;
 pub mod stats;
