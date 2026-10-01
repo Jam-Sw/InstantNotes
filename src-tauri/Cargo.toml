@@ -3,6 +3,7 @@ members = ["core"]
 resolver = "2"
 
 [package]
+license = "PolyForm-Strict-1.0.0"
 name = "instantnotes"
 version = "0.8.0"
 description = "InstantNotes — instant capture, organized knowledge"
