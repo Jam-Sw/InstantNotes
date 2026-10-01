@@ -9,6 +9,12 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- A note whose first line is bold, italic, or struck through no longer carries
+  the asterisks or tildes into its title.
+- A note that starts with an image takes its title from its first line of
+  words, not from the image's file path.
+
 ## [0.9.0] - 2026-09-25
 
 ### Added

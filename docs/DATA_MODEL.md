@@ -82,11 +82,14 @@ pair, cascading on note or workspace delete. The UI calls these "Spaces".
 
 ## 6. Title derivation
 
-`derive_title` takes the first non-empty line of the body, strips leading
-markdown markers (`#`, `-`, `*`, `>`) and inline `#` tag prefixes, collapses
-whitespace, and truncates to 80 characters on a char boundary. An empty body
-yields `Untitled`. A note keeps `title_is_auto = 1` until the user edits the
-title directly.
+`derive_title` takes the first line of the body with words on it (passing over
+blank lines and lines that are only images), strips leading
+markdown markers (`#`, `-`, `*`, `>`), the emphasis markers around each word
+(`*`, `~`, `=`, and backticks, so `**Groceries**` titles the note
+"Groceries"), and inline `#` tag prefixes, collapses whitespace, and truncates
+to 80 characters on a char boundary. Markers inside a word stay (`C++`,
+`a*b`). An empty body yields `Untitled`. A note keeps `title_is_auto = 1`
+until the user edits the title directly.
 
 ## 7. Full-text search
 

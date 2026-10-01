@@ -66,14 +66,19 @@ pub fn extract_inline_tags(body: &str) -> Vec<String> {
     out
 }
 
-/// Derive a note title from the first non-empty line of the body (see
-/// DATA_MODEL.md section 6): strip leading markdown markers (`#`, `-`, `*`,
-/// `>`) and inline `#` tag
-/// prefixes, collapse whitespace, truncate to 80 chars (char boundary).
-/// Empty body yields "Untitled".
+/// Derive a note title from the first line of the body with words on it
+/// (see DATA_MODEL.md section 6), passing over blank lines and lines that
+/// are only images: strip leading markdown markers (`#`, `-`, `*`, `>`), the
+/// emphasis markers around words (`**`, `*`, `~~`, `==`, `` ` ``), and inline
+/// `#` tag prefixes, collapse whitespace, truncate to 80 chars (char
+/// boundary). A body with no such line yields "Untitled".
 pub fn derive_title(body: &str) -> String {
     const UNTITLED: &str = "Untitled";
-    let Some(line) = body.lines().find(|l| !l.trim().is_empty()) else {
+    const EMPHASIS: [char; 4] = ['*', '~', '=', '`'];
+    let Some(line) = body
+        .lines()
+        .find(|l| !l.trim().is_empty() && !is_image_line(l))
+    else {
         return UNTITLED.to_string();
     };
     let line = line
@@ -81,7 +86,7 @@ pub fn derive_title(body: &str) -> String {
         .trim_start_matches(['#', '-', '*', '>', ' ', '\t']);
     let words: Vec<&str> = line
         .split_whitespace()
-        .map(|w| w.trim_start_matches('#'))
+        .map(|w| w.trim_matches(EMPHASIS).trim_start_matches('#'))
         .filter(|w| !w.is_empty())
         .collect();
     let joined = words.join(" ");
@@ -89,6 +94,27 @@ pub fn derive_title(body: &str) -> String {
         return UNTITLED.to_string();
     }
     joined.chars().take(80).collect()
+}
+
+/// A line holding nothing but Markdown images: `![alt](path)`, one or more.
+fn is_image_line(line: &str) -> bool {
+    let mut rest = line.trim();
+    if rest.is_empty() {
+        return false;
+    }
+    while !rest.is_empty() {
+        let Some(after) = rest.strip_prefix("![") else {
+            return false;
+        };
+        let Some(close) = after.find("](") else {
+            return false;
+        };
+        let Some(end) = after[close + 2..].find(')') else {
+            return false;
+        };
+        rest = after[close + 2 + end + 1..].trim_start();
+    }
+    true
 }
 
 #[cfg(test)]
@@ -175,6 +201,36 @@ mod tests {
         assert_eq!(derive_title("# Heading here\nbody"), "Heading here");
         assert_eq!(derive_title("- list item"), "list item");
         assert_eq!(derive_title("> quoted thought"), "quoted thought");
+    }
+
+    #[test]
+    fn title_passes_over_lines_that_are_only_images() {
+        assert_eq!(
+            derive_title("![](attachments/a.png)\nWhiteboard photo"),
+            "Whiteboard photo"
+        );
+        assert_eq!(
+            derive_title("![a](x.png) ![b](y.png)\n\nTwo shots"),
+            "Two shots"
+        );
+        assert_eq!(derive_title("![](attachments/a.png)"), "Untitled");
+        // An image inside a line of words is part of the title line.
+        assert_eq!(derive_title("See ![](a.png) here"), "See ![](a.png) here");
+    }
+
+    #[test]
+    fn title_drops_emphasis_markers_around_words() {
+        assert_eq!(
+            derive_title("**Groceries** for the week"),
+            "Groceries for the week"
+        );
+        assert_eq!(derive_title("***Call the bank***"), "Call the bank");
+        assert_eq!(
+            derive_title("~~old plan~~ ==new== `plan`"),
+            "old plan new plan"
+        );
+        // Inside a word they are the word.
+        assert_eq!(derive_title("C++ and a*b"), "C++ and a*b");
     }
 
     #[test]
