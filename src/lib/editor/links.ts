@@ -10,7 +10,7 @@
 // the pointer cursor, underline, tooltip, and open target cannot disagree.
 
 import { syntaxTree } from "@codemirror/language";
-import { EditorView } from "@codemirror/view";
+import { EditorView, ViewPlugin } from "@codemirror/view";
 import {
   StateEffect,
   StateField,
@@ -107,6 +107,43 @@ export function linkMarkClass(prefs: LinkPrefsSnapshot, preview: boolean): strin
 // ---------------------------------------------------------------------------
 // Click handling
 // ---------------------------------------------------------------------------
+
+/**
+ * Pointer feedback for modifier-click. Because a Cmd/Ctrl+click always opens a
+ * link (in either open-with mode), the pointer cursor is truthful whenever the
+ * modifier is held over link text. This fills the gap where "open with
+ * Cmd/Ctrl+Click" gave no cursor change at all. Listens on the window (not just
+ * the editor DOM) so the feedback shows while merely reading, not only while
+ * the editor is focused. Both metaKey and ctrlKey count, so it is correct on
+ * every platform.
+ */
+class ModKeyCursor {
+  #held = false;
+  #view: EditorView;
+  constructor(view: EditorView) {
+    this.#view = view;
+    window.addEventListener("keydown", this.#onKey, true);
+    window.addEventListener("keyup", this.#onKey, true);
+    window.addEventListener("blur", this.#reset, true);
+  }
+  #onKey = (e: KeyboardEvent): void => this.#set(e.metaKey || e.ctrlKey);
+  #reset = (): void => this.#set(false);
+  #set(held: boolean): void {
+    if (held === this.#held) return;
+    this.#held = held;
+    this.#view.dom.classList.toggle("cm-mod-held", held);
+  }
+  destroy(): void {
+    window.removeEventListener("keydown", this.#onKey, true);
+    window.removeEventListener("keyup", this.#onKey, true);
+    window.removeEventListener("blur", this.#reset, true);
+    this.#view.dom.classList.remove("cm-mod-held");
+  }
+}
+
+export function modKeyCursor(): Extension {
+  return ViewPlugin.fromClass(ModKeyCursor);
+}
 
 /**
  * The open-on-click handler. `open` receives a normalized, scheme-checked

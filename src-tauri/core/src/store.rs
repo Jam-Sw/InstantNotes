@@ -105,17 +105,132 @@ ALTER TABLE notes DROP COLUMN sync_state;
 ALTER TABLE notes DROP COLUMN version;
 ALTER TABLE notes DROP COLUMN last_synced_at;
 "#,
+    // v4: note surface mode, document (markdown) or whiteboard (canvas
+    // host). Carried here byte-for-byte from feat/note-whiteboard, which
+    // shipped it in pre-release builds before being lifted off this branch:
+    // libraries those builds touched are already at v4 with these columns,
+    // so v4 must mean this everywhere. Nothing reads the columns until the
+    // whiteboard returns (SEQUENCE.md unit 12); that branch drops its own
+    // copy of this migration when it rebases.
+    r#"
+ALTER TABLE notes ADD COLUMN content_kind TEXT NOT NULL DEFAULT 'document';
+ALTER TABLE notes ADD COLUMN surface_data TEXT;
+"#,
+    // v5: the vault mirror (feat-portable-vault-sync stage 2, design.md §5).
+    // vault_path is where the note's file was last written, relative to the
+    // vault root; file_sha is the sha256 of those bytes. vault_dirty is set
+    // by the triggers below in the same transaction as any write that
+    // changes what the note's file holds, so a crash between the commit and
+    // the file write still leaves the note marked for the next flush.
+    // last_opened_at is deliberately absent from the watched columns: it is
+    // device-local and never written to the vault (design.md §7.2).
+    r#"
+ALTER TABLE notes ADD COLUMN vault_path  TEXT;
+ALTER TABLE notes ADD COLUMN file_sha    TEXT;
+ALTER TABLE notes ADD COLUMN vault_dirty INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX idx_notes_vault_dirty ON notes(vault_dirty) WHERE vault_dirty = 1;
+CREATE INDEX idx_notes_vault_path ON notes(vault_path COLLATE NOCASE)
+  WHERE vault_path IS NOT NULL;
+
+-- A hard-deleted note leaves no row to flag, so its file is queued here.
+CREATE TABLE vault_tombstones (
+  vault_path TEXT PRIMARY KEY,
+  file_sha   TEXT
+);
+
+CREATE TRIGGER notes_vault_ai AFTER INSERT ON notes BEGIN
+  UPDATE notes SET vault_dirty = 1 WHERE seq = new.seq;
+END;
+CREATE TRIGGER notes_vault_au AFTER UPDATE OF
+  title, title_is_auto, body, created_at, updated_at,
+  is_pinned, is_archived, is_deleted, deleted_at ON notes BEGIN
+  UPDATE notes SET vault_dirty = 1 WHERE seq = new.seq;
+END;
+CREATE TRIGGER notes_vault_ad AFTER DELETE ON notes
+  WHEN old.vault_path IS NOT NULL BEGIN
+  INSERT OR REPLACE INTO vault_tombstones (vault_path, file_sha)
+    VALUES (old.vault_path, old.file_sha);
+END;
+
+-- Edge changes, including the cascades from deleting a tag or a space.
+CREATE TRIGGER note_tags_vault_ai AFTER INSERT ON note_tags BEGIN
+  UPDATE notes SET vault_dirty = 1 WHERE id = new.note_id;
+END;
+CREATE TRIGGER note_tags_vault_ad AFTER DELETE ON note_tags BEGIN
+  UPDATE notes SET vault_dirty = 1 WHERE id = old.note_id;
+END;
+CREATE TRIGGER note_workspaces_vault_ai AFTER INSERT ON note_workspaces BEGIN
+  UPDATE notes SET vault_dirty = 1 WHERE id = new.note_id;
+END;
+CREATE TRIGGER note_workspaces_vault_ad AFTER DELETE ON note_workspaces BEGIN
+  UPDATE notes SET vault_dirty = 1 WHERE id = old.note_id;
+END;
+
+-- Names are what the frontmatter carries; a color change touches only
+-- instantnotes.yaml, which the flush compares on its own.
+CREATE TRIGGER tags_vault_au AFTER UPDATE OF name ON tags
+  WHEN old.name IS NOT new.name BEGIN
+  UPDATE notes SET vault_dirty = 1
+    WHERE id IN (SELECT note_id FROM note_tags WHERE tag_id = new.id);
+END;
+CREATE TRIGGER workspaces_vault_au AFTER UPDATE OF name ON workspaces
+  WHEN old.name IS NOT new.name BEGIN
+  UPDATE notes SET vault_dirty = 1
+    WHERE id IN (SELECT note_id FROM note_workspaces WHERE workspace_id = new.id);
+END;
+"#,
+    // v6: whiteboards in the vault. A board's canvas is a `.excalidraw` file
+    // beside its note file (vault/board.rs); board_sha is the sha256 of the
+    // canvas bytes last written, so the canvas gets the same "only remove
+    // what still holds our bytes" rule as the note file. The update trigger
+    // now also watches the whiteboard columns, and a hard delete queues the
+    // canvas for removal alongside the note file.
+    r#"
+ALTER TABLE notes ADD COLUMN board_sha TEXT;
+
+DROP TRIGGER notes_vault_au;
+CREATE TRIGGER notes_vault_au AFTER UPDATE OF
+  title, title_is_auto, body, created_at, updated_at,
+  is_pinned, is_archived, is_deleted, deleted_at,
+  content_kind, surface_data ON notes BEGIN
+  UPDATE notes SET vault_dirty = 1 WHERE seq = new.seq;
+END;
+
+DROP TRIGGER notes_vault_ad;
+CREATE TRIGGER notes_vault_ad AFTER DELETE ON notes
+  WHEN old.vault_path IS NOT NULL BEGIN
+  INSERT OR REPLACE INTO vault_tombstones (vault_path, file_sha)
+    VALUES (old.vault_path, old.file_sha);
+  INSERT OR REPLACE INTO vault_tombstones (vault_path, file_sha)
+    SELECT substr(old.vault_path, 1, length(old.vault_path) - 3) || '.excalidraw',
+           old.board_sha
+    WHERE old.board_sha IS NOT NULL;
+END;
+"#,
 ];
 
 const NOTE_COLUMNS: &str = "id, title, body, created_at, updated_at, last_opened_at, \
-     is_pinned, is_archived, is_deleted, deleted_at";
+     is_pinned, is_archived, is_deleted, deleted_at, content_kind, surface_data";
+
+/// `NOTE_COLUMNS` for list queries: the whiteboard canvas stays out of list
+/// rows (see `Note::surface_data`).
+const LIST_COLUMNS: &str = "id, title, body, created_at, updated_at, last_opened_at, \
+     is_pinned, is_archived, is_deleted, deleted_at, content_kind, NULL";
 
 pub struct Store {
     conn: Connection,
+    /// The live vault mirror (stage 2), when one is configured.
+    vault: Option<vault::VaultState>,
 }
 
 fn now_iso() -> String {
-    Utc::now().to_rfc3339_opts(SecondsFormat::Micros, true)
+    iso(std::time::SystemTime::now())
+}
+
+/// The one timestamp format the store writes (and callers show), which also
+/// sorts as text.
+pub fn iso(t: std::time::SystemTime) -> String {
+    chrono::DateTime::<Utc>::from(t).to_rfc3339_opts(SecondsFormat::Micros, true)
 }
 
 fn new_id() -> String {
@@ -134,6 +249,8 @@ fn row_to_note(row: &rusqlite::Row<'_>) -> rusqlite::Result<Note> {
         is_archived: row.get::<_, i64>(7)? != 0,
         is_deleted: row.get::<_, i64>(8)? != 0,
         deleted_at: row.get(9)?,
+        content_kind: row.get(10)?,
+        surface_data: row.get(11)?,
     })
 }
 
@@ -182,6 +299,34 @@ fn tag_get_or_create(conn: &Connection, raw_name: &str) -> Result<Tag> {
         id,
         name,
         color: None,
+        created_at: now.clone(),
+        updated_at: now,
+    })
+}
+
+/// Get-or-create a workspace inside an existing transaction/connection.
+fn workspace_get_or_create(conn: &Connection, raw_name: &str) -> Result<Workspace> {
+    let name = domain::normalize_workspace_name(raw_name)
+        .ok_or_else(|| AppError::Validation("workspace name must not be empty".into()))?;
+    if let Some(ws) = conn
+        .query_row(
+            &format!("SELECT {WORKSPACE_COLUMNS} FROM workspaces WHERE name = ?1"),
+            params![name],
+            row_to_workspace,
+        )
+        .optional()?
+    {
+        return Ok(ws);
+    }
+    let now = now_iso();
+    let id = new_id();
+    conn.execute(
+        "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES (?1, ?2, ?3, ?3)",
+        params![id, name, now],
+    )?;
+    Ok(Workspace {
+        id,
+        name,
         created_at: now.clone(),
         updated_at: now,
     })
@@ -280,15 +425,21 @@ impl Store {
         Self::init(conn)
     }
 
-    fn init(conn: Connection) -> Result<Self> {
+    fn init(mut conn: Connection) -> Result<Self> {
         conn.pragma_update(None, "foreign_keys", "ON")?;
+        // Take the write lock when a transaction begins, not at its first
+        // write. The library is also opened by agent processes
+        // (`instantnotes mcp`); a deferred transaction that reads and then
+        // writes fails at once with SQLITE_BUSY on the upgrade instead of
+        // waiting out the busy timeout.
+        conn.set_transaction_behavior(rusqlite::TransactionBehavior::Immediate);
         let check: String = conn.query_row("PRAGMA quick_check", [], |r| r.get(0))?;
         if check != "ok" {
             return Err(AppError::Corruption(format!(
                 "database integrity check failed: {check}"
             )));
         }
-        let mut store = Store { conn };
+        let mut store = Store { conn, vault: None };
         store.migrate()?;
         Ok(store)
     }
@@ -301,11 +452,10 @@ impl Store {
         // written by a newer build; its schema is unknown to us, so refuse
         // rather than run queries that assume the older shape.
         if current > MIGRATIONS.len() as i64 {
-            return Err(AppError::Migration(format!(
-                "database schema v{current} was created by a newer version of \
-                 the app (this build knows up to v{})",
-                MIGRATIONS.len()
-            )));
+            return Err(AppError::SchemaTooNew {
+                found: current,
+                known: MIGRATIONS.len(),
+            });
         }
         for (idx, sql) in MIGRATIONS.iter().enumerate() {
             let target = (idx + 1) as i64;
@@ -390,6 +540,26 @@ impl Store {
         Ok(())
     }
 
+    /// SQLite's `data_version`: moves only when another connection (an agent
+    /// process, say) commits to this file. This connection's own writes never
+    /// move it, so a change means someone else wrote.
+    pub fn data_version(&self) -> Result<i64> {
+        Ok(self
+            .conn
+            .query_row("PRAGMA data_version", [], |r| r.get(0))?)
+    }
+
+    /// Whether the file is still at the schema this build migrated it to. A
+    /// long-lived second process (an agent server) checks this before each
+    /// write, so a newer app that migrated the file meanwhile is never
+    /// written to through older code.
+    pub fn schema_is_current(&self) -> Result<bool> {
+        let version: i64 = self
+            .conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        Ok(version == MIGRATIONS.len() as i64)
+    }
+
     fn fetch_note(&self, id: &str) -> Result<Note> {
         self.conn
             .query_row(
@@ -402,9 +572,14 @@ impl Store {
     }
 }
 
+mod attachments;
+mod graph;
+mod import;
 mod notes;
 mod settings;
+mod stats;
 mod tags;
+mod vault;
 mod workspaces;
 
 #[cfg(test)]
@@ -495,5 +670,126 @@ mod migration_tests {
         assert_eq!(note.body, "the body");
         let all = store.list_notes(Default::default()).unwrap();
         assert!(all.iter().any(|n| n.id == "n1"));
+    }
+
+    /// A library written by a pre-release build that carried the whiteboard
+    /// (schema v4: content_kind and surface_data) must open, not be refused
+    /// as too new, and gain the vault columns on top.
+    #[test]
+    fn a_whiteboard_v4_library_migrates_to_the_vault_schema() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("whiteboard.db");
+        {
+            let conn = Connection::open(&path).unwrap();
+            for sql in &MIGRATIONS[..3] {
+                conn.execute_batch(sql).unwrap();
+            }
+            conn.execute_batch(
+                "ALTER TABLE notes ADD COLUMN content_kind TEXT NOT NULL DEFAULT 'document';
+                 ALTER TABLE notes ADD COLUMN surface_data TEXT;",
+            )
+            .unwrap();
+            conn.pragma_update(None, "user_version", 4i64).unwrap();
+            conn.execute(
+                "INSERT INTO notes (id, title, body, created_at, updated_at, content_kind) \
+                 VALUES ('n1', 'Board', 'the body', 't', 't', 'whiteboard')",
+                [],
+            )
+            .unwrap();
+        }
+
+        let mut store = Store::open(&path).unwrap();
+
+        let cols = note_columns(&store.conn);
+        for col in ["content_kind", "surface_data", "vault_path", "vault_dirty"] {
+            assert!(cols.contains(&col.to_string()), "missing {col}");
+        }
+        let kind: String = store
+            .conn
+            .query_row("SELECT content_kind FROM notes WHERE id = 'n1'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(kind, "whiteboard");
+        assert_eq!(store.get_note("n1", false).unwrap().body, "the body");
+    }
+
+    /// A library at v5 (the vault mirror without whiteboards) gains the
+    /// canvas hash column, and a board's canvas is tombstoned with its note.
+    #[test]
+    fn v6_tracks_whiteboard_canvases_in_the_vault() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("v5.db");
+        {
+            let conn = Connection::open(&path).unwrap();
+            for sql in &MIGRATIONS[..5] {
+                conn.execute_batch(sql).unwrap();
+            }
+            conn.pragma_update(None, "user_version", 5i64).unwrap();
+        }
+
+        let store = Store::open(&path).unwrap();
+        assert!(note_columns(&store.conn).contains(&"board_sha".to_string()));
+        store
+            .conn
+            .execute_batch(
+                "INSERT INTO notes (id, title, body, created_at, updated_at, vault_path, \
+                 file_sha, board_sha) VALUES ('n1', 'B', '', 't', 't', 'B.md', 'a', 'b');
+                 DELETE FROM notes WHERE id = 'n1';",
+            )
+            .unwrap();
+        let mut stmt = store
+            .conn
+            .prepare("SELECT vault_path, file_sha FROM vault_tombstones ORDER BY vault_path")
+            .unwrap();
+        let rows: Vec<(String, String)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        assert_eq!(
+            rows,
+            vec![
+                ("B.excalidraw".to_string(), "b".to_string()),
+                ("B.md".to_string(), "a".to_string()),
+            ]
+        );
+    }
+
+    /// A 0.8/0.9-era library (schema v3) gains the vault mirror columns on
+    /// open. Existing notes survive and start clean: nothing is pending
+    /// until a vault is configured, which marks every note itself.
+    #[test]
+    fn v3_library_gains_vault_columns_and_preserves_notes() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("v3.db");
+        {
+            let conn = Connection::open(&path).unwrap();
+            for sql in &MIGRATIONS[..3] {
+                conn.execute_batch(sql).unwrap();
+            }
+            conn.pragma_update(None, "user_version", 3i64).unwrap();
+            conn.execute(
+                "INSERT INTO notes (id, title, body, created_at, updated_at) \
+                 VALUES ('n1', 'Kept', 'the body', 't', 't')",
+                [],
+            )
+            .unwrap();
+        }
+
+        let mut store = Store::open(&path).unwrap();
+
+        let cols = note_columns(&store.conn);
+        for col in ["vault_path", "file_sha", "vault_dirty"] {
+            assert!(cols.contains(&col.to_string()), "missing {col}");
+        }
+        let dirty: i64 = store
+            .conn
+            .query_row("SELECT vault_dirty FROM notes WHERE id = 'n1'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(dirty, 0);
+        assert_eq!(store.get_note("n1", false).unwrap().body, "the body");
     }
 }

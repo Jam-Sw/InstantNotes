@@ -26,9 +26,12 @@ pub fn update_note(
     id: String,
     patch: UpdateNotePatch,
 ) -> CmdResult<Note> {
-    let note = locked(&state)?.update_note(&id, patch)?;
+    let mut note = locked(&state)?.update_note(&id, patch)?;
     emit_notes_changed(&app);
     emit_tags_changed(&app);
+    // The caller already holds the canvas it just saved; echoing it back
+    // would ship the whole board, pasted images included, on every save.
+    note.surface_data = None;
     Ok(note)
 }
 
@@ -53,7 +56,9 @@ pub fn permanently_delete_note(
     id: String,
     confirm: bool,
 ) -> CmdResult<()> {
-    locked(&state)?.permanently_delete_note(&id, confirm)?;
+    destroy_with_attachments(&state, &app, std::slice::from_ref(&id), |store| {
+        store.permanently_delete_note(&id, confirm)
+    })?;
     emit_notes_changed(&app);
     emit_tags_changed(&app);
     Ok(())
@@ -120,8 +125,38 @@ pub fn destroy_notes(
     ids: Vec<String>,
     confirm: bool,
 ) -> CmdResult<()> {
-    locked(&state)?.destroy_notes(&ids, confirm)?;
+    destroy_with_attachments(&state, &app, &ids, |store| {
+        store.destroy_notes(&ids, confirm)
+    })?;
     emit_notes_changed(&app);
     emit_tags_changed(&app);
+    Ok(())
+}
+
+/// The library as a graph of notes, tags, and Spaces, for the Graph view.
+#[tauri::command(async)]
+pub fn library_graph(state: State<'_, AppState>) -> CmdResult<LibraryGraph> {
+    Ok(locked(&state)?.library_graph()?)
+}
+
+/// Destroy notes for good, and with them the images only they used. The
+/// store stays locked from reading their references to removing the files,
+/// so no save can start referencing an image in between. A cleanup failure
+/// never fails the delete: the note is gone either way, and a stray file is
+/// what Settings > Images offers to clean up.
+fn destroy_with_attachments(
+    state: &State<'_, AppState>,
+    app: &AppHandle,
+    ids: &[String],
+    destroy: impl FnOnce(&mut Store) -> instantnotes_core::error::Result<()>,
+) -> CmdResult<()> {
+    let mut store = locked(state)?;
+    let names = store.attachment_names_of(ids)?;
+    destroy(&mut store)?;
+    if !names.is_empty() {
+        if let Ok(dir) = attachments_dir(app) {
+            let _ = store.remove_unreferenced_attachments(&dir, names);
+        }
+    }
     Ok(())
 }

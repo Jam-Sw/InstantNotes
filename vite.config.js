@@ -33,14 +33,17 @@ export default defineConfig(async () => ({
   // Keep Rust errors visible while running the desktop app.
   clearScreen: false,
   server: {
-    port: 1420,
+    // Project-specific port so several Tauri projects can run side by side.
+    // Keep in sync with src-tauri/tauri.conf.json (build.devUrl) and
+    // scripts/tauri-dev.mjs (DEV_PORT).
+    port: 1422,
     strictPort: true,
     host: host || false,
     hmr: host
       ? {
           protocol: "ws",
           host,
-          port: 1421,
+          port: 1423,
         }
       : undefined,
     watch: {

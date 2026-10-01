@@ -21,15 +21,7 @@ impl Store {
     }
 
     pub fn set_setting(&mut self, key: &str, value: serde_json::Value) -> Result<()> {
-        let serialized = serde_json::to_string(&value)
-            .map_err(|e| AppError::Validation(format!("unserializable setting value: {e}")))?;
-        self.conn.execute(
-            "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3) \
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value, \
-             updated_at = excluded.updated_at",
-            params![key, serialized, now_iso()],
-        )?;
-        Ok(())
+        setting_put(&self.conn, key, &value)
     }
 
     pub fn delete_setting(&mut self, key: &str) -> Result<()> {
@@ -37,4 +29,17 @@ impl Store {
             .execute("DELETE FROM settings WHERE key = ?1", params![key])?;
         Ok(())
     }
+}
+
+/// Write a setting inside an existing transaction/connection.
+pub(super) fn setting_put(conn: &Connection, key: &str, value: &serde_json::Value) -> Result<()> {
+    let serialized = serde_json::to_string(value)
+        .map_err(|e| AppError::Validation(format!("unserializable setting value: {e}")))?;
+    conn.execute(
+        "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3) \
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, \
+         updated_at = excluded.updated_at",
+        params![key, serialized, now_iso()],
+    )?;
+    Ok(())
 }

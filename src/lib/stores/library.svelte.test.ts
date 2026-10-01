@@ -22,8 +22,11 @@ import {
   listNotes,
   listTags,
   listWorkspaces,
+  listStickies,
   listWorkspaceTags,
   permanentlyDeleteNote,
+  popInNote,
+  popOutNote,
   renameWorkspace,
   searchNotes,
   softDeleteNote,
@@ -33,6 +36,8 @@ import {
   workspacesForNote,
 } from "$lib/api/client";
 import { listen } from "@tauri-apps/api/event";
+import { EVENTS } from "$lib/api/events";
+import { UPDATE_NOTE_ID, UPDATE_SPACE_ID } from "$lib/update/space";
 import type {
   Note,
   SearchResult,
@@ -75,11 +80,22 @@ vi.mock("$lib/api/client", () => {
     addTagToNote: vi.fn(),
     removeTagFromNote: vi.fn(),
     tagsForNote: vi.fn(),
+    listStickies: vi.fn(),
+    popOutNote: vi.fn(),
+    popInNote: vi.fn(),
   };
 });
 
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(),
+}));
+
+// Converting a note lays its text onto the board through Excalidraw's own
+// element builder; the stand-in keeps each skeleton and stamps an id.
+vi.mock("@excalidraw/excalidraw", () => ({
+  convertToExcalidrawElements: vi.fn((skeletons: object[]) =>
+    skeletons.map((sk, i) => ({ ...sk, id: `el${i}`, version: 1 })),
+  ),
 }));
 
 const mockCreateNote = vi.mocked(createNote);
@@ -101,6 +117,9 @@ const mockGetOrCreateWorkspace = vi.mocked(getOrCreateWorkspace);
 const mockAddNoteToWorkspace = vi.mocked(addNoteToWorkspace);
 const mockListWorkspaceTags = vi.mocked(listWorkspaceTags);
 const mockListen = vi.mocked(listen);
+const mockListStickies = vi.mocked(listStickies);
+const mockPopOutNote = vi.mocked(popOutNote);
+const mockPopInNote = vi.mocked(popInNote);
 
 function mkNote(id: string, overrides: Partial<Note> = {}): Note {
   return {
@@ -112,6 +131,7 @@ function mkNote(id: string, overrides: Partial<Note> = {}): Note {
     isPinned: false,
     isArchived: false,
     isDeleted: false,
+    contentKind: "document",
     ...overrides,
   };
 }
@@ -177,6 +197,9 @@ beforeEach(() => {
   mockAddNoteToWorkspace.mockReset();
   mockListWorkspaceTags.mockReset().mockResolvedValue([]);
   mockListen.mockReset().mockResolvedValue(() => {});
+  mockListStickies.mockReset().mockResolvedValue([]);
+  mockPopOutNote.mockReset().mockResolvedValue(undefined);
+  mockPopInNote.mockReset().mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -197,7 +220,12 @@ describe("save queue", () => {
     expect(mockUpdateNote).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(400);
-    expect(mockUpdateNote).toHaveBeenCalledWith("n1", { body: "new body" });
+    // A document save names the version it was based on (the one opened), so
+    // an agent's write in between is caught rather than overwritten.
+    expect(mockUpdateNote).toHaveBeenCalledWith("n1", {
+      body: "new body",
+      expectedUpdatedAt: "2026-01-01T00:00:00Z",
+    });
     // Write still in flight: must not claim "saved" over unpersisted data.
     expect(library.saveState).toBe("saving");
 
@@ -260,7 +288,10 @@ describe("flushPendingEdits", () => {
     library.editBody("flush me");
     const flushed = library.flushPendingEdits();
     // The write must fire synchronously off the flush, not off the timer.
-    expect(mockUpdateNote).toHaveBeenCalledWith("n1", { body: "flush me" });
+    expect(mockUpdateNote).toHaveBeenCalledWith("n1", {
+      body: "flush me",
+      expectedUpdatedAt: "2026-01-01T00:00:00Z",
+    });
 
     write.resolve(mkNote("n1", { body: "flush me" }));
     await flushed;
@@ -368,7 +399,10 @@ describe("destroy paths drop queued edits (regression: fixed 2026-07-08)", () =>
     library.editBody("kept");
     await vi.advanceTimersByTimeAsync(400);
 
-    expect(mockUpdateNote).toHaveBeenCalledWith("n1", { body: "kept" });
+    expect(mockUpdateNote).toHaveBeenCalledWith("n1", {
+      body: "kept",
+      expectedUpdatedAt: "2026-01-01T00:00:00Z",
+    });
   });
 });
 
@@ -384,6 +418,7 @@ describe("soft delete flushes queued edits (Undo restores the last keystrokes)",
 
     expect(mockUpdateNote).toHaveBeenCalledWith("n1", {
       body: "last keystrokes",
+      expectedUpdatedAt: "2026-01-01T00:00:00Z",
     });
     expect(mockSoftDeleteNote).toHaveBeenCalledWith("n1");
     // The write must land before the trash, or a restore loses the edit.
@@ -408,6 +443,7 @@ describe("soft delete flushes queued edits (Undo restores the last keystrokes)",
 
     expect(mockUpdateNote).toHaveBeenCalledWith("n1", {
       body: "unsaved bulk edit",
+      expectedUpdatedAt: "2026-01-01T00:00:00Z",
     });
     expect(mockSoftDeleteNotes).toHaveBeenCalledWith(["n1"]);
     await vi.advanceTimersByTimeAsync(3000);
@@ -521,9 +557,11 @@ describe("init ordering", () => {
     const initPromise = library.init();
 
     expect(mockListen.mock.calls.map((c) => c[0])).toEqual([
-      "notes:changed",
-      "tags:changed",
-      "workspaces:changed",
+      EVENTS.NOTES_CHANGED,
+      EVENTS.TAGS_CHANGED,
+      EVENTS.WORKSPACES_CHANGED,
+      EVENTS.STICKIES_CHANGED,
+      EVENTS.LIBRARY_EXTERNAL_CHANGE,
     ]);
     expect(mockListNotes).not.toHaveBeenCalled();
     expect(mockListTags).not.toHaveBeenCalled();
@@ -545,7 +583,7 @@ describe("init ordering", () => {
     const p2 = library.init();
     await Promise.all([p1, p2]);
 
-    expect(mockListen).toHaveBeenCalledTimes(3);
+    expect(mockListen).toHaveBeenCalledTimes(5);
     // Two listNotes calls: the visible list and the revisit count.
     expect(mockListNotes).toHaveBeenCalledTimes(2);
     expect(mockListTags).toHaveBeenCalledTimes(1);
@@ -558,7 +596,7 @@ describe("init ordering", () => {
     mockListNotes.mockClear();
 
     const handler = mockListen.mock.calls.find(
-      (c) => c[0] === "notes:changed",
+      (c) => c[0] === EVENTS.NOTES_CHANGED,
     )?.[1] as (() => void) | undefined;
     expect(handler).toBeTypeOf("function");
     handler!();
@@ -801,5 +839,312 @@ describe("revisit mode (open-loop resurfacing)", () => {
     library.setStatusFilter("archived");
     expect(library.revisitMode).toBe(false);
     await vi.advanceTimersByTimeAsync(0);
+  });
+});
+
+describe("whiteboards", () => {
+  const BOARD = JSON.stringify({
+    v: 1,
+    engine: "excalidraw",
+    data: { elements: [], appState: {}, files: {} },
+  });
+
+  it("queues a board save like a body edit and persists canvas and text together", async () => {
+    const library = await load();
+    await selectNote(library, "b1", { contentKind: "whiteboard", surfaceData: BOARD });
+    mockUpdateNote.mockResolvedValue(mkNote("b1", { contentKind: "whiteboard" }));
+
+    library.editBoard("b1", { surfaceData: "next", body: "words" });
+    expect(library.saveState).toBe("saving");
+    expect(library.selected?.surfaceData).toBe("next");
+    expect(library.selected?.body).toBe("words");
+
+    await vi.advanceTimersByTimeAsync(400);
+    expect(mockUpdateNote).toHaveBeenCalledWith("b1", { surfaceData: "next", body: "words" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.saveState).toBe("saved");
+    // The reply leaves the canvas out; the open note keeps its own copy.
+    expect(library.selected?.surfaceData).toBe("next");
+  });
+
+  it("quit collects a board's unsent change before flushing", async () => {
+    const library = await load();
+    await selectNote(library, "b1", { contentKind: "whiteboard", surfaceData: BOARD });
+    mockUpdateNote.mockResolvedValue(mkNote("b1", { contentKind: "whiteboard" }));
+    const off = library.onBeforeFlush(() =>
+      library.editBoard("b1", { surfaceData: "last stroke", body: "" }),
+    );
+
+    await library.flushPendingEdits();
+    expect(mockUpdateNote).toHaveBeenCalledWith("b1", { surfaceData: "last stroke", body: "" });
+
+    off();
+    mockUpdateNote.mockClear();
+    await library.flushPendingEdits();
+    expect(mockUpdateNote).not.toHaveBeenCalled();
+  });
+
+  it("switching notes collects the board's unsent change for the board, not the next note", async () => {
+    const library = await load();
+    await selectNote(library, "b1", { contentKind: "whiteboard", surfaceData: BOARD });
+    mockUpdateNote.mockResolvedValue(mkNote("b1", { contentKind: "whiteboard" }));
+    library.onBeforeFlush(() => library.editBoard("b1", { surfaceData: "drawn", body: "" }));
+
+    await selectNote(library, "n2");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockUpdateNote).toHaveBeenCalledWith("b1", { surfaceData: "drawn", body: "" });
+    expect(library.selected?.id).toBe("n2");
+    expect(library.selected?.surfaceData).toBeUndefined();
+  });
+
+  it("reopening a board with an unsaved change shows the change, not the disk copy", async () => {
+    const library = await load();
+    await selectNote(library, "b1", { contentKind: "whiteboard", surfaceData: BOARD });
+    mockUpdateNote.mockReturnValue(new Promise(() => {}));
+    library.editBoard("b1", { surfaceData: "unsaved", body: "text" });
+    await selectNote(library, "n2");
+    await selectNote(library, "b1", { contentKind: "whiteboard", surfaceData: BOARD });
+    expect(library.selected?.surfaceData).toBe("unsaved");
+    expect(library.selected?.body).toBe("text");
+  });
+
+  it("converting lays the note's text onto the board as one text element", async () => {
+    const library = await load();
+    await selectNote(library, "n1", { body: "Roadmap\nship it" });
+    mockUpdateNote.mockResolvedValue(mkNote("n1", { contentKind: "whiteboard" }));
+
+    library.editBody("Roadmap\nship it today");
+    await library.convertToWhiteboard();
+
+    const calls = mockUpdateNote.mock.calls;
+    // The pending body edit lands first, so nothing typed is lost.
+    expect(calls[0]).toEqual([
+      "n1",
+      { body: "Roadmap\nship it today", expectedUpdatedAt: "2026-01-01T00:00:00Z" },
+    ]);
+    const [id, patch] = calls[calls.length - 1];
+    expect(id).toBe("n1");
+    expect(patch.contentKind).toBe("whiteboard");
+    const board = JSON.parse(patch.surfaceData as string);
+    expect(board.engine).toBe("excalidraw");
+    expect(board.data.elements).toHaveLength(1);
+    expect(board.data.elements[0]).toMatchObject({
+      type: "text",
+      text: "Roadmap\nship it today",
+    });
+    expect(library.selected?.contentKind).toBe("whiteboard");
+    expect(library.selected?.surfaceData).toBe(patch.surfaceData);
+  });
+
+  it("converting an empty note gives an empty board", async () => {
+    const library = await load();
+    await selectNote(library, "n1", { body: "   " });
+    mockUpdateNote.mockResolvedValue(mkNote("n1", { contentKind: "whiteboard" }));
+    await library.convertToWhiteboard();
+    const patch = mockUpdateNote.mock.calls[0][1];
+    expect(JSON.parse(patch.surfaceData as string).data.elements).toEqual([]);
+  });
+
+  it("does not convert a trashed note or a board", async () => {
+    const library = await load();
+    await selectNote(library, "n1", { isDeleted: true });
+    await library.convertToWhiteboard();
+    await selectNote(library, "b1", { contentKind: "whiteboard" });
+    await library.convertToWhiteboard();
+    expect(mockUpdateNote).not.toHaveBeenCalled();
+  });
+
+  it("New whiteboard never converts the open note when creating the new one fails", async () => {
+    const library = await load();
+    await selectNote(library, "n1", { body: "my writing" });
+    mockCreateNote.mockRejectedValue(new Error("disk full"));
+    await library.newWhiteboard();
+    expect(mockUpdateNote).not.toHaveBeenCalled();
+    expect(library.selected?.contentKind).toBe("document");
+  });
+
+  it("New whiteboard creates a note and opens it as an empty board", async () => {
+    const library = await load();
+    mockCreateNote.mockResolvedValue(mkNote("new1"));
+    mockGetNote.mockResolvedValue(mkNote("new1"));
+    mockUpdateNote.mockResolvedValue(mkNote("new1", { contentKind: "whiteboard" }));
+
+    await library.newWhiteboard();
+
+    expect(mockCreateNote).toHaveBeenCalled();
+    const [id, patch] = mockUpdateNote.mock.calls[0];
+    expect(id).toBe("new1");
+    expect(patch.contentKind).toBe("whiteboard");
+    expect(library.selected?.contentKind).toBe("whiteboard");
+  });
+});
+
+describe("graph view", () => {
+  it("is its own place: entering it leaves every other view", async () => {
+    const library = await load();
+    library.selectWorkspace("ws1");
+    library.selectGraph();
+    expect(library.graphMode).toBe(true);
+    expect(library.activeWorkspaceId).toBeNull();
+    expect(library.revisitMode).toBe(false);
+    await vi.advanceTimersByTimeAsync(0);
+  });
+
+  it("any other place in the sidebar leaves it", async () => {
+    const library = await load();
+    for (const go of [
+      () => library.selectWorkspace(null),
+      () => library.selectWorkspace("ws1"),
+      () => library.selectRevisit(),
+      () => library.setTagFilter("t1"),
+      () => library.setStatusFilter("archived"),
+    ]) {
+      library.selectGraph();
+      go();
+      expect(library.graphMode).toBe(false);
+    }
+    await vi.advanceTimersByTimeAsync(0);
+  });
+
+  it("opening a note leaves it, so the note is what shows", async () => {
+    const library = await load();
+    library.selectGraph();
+    await selectNote(library, "n1");
+    expect(library.graphMode).toBe(false);
+    expect(library.selected?.id).toBe("n1");
+  });
+
+  it("creating a note leaves it", async () => {
+    const library = await load();
+    mockCreateNote.mockResolvedValue(mkNote("new1"));
+    mockGetNote.mockResolvedValue(mkNote("new1"));
+    library.selectGraph();
+    await library.newNote();
+    expect(library.graphMode).toBe(false);
+  });
+});
+
+describe("the update Space (synthetic)", () => {
+  it("is never queried and holds no store rows of its own", async () => {
+    const library = await load();
+    mockListNotes.mockClear();
+
+    library.selectWorkspace(UPDATE_SPACE_ID);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(library.activeWorkspaceId).toBe(UPDATE_SPACE_ID);
+    expect(mockListNotes).not.toHaveBeenCalled();
+    expect(library.notes).toEqual([]);
+  });
+
+  it("opens a synthetic note without fetching it, and keeps its edits local", async () => {
+    const library = await load();
+    const note = mkNote(UPDATE_NOTE_ID, { title: "update 0.9.0 → 0.10.0" });
+
+    library.selectVirtual(note);
+    expect(library.selected?.id).toBe(UPDATE_NOTE_ID);
+    expect(library.selectedTags).toEqual([]);
+    expect(mockGetNote).not.toHaveBeenCalled();
+
+    library.editBody("typed into the release notes");
+    expect(library.selected?.body).toBe("typed into the release notes");
+    // Nothing is ever written: a synthetic note is not user data.
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(mockUpdateNote).not.toHaveBeenCalled();
+    expect(library.saveState).not.toBe("saving");
+  });
+
+  it("a new note is not filed under the synthetic Space", async () => {
+    const library = await load();
+    mockCreateNote.mockResolvedValue(mkNote("new1"));
+    mockGetNote.mockResolvedValue(mkNote("new1"));
+    library.selectWorkspace(UPDATE_SPACE_ID);
+    await vi.advanceTimersByTimeAsync(0);
+
+    await library.newNote();
+
+    expect(library.activeWorkspaceId).toBeNull();
+    expect(mockAddNoteToWorkspace).not.toHaveBeenCalled();
+  });
+});
+
+describe("stickies", () => {
+  it("writes the note's pending edit before popping it out", async () => {
+    const library = await load();
+    await selectNote(library, "n1");
+    mockUpdateNote.mockResolvedValue(mkNote("n1", { body: "typed" }));
+    library.editBody("typed");
+    mockListStickies.mockResolvedValue(["n1"]);
+
+    await library.popOut("n1");
+
+    expect(mockUpdateNote).toHaveBeenCalledWith("n1", {
+      body: "typed",
+      expectedUpdatedAt: "2026-01-01T00:00:00Z",
+    });
+    expect(mockUpdateNote.mock.invocationCallOrder[0]).toBeLessThan(
+      mockPopOutNote.mock.invocationCallOrder[0],
+    );
+    expect(library.isSticky("n1")).toBe(true);
+  });
+
+  it("keeps the note here when its pending edit cannot be written", async () => {
+    const library = await load();
+    await selectNote(library, "n1");
+    mockUpdateNote.mockRejectedValue(new ApiError("STORAGE_ERROR", "locked"));
+    library.editBody("typed");
+
+    await library.popOut("n1");
+
+    expect(mockPopOutNote).not.toHaveBeenCalled();
+    expect(library.isSticky("n1")).toBe(false);
+  });
+
+  it("stops editing a note while it is a sticky", async () => {
+    const library = await load();
+    await selectNote(library, "n1", { body: "disk" });
+    mockListStickies.mockResolvedValue(["n1"]);
+    await library.refreshStickies();
+
+    library.editBody("from the library");
+    library.editTitle("Renamed");
+    library.editBoard("n1", { surfaceData: "{}", body: "board" });
+    await vi.advanceTimersByTimeAsync(3000);
+
+    expect(library.selected?.body).toBe("disk");
+    expect(mockUpdateNote).not.toHaveBeenCalled();
+  });
+
+  it("reopens the note from disk when its sticky comes back", async () => {
+    const library = await load();
+    await selectNote(library, "n1", { body: "before" });
+    mockListStickies.mockResolvedValue(["n1"]);
+    await library.refreshStickies();
+
+    mockListStickies.mockResolvedValue([]);
+    mockGetNote.mockResolvedValueOnce(mkNote("n1", { body: "typed in the sticky" }));
+    await library.popIn("n1");
+
+    expect(mockPopInNote).toHaveBeenCalledWith("n1");
+    expect(library.isSticky("n1")).toBe(false);
+    expect(library.selected?.body).toBe("typed in the sticky");
+  });
+
+  it("brings a sticky back before trashing its note, and not at all if it cannot save", async () => {
+    const library = await load();
+    await selectNote(library, "n1");
+    mockListStickies.mockResolvedValue(["n1"]);
+    await library.refreshStickies();
+
+    mockPopInNote.mockRejectedValueOnce(new ApiError("STORAGE_ERROR", "sticky kept"));
+    await library.deleteSelected();
+    expect(mockSoftDeleteNote).not.toHaveBeenCalled();
+
+    mockListStickies.mockResolvedValue([]);
+    mockGetNote.mockResolvedValue(mkNote("n1"));
+    mockSoftDeleteNote.mockResolvedValue(mkNote("n1", { isDeleted: true }));
+    await library.deleteSelected();
+    expect(mockPopInNote).toHaveBeenCalledTimes(2);
+    expect(mockSoftDeleteNote).toHaveBeenCalledWith("n1");
   });
 });

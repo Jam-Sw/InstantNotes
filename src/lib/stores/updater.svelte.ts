@@ -1,17 +1,17 @@
 // Self-update state (Svelte 5 runes). Checks GitHub Releases via the Tauri
 // updater plugin. Automatic checks stay silent unless an update exists (the
-// happy path is invisible); a manual check — from the tray "Check for
-// Updates…" — surfaces the outcome either way, including "up to date" and
-// errors, so the user is never left guessing. The UI (UpdatePanel) reads this
-// store to show exactly what is being updated and to what version.
+// happy path is invisible); a manual check - from the tray "Check for
+// Updates…" - answers with a toast either way, so the user is never left
+// guessing.
+//
+// An available update is surfaced as a synthetic Space (see
+// `$lib/update/space.ts`), so this store is the single source for the versions,
+// the release notes, the install progress, and the best-effort download-size
+// delta. Nothing here writes to SQLite or the vault.
 
-import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
-import { getSetting, setSetting, deleteSetting } from "$lib/api/client";
-import { library } from "$lib/stores/library.svelte";
-import { snoozeDeadline, type SnoozeKind } from "$lib/updater-snooze";
-
-export type { SnoozeKind } from "$lib/updater-snooze";
+import { toasts } from "$lib/stores/toasts.svelte";
+import { fetchUpdateSizeDelta } from "$lib/update/release-size";
 
 export type UpdateStatus =
   | "idle"
@@ -22,8 +22,10 @@ export type UpdateStatus =
   | "ready"
   | "error";
 
+/** Whether the offered build's size against the running one is known yet. */
+export type DeltaState = "idle" | "loading" | "ready" | "unavailable";
+
 const RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
-const KEY_SNOOZE = "updater.snoozeUntil";
 
 class UpdaterStore {
   status = $state<UpdateStatus>("idle");
@@ -33,25 +35,45 @@ class UpdaterStore {
   currentVersion = $state<string | null>(null);
   /** Release notes for the available update, verbatim from the manifest. */
   notes = $state<string | null>(null);
+  /** The release's own date, used to date the synthetic notes. */
+  date = $state<string | null>(null);
   // 0..1 while downloading, null when total size is unknown.
   progress = $state<number | null>(null);
   error = $state<string | null>(null);
+  /** Offered size minus running size, in bytes; null when unknown. */
+  sizeDelta = $state<number | null>(null);
+  deltaState = $state<DeltaState>("idle");
 
   #update: Update | null = null;
   #timer: ReturnType<typeof setInterval> | null = null;
-  // Persisted epoch-ms deadline for a snoozed reminder; null when not snoozed.
-  #snoozeUntil: number | null = null;
-  // "On next launch" - suppress for this process only, never persisted.
-  #suppressThisSession = false;
-  #snoozeLoaded = false;
+  // A version the user answered with "Ok": kept off the sidebar for the rest
+  // of this run. The update is installable until the app relaunches, so without
+  // this the next check would surface the same notification again.
+  #acknowledgedVersion: string | null = null;
+
+  /**
+   * Whether the update Space should be showing: an update was found and the
+   * user has not answered it. Covers every state of the install once found, so
+   * the Space never blinks out mid-download or on a failed install.
+   */
+  get pendingUpdate(): boolean {
+    if (this.version == null || this.version === this.#acknowledgedVersion) {
+      return false;
+    }
+    return (
+      this.status === "available" ||
+      this.status === "checking" ||
+      this.status === "downloading" ||
+      this.status === "ready" ||
+      this.status === "error"
+    );
+  }
 
   /** Check once now, then every RECHECK_INTERVAL_MS while running. */
   start() {
     if (this.#timer) return;
     this.#timer = setInterval(() => void this.checkNow(), RECHECK_INTERVAL_MS);
-    // Honor a persisted snooze before the first check so "remind me later"
-    // carries across launches.
-    void this.#loadSnooze().then(() => this.checkNow());
+    void this.checkNow();
   }
 
   stop() {
@@ -63,17 +85,14 @@ class UpdaterStore {
 
   /**
    * Look for a newer release. Automatic checks (`manual` false) stay silent on
-   * "no update" and on failure — updates are a suggestion, never an
-   * obstruction. A manual check reports both outcomes so the user gets an
-   * answer.
+   * "no update" and on failure - updates are a suggestion, never an
+   * obstruction. A manual check reports both outcomes with a toast, since there
+   * is no dialog to answer into.
    */
   async checkNow(opts: { manual?: boolean } = {}) {
     const manual = opts.manual ?? false;
-    // Never interrupt a download or a pending restart.
+    // Never interrupt a download or a pending acknowledgment.
     if (this.status === "downloading" || this.status === "ready") return;
-    // A manual check (tray "Check for Updates…") always runs; automatic checks
-    // stay quiet while the reminder is snoozed.
-    if (!manual && this.#isSnoozed()) return;
     this.status = "checking";
     this.error = null;
     try {
@@ -83,14 +102,20 @@ class UpdaterStore {
         this.version = update.version;
         this.currentVersion = update.currentVersion;
         this.notes = update.body?.trim() || null;
+        this.date = update.date ?? null;
         this.status = "available";
+        void this.#loadSizeDelta();
       } else {
         this.status = manual ? "uptodate" : "idle";
+        if (manual) toasts.show("InstantNotes is up to date");
       }
     } catch (e) {
       if (manual) {
         this.error = e instanceof Error ? e.message : String(e);
         this.status = "error";
+        toasts.show(
+          "Couldn't check for updates. Check your connection and try again.",
+        );
       } else {
         // Offline, private repo, or no manifest yet: stay silent.
         this.status = "idle";
@@ -125,63 +150,35 @@ class UpdaterStore {
     }
   }
 
-  async restart() {
-    if (this.status !== "ready") return;
-    // Flush here, before relaunch: the Rust quit interceptor deliberately
-    // lets the restart's exit request pass untouched (holding it would
-    // strand the freshly installed update), so this is the only place the
-    // pending edits can be saved on the update path.
-    await library.flushPendingEdits();
-    await relaunch();
-  }
-
   /**
-   * Snooze the "update available" reminder. Automatic checks stay quiet until
-   * the deadline (or, for "on next launch", until the app restarts). The
-   * pending update is kept, so it re-surfaces once the snooze lapses.
+   * The user answered the notification's "Ok". The update is installed and
+   * applies on the next launch; take the Space down now rather than leaving it
+   * up as a done screen.
    */
-  snooze(kind: SnoozeKind) {
-    const until = snoozeDeadline(kind, Date.now());
-    this.#snoozeUntil = until;
-    if (until != null) {
-      this.#suppressThisSession = false;
-      void setSetting(KEY_SNOOZE, until);
-    } else {
-      // Session-only: don't persist a deadline.
-      this.#suppressThisSession = true;
-      void deleteSetting(KEY_SNOOZE);
-    }
-    if (this.status === "available") this.status = "idle";
+  acknowledge() {
+    this.#acknowledgedVersion = this.version;
+    this.status = "idle";
+    this.error = null;
   }
 
-  #isSnoozed(): boolean {
-    if (this.#suppressThisSession) return true;
-    return this.#snoozeUntil != null && Date.now() < this.#snoozeUntil;
-  }
-
-  async #loadSnooze() {
-    if (this.#snoozeLoaded) return;
-    this.#snoozeLoaded = true;
-    try {
-      const until = await getSetting<number>(KEY_SNOOZE);
-      if (typeof until !== "number") return;
-      if (Date.now() < until) {
-        this.#snoozeUntil = until;
-      } else {
-        // Lapsed - drop the stale deadline so it can't suppress forever.
-        void deleteSetting(KEY_SNOOZE);
-      }
-    } catch {
-      // Settings are best-effort; default to not snoozed.
+  async #loadSizeDelta(): Promise<void> {
+    const version = this.version;
+    const currentVersion = this.currentVersion;
+    if (!version || !currentVersion) {
+      this.deltaState = "unavailable";
+      return;
     }
-  }
-
-  /** Clear a transient result (up-to-date / error) so the indicator hides. */
-  dismiss() {
-    if (this.status === "uptodate" || this.status === "error") {
-      this.status = "idle";
-      this.error = null;
-    }
+    this.deltaState = "loading";
+    this.sizeDelta = null;
+    const delta = await fetchUpdateSizeDelta({
+      currentVersion,
+      version,
+      userAgent: navigator.userAgent,
+    });
+    // A newer check superseded this one; its own load owns the field now.
+    if (this.version !== version) return;
+    this.sizeDelta = delta;
+    this.deltaState = delta == null ? "unavailable" : "ready";
   }
 }
 

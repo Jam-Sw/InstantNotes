@@ -1,8 +1,11 @@
 <script lang="ts">
   import "$lib/app.css";
   import { theme } from "$lib/stores/theme.svelte";
-  import EulaGate from "$lib/EulaGate.svelte";
   let { children } = $props();
+
+  // The license agreement is not a wrapper here: each window gates itself
+  // (installers' agreement gate, rendered as the License Space in the library
+  // and as LicenseLocked in capture and stickies).
 
   // Apply the persisted theme as early as possible. The CSS base fallback
   // (Manuscript dark) covers first paint before this resolves.
@@ -14,9 +17,7 @@
   const buildTag = import.meta.env.DEV ? new Date().toLocaleTimeString() : "";
 </script>
 
-<EulaGate>
-  {@render children()}
-</EulaGate>
+{@render children()}
 
 {#if import.meta.env.DEV}
   <div class="dev-badge">dev · {buildTag}</div>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { renderTemplate, DEFAULT_TEMPLATE } from "./contexting-format";
+import { renderTemplate, applyImageMode, DEFAULT_TEMPLATE } from "./contexting-format";
 
 const note = { title: "Groceries", body: "milk\neggs", updatedAt: "2026-06-18T10:00:00.000Z" };
 
@@ -36,5 +36,66 @@ describe("renderTemplate", () => {
     expect(out).toContain("tags: #food");
     expect(out).toContain("milk\neggs");
     expect(out).toContain("</note>");
+  });
+
+  it("rewrites attachment images to an absolute path when asked", () => {
+    const withImg = { ...note, body: "see ![shot](attachments/a1.png)" };
+    const out = renderTemplate("{content}", withImg, [], {
+      imageMode: "absolute",
+      attachmentsDir: "/data/attachments",
+    });
+    expect(out).toBe("see ![shot](/data/attachments/a1.png)");
+  });
+});
+
+describe("applyImageMode", () => {
+  const body = "before ![alt](attachments/x.png) after ![web](https://e.com/y.png)";
+
+  it("keeps references untouched in keep mode", () => {
+    expect(applyImageMode(body, "keep", "/d")).toBe(body);
+  });
+
+  it("rewrites only attachment refs in absolute mode", () => {
+    expect(applyImageMode(body, "absolute", "/d/att")).toBe(
+      "before ![alt](/d/att/x.png) after ![web](https://e.com/y.png)",
+    );
+  });
+
+  it("leaves attachment refs alone in absolute mode with no dir", () => {
+    expect(applyImageMode(body, "absolute", null)).toBe(body);
+  });
+
+  it("removes images in strip mode", () => {
+    expect(applyImageMode("a ![x](attachments/x.png) b", "strip", null)).toBe("a  b");
+  });
+
+  // A "link the original file" image is an absolute local path, not an
+  // attachments/ reference (NoteEditor.svelte inserts `![](${picked})` verbatim).
+  // Contexting has no way to know whether a tool reading the copied text can
+  // reach that path, so all three modes leave it exactly as written.
+  const linked = "![shot](/Users/jam/Pictures/shot.png)";
+  const copied = "![alt](attachments/x.png)";
+  const both = `${linked} and ${copied}`;
+
+  it("leaves a linked image untouched in keep mode", () => {
+    expect(applyImageMode(linked, "keep", "/d/att")).toBe(linked);
+  });
+
+  it("leaves a linked image untouched in absolute mode", () => {
+    expect(applyImageMode(linked, "absolute", "/d/att")).toBe(linked);
+  });
+
+  it("strips a linked image the same as a copied one", () => {
+    expect(applyImageMode(linked, "strip", null)).toBe("");
+  });
+
+  it("a note with both a linked and a copied image: absolute mode rewrites only the copied one", () => {
+    expect(applyImageMode(both, "absolute", "/d/att")).toBe(
+      `${linked} and ![alt](/d/att/x.png)`,
+    );
+  });
+
+  it("a note with both a linked and a copied image: strip mode removes both", () => {
+    expect(applyImageMode(both, "strip", null)).toBe(" and ");
   });
 });

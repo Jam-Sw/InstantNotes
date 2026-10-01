@@ -3,7 +3,7 @@
 //! No business logic lives here — that's instantnotes-core's job.
 
 use instantnotes_core::types::*;
-use instantnotes_core::{AppError, Store};
+use instantnotes_core::Store;
 use serde::Serialize;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
@@ -17,44 +17,31 @@ struct AppState {
     store: Mutex<Store>,
 }
 
-/// Serializable error per API.md §3.6 / §11.
-#[derive(Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct CmdError {
-    code: String,
-    message: String,
-}
-
-impl From<AppError> for CmdError {
-    fn from(e: AppError) -> Self {
-        CmdError {
-            code: e.code().to_string(),
-            message: e.to_string(),
-        }
-    }
-}
-
-type CmdResult<T> = Result<T, CmdError>;
-
 fn locked<'a>(
     state: &'a State<'_, AppState>,
 ) -> Result<std::sync::MutexGuard<'a, Store>, CmdError> {
-    state.store.lock().map_err(|_| CmdError {
-        code: "STORAGE_ERROR".into(),
-        message: "internal state lock poisoned".into(),
-    })
+    state
+        .store
+        .lock()
+        .map_err(|_| CmdError::storage("internal state lock poisoned"))
 }
 
+// Every write command announces itself through one of these, and no read
+// does, so they double as the vault mirror's flush trigger (shell/mirror.rs).
+
 fn emit_notes_changed(app: &AppHandle) {
-    let _ = app.emit("notes:changed", ());
+    let _ = app.emit(events::NOTES_CHANGED, ());
+    request_vault_flush(app);
 }
 
 fn emit_tags_changed(app: &AppHandle) {
-    let _ = app.emit("tags:changed", ());
+    let _ = app.emit(events::TAGS_CHANGED, ());
+    request_vault_flush(app);
 }
 
 fn emit_workspaces_changed(app: &AppHandle) {
-    let _ = app.emit("workspaces:changed", ());
+    let _ = app.emit(events::WORKSPACES_CHANGED, ());
+    request_vault_flush(app);
 }
 
 // ---- shortcut status ----
@@ -68,9 +55,14 @@ pub(crate) struct ShortcutStatus {
 }
 
 mod commands;
+mod error;
+mod events;
 mod shell;
-use commands::{notes::*, settings::*, tags::*, workspaces::*};
-use shell::{capture::*, files::*, quit::*, windows::*};
+use commands::{
+    feedback::*, import::*, notes::*, settings::*, stats::*, tags::*, vault::*, workspaces::*,
+};
+use error::{CmdError, CmdResult};
+use shell::{agents::*, capture::*, files::*, mirror::*, quit::*, stickies::*, windows::*};
 
 // ---- app shell ----
 
@@ -120,12 +112,47 @@ pub fn run() {
             if let Some(parent) = db_path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
-            let (store, recovered) =
-                Store::open_or_recover(&db_path).map_err(|e| format!("cannot open store: {e}"))?;
+            let (mut store, recovered) = match Store::open_or_recover(&db_path) {
+                Ok(ok) => ok,
+                // Intact file, unknown future schema: nothing here is safe to
+                // migrate, recover, or overwrite. Tell the user and stop,
+                // rather than let the error propagate out to build().expect()
+                // (a panic there aborts the process before the dialog plugin
+                // ever gets to run its event loop).
+                Err(e) if e.is_schema_too_new() => {
+                    let handle = app.handle().clone();
+                    app.dialog()
+                        .message(
+                            "This notes library was created by a newer version of \
+                             InstantNotes. Update the app to open it.",
+                        )
+                        .title("Library too new")
+                        .kind(MessageDialogKind::Error)
+                        .show(move |_| handle.exit(1));
+                    return Ok(());
+                }
+                Err(e) => return Err(format!("cannot open store: {e}").into()),
+            };
+            // Resume the live vault mirror, if one is set. A setting that
+            // cannot be read leaves mirroring off rather than failing launch.
+            if store.attach_saved_vault().is_err() {
+                eprintln!("vault mirror setting unreadable; mirroring stays off");
+            }
             app.manage(AppState {
                 store: Mutex::new(store),
             });
             app.manage(CaptureMetrics::default());
+            app.manage(start_vault_flusher(app.handle()));
+            app.manage(start_agent_watcher(app.handle(), db_path.clone()));
+            // Catch up anything a crash or a missing drive left pending, and
+            // any attachment added while mirroring was paused.
+            {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    let _ = mirror_attachments(&handle);
+                    request_vault_flush(&handle);
+                });
+            }
             if recovered {
                 // Non-blocking on purpose: setup must finish (single-instance
                 // handshake, window creation) whether or not the user has
@@ -172,12 +199,28 @@ pub fn run() {
                 .build()?;
             let new_note_item =
                 MenuItem::with_id(app, "new_note", "New Note", true, Some("CmdOrCtrl+N"))?;
+            let new_board_item = MenuItem::with_id(
+                app,
+                "new_whiteboard",
+                "New Whiteboard",
+                true,
+                Some("CmdOrCtrl+Shift+N"),
+            )?;
             let export_item =
                 MenuItem::with_id(app, "export_note", "Export Note As…", true, None::<&str>)?;
+            let sticky_item = MenuItem::with_id(
+                app,
+                "toggle_sticky",
+                "Pop Out as Sticky",
+                true,
+                Some("CmdOrCtrl+Shift+O"),
+            )?;
             let file_submenu = {
                 let builder = SubmenuBuilder::new(app, "File")
                     .item(&new_note_item)
+                    .item(&new_board_item)
                     .separator()
+                    .item(&sticky_item)
                     .item(&export_item);
                 #[cfg(not(target_os = "macos"))]
                 let builder = builder
@@ -208,15 +251,23 @@ pub fn run() {
             app.on_menu_event(|app, event| match event.id().as_ref() {
                 "settings" => {
                     show_library_window(app);
-                    let _ = app.emit("settings:open", ());
+                    let _ = app.emit(events::SETTINGS_OPEN, ());
                 }
                 "new_note" => {
                     show_library_window(app);
-                    let _ = app.emit("menu:new-note", ());
+                    let _ = app.emit(events::MENU_NEW_NOTE, ());
+                }
+                "new_whiteboard" => {
+                    show_library_window(app);
+                    let _ = app.emit(events::MENU_NEW_WHITEBOARD, ());
                 }
                 "export_note" => {
                     show_library_window(app);
-                    let _ = app.emit("menu:export-note", ());
+                    let _ = app.emit(events::MENU_EXPORT_NOTE, ());
+                }
+                // Library only: the note it acts on is the library's open one.
+                "toggle_sticky" => {
+                    let _ = app.emit_to("library", events::MENU_TOGGLE_STICKY, ());
                 }
                 "quit" => request_quit(app),
                 _ => {}
@@ -288,7 +339,7 @@ pub fn run() {
                     "open_library" => show_library_window(app),
                     "check_updates" => {
                         show_library_window(app);
-                        let _ = app.emit("updater:check", ());
+                        let _ = app.emit(events::UPDATER_CHECK, ());
                     }
                     "open_repo" => {
                         let _ = app.opener().open_url(REPO_URL, None::<&str>);
@@ -341,7 +392,7 @@ pub fn run() {
                 shortcut_label.to_string()
             });
             if let Some(label) = &shortcut_failure {
-                let _ = app.emit("shortcut:failed", label.clone());
+                let _ = app.emit(events::SHORTCUT_FAILED, label.clone());
             }
             app.manage(ShortcutStatus {
                 failed: shortcut_failure,
@@ -372,6 +423,10 @@ pub fn run() {
                     let _ = library.set_focus();
                 }
             }
+
+            // Last: the store is managed and the library exists, so a sticky
+            // restored now is never the app's first window.
+            restore_stickies(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -388,7 +443,6 @@ pub fn run() {
             restore_notes,
             destroy_notes,
             list_tags,
-            get_or_create_tag,
             update_tag,
             delete_tag,
             add_tag_to_note,
@@ -414,11 +468,36 @@ pub fn run() {
             export_note_file,
             save_attachment,
             get_attachments_dir,
+            import_image_file,
+            allow_image_file,
+            open_attachments_folder,
+            library_graph,
+            unused_attachments,
+            remove_unused_attachments,
+            library_stats,
+            export_vault,
+            get_vault_status,
+            set_vault_folder,
+            verify_vault,
+            stickies_location,
+            scan_stickies,
+            import_stickies,
+            submit_feedback,
+            open_feedback_log,
             open_url,
             quit_app,
             capture_input_ready,
             get_capture_latency,
-            get_shortcut_failure
+            get_shortcut_failure,
+            pop_out_note,
+            pop_in_note,
+            answer_pop_in,
+            list_stickies,
+            get_sticky_view,
+            set_sticky_level,
+            set_sticky_collapsed,
+            save_sticky_geometry,
+            agent_connection
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

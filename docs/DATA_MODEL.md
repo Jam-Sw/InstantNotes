@@ -38,11 +38,35 @@ content rowid; `id` is the public UUID):
 | `seq` | Integer primary key; FTS `content_rowid`. |
 | `id` | Public UUID, unique. |
 | `title`, `title_is_auto` | Title and whether it was auto-derived (section 6). |
-| `body` | Markdown body. |
+| `body` | Markdown body. For a whiteboard, the text on the board (section 3.1). |
 | `created_at`, `updated_at`, `last_opened_at` | Lifecycle timestamps. |
 | `is_pinned`, `is_archived`, `is_deleted`, `deleted_at` | Status flags. |
+| `content_kind`, `surface_data` | `document` (default) or `whiteboard`, and a whiteboard's canvas (section 3.1). |
+| `vault_path`, `file_sha`, `vault_dirty`, `board_sha` | The live vault mirror (section 10). |
 
-Indexes cover `updated_at`, `created_at`, and the status-flag triple.
+Indexes cover `updated_at`, `created_at`, the status-flag triple, pending
+vault writes, and `vault_path`.
+
+### 3.1 Whiteboards
+
+A note is a document or a whiteboard, and always a note: it lists, tags,
+joins Spaces, trashes, and searches like any other. A whiteboard's canvas is
+`surface_data`, an Excalidraw scene in a versioned envelope:
+
+```json
+{ "v": 1, "engine": "excalidraw", "data": { "elements": [], "appState": {}, "files": {} } }
+```
+
+Its `body` is the text written on the board, in reading order (top to bottom,
+then left to right), rewritten with every save. Search, inline `#tags`, list
+previews, and the vault's Markdown file therefore describe what the board
+shows. Because the body moves with the drawing, converting freezes an auto
+title (`title_is_auto = 0`).
+
+`update_note` enforces the rest: converting is one-way (a whiteboard never
+becomes a document again), and only a whiteboard holds `surface_data`. List
+rows leave `surface_data` out, since a board can hold pasted images; opening
+the note brings it.
 
 ## 4. Tags
 
@@ -58,11 +82,14 @@ pair, cascading on note or workspace delete. The UI calls these "Spaces".
 
 ## 6. Title derivation
 
-`derive_title` takes the first non-empty line of the body, strips leading
-markdown markers (`#`, `-`, `*`, `>`) and inline `#` tag prefixes, collapses
-whitespace, and truncates to 80 characters on a char boundary. An empty body
-yields `Untitled`. A note keeps `title_is_auto = 1` until the user edits the
-title directly.
+`derive_title` takes the first line of the body with words on it (passing over
+blank lines and lines that are only images), strips leading
+markdown markers (`#`, `-`, `*`, `>`), the emphasis markers around each word
+(`*`, `~`, `=`, and backticks, so `**Groceries**` titles the note
+"Groceries"), and inline `#` tag prefixes, collapses whitespace, and truncates
+to 80 characters on a char boundary. Markers inside a word stay (`C++`,
+`a*b`). An empty body yields `Untitled`. A note keeps `title_is_auto = 1`
+until the user edits the title directly.
 
 ## 7. Full-text search
 
@@ -77,8 +104,68 @@ accepts plain user input without exposing FTS syntax errors.
 preferences. Reads are best-effort: a missing or malformed value falls back to
 the code default.
 
+`stickies` holds which notes are popped out as sticky windows on this device,
+as a map from note id to `{ x, y, width, height, level, collapsed }` in
+logical pixels (`x`/`y` null means centered; `level` is `float`, `normal`, or
+`desktop`; while `collapsed`, `height` keeps the expanded height). It
+is window state, not note data: it never reaches the vault, and losing it only
+means stickies reopen in the library.
+
+It also holds one record per import source, `import.<source>`: an object
+mapping each imported item's id in the app it came from to the note it
+became. `import.stickies` is the only one (API.md §16). It is written in the
+same transaction as the notes, and an entry whose note no longer exists is
+ignored, so destroying an imported note for good lets it be imported again.
+
 ## 9. Migrations
 
 `MIGRATIONS` is an ordered list of SQL scripts; `user_version` records how many
 have run, so a database upgrades forward exactly once per version. The list is
 public so tests can build fixtures at a historical schema version.
+
+| Version | Change |
+| --- | --- |
+| v1 | Notes, tags, settings, FTS. |
+| v2 | Workspaces (Spaces). |
+| v3 | Drop the unused sync scaffolding columns. |
+| v4 | `content_kind`, `surface_data`: the whiteboard's surface mode. |
+| v5 | The vault mirror: columns, `vault_tombstones`, and triggers (section 10). |
+| v6 | `board_sha`, and triggers that carry whiteboards through the vault mirror (section 10). |
+
+v4 exists because pre-release builds that carried the whiteboard already
+migrated some libraries to it before the whiteboard was lifted off the 0.9.0
+branch. A version number must mean one schema everywhere, so v4 ships as
+those builds wrote it.
+
+Before migrating an existing library, `Store::open` snapshots it next to
+itself as `<file>.backup-v<old version>`. A library at a version newer than
+the build knows is refused, never migrated.
+
+## 10. Vault mirror
+
+When a vault folder is set (the device-local setting `vault.path`), every
+note is also written there as Markdown
+(`openspec/changes/feat-portable-vault-sync/design.md`). SQLite stays
+authoritative: the folder is written, never read back.
+
+- `vault_path`: where the note's file was last written, relative to the
+  vault folder (`trash/` for deleted notes).
+- `file_sha`: sha256 of the bytes last written there.
+- `vault_dirty`: 1 while the file is behind the database.
+- `board_sha`: for a whiteboard, sha256 of its canvas file as last written.
+
+A whiteboard's note file carries `kind: whiteboard` in its frontmatter, and
+its canvas is a standard `.excalidraw` file beside it with the same name
+(`Plan.md`, `Plan.excalidraw`), openable in Excalidraw. The canvas file
+follows its note through renames, the trash, and deletes, under the same
+ownership rules as the note file.
+
+Triggers set `vault_dirty` in the same transaction as the write that changed
+the note's file contents: the note's own columns (not `last_opened_at`,
+which is device-local), its tag and Space edges (including the cascades from
+deleting a tag or a Space), and a rename of a tag or Space it carries. A
+permanent delete queues the file, and a whiteboard's canvas file, in
+`vault_tombstones` (`vault_path`, `file_sha`). The flush writes pending notes, removes tombstoned files that
+still hold the bytes it wrote, and clears the flags. A crash between the
+commit and the file write leaves the flag set, and the next launch catches
+up.

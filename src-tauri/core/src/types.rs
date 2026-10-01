@@ -1,5 +1,10 @@
 use serde::{Deserialize, Serialize};
 
+/// How a note is edited: a Markdown document, or a whiteboard canvas whose
+/// text is kept in `body` for search and tags. Strings on the wire.
+pub const CONTENT_KIND_DOCUMENT: &str = "document";
+pub const CONTENT_KIND_WHITEBOARD: &str = "whiteboard";
+
 /// Canonical note shape used by persistence and the desktop IPC layer.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -14,6 +19,11 @@ pub struct Note {
     pub is_archived: bool,
     pub is_deleted: bool,
     pub deleted_at: Option<String>,
+    /// `"document"` or `"whiteboard"`.
+    pub content_kind: String,
+    /// A whiteboard's canvas as JSON. Only `get_note` carries it: list rows
+    /// leave it out, since a board can hold pasted images.
+    pub surface_data: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -62,6 +72,26 @@ pub struct CreateNoteInput {
     pub tags: Vec<String>,
 }
 
+/// One note to bring in from another app (`Store::import_notes`).
+#[derive(Debug, Clone)]
+pub struct ImportItem {
+    /// Its id in the app it came from. Each is imported once per library.
+    pub source_id: String,
+    pub body: String,
+    pub created_at: std::time::SystemTime,
+    pub updated_at: std::time::SystemTime,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportOutcome {
+    pub imported: usize,
+    /// Imported before, and their note still exists (the Trash counts).
+    pub skipped: usize,
+    /// The Space they were filed in, when one was named and any landed.
+    pub workspace_id: Option<String>,
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct UpdateNotePatch {
@@ -69,6 +99,15 @@ pub struct UpdateNotePatch {
     pub body: Option<String>,
     pub is_pinned: Option<bool>,
     pub is_archived: Option<bool>,
+    /// Only ever `"whiteboard"` in practice: converting is one-way.
+    pub content_kind: Option<String>,
+    /// A whiteboard's canvas; rejected on a document.
+    pub surface_data: Option<String>,
+    /// Optimistic concurrency: when set, the update applies only if the
+    /// note's `updated_at` still equals it, and fails with `Conflict`
+    /// otherwise. Lets a writer that read the note refuse to overwrite a
+    /// change it has not seen.
+    pub expected_updated_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -91,6 +130,22 @@ pub struct NoteFilter {
     pub offset: Option<i64>,
 }
 
+/// Aggregate library counts for the Settings dashboard. Attachment counts are
+/// added by the desktop layer (they live on the filesystem, not in the store).
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LibraryStats {
+    /// Notes not in the Trash (active plus archived).
+    pub notes_total: i64,
+    /// Notes not in the Trash and not archived.
+    pub notes_active: i64,
+    pub notes_pinned: i64,
+    pub notes_archived: i64,
+    pub notes_trashed: i64,
+    pub tags: i64,
+    pub spaces: i64,
+}
+
 /// Search result for library queries. Tag search goes through the note_tags
 /// join, not FTS.
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -101,4 +156,58 @@ pub struct SearchResult {
     pub excerpt: String,
     pub score: f64,
     pub updated_at: String,
+}
+
+/// What an attachment cleanup removed (or, for a preview, would remove).
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AttachmentCleanup {
+    pub count: usize,
+    pub bytes: u64,
+}
+
+/// The library as a graph (SEQUENCE.md unit 13): live notes, the tags and
+/// Spaces they carry, and one link per note-to-tag or note-to-Space edge.
+/// Derived from the existing tables on every read; nothing is stored.
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LibraryGraph {
+    pub notes: Vec<GraphNote>,
+    pub tags: Vec<GraphTag>,
+    pub spaces: Vec<GraphSpace>,
+    pub links: Vec<GraphLink>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphNote {
+    pub id: String,
+    pub title: String,
+    pub content_kind: String,
+    pub is_pinned: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphTag {
+    pub id: String,
+    pub name: String,
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphSpace {
+    pub id: String,
+    pub name: String,
+}
+
+/// A note's membership: `kind` is `tag` or `space`, and `target_id` is that
+/// tag's or Space's id.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphLink {
+    pub note_id: String,
+    pub target_id: String,
+    pub kind: String,
 }

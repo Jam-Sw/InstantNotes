@@ -1,17 +1,63 @@
 <script lang="ts">
+  import { open } from "@tauri-apps/plugin-dialog";
   import Editor from "$lib/components/Editor.svelte";
   import FormatToolbar from "$lib/components/FormatToolbar.svelte";
+  import WhiteboardCanvas from "$lib/components/whiteboard/WhiteboardCanvas.svelte";
   import { library } from "$lib/stores/library.svelte";
+  import { agents } from "$lib/stores/agents.svelte";
   import { editorPrefs } from "$lib/stores/editor.svelte";
+  import { imagePrefs } from "$lib/stores/images.svelte";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
-  import { formatDate, wordCount } from "$lib/format";
+  import { toasts } from "$lib/stores/toasts.svelte";
+  import { importImageFile, allowImageFile, openUrl, popOutNote } from "$lib/api/client";
+  import { modKey, shiftKey } from "$lib/platform";
+  import { theme } from "$lib/stores/theme.svelte";
+  import { effectiveVariant } from "$lib/themes/apply";
+  import { attachmentMarkdown } from "$lib/editor/images";
+  import { formatDate, formatExact, wordCount } from "$lib/format";
   import type { FormatKind } from "$lib/markdown-format";
   import { NO_MARKS, type ActiveMarks } from "$lib/markdown-active";
+  import { isVirtualNoteId } from "$lib/update/space";
 
   let tagInput = $state("");
   let workspaceInput = $state("");
-  let editorRef = $state<{ applyFormat: (k: FormatKind) => void; focus: () => void }>();
+  let editorRef = $state<{
+    applyFormat: (k: FormatKind) => void;
+    focus: () => void;
+    insertText: (t: string) => void;
+  }>();
   let active = $state<ActiveMarks>({ ...NO_MARKS });
+
+  const isBoard = $derived(library.selected?.contentKind === "whiteboard");
+  // A synthetic note (the update Space's release notes) is not user data: its
+  // body can be typed in, but it has no tags, no Space, and no lifecycle.
+  const isVirtual = $derived(isVirtualNoteId(library.selected?.id));
+  // The board follows the app's light or dark look, including themes that
+  // only come in one of the two.
+  const boardTheme = $derived(effectiveVariant(theme.activeTheme, theme.resolvedVariant));
+
+  // Insert an image from a file the user picks. Honors the storage setting:
+  // "copy" reads it into the attachments folder; "link" references it in place
+  // (allowed into the asset scope so it renders). Pasting or dropping still
+  // captures images directly in the editor.
+  async function insertImage() {
+    const picked = await open({
+      multiple: false,
+      filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp"] }],
+    });
+    if (typeof picked !== "string") return;
+    try {
+      if (imagePrefs.storage === "copy") {
+        const name = await importImageFile(picked);
+        editorRef?.insertText(attachmentMarkdown(name));
+      } else {
+        await allowImageFile(picked);
+        editorRef?.insertText(`![](${picked})`);
+      }
+    } catch (e) {
+      toasts.show(`Couldn't add image. ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 
   async function submitTag(e: Event) {
     e.preventDefault();
@@ -40,27 +86,60 @@
   }
 </script>
 
-{#if library.selected}
+{#if library.selected && library.isSticky(library.selected.id)}
+  <!-- The sticky is this note's only editor while it is out. -->
+  {@const id = library.selected.id}
+  <div class="popped-out">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="3" y="7" width="12" height="12" rx="2" />
+      <path d="M10 4h9a2 2 0 0 1 2 2v9M13 11l7-7M15 4h5v5" />
+    </svg>
+    <h2>{library.selected.title || "Untitled"}</h2>
+    <p>This note is open as a sticky. Edit it there, or bring it back here.</p>
+    <div class="popped-actions">
+      <button class="action" onclick={() => void popOutNote(id)}>Show Sticky</button>
+      <button class="action primary" onclick={() => void library.popIn(id)}>Bring Back</button>
+    </div>
+  </div>
+{:else if library.selected}
   <div class="editor-toolbar">
     <input
       class="title-input"
       value={library.selected.title}
+      readonly={isVirtual}
       onchange={(e) => library.editTitle(e.currentTarget.value)}
       aria-label="Note title"
     />
+    {#if !isVirtual}
     <div class="actions">
       {#if library.selected.isDeleted}
         <button class="action" onclick={() => library.restoreSelected()}>Restore</button>
         <button class="action danger" onclick={confirmDestroy}>Delete Forever</button>
       {:else}
+        {#if !isBoard}
+          <button
+            class="action"
+            title="Insert image from a file"
+            onclick={insertImage}
+          >
+            Image
+          </button>
+          <button
+            class="action"
+            class:active={editorPrefs.toolbarOpen}
+            title="Formatting tools"
+            aria-pressed={editorPrefs.toolbarOpen}
+            onclick={() => editorPrefs.toggleToolbar()}
+          >
+            Aa
+          </button>
+        {/if}
         <button
           class="action"
-          class:active={editorPrefs.toolbarOpen}
-          title="Formatting tools"
-          aria-pressed={editorPrefs.toolbarOpen}
-          onclick={() => editorPrefs.toggleToolbar()}
+          title={`Pop out as a sticky (${modKey}${shiftKey}O)`}
+          onclick={() => void library.popOut(library.selected!.id)}
         >
-          Aa
+          Sticky
         </button>
         <button
           class="action"
@@ -75,7 +154,9 @@
         <button class="action danger" onclick={() => library.deleteSelected()}>Delete</button>
       {/if}
     </div>
+    {/if}
   </div>
+  {#if !isVirtual}
   <div class="tag-bar">
     {#each library.selectedTags as tag (tag.id)}
       <span class="chip">
@@ -114,29 +195,57 @@
       {/each}
     </datalist>
   </div>
-  {#if editorPrefs.toolbarOpen}
-    <FormatToolbar {active} onFormat={(k) => editorRef?.applyFormat(k)} />
   {/if}
-  <div class="editor-body" style="--editor-zoom: {editorPrefs.zoom}">
-    <Editor
-      bind:this={editorRef}
-      value={library.selected.body}
-      placeholder="Start writing… use #tags to organize"
-      previewMode={!editorPrefs.toolbarOpen}
-      onchange={(v) => library.editBody(v)}
-      onactive={(a) => (active = a)}
-    />
-  </div>
+  {#if isBoard}
+    <div class="editor-body board-body">
+      <!-- One canvas per note: a new id mounts a fresh board. -->
+      {#key library.selected.id}
+        <WhiteboardCanvas
+          noteId={library.selected.id}
+          surfaceData={library.selected.surfaceData}
+          readonly={library.selected.isDeleted}
+          theme={boardTheme}
+          onchange={(id, edit) => library.editBoard(id, edit)}
+          registerFlush={(flush) => library.onBeforeFlush(flush)}
+          onlinkopen={(url) => void openUrl(url)}
+        />
+      {/key}
+    </div>
+  {:else}
+    {#if editorPrefs.toolbarOpen}
+      <FormatToolbar {active} onFormat={(k) => editorRef?.applyFormat(k)} />
+    {/if}
+    <div
+      class="editor-body"
+      data-agent={agents.noteMark(library.selected.id)}
+      style="--editor-zoom: {editorPrefs.zoom}; --image-max-height: {imagePrefs.maxPreviewHeight}px"
+    >
+      <Editor
+        bind:this={editorRef}
+        value={library.selected.body}
+        docKey={library.selected.id}
+        placeholder="Start writing… use #tags to organize"
+        previewMode={!editorPrefs.toolbarOpen}
+        onchange={(v) => library.editBody(v)}
+        onactive={(a) => (active = a)}
+      />
+    </div>
+  {/if}
   <div class="status-bar">
+    {#if !isVirtual}
     <span
       class="save-state"
       class:saving={library.saveState === "saving"}
       class:failed={library.saveState === "failed"}
+      title={formatExact(library.selected.updatedAt)}
     >
-      {#if library.saveState === "saving"}<span class="save-dot"></span>Saving…{:else if library.saveState === "failed"}Not saved{:else}Saved · {formatDate(library.selected.updatedAt)}{/if}
+      {#if library.saveState === "saving"}<span class="save-dot"></span>Saving…{:else if library.saveState === "failed"}Not saved{:else}Saved · {editorPrefs.showExactTime ? formatExact(library.selected.updatedAt) : formatDate(library.selected.updatedAt)}{/if}
     </span>
+    {/if}
     {#if library.error}
       <span class="error">{library.error}</span>
+    {:else if isBoard}
+      <span>Whiteboard</span>
     {:else}
       {@const n = wordCount(library.selected.body)}
       <span>{n} {n === 1 ? "word" : "words"}</span>
@@ -145,6 +254,46 @@
 {/if}
 
 <style>
+  .popped-out {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 24px;
+    text-align: center;
+    color: var(--text-secondary);
+  }
+  .popped-out svg {
+    width: 40px;
+    height: 40px;
+    fill: none;
+    stroke: var(--text-tertiary);
+    stroke-width: 1.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .popped-out h2 {
+    margin: 4px 0 0;
+    font-size: 16px;
+    color: var(--text);
+  }
+  .popped-out p {
+    margin: 0;
+    font-size: 13px;
+    max-width: 300px;
+  }
+  .popped-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .action.primary {
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    border-color: var(--accent);
+  }
   .editor-toolbar {
     display: flex;
     align-items: center;
@@ -254,6 +403,10 @@
   .editor-body {
     flex: 1;
     min-height: 0;
+  }
+  .board-body {
+    position: relative;
+    border-top: 1px solid var(--border);
   }
   .status-bar {
     display: flex;

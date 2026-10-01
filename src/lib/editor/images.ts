@@ -55,6 +55,58 @@ export function attachmentSrc(
   return base ? convert(`${base}/${name}`) : null;
 }
 
+/**
+ * A local filesystem path this reference points at, or null when it is not a
+ * local file (stored attachment, remote URL, or data URL). Used for the "link
+ * the original file" image mode: an absolute POSIX path, a `file://` URL, or a
+ * Windows drive path all resolve; everything else does not.
+ */
+export function localFilePath(url: string): string | null {
+  const u = url.trim();
+  if (u.startsWith(ATTACHMENT_PREFIX)) return null;
+  if (/^https?:\/\//i.test(u) || u.startsWith("data:")) return null;
+  if (u.startsWith("file://")) {
+    try {
+      return decodeURIComponent(new URL(u).pathname);
+    } catch {
+      return null;
+    }
+  }
+  if (u.startsWith("/")) return u;
+  if (/^[a-zA-Z]:[\\/]/.test(u)) return u;
+  return null;
+}
+
+/**
+ * Resolve any renderable image reference to a webview-loadable src, or null
+ * when it can't render inline. Handles both stored attachments (relative,
+ * needs the base dir) and linked local files (absolute, rendered through the
+ * asset protocol once the path has been allowed into the asset scope).
+ */
+export function imageSrc(
+  url: string,
+  base: string | null,
+  convert: (path: string) => string,
+): string | null {
+  const att = attachmentSrc(url, base, convert);
+  if (att) return att;
+  const local = localFilePath(url);
+  return local ? convert(local) : null;
+}
+
+/** Absolute local paths of every linked (non-attachment) image in a body, so
+ *  the caller can allow them into the asset scope before they render. */
+export function linkedImagePaths(body: string): string[] {
+  const out = new Set<string>();
+  const re = /!\[[^\]]*\]\(([^)\s]+)\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body)) !== null) {
+    const p = localFilePath(m[1]);
+    if (p) out.add(p);
+  }
+  return [...out];
+}
+
 /** File extension for a pasteable image MIME type, or null to skip the file. */
 export function extForMime(mime: string): string | null {
   switch (mime) {

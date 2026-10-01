@@ -1,11 +1,11 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "InstantNotes",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "identifier": "com.instantnotes.app",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://localhost:1422",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../build"
   },

@@ -1,12 +1,17 @@
 <script lang="ts">
   import { library } from "$lib/stores/library.svelte";
+  import { agents } from "$lib/stores/agents.svelte";
+  import { clientLabel, describeActivity } from "$lib/agent-activity";
   import { ApiError, deleteTag, updateTag } from "$lib/api/client";
-  import { friendlyMessage } from "$lib/errors";
+  import { friendlyMessage, GENERIC_MESSAGE } from "$lib/errors";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
   import SidebarEntityRow from "$lib/components/SidebarEntityRow.svelte";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
   import { normalizeTagInput } from "$lib/tag-name";
+  import { updateSpace } from "$lib/stores/update-space";
+  import { UPDATE_SPACE_ID, UPDATE_SPACE_NAME } from "$lib/update/space";
+  import { LICENSE_SPACE_NAME, licenseSpace } from "$lib/stores/license-space.svelte";
   import type { TagWithCount, WorkspaceWithCount } from "$lib/api/types";
 
   let newSpaceInput = $state("");
@@ -45,7 +50,7 @@
       return { ok: true };
     } catch (e) {
       const message =
-        e instanceof ApiError ? friendlyMessage(e.code, e.message) : friendlyMessage("");
+        e instanceof ApiError ? friendlyMessage(e.code, e.message) : GENERIC_MESSAGE;
       return { ok: false, message };
     }
   }
@@ -73,7 +78,7 @@
       // The refresh below re-syncs the list, but the user completed a
       // two-step confirm; a failure must say so rather than vanish.
       const message =
-        e instanceof ApiError ? friendlyMessage(e.code, e.message) : friendlyMessage("");
+        e instanceof ApiError ? friendlyMessage(e.code, e.message) : GENERIC_MESSAGE;
       toasts.show(`Couldn't delete #${tag.name}. ${message}`);
     }
     await Promise.all([library.refreshTags(), library.refresh()]);
@@ -83,14 +88,57 @@
 </script>
 
 <aside class="sidebar">
+  {#if licenseSpace.locked}
+    <!-- Until the license and EULA are agreed, the License Space is the one
+         place to go; everything below is shown but out of reach. -->
+    <nav class="license-nav">
+      <SidebarEntityRow
+        name={LICENSE_SPACE_NAME}
+        count={licenseSpace.documents.length}
+        normalize={(s) => s.trim()}
+        noun="Space"
+        active
+        editing={false}
+        readonly
+        onSelect={() => {}}
+        onStartRename={() => {}}
+        onRename={async () => ({ ok: true as const })}
+        onDoneRename={() => {}}
+        onMenu={() => {}}
+      />
+    </nav>
+  {/if}
+  <div class="lockable" class:locked={licenseSpace.locked} inert={licenseSpace.locked}>
   <nav class="sections">
     <button
       class="nav-item"
-      class:active={!library.activeWorkspaceId && !library.activeTagId && !library.revisitMode}
+      class:active={!library.activeWorkspaceId &&
+        !library.activeTagId &&
+        !library.revisitMode &&
+        !library.graphMode}
       onclick={() => library.selectWorkspace(null)}
     >
       All Notes
     </button>
+    <!-- An agent at work: who, and what, in one line that exists only while
+         it is happening. The rows it touches light up on their own; this
+         says in words what the light means. Opens the note it names. -->
+    <div class="agent-live" role="status" aria-live="polite">
+      {#if agents.current}
+        {@const act = agents.current}
+        <button
+          class="agent-line"
+          data-kind={act.kind}
+          title="An agent connected to InstantNotes. Settings > Agents controls what it may do."
+          onclick={() => act.noteIds.length === 1 && void library.select(act.noteIds[0])}
+        >
+          <span class="agent-dot" aria-hidden="true"></span>
+          <span class="agent-text"
+            ><strong>{clientLabel(act.client)}</strong> {describeActivity(act)}</span
+          >
+        </button>
+      {/if}
+    </div>
     <!-- Open loops: capture-born notes never opened since. Hidden at zero
          (useful by default, invisible when there's nothing to do), but held
          visible while active so the row doesn't vanish mid burn-down. -->
@@ -105,9 +153,41 @@
         <span class="nav-count">{library.revisitCount}</span>
       </button>
     {/if}
+    <button
+      class="nav-item"
+      class:active={library.graphMode}
+      title="Your notes, tags, and Spaces, and how they connect"
+      onclick={() => library.selectGraph()}
+    >
+      Graph
+    </button>
   </nav>
   <div class="tags-header" bind:this={spacesHeader} tabindex="-1">Spaces</div>
   <nav class="workspaces">
+    <!-- The update notification, first: the same row as any Space, with a green
+         asterisk and no management gestures. It exists only while an update is
+         offered, so it is rendered rather than listed. -->
+    {#if updateSpace.visible}
+      <SidebarEntityRow
+        name={UPDATE_SPACE_NAME}
+        count={updateSpace.notes.length}
+        normalize={(s) => s.trim()}
+        noun="Space"
+        active={library.activeWorkspaceId === UPDATE_SPACE_ID}
+        editing={false}
+        readonly
+        onSelect={() =>
+          library.selectWorkspace(
+            library.activeWorkspaceId === UPDATE_SPACE_ID ? null : UPDATE_SPACE_ID,
+          )}
+        onStartRename={() => {}}
+        onRename={async () => ({ ok: true as const })}
+        onDoneRename={() => {}}
+        onMenu={() => {}}
+      >
+        {#snippet suffix()}<span class="update-star" aria-hidden="true">*</span>{/snippet}
+      </SidebarEntityRow>
+    {/if}
     {#each library.workspaces as ws (ws.id)}
       <SidebarEntityRow
         name={ws.name}
@@ -115,6 +195,7 @@
         normalize={(s) => s.trim()}
         noun="Space"
         active={library.activeWorkspaceId === ws.id}
+        agent={agents.spaceActive(ws.name)}
         editing={renamingSpaceId === ws.id}
         onSelect={() =>
           library.selectWorkspace(library.activeWorkspaceId === ws.id ? null : ws.id)}
@@ -144,6 +225,7 @@
         normalize={normalizeTagInput}
         noun="Tag"
         active={library.activeTagId === tag.id}
+        agent={agents.tagActive(tag.name)}
         editing={renamingTagId === tag.id}
         onSelect={() =>
           library.setTagFilter(library.activeTagId === tag.id ? null : tag.id)}
@@ -156,6 +238,7 @@
       <div class="empty-hint">Type #tag in a note</div>
     {/each}
   </nav>
+  </div>
 </aside>
 
 {#if spaceMenu}
@@ -193,6 +276,16 @@
     min-height: 0;
     overflow-y: auto;
   }
+  /* A wrapper for the lock only; it adds no box of its own. */
+  .lockable {
+    display: contents;
+  }
+  .lockable.locked > * {
+    opacity: 0.4;
+  }
+  .license-nav {
+    margin-bottom: 8px;
+  }
   .nav-item {
     display: flex;
     justify-content: space-between;
@@ -209,6 +302,62 @@
     background: var(--accent-soft);
     color: var(--accent-text);
     font-weight: 500;
+  }
+  .agent-line {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    width: 100%;
+    margin: 2px 0 4px;
+    padding: 4px 10px;
+    border-radius: var(--radius);
+    text-align: left;
+    font-size: 12px;
+    line-height: 1.35;
+    color: var(--text-secondary);
+    animation: agent-line-in 180ms ease-out;
+  }
+  .agent-line:hover {
+    background: var(--bg-hover);
+  }
+  .agent-line strong {
+    color: var(--accent-text);
+    font-weight: 600;
+  }
+  .agent-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .agent-dot {
+    flex: none;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    transform: translateY(-1px);
+    animation: agent-dot 1.2s ease-in-out infinite;
+  }
+  .agent-line[data-kind="write"] .agent-dot {
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  @keyframes agent-line-in {
+    from {
+      opacity: 0;
+      transform: translateY(-2px);
+    }
+  }
+  @keyframes agent-dot {
+    50% {
+      opacity: 0.35;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .agent-line,
+    .agent-dot {
+      animation: none;
+    }
   }
   .tags-header {
     margin: 16px 10px 4px;
@@ -232,6 +381,12 @@
     padding: 4px 10px;
     color: var(--text-tertiary);
     font-size: 12px;
+  }
+  /* The notification's invitation: a saturated go-green, not the theme accent,
+     so it reads as "something is ready" in every theme. */
+  .update-star {
+    color: #2ecc71;
+    font-weight: 700;
   }
 
   /* spaces */

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, fireEvent, cleanup, waitFor } from "@testing-library/svelte";
+import { createRawSnippet } from "svelte";
 import SidebarEntityRow from "./SidebarEntityRow.svelte";
 
 afterEach(cleanup);
@@ -69,5 +70,28 @@ describe("SidebarEntityRow", () => {
     await fireEvent.keyDown(input, { key: "Escape" });
     expect(props.onRename).not.toHaveBeenCalled();
     await waitFor(() => expect(props.onDoneRename).toHaveBeenCalledTimes(1));
+  });
+
+  it("renders a suffix snippet right after the name", () => {
+    const suffix = createRawSnippet(() => ({
+      render: () => "<span>*</span>",
+    }));
+    const { getByRole } = render(SidebarEntityRow, base({ suffix }));
+    expect(getByRole("button").textContent).toContain("Projects*");
+  });
+
+  it("a read-only row still selects but ignores rename and menu gestures", async () => {
+    const props = base({ readonly: true });
+    const { getByRole } = render(SidebarEntityRow, props);
+    const button = getByRole("button");
+
+    expect(button.getAttribute("title")).toBe("3 notes");
+    await fireEvent.dblClick(button);
+    await fireEvent.contextMenu(button);
+    expect(props.onStartRename).not.toHaveBeenCalled();
+    expect(props.onMenu).not.toHaveBeenCalled();
+
+    await fireEvent.click(button);
+    expect(props.onSelect).toHaveBeenCalledTimes(1);
   });
 });

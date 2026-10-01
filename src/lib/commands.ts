@@ -7,9 +7,11 @@ import { library } from "$lib/stores/library.svelte";
 import { sidebar } from "$lib/stores/sidebar.svelte";
 import { theme } from "$lib/stores/theme.svelte";
 import { contexting } from "$lib/stores/contexting.svelte";
+import { confirmConvertToWhiteboard } from "$lib/whiteboard/convert";
 import { exportTheme, importTheme } from "$lib/themes/share";
 import { BODY_FONTS } from "$lib/themes/fonts";
-import { modKey } from "$lib/platform";
+import { modKey, shiftKey } from "$lib/platform";
+import { isVirtualNoteId } from "$lib/update/space";
 import type { Command } from "$lib/command-filter";
 
 export type { Command } from "$lib/command-filter";
@@ -65,6 +67,19 @@ export function buildCommands(): Command[] {
   const commands: Command[] = [
     { id: "note.new", title: "New note", group: "Notes", shortcut: `${modKey}N`, run: () => library.newNote() },
     {
+      id: "note.newWhiteboard",
+      title: "New whiteboard",
+      group: "Notes",
+      shortcut: `${modKey}${shiftKey}N`,
+      run: () => library.newWhiteboard(),
+    },
+    {
+      id: "view.graph",
+      title: "Show graph",
+      group: "View",
+      run: () => library.selectGraph(),
+    },
+    {
       id: "view.sidebar",
       title: sidebar.collapsed ? "Show sidebar" : "Hide sidebar",
       group: "View",
@@ -111,6 +126,27 @@ export function buildCommands(): Command[] {
         },
       },
     );
+    if (!n.isDeleted && !isVirtualNoteId(n.id)) {
+      const out = library.isSticky(n.id);
+      commands.push({
+        id: "note.sticky",
+        title: out ? "Bring back from sticky" : "Open as sticky",
+        group: "Notes",
+        prefix: notePrefix,
+        shortcut: `${modKey}${shiftKey}O`,
+        run: () => library.toggleSticky(),
+      });
+    }
+    // One-way, so only documents offer it, and it confirms first.
+    if (!n.isDeleted && n.contentKind !== "whiteboard" && !library.isSticky(n.id)) {
+      commands.push({
+        id: "note.toWhiteboard",
+        title: "Turn into whiteboard…",
+        group: "Notes",
+        prefix: notePrefix,
+        run: () => void confirmConvertToWhiteboard(),
+      });
+    }
   }
 
   commands.push(

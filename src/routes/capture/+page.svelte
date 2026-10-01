@@ -5,6 +5,7 @@
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { EVENTS } from "$lib/api/events";
   import {
     captureInputReady,
     createNote,
@@ -17,6 +18,8 @@
   import { debounce } from "$lib/debounce";
   import { modKey } from "$lib/platform";
   import { theme } from "$lib/stores/theme.svelte";
+  import { agreements } from "$lib/agreements.svelte";
+  import LicenseLocked from "$lib/components/LicenseLocked.svelte";
 
   const DRAFT_KEY = "capture.draft";
   // One visible beat of "Saved" before the panel hides, so success reads as more
@@ -27,7 +30,8 @@
   let saving = $state(false);
   let saved = $state(false);
   let errorMsg = $state<string | null>(null);
-  let textarea: HTMLTextAreaElement;
+  // Absent while the license gate stands in for it (LicenseLocked).
+  let textarea = $state<HTMLTextAreaElement>();
   // Set while we hide the panel ourselves so the blur that hiding triggers does
   // not fire a second dismiss; cleared when focus returns on the next reveal.
   let hiding = false;
@@ -46,7 +50,7 @@
   onMount(() => {
     void theme.init();
     void restoreDraft();
-    const unlisten = listen("capture:shown", () => {
+    const unlisten = listen(EVENTS.CAPTURE_SHOWN, () => {
       // Re-read the theme: it may have changed in the library while hidden.
       void theme.init();
       void restoreDraft();
@@ -69,8 +73,8 @@
     });
     // Quit handshake: push a debounced draft write through before the process
     // exits, so the draft is not 300ms stale on the next launch. Only the
-    // library window answers with quit_app.
-    const unlistenQuit = listen("app:quit-requested", () => {
+    // library window and stickies answer with quit_app.
+    const unlistenQuit = listen(EVENTS.APP_QUIT_REQUESTED, () => {
       persistDraft.flush();
     });
     textarea?.focus();
@@ -155,6 +159,9 @@
 </script>
 
 <div class="panel" data-tauri-drag-region>
+  {#if !agreements.done}
+    <LicenseLocked />
+  {:else}
   <textarea
     bind:this={textarea}
     bind:value={text}
@@ -184,6 +191,7 @@
       {/if}
     </div>
   </div>
+  {/if}
 </div>
 
 <style>

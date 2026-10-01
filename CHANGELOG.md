@@ -2,12 +2,77 @@
 
 All notable changes to InstantNotes are recorded here. The section for each
 release becomes the GitHub release notes and the "What's new" text shown by the
-in-app updater, so write it for users. Newest first.
+in-app updater, written for users. Newest first.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.9.0] - 2026-09-30
+
+### Added
+- License and EULA: on first launch they open as two notes in a License Space;
+  agree to each to start. A new version of either asks again.
+- Sticky notes (beta): pop any note or whiteboard out of the library into its own
+  small window and put it anywhere. Or Pop Out as Sticky (⌘⇧O).
+- Import Apple Stickies (Mac): Settings > Import. Colors, formatting, images,
+  and dates come along; importing again brings in only new ones.
+- Connect agents (Claude Code, Codex, Cursor) over MCP: Settings > Agents. Off
+  until you turn it on; read only or read and write.
+- See an agent at work: what it reads or edits lights up as it happens. If you
+  are typing when it edits, your typing wins and you can restore theirs.
+- Change Settings front page to settings dashboard + release notes reference
+- Configure image settings: Modify how images behave.
+- Added importing images.
+- Configure UI settings: Show exact save time
+- Contexting can rewrite images to their absolute path (new default)
+- Send feedback from app (Github Issue) (beta)
+- Vault: InstantNotes mirrors your notes as plain files in a folder you choose,
+  organized by Space. Open them in any editor, on any device, even with the app
+  closed. Edits sync within seconds; attachments are included and trashed notes
+  go to the vault's trash folder. Use a synced folder (iCloud, Dropbox) to reach
+  them elsewhere. "Check vault" verifies every file matches its note.
+  Note: syncing is one-way for now, so keep editing in the app.
+  "Export a copy" is still available for one-off backups.
+- Whiteboards (beta): freeform canvases for boxes, arrows, frames, and sketches.
+  Create one from the chevron next to + in the note list, with Cmd+Shift+N, or
+  from the File menu. The command palette can convert an existing note; its text
+  moves onto the board. Board text is searchable and #tags still apply. Boards
+  save as standard .excalidraw files, in the vault and on export.
+- Graph: a new sidebar view of how your notes, tags, and Spaces connect. It opens
+  centered on the current note. Hover to highlight connections; click to open a
+  note, filter by tag, or enter a Space.
+- Changed update dialog into custom notification: a special "Update" Space.
+
+### Fixed
+- Images no longer pile up forever: deleting a note for good also deletes the
+  images only it used. Settings > Images shows how many images no note uses any
+  more and can remove them. Images used by notes in the Trash or the Archive
+  are always kept.
+- A stray caret no longer lingers in notes you switch between: each note now
+  loads with its own clean editing state, and undo no longer reaches back into
+  the previously open note.
+- Links set to open with Cmd/Ctrl+Click now show the pointer cursor while the
+  modifier is held, so it reads as clickable.
+- Opening a notes library written by a newer version of InstantNotes no longer
+  crashes the app on launch. It now shows a message telling you to update
+  instead.
+- A library touched by a pre-release build with the whiteboard now opens
+  instead of being refused as written by a newer version, and its boards open
+  as whiteboards again.
+- Linux: fixed a blank or corrupted window on many systems, caused by the
+  WebKit compositor. The README now lists Linux prerequisites and Arch/CachyOS
+  build notes.
+- The release script guards its Windows path check so cutting a release
+  no longer crashes there.
+- The update dialog's "Remind me later" options are gone: an update is now a
+  place you can simply ignore rather than a reminder you have to silence.
+- Note titles skip bold/italic markers and leading images.
+
+### Changed
+- A new app icon, New menu bar icon.
+- Under the hood: error codes and event names each live in one place per side.
 
 ## [0.8.0] - 2026-07-11
 

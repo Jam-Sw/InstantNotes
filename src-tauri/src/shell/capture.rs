@@ -59,10 +59,10 @@ fn median_ms(samples: &[u64]) -> Option<u64> {
 /// never double-record; returns the measured reveal-to-ready milliseconds.
 #[tauri::command]
 pub fn capture_input_ready(metrics: State<'_, CaptureMetrics>) -> CmdResult<Option<u64>> {
-    let mut inner = metrics.inner.lock().map_err(|_| CmdError {
-        code: "STORAGE_ERROR".into(),
-        message: "internal state lock poisoned".into(),
-    })?;
+    let mut inner = metrics
+        .inner
+        .lock()
+        .map_err(|_| CmdError::storage("internal state lock poisoned"))?;
     let Some(shown) = inner.shown_at.take() else {
         return Ok(None);
     };
@@ -73,10 +73,10 @@ pub fn capture_input_ready(metrics: State<'_, CaptureMetrics>) -> CmdResult<Opti
 
 #[tauri::command]
 pub fn get_capture_latency(metrics: State<'_, CaptureMetrics>) -> CmdResult<CaptureLatencySummary> {
-    let inner = metrics.inner.lock().map_err(|_| CmdError {
-        code: "STORAGE_ERROR".into(),
-        message: "internal state lock poisoned".into(),
-    })?;
+    let inner = metrics
+        .inner
+        .lock()
+        .map_err(|_| CmdError::storage("internal state lock poisoned"))?;
     Ok(CaptureLatencySummary {
         last_ms: inner.samples_ms.last().copied(),
         median_ms: median_ms(&inner.samples_ms),

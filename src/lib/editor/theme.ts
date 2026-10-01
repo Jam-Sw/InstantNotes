@@ -55,6 +55,12 @@ export const kernelTheme = EditorView.baseTheme({
   ".cm-link-clickable": {
     cursor: "pointer",
   },
+  // While a Cmd/Ctrl modifier is held, any link reads as clickable (a
+  // modifier-click always opens). This is the cursor feedback for the
+  // "open with Cmd/Ctrl+Click" mode, which otherwise gave none.
+  ".cm-mod-held .cm-link-target": {
+    cursor: "pointer",
+  },
   ".cm-link-ul-always": {
     textDecoration: "underline",
   },
@@ -87,10 +93,11 @@ export const kernelTheme = EditorView.baseTheme({
     textDecoration: "line-through",
     color: "var(--text-tertiary)",
   },
-  // Images
+  // Images. Max height is a user setting (Images settings page) surfaced as a
+  // CSS var on the editor container; 420px is the default when unset.
   ".cm-image-preview": {
     maxWidth: "100%",
-    maxHeight: "420px",
+    maxHeight: "var(--image-max-height, 420px)",
     borderRadius: "6px",
     verticalAlign: "text-bottom",
   },

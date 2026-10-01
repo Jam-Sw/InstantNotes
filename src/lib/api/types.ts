@@ -1,6 +1,12 @@
 // IPC contract types shared by the Svelte UI and the Rust desktop layer.
 // Field names are camelCase over the wire (serde).
 
+import type { ErrorCode } from "./error-codes";
+import type { FeedbackCategory } from "$lib/feedback";
+
+/** A Markdown document, or a whiteboard whose text is kept in `body`. */
+export type ContentKind = "document" | "whiteboard";
+
 export interface Note {
   id: string;
   title: string;
@@ -12,7 +18,15 @@ export interface Note {
   isArchived: boolean;
   isDeleted: boolean;
   deletedAt?: string | null;
+  contentKind: ContentKind;
+  /** A whiteboard's canvas (JSON). Only `getNote` carries it: list rows and
+   *  `updateNote`'s reply leave it out, since a board can hold images. */
+  surfaceData?: string | null;
 }
+
+/** Where a sticky sits: above every window, as an ordinary window, or below
+ *  every window like a desktop widget. */
+export type StickyLevel = "float" | "normal" | "desktop";
 
 export interface Tag {
   id: string;
@@ -48,6 +62,12 @@ export interface UpdateNotePatch {
   body?: string;
   isPinned?: boolean;
   isArchived?: boolean;
+  /** Only ever "whiteboard": converting is one-way. */
+  contentKind?: ContentKind;
+  /** A whiteboard's canvas; rejected on a document. */
+  surfaceData?: string;
+  /** Apply only if the note's updatedAt still equals this; CONFLICT if not. */
+  expectedUpdatedAt?: string;
 }
 
 export interface NoteFilter {
@@ -76,7 +96,7 @@ export interface SearchResult {
 }
 
 export interface AppErrorPayload {
-  code: string;
+  code: ErrorCode;
   message: string;
 }
 
@@ -85,4 +105,95 @@ export interface CaptureLatencySummary {
   lastMs: number | null;
   medianMs: number | null;
   samples: number;
+}
+
+/** Aggregate library + attachment counts for the Settings dashboard. */
+export interface DashboardStats {
+  notesTotal: number;
+  notesActive: number;
+  notesPinned: number;
+  notesArchived: number;
+  notesTrashed: number;
+  tags: number;
+  spaces: number;
+  attachmentsCount: number;
+  attachmentsBytes: number;
+}
+
+/** One in-app feedback submission, persisted to the local log by the backend. */
+export interface FeedbackInput {
+  category: FeedbackCategory;
+  message: string;
+  appVersion?: string | null;
+  /** Opt-in diagnostics snapshot the user agreed to attach. */
+  diagnostics?: unknown;
+}
+
+/** The live vault mirror (API.md §12). `path` is null when mirroring is off. */
+export interface VaultStatus {
+  path: string | null;
+  /** Notes changed since their file was last written. */
+  pending: number;
+  lastError: string | null;
+  lastFlushedAt: string | null;
+}
+
+/** A read-only comparison of the vault folder with the library. Paths are
+ *  relative to the vault folder. */
+export interface VaultReport {
+  checked: number;
+  /** Notes whose file is gone. */
+  missing: string[];
+  /** Files that no longer match their note (edited outside the app). */
+  diverged: string[];
+  /** Markdown files in the folder that are not notes the mirror wrote. */
+  orphans: string[];
+  pending: number;
+  manifestOk: boolean;
+}
+
+/** One Apple Sticky as Settings > Import previews it (API.md §16). */
+export interface StickyPreview {
+  id: string;
+  /** The title the note will get. */
+  title: string;
+  /** The start of the note's Markdown. */
+  text: string;
+  /** The sticky's paper, `#rrggbb`, when Stickies recorded it. */
+  color: string | null;
+  createdAt: string;
+  updatedAt: string;
+  images: number;
+  /** Imported before, and its note still exists. */
+  imported: boolean;
+}
+
+/** A Stickies folder, read. `readable` is false when macOS refused access. */
+export interface StickiesScan {
+  folder: string;
+  readable: boolean;
+  stickies: StickyPreview[];
+}
+
+export interface ImportOutcome {
+  imported: number;
+  /** Imported before, and their note still exists. */
+  skipped: number;
+  /** The Space they were filed in, when one was named and any landed. */
+  workspaceId: string | null;
+}
+
+/** What an attachment cleanup removed, or would remove. */
+export interface AttachmentCleanup {
+  count: number;
+  bytes: number;
+}
+
+/** The library as a graph: live notes, the tags and Spaces they carry, and
+ *  one link per membership. Derived on every read; nothing is stored. */
+export interface LibraryGraph {
+  notes: { id: string; title: string; contentKind: ContentKind; isPinned: boolean }[];
+  tags: { id: string; name: string; color?: string | null }[];
+  spaces: { id: string; name: string }[];
+  links: { noteId: string; targetId: string; kind: "tag" | "space" }[];
 }

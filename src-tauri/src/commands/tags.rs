@@ -8,17 +8,6 @@ pub fn list_tags(state: State<'_, AppState>) -> CmdResult<Vec<TagWithCount>> {
 }
 
 #[tauri::command(async)]
-pub fn get_or_create_tag(
-    state: State<'_, AppState>,
-    app: AppHandle,
-    name: String,
-) -> CmdResult<Tag> {
-    let tag = locked(&state)?.get_or_create_tag(&name)?;
-    emit_tags_changed(&app);
-    Ok(tag)
-}
-
-#[tauri::command(async)]
 pub fn update_tag(
     state: State<'_, AppState>,
     app: AppHandle,

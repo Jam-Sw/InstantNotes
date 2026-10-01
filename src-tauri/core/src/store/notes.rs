@@ -2,35 +2,84 @@
 
 use super::*;
 
+/// A note about to be written by `insert_note`.
+pub(super) struct NewNote<'a> {
+    pub body: &'a str,
+    /// Set explicitly; otherwise derived from the body.
+    pub title: Option<String>,
+    pub created_at: &'a str,
+    pub updated_at: &'a str,
+    pub last_opened_at: Option<&'a str>,
+}
+
+/// The one place a note row is inserted, inside the caller's transaction:
+/// its title (explicit, or derived from the body) and its inline `#tags`.
+/// Returns the new note's id.
+pub(super) fn insert_note(conn: &Connection, note: NewNote<'_>) -> Result<String> {
+    let explicit_title = note
+        .title
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty());
+    let title_is_auto = explicit_title.is_none();
+    let title = explicit_title.unwrap_or_else(|| domain::derive_title(note.body));
+    let id = new_id();
+    conn.execute(
+        "INSERT INTO notes (id, title, title_is_auto, body, created_at, updated_at, \
+         last_opened_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            id,
+            title,
+            i64::from(title_is_auto),
+            note.body,
+            note.created_at,
+            note.updated_at,
+            note.last_opened_at
+        ],
+    )?;
+    for name in domain::extract_inline_tags(note.body) {
+        let tag = tag_get_or_create(conn, &name)?;
+        attach_tag(conn, &id, &tag.id, "inline")?;
+    }
+    Ok(id)
+}
+
 impl Store {
     pub fn create_note(&mut self, input: CreateNoteInput) -> Result<Note> {
         let body = input.body.unwrap_or_default();
-        let explicit_title = input
-            .title
-            .map(|t| t.trim().to_string())
-            .filter(|t| !t.is_empty());
-        let title_is_auto = explicit_title.is_none();
-        let title = explicit_title.unwrap_or_else(|| domain::derive_title(&body));
-        let inline_tags = domain::extract_inline_tags(&body);
         let now = now_iso();
-        let id = new_id();
-
         let tx = self.conn.transaction()?;
-        tx.execute(
-            "INSERT INTO notes (id, title, title_is_auto, body, created_at, updated_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
-            params![id, title, i64::from(title_is_auto), body, now],
+        let id = insert_note(
+            &tx,
+            NewNote {
+                body: &body,
+                title: input.title,
+                created_at: &now,
+                updated_at: &now,
+                last_opened_at: None,
+            },
         )?;
-        for name in &inline_tags {
-            let tag = tag_get_or_create(&tx, name)?;
-            attach_tag(&tx, &id, &tag.id, "inline")?;
-        }
         for name in &input.tags {
             let tag = tag_get_or_create(&tx, name)?;
             attach_tag(&tx, &id, &tag.id, "manual")?;
         }
         tx.commit()?;
         self.fetch_note(&id)
+    }
+
+    /// Whether the note's title is still auto-derived from its body rather
+    /// than set explicitly. Not on `Note` itself: IPC callers never need
+    /// it; the vault serializer does (design.md §3.2: frontmatter omits
+    /// `title` exactly when this is true).
+    pub fn title_is_auto(&self, id: &str) -> Result<bool> {
+        self.conn
+            .query_row(
+                "SELECT title_is_auto FROM notes WHERE id = ?1",
+                params![id],
+                |r| r.get::<_, i64>(0),
+            )
+            .optional()?
+            .map(|v| v != 0)
+            .ok_or_else(|| AppError::NotFound(format!("note {id} not found")))
     }
 
     /// Fetch a note. When `touch` is true, updates `last_opened_at`.
@@ -53,8 +102,33 @@ impl Store {
             && patch.body.is_none()
             && patch.is_pinned.is_none()
             && patch.is_archived.is_none()
+            && patch.content_kind.is_none()
+            && patch.surface_data.is_none()
         {
             return Ok(existing);
+        }
+
+        // Converting to a whiteboard is one-way, and only a whiteboard has a
+        // canvas to hold.
+        let kind = match patch.content_kind.as_deref() {
+            None => existing.content_kind.as_str(),
+            Some(k @ (CONTENT_KIND_DOCUMENT | CONTENT_KIND_WHITEBOARD)) => k,
+            Some(other) => {
+                return Err(AppError::Validation(format!(
+                    "content kind must be {CONTENT_KIND_DOCUMENT} or {CONTENT_KIND_WHITEBOARD}, got {other}"
+                )))
+            }
+        };
+        if existing.content_kind == CONTENT_KIND_WHITEBOARD && kind != CONTENT_KIND_WHITEBOARD {
+            return Err(AppError::Validation(
+                "a whiteboard cannot be turned back into a document".into(),
+            ));
+        }
+        let is_board = kind == CONTENT_KIND_WHITEBOARD;
+        if patch.surface_data.is_some() && !is_board {
+            return Err(AppError::Validation(
+                "only a whiteboard can hold a canvas".into(),
+            ));
         }
         let title_is_auto: bool = self
             .conn
@@ -70,14 +144,33 @@ impl Store {
             .title
             .map(|t| t.trim().to_string())
             .filter(|t| !t.is_empty());
+        // A whiteboard's body is the text on its canvas, rewritten by every
+        // save, so its title stops following the body the moment it converts.
         let (new_title, new_title_is_auto) = match (&explicit_title, &patch.body) {
             (Some(t), _) => (Some(t.clone()), Some(false)),
-            (None, Some(body)) if title_is_auto => (Some(domain::derive_title(body)), None),
+            (None, Some(body)) if title_is_auto && !is_board => {
+                (Some(domain::derive_title(body)), None)
+            }
+            (None, _) if title_is_auto && is_board => (None, Some(false)),
             _ => (None, None),
         };
 
         let now = now_iso();
         let tx = self.conn.transaction()?;
+        // Checked inside the (immediate) transaction, so no other writer can
+        // land between the check and the update.
+        if let Some(expected) = &patch.expected_updated_at {
+            let current: String = tx.query_row(
+                "SELECT updated_at FROM notes WHERE id = ?1",
+                params![id],
+                |r| r.get(0),
+            )?;
+            if &current != expected {
+                return Err(AppError::Conflict(format!(
+                    "note {id} changed since it was read"
+                )));
+            }
+        }
         tx.execute(
             "UPDATE notes SET \
                title = COALESCE(?1, title), \
@@ -85,14 +178,18 @@ impl Store {
                body = COALESCE(?3, body), \
                is_pinned = COALESCE(?4, is_pinned), \
                is_archived = COALESCE(?5, is_archived), \
-               updated_at = ?6 \
-             WHERE id = ?7",
+               content_kind = ?6, \
+               surface_data = COALESCE(?7, surface_data), \
+               updated_at = ?8 \
+             WHERE id = ?9",
             params![
                 new_title,
                 new_title_is_auto.map(i64::from),
                 patch.body.as_deref(),
                 patch.is_pinned.map(i64::from),
                 patch.is_archived.map(i64::from),
+                kind,
+                patch.surface_data.as_deref(),
                 now,
                 id
             ],
@@ -239,11 +336,13 @@ impl Store {
         let offset = filter.offset.unwrap_or(0).max(0);
 
         // Pinned notes float to the top of every live list; trash keeps
-        // plain recency order.
+        // plain recency order. The id is a final tiebreaker so rows equal on
+        // the sort column keep one fixed order, which LIMIT/OFFSET paging
+        // needs to never skip or repeat a row across a page boundary.
         let pinned_first = if deleted { "" } else { "is_pinned DESC, " };
         let sql = format!(
-            "SELECT {NOTE_COLUMNS} FROM notes WHERE {} \
-             ORDER BY {pinned_first}{order_column} {order_dir} \
+            "SELECT {LIST_COLUMNS} FROM notes WHERE {} \
+             ORDER BY {pinned_first}{order_column} {order_dir}, id ASC \
              LIMIT {limit} OFFSET {offset}",
             conditions.join(" AND ")
         );

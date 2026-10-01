@@ -1,8 +1,15 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import { EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { ensureSyntaxTree } from "@codemirror/language";
-import { linkAt, normalizeHref, linkMarkClass, DEFAULT_LINK_PREFS } from "./links";
+import {
+  linkAt,
+  normalizeHref,
+  linkMarkClass,
+  modKeyCursor,
+  DEFAULT_LINK_PREFS,
+} from "./links";
 
 // Same language setup as the editor (GFM base) so autolinks and bare URLs
 // parse the way they do in the app.
@@ -105,5 +112,63 @@ describe("linkAt", () => {
   it("returns null for links with unsafe schemes", () => {
     const doc = "[bad](javascript:alert(1))";
     expect(linkAt(stateOf(doc), 2)).toBeNull();
+  });
+});
+
+// Cursor feedback across the three link-opening modes. Mode 1 (preview +
+// "click") gets its pointer from linkMarkClass's cm-link-clickable, asserted
+// above ("defaults: ... clickable in preview"). Modes 2 (preview +
+// "modclick") and 3 (edit mode, any openWith) get theirs from cm-mod-held
+// while the modifier is held — the CSS pairing is `.cm-mod-held
+// .cm-link-target { cursor: pointer }` (editor/theme.ts), so this only needs
+// to prove the class itself toggles correctly; which mode is active doesn't
+// change ModKeyCursor's behavior, since it listens at the window level
+// regardless of preview/openWith.
+describe("modKeyCursor", () => {
+  function mountView(): EditorView {
+    return new EditorView({
+      state: EditorState.create({ extensions: [modKeyCursor()] }),
+      parent: document.body,
+    });
+  }
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("adds cm-mod-held while Cmd or Ctrl is held, and removes it on release", () => {
+    const view = mountView();
+    expect(view.dom.classList.contains("cm-mod-held")).toBe(false);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Meta", metaKey: true }));
+    expect(view.dom.classList.contains("cm-mod-held")).toBe(true);
+
+    window.dispatchEvent(new KeyboardEvent("keyup", { key: "Meta", metaKey: false }));
+    expect(view.dom.classList.contains("cm-mod-held")).toBe(false);
+    view.destroy();
+  });
+
+  it("also responds to Ctrl, so the feedback is correct on every platform", () => {
+    const view = mountView();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Control", ctrlKey: true }));
+    expect(view.dom.classList.contains("cm-mod-held")).toBe(true);
+    view.destroy();
+  });
+
+  it("clears the held state on window blur, so it can't get stuck on", () => {
+    const view = mountView();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Meta", metaKey: true }));
+    expect(view.dom.classList.contains("cm-mod-held")).toBe(true);
+
+    window.dispatchEvent(new FocusEvent("blur"));
+    expect(view.dom.classList.contains("cm-mod-held")).toBe(false);
+    view.destroy();
+  });
+
+  it("removes the class on destroy, so a stale modifier state can't leak into the next note", () => {
+    const view = mountView();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Meta", metaKey: true }));
+    view.destroy();
+    expect(view.dom.classList.contains("cm-mod-held")).toBe(false);
   });
 });

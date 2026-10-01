@@ -1,0 +1,78 @@
+//! Two writers on one library: the app and an agent process (`instantnotes
+//! mcp`) each open their own `Store` on the same file. Covers the version
+//! check that keeps one from overwriting what it has not seen, and the
+//! `data_version` signal the app watches to notice the other's writes.
+
+use instantnotes_core::types::*;
+use instantnotes_core::{AppError, Store};
+
+fn create(store: &mut Store, body: &str) -> Note {
+    store
+        .create_note(CreateNoteInput {
+            body: Some(body.to_string()),
+            ..Default::default()
+        })
+        .expect("create note")
+}
+
+fn body_patch(body: &str, expected: Option<&str>) -> UpdateNotePatch {
+    UpdateNotePatch {
+        body: Some(body.to_string()),
+        expected_updated_at: expected.map(str::to_string),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn update_with_current_version_applies() {
+    let mut s = Store::open_in_memory().unwrap();
+    let n = create(&mut s, "first");
+    let updated = s
+        .update_note(&n.id, body_patch("second", Some(&n.updated_at)))
+        .unwrap();
+    assert_eq!(updated.body, "second");
+}
+
+#[test]
+fn update_with_stale_version_conflicts_and_changes_nothing() {
+    let mut s = Store::open_in_memory().unwrap();
+    let n = create(&mut s, "first");
+    s.update_note(&n.id, body_patch("someone else", None))
+        .unwrap();
+
+    let err = s
+        .update_note(&n.id, body_patch("mine", Some(&n.updated_at)))
+        .unwrap_err();
+    assert!(matches!(err, AppError::Conflict(_)), "got {err:?}");
+    assert_eq!(err.code(), "CONFLICT");
+    assert_eq!(s.get_note(&n.id, false).unwrap().body, "someone else");
+}
+
+#[test]
+fn two_stores_on_one_file_see_each_other_and_data_version_moves() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("instantnotes.db");
+    let mut app = Store::open(&path).unwrap();
+    let mut agent = Store::open(&path).unwrap();
+
+    let before = app.data_version().unwrap();
+    // The app's own write does not move its own data_version.
+    let n = create(&mut app, "from the app");
+    assert_eq!(app.data_version().unwrap(), before);
+
+    // The agent sees the app's note and writes to it with the version it read.
+    let seen = agent.get_note(&n.id, false).unwrap();
+    agent
+        .update_note(&n.id, body_patch("agent edit", Some(&seen.updated_at)))
+        .unwrap();
+
+    // The app notices, and reads the agent's text.
+    assert_ne!(app.data_version().unwrap(), before);
+    assert_eq!(app.get_note(&n.id, false).unwrap().body, "agent edit");
+
+    // And the app's stale version now conflicts instead of overwriting.
+    let err = app
+        .update_note(&n.id, body_patch("stale", Some(&n.updated_at)))
+        .unwrap_err();
+    assert_eq!(err.code(), "CONFLICT");
+}

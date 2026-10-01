@@ -1,10 +1,16 @@
 <script lang="ts">
   import { library, type StatusFilter } from "$lib/stores/library.svelte";
-  import { formatDate, preview } from "$lib/format";
-  import { captureShortcut, modKey } from "$lib/platform";
+  import { agents } from "$lib/stores/agents.svelte";
+  import { formatDate, formatExact, preview } from "$lib/format";
+  import { captureShortcut, modKey, shiftKey } from "$lib/platform";
   import { parseHighlightSegments } from "$lib/highlight";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
+  import ContextMenu from "$lib/components/ContextMenu.svelte";
   import { groupNotes } from "$lib/note-groups";
+  import { updateSpace } from "$lib/stores/update-space";
+  import { isUpdateSpaceId } from "$lib/update/space";
+  import { agreements } from "$lib/agreements.svelte";
+  import { licenseSpace } from "$lib/stores/license-space.svelte";
 
   const statusFilters: { id: StatusFilter; label: string }[] = [
     { id: "active", label: "Active" },
@@ -19,6 +25,22 @@
   const groups = $derived(
     library.revisitMode ? null : groupNotes(library.notes, new Date()),
   );
+
+  // The kinds of note this toolbar can create. Clicking ＋ makes a document,
+  // the common case, in one click. The chevron (or a right-click anywhere on
+  // the control) opens the list, which is the only visible place a whiteboard
+  // can be started from.
+  let newMenu = $state<{ x: number; y: number } | null>(null);
+  let newControl = $state<HTMLDivElement>();
+
+  // Right-click on a row: pop that note out as a sticky, or bring it back.
+  let rowMenu = $state<{ x: number; y: number; id: string } | null>(null);
+
+  function openNewMenu() {
+    const rect = newControl?.getBoundingClientRect();
+    if (!rect) return;
+    newMenu = { x: rect.left, y: rect.bottom + 4 };
+  }
 
   function rowClick(e: MouseEvent, id: string) {
     if (e.metaKey || e.ctrlKey) {
@@ -42,6 +64,26 @@
 </script>
 
 <section class="list-pane">
+  {#if licenseSpace.locked}
+    <!-- The License Space's two documents. Nothing else is reachable until
+         both are agreed, so no search or New here. -->
+    <div class="note-list">
+      {#each licenseSpace.documents as doc (doc.id)}
+        <button
+          class="note-row"
+          class:selected={licenseSpace.shown?.id === doc.id}
+          onclick={() => licenseSpace.show(doc.id)}
+        >
+          <div class="row-title">
+            {#if licenseSpace.isAgreed(doc.id)}<span class="agreed-mark" aria-label={agreements.copy.agreed}>✓</span>{/if}
+            {doc.title}
+          </div>
+          <div class="row-preview">{licenseSpace.isAgreed(doc.id) ? agreements.copy.agreed : `Version ${doc.version}`}</div>
+        </button>
+      {/each}
+      <div class="empty-state">{agreements.copy.lead}</div>
+    </div>
+  {:else}
   <div class="list-toolbar">
     <input
       class="search"
@@ -50,7 +92,27 @@
       value={library.searchText}
       oninput={(e) => library.setSearch(e.currentTarget.value)}
     />
-    <button class="new-note" title={`New note (${modKey}N)`} onclick={() => library.newNote()}>＋</button>
+    <div
+      class="new-control"
+      bind:this={newControl}
+      oncontextmenu={(e) => {
+        e.preventDefault();
+        openNewMenu();
+      }}
+      role="presentation"
+    >
+      <button class="new-note" title={`New note (${modKey}N)`} onclick={() => library.newNote()}>＋</button>
+      <button
+        class="new-kind"
+        title="Choose what to create"
+        aria-label="Choose what to create"
+        aria-haspopup="menu"
+        aria-expanded={newMenu !== null}
+        onclick={() => (newMenu ? (newMenu = null) : openNewMenu())}
+      >
+        <svg viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1.5 5 5 9 1.5" /></svg>
+      </button>
+    </div>
   </div>
   {#if library.activeWorkspaceId && !library.searchResults && library.workspaceTags.length > 0}
     <!-- Tags found on this space's notes; a chip filters within the space,
@@ -92,30 +154,67 @@
         <button
           class="note-row"
           data-note-id={hit.noteId}
+          data-agent={agents.noteMark(hit.noteId)}
           class:selected={library.isSelected(hit.noteId)}
           onclick={(e) => rowClick(e, hit.noteId)}
         >
           <div class="row-title">{#each parseHighlightSegments(hit.title) as seg, i (i)}{#if seg.hit}<mark>{seg.text}</mark>{:else}{seg.text}{/if}{/each}</div>
           <div class="row-preview">{#each parseHighlightSegments(hit.excerpt) as seg, i (i)}{#if seg.hit}<mark>{seg.text}</mark>{:else}{seg.text}{/if}{/each}</div>
-          <div class="row-date">{formatDate(hit.updatedAt)}</div>
+          <div class="row-date" title={formatExact(hit.updatedAt)}>{formatDate(hit.updatedAt)}</div>
         </button>
       {:else}
         <div class="empty-state">No notes match your search.</div>
+      {/each}
+    {:else if isUpdateSpaceId(library.activeWorkspaceId)}
+      <!-- The update Space's two synthetic notes: the version jump and the
+           release notes. They have no rows in the store, so they are rendered
+           from the updater rather than listed. -->
+      {#each updateSpace.notes as note (note.id)}
+        <button
+          class="note-row"
+          data-note-id={note.id}
+          class:selected={library.isSelected(note.id)}
+          onclick={() => library.selectVirtual(note)}
+        >
+          <div class="row-title">{note.title}</div>
+          <div class="row-preview">{preview(note.body) || "Empty note"}</div>
+          <div class="row-date" title={formatExact(note.updatedAt)}>{formatDate(note.updatedAt)}</div>
+        </button>
       {/each}
     {:else}
       {#snippet noteRow(note: (typeof library.notes)[number])}
         <button
           class="note-row"
           data-note-id={note.id}
+          data-agent={agents.noteMark(note.id)}
           class:selected={library.isSelected(note.id)}
           onclick={(e) => rowClick(e, note.id)}
+          oncontextmenu={(e) => {
+            if (note.isDeleted || isUpdateSpaceId(library.activeWorkspaceId)) return;
+            e.preventDefault();
+            rowMenu = { x: e.clientX, y: e.clientY, id: note.id };
+          }}
         >
           <div class="row-title">
             {#if note.isPinned}<span class="pin">📌</span>{/if}
+            {#if note.contentKind === "whiteboard"}
+              <svg class="board-cue" viewBox="0 0 16 16" aria-label="Whiteboard" role="img">
+                <rect x="1.5" y="2.5" width="13" height="11" rx="2" />
+                <path d="M4.5 10.5 7 7.5l2 2 2.5-3" />
+              </svg>
+            {/if}
+            {#if library.isSticky(note.id)}
+              <svg class="board-cue" viewBox="0 0 16 16" aria-label="Open as a sticky" role="img">
+                <rect x="1.5" y="4.5" width="9" height="9" rx="1.5" />
+                <path d="M7 2.5h5.5a1 1 0 0 1 1 1V9" />
+              </svg>
+            {/if}
             {note.title}
           </div>
-          <div class="row-preview">{preview(note.body) || "Empty note"}</div>
-          <div class="row-date">{formatDate(note.updatedAt)}</div>
+          <div class="row-preview">
+            {preview(note.body) || (note.contentKind === "whiteboard" ? "Empty whiteboard" : "Empty note")}
+          </div>
+          <div class="row-date" title={formatExact(note.updatedAt)}>{formatDate(note.updatedAt)}</div>
         </button>
       {/snippet}
       {#if library.notes.length === 0}
@@ -148,7 +247,37 @@
       {/if}
     {/if}
   </div>
+  {/if}
 </section>
+
+{#if newMenu}
+  <ContextMenu
+    x={newMenu.x}
+    y={newMenu.y}
+    anchor={newControl}
+    items={[
+      { label: "New note", hint: `${modKey}N`, run: () => void library.newNote() },
+      {
+        label: "New whiteboard",
+        hint: `${modKey}${shiftKey}N`,
+        run: () => void library.newWhiteboard(),
+      },
+    ]}
+    onclose={() => (newMenu = null)}
+  />
+{/if}
+
+{#if rowMenu}
+  {@const id = rowMenu.id}
+  <ContextMenu
+    x={rowMenu.x}
+    y={rowMenu.y}
+    items={library.isSticky(id)
+      ? [{ label: "Bring back from sticky", run: () => void library.popIn(id) }]
+      : [{ label: "Open as sticky", run: () => void library.popOut(id) }]}
+    onclose={() => (rowMenu = null)}
+  />
+{/if}
 
 <style>
   .list-pane {
@@ -175,14 +304,36 @@
   .search:focus {
     border-color: var(--accent);
   }
-  .new-note {
-    width: 28px;
+  /* One object, two targets: a hairline divides the segments so the chevron
+     reads as part of the ＋ button rather than a second control beside it. */
+  .new-control {
+    display: flex;
     border: 1px solid var(--border);
     border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .new-note {
+    width: 28px;
     font-size: 15px;
     color: var(--accent-text);
   }
-  .new-note:hover {
+  .new-kind {
+    display: grid;
+    place-items: center;
+    width: 16px;
+    border-left: 1px solid var(--border);
+    color: var(--text-secondary);
+  }
+  .new-kind svg {
+    width: 8px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .new-note:hover,
+  .new-kind:hover {
     background: var(--bg-hover);
   }
   .status-filter {
@@ -267,6 +418,17 @@
   .note-row.selected {
     background: var(--accent-soft);
   }
+  .board-cue {
+    width: 12px;
+    height: 12px;
+    margin-right: 4px;
+    vertical-align: -1px;
+    fill: none;
+    stroke: var(--text-tertiary);
+    stroke-width: 1.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
   .row-title {
     font-weight: 600;
     overflow: hidden;
@@ -306,6 +468,10 @@
     text-align: center;
     color: var(--text-tertiary);
     line-height: 1.5;
+  }
+  .agreed-mark {
+    color: var(--accent-text);
+    margin-right: 4px;
   }
   .action {
     padding: 4px 10px;

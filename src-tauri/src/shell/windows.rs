@@ -86,7 +86,7 @@ pub(crate) fn show_capture_window(app: &AppHandle) {
         let _ = w.show();
         let _ = w.set_focus();
         // Frontend focuses the textarea and restores any preserved draft.
-        let _ = w.emit("capture:shown", ());
+        let _ = w.emit(events::CAPTURE_SHOWN, ());
     }
 }
 

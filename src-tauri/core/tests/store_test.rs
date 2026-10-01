@@ -443,6 +443,37 @@ fn list_supports_limit_offset_and_title_sort() {
     assert_eq!(titles, vec!["banana", "cherry"]);
 }
 
+/// Rows tied on the sort column must still come back in one fixed order, or
+/// LIMIT/OFFSET paging (the vault export pages through every note) can skip
+/// or repeat a row that lands on a page boundary. The id breaks the tie.
+#[test]
+fn list_breaks_sort_ties_by_id_so_paging_is_stable() {
+    let mut s = store();
+    let mut ids: Vec<String> = (0..20)
+        .map(|i| create(&mut s, &format!("note {i}")).id)
+        .collect();
+    // One bulk statement stamps every note with the same updated_at.
+    s.set_notes_flags(&ids, Some(false), None).unwrap();
+    ids.sort();
+
+    let all = s.list_notes(NoteFilter::default()).unwrap();
+    let listed: Vec<String> = all.into_iter().map(|n| n.id).collect();
+    assert_eq!(listed, ids, "tied rows are not ordered by id");
+
+    let mut paged = Vec::new();
+    for offset in (0..20).step_by(2) {
+        let page = s
+            .list_notes(NoteFilter {
+                limit: Some(2),
+                offset: Some(offset),
+                ..Default::default()
+            })
+            .unwrap();
+        paged.extend(page.into_iter().map(|n| n.id));
+    }
+    assert_eq!(paged, ids);
+}
+
 // ---- search ----
 
 #[test]
@@ -724,6 +755,32 @@ fn migrate_refuses_user_version_above_known_migrations() {
         Err(e) => e,
     };
     assert_eq!(err.code(), "MIGRATION_ERROR");
+    assert!(err.is_schema_too_new());
+}
+
+#[test]
+fn open_or_recover_does_not_treat_a_future_schema_as_corruption() {
+    // A future-schema file is intact, just unreadable by this build. Moving
+    // it aside and starting fresh, the way open_or_recover does for a
+    // genuinely corrupt file, would silently sideline a real library.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("future.db");
+    {
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.pragma_update(None, "user_version", (MIGRATIONS.len() + 1) as i64)
+            .unwrap();
+    }
+    let err = match Store::open_or_recover(&path) {
+        Ok(_) => panic!("open_or_recover should refuse a future schema version, not recover it"),
+        Err(e) => e,
+    };
+    assert!(err.is_schema_too_new());
+    // Untouched at its original path, not moved aside the way a corrupt file
+    // would be.
+    assert!(path.exists());
+    let mut moved_aside = path.as_os_str().to_os_string();
+    moved_aside.push(".corrupt-1");
+    assert!(!std::path::Path::new(&moved_aside).exists());
 }
 
 #[test]
@@ -1088,4 +1145,174 @@ fn bulk_destroy_requires_confirm() {
     assert!(s.get_note(&a.id, false).is_ok());
     s.destroy_notes(&ids, true).unwrap();
     assert!(s.get_note(&a.id, false).is_err());
+}
+
+// ---- title_is_auto (read by the vault serializer, design.md §3.2) ----
+
+#[test]
+fn title_is_auto_true_for_a_derived_title() {
+    let mut s = store();
+    let n = create(&mut s, "Buy milk and coffee");
+    assert!(s.title_is_auto(&n.id).unwrap());
+}
+
+#[test]
+fn title_is_auto_false_once_a_title_is_set_explicitly() {
+    let mut s = store();
+    let n = s
+        .create_note(CreateNoteInput {
+            title: Some("Groceries".into()),
+            body: Some("Buy milk".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(!s.title_is_auto(&n.id).unwrap());
+}
+
+#[test]
+fn title_is_auto_flips_false_after_an_explicit_title_update() {
+    let mut s = store();
+    let n = create(&mut s, "Buy milk");
+    assert!(s.title_is_auto(&n.id).unwrap());
+    s.update_note(
+        &n.id,
+        UpdateNotePatch {
+            title: Some("Renamed".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert!(!s.title_is_auto(&n.id).unwrap());
+}
+
+#[test]
+fn title_is_auto_missing_note_is_not_found() {
+    let s = store();
+    assert!(matches!(
+        s.title_is_auto("missing"),
+        Err(AppError::NotFound(_))
+    ));
+}
+
+// ---- vault export against a real store (SEQUENCE.md unit 7's done
+// condition: exporting the full library and re-parsing it reproduces every
+// field of every note) ----
+
+mod vault_export {
+    use super::*;
+    use instantnotes_core::vault::{collect_from_store, export_vault, parse_note, VaultNote};
+    use std::collections::HashSet;
+    use std::fs;
+
+    fn read_all_md(dir: &std::path::Path) -> Vec<String> {
+        let mut out = Vec::new();
+        for entry in fs::read_dir(dir).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            if path.is_dir() {
+                out.extend(read_all_md(&path));
+                continue;
+            }
+            if path.extension().and_then(|e| e.to_str()) == Some("md") {
+                out.push(fs::read_to_string(&path).unwrap());
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn round_trips_a_real_library_through_export() {
+        let mut s = store();
+
+        let explicit = s
+            .create_note(CreateNoteInput {
+                title: Some("Groceries".into()),
+                body: Some("Buy milk and #errands".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        let engineering = s.get_or_create_workspace("Engineering").unwrap();
+        s.add_note_to_workspace(&explicit.id, &engineering.id)
+            .unwrap();
+
+        let derived = create(&mut s, "Buy eggs\nand bacon");
+        s.update_note(
+            &derived.id,
+            UpdateNotePatch {
+                is_pinned: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let archived = create(&mut s, "Archived thought");
+        s.update_note(
+            &archived.id,
+            UpdateNotePatch {
+                is_archived: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let trashed = create(&mut s, "Old draft");
+        s.soft_delete_note(&trashed.id).unwrap();
+
+        let (notes, manifest) = collect_from_store(&s).unwrap();
+        assert_eq!(notes.len(), 4);
+        // The explicit-title note carries its inline tag and its Space
+        // membership: the one path this whole test exists to prove, since
+        // both live outside the `notes` table and are easy to leave out of
+        // `collect_from_store` without any other assertion noticing.
+        let explicit_collected = notes.iter().find(|n| n.id == explicit.id).unwrap();
+        assert_eq!(explicit_collected.tags, vec!["errands".to_string()]);
+        assert_eq!(explicit_collected.spaces, vec!["Engineering".to_string()]);
+
+        let dir = tempfile::tempdir().unwrap();
+        export_vault(&notes, &manifest, dir.path()).unwrap();
+
+        let texts = read_all_md(dir.path());
+        assert_eq!(texts.len(), 4);
+
+        // SEQUENCE.md unit 7's done condition, verbatim: re-parsing the
+        // export reproduces every field of every note, not just the ones a
+        // spot-check happens to look at.
+        let collected_by_id: std::collections::HashMap<String, VaultNote> =
+            notes.into_iter().map(|n| (n.id.clone(), n)).collect();
+        let mut seen_ids: HashSet<String> = HashSet::new();
+        for text in &texts {
+            let parsed = parse_note(text).unwrap();
+            let expected = collected_by_id.get(&parsed.id).unwrap_or_else(|| {
+                panic!(
+                    "exported a file for an id not in collect_from_store's output: {}",
+                    parsed.id
+                )
+            });
+            assert_eq!(&parsed, expected, "field mismatch for note {}", parsed.id);
+            seen_ids.insert(parsed.id);
+        }
+        assert_eq!(
+            seen_ids,
+            HashSet::from([
+                explicit.id.clone(),
+                derived.id.clone(),
+                archived.id.clone(),
+                trashed.id.clone(),
+            ])
+        );
+
+        assert!(manifest.spaces.iter().any(|sp| sp.name == "Engineering"));
+    }
+
+    #[test]
+    fn collects_more_notes_than_a_single_list_notes_page() {
+        // list_notes defaults to a 500-row page; collect_from_store must
+        // page through, not silently truncate a library bigger than that.
+        let mut s = store();
+        for i in 0..520 {
+            create(&mut s, &format!("note {i}"));
+        }
+        let (notes, _manifest) = collect_from_store(&s).unwrap();
+        assert_eq!(notes.len(), 520);
+    }
 }

@@ -15,31 +15,7 @@ impl Store {
     }
 
     pub fn get_or_create_workspace(&mut self, raw_name: &str) -> Result<Workspace> {
-        let name = domain::normalize_workspace_name(raw_name)
-            .ok_or_else(|| AppError::Validation("workspace name must not be empty".into()))?;
-        if let Some(ws) = self
-            .conn
-            .query_row(
-                &format!("SELECT {WORKSPACE_COLUMNS} FROM workspaces WHERE name = ?1"),
-                params![name],
-                row_to_workspace,
-            )
-            .optional()?
-        {
-            return Ok(ws);
-        }
-        let now = now_iso();
-        let id = new_id();
-        self.conn.execute(
-            "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES (?1, ?2, ?3, ?3)",
-            params![id, name, now],
-        )?;
-        Ok(Workspace {
-            id,
-            name,
-            created_at: now.clone(),
-            updated_at: now,
-        })
+        workspace_get_or_create(&self.conn, raw_name)
     }
 
     pub fn list_workspaces(&self) -> Result<Vec<WorkspaceWithCount>> {

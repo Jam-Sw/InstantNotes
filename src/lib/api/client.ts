@@ -2,26 +2,53 @@
 // Every command is a typed wrapper; errors become ApiError with API.md codes.
 
 import { invoke } from "@tauri-apps/api/core";
+import { ERROR_CODES, isErrorCode, type ErrorCode } from "./error-codes";
+import type { AgentConnection } from "$lib/agent-activity";
 import type {
+  AttachmentCleanup,
+  LibraryGraph,
   CaptureLatencySummary,
   CreateNoteInput,
+  DashboardStats,
+  FeedbackInput,
+  ImportOutcome,
   Note,
   NoteFilter,
   SearchResult,
+  StickyLevel,
+  StickiesScan,
   Tag,
   TagWithCount,
   UpdateNotePatch,
+  VaultReport,
+  VaultStatus,
   Workspace,
   WorkspaceWithCount,
 } from "./types";
 
 export class ApiError extends Error {
-  code: string;
-  constructor(code: string, message: string) {
+  code: ErrorCode;
+  constructor(code: ErrorCode, message: string) {
     super(message);
     this.name = "ApiError";
     this.code = code;
   }
+}
+
+// The one place a rejection becomes an ApiError, so an unknown code can only
+// be mishandled once. A rejection that is not the { code, message } shape
+// never left the core (a dropped IPC call, a thrown string), which is a
+// failure to complete the operation: STORAGE_ERROR.
+function asApiError(e: unknown): ApiError {
+  if (e && typeof e === "object" && "code" in e && "message" in e) {
+    const code = String(e.code);
+    const message = String(e.message);
+    if (isErrorCode(code)) return new ApiError(code, message);
+    // The backend sent a code this build does not know, so no friendly copy
+    // exists for it; keep it in the message rather than losing it.
+    return new ApiError(ERROR_CODES.STORAGE_ERROR, `${code}: ${message}`);
+  }
+  return new ApiError(ERROR_CODES.STORAGE_ERROR, String(e));
 }
 
 async function call<T>(
@@ -31,10 +58,7 @@ async function call<T>(
   try {
     return await invoke<T>(cmd, args);
   } catch (e) {
-    if (e && typeof e === "object" && "code" in e && "message" in e) {
-      throw new ApiError(String(e.code), String(e.message));
-    }
-    throw new ApiError("STORAGE_ERROR", String(e));
+    throw asApiError(e);
   }
 }
 
@@ -50,6 +74,7 @@ export const softDeleteNote = (id: string) =>
 export const restoreNote = (id: string) => call<Note>("restore_note", { id });
 export const permanentlyDeleteNote = (id: string, confirm: boolean) =>
   call<void>("permanently_delete_note", { id, confirm });
+export const libraryGraph = () => call<LibraryGraph>("library_graph");
 export const listNotes = (filter: NoteFilter = {}) =>
   call<Note[]>("list_notes", { filter });
 export const searchNotes = (text: string, limit = 50) =>
@@ -74,8 +99,6 @@ export const destroyNotes = (ids: string[], confirm: boolean) =>
 
 // ---- tags ----
 export const listTags = () => call<TagWithCount[]>("list_tags");
-export const getOrCreateTag = (name: string) =>
-  call<Tag>("get_or_create_tag", { name });
 export const updateTag = (id: string, name?: string, color?: string) =>
   call<Tag>("update_tag", { id, name, color });
 export const deleteTag = (id: string) => call<void>("delete_tag", { id });
@@ -143,6 +166,23 @@ export const setWindowVibrancy = (material: string | null) =>
 export const setWindowTheme = (variant: "light" | "dark") =>
   call<void>("set_window_theme", { variant });
 
+// ---- stickies ----
+// A sticky is a note popped out into its own window, which is then that
+// note's only editor. Popping in resolves once the sticky's edits are on disk
+// and its window is gone. The level and geometry commands act on the calling
+// sticky window, never on an id the webview names.
+export const popOutNote = (id: string) => call<void>("pop_out_note", { id });
+export const popInNote = (id: string) => call<void>("pop_in_note", { id });
+export const listStickies = () => call<string[]>("list_stickies");
+export const answerPopIn = (saved: boolean) => call<void>("answer_pop_in", { saved });
+export const getStickyView = () =>
+  call<{ level: StickyLevel; collapsed: boolean }>("get_sticky_view");
+export const setStickyLevel = (level: StickyLevel) =>
+  call<void>("set_sticky_level", { level });
+export const setStickyCollapsed = (collapsed: boolean) =>
+  call<void>("set_sticky_collapsed", { collapsed });
+export const saveStickyGeometry = () => call<void>("save_sticky_geometry");
+
 // ---- theme files ----
 // Byte I/O for portable .intheme.json files; the open/save dialog runs in JS.
 export const exportThemeFile = (path: string, contents: string) =>
@@ -167,13 +207,55 @@ export const saveAttachment = async (
       headers: { "x-attachment-ext": ext },
     });
   } catch (e) {
-    if (e && typeof e === "object" && "code" in e && "message" in e) {
-      throw new ApiError(String(e.code), String(e.message));
-    }
-    throw new ApiError("STORAGE_ERROR", String(e));
+    throw asApiError(e);
   }
 };
 export const getAttachmentsDir = () => call<string>("get_attachments_dir");
+// Copy a dialog-picked image into attachments (the "copy in" storage mode);
+// returns the stored filename. `allow` opens one existing local image to the
+// asset protocol so a linked (not copied) image can render inline.
+export const importImageFile = (path: string) =>
+  call<string>("import_image_file", { path });
+export const allowImageFile = (path: string) =>
+  call<void>("allow_image_file", { path });
+export const openAttachmentsFolder = () =>
+  call<void>("open_attachments_folder");
+// Images no note references any more (older than an hour), and removing
+// them along with their unchanged copies in the live vault.
+export const unusedAttachments = () => call<AttachmentCleanup>("unused_attachments");
+export const removeUnusedAttachments = () =>
+  call<AttachmentCleanup>("remove_unused_attachments");
+
+// ---- vault export ----
+// Stage 1 of the portable vault (openspec/changes/feat-portable-vault-sync):
+// a one-way, read-only snapshot. SQLite stays authoritative; nothing reads
+// this folder back yet. The destination is chosen by a native folder-picker
+// dialog in JS, same trust boundary as exportNoteFile.
+export const exportVault = (dest: string) => call<void>("export_vault", { dest });
+
+// ---- live vault mirror ----
+// Stage 2: every change is written into the chosen folder shortly after it
+// happens. SQLite stays authoritative; the folder is written, never read.
+export const getVaultStatus = () => call<VaultStatus>("get_vault_status");
+/** Start, move, or (with null) stop the mirror. */
+export const setVaultFolder = (path: string | null) =>
+  call<VaultStatus>("set_vault_folder", { path });
+export const verifyVault = () => call<VaultReport>("verify_vault");
+
+// ---- import (Settings > Import) ----
+// The folder comes from a native folder picker, which is also what lets the
+// app read another app's data on macOS. Rust only ever reads it.
+/** Where Stickies keeps its notes, for the picker to open at; null off macOS. */
+export const stickiesLocation = () => call<string | null>("stickies_location");
+export const scanStickies = (folder: string) => call<StickiesScan>("scan_stickies", { folder });
+export const importStickies = (folder: string, ids: string[], space: string | null) =>
+  call<ImportOutcome>("import_stickies", { folder, ids, space });
+
+// ---- dashboard + feedback ----
+export const getLibraryStats = () => call<DashboardStats>("library_stats");
+export const submitFeedback = (input: FeedbackInput) =>
+  call<void>("submit_feedback", { input });
+export const openFeedbackLog = () => call<void>("open_feedback_log");
 
 // ---- app lifecycle ----
 // Answer to "app:quit-requested": pending edits are flushed, exit for real now.
@@ -183,3 +265,9 @@ export const quitApp = () => call<void>("quit_app");
 // webview has listeners attached, so an event would be lost.
 export const getShortcutFailure = () =>
   call<string | null>("get_shortcut_failure");
+
+// ---- agents ----
+// The app executable (which is also the MCP server) and the live library, so
+// Settings > Agents prints a connect command that works as shown.
+export const getAgentConnection = () =>
+  call<AgentConnection>("agent_connection");

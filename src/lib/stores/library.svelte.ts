@@ -12,7 +12,10 @@ import {
   listNotes,
   listTags,
   listWorkspaces,
+  listStickies,
   listWorkspaceTags,
+  popInNote,
+  popOutNote,
   removeNoteFromWorkspace,
   removeTagFromNote,
   renameWorkspace,
@@ -37,10 +40,20 @@ import type {
   WorkspaceWithCount,
 } from "$lib/api/types";
 import { debounce } from "$lib/debounce";
-import { friendlyMessage } from "$lib/errors";
-import { SaveQueue, type SaveState } from "$lib/stores/library/save-queue.svelte";
+import { ERROR_CODES } from "$lib/api/error-codes";
+import { EVENTS } from "$lib/api/events";
+import { friendlyMessage, GENERIC_MESSAGE } from "$lib/errors";
+import { isUpdateSpaceId, isVirtualNoteId } from "$lib/update/space";
+import {
+  SaveQueue,
+  type QueuedEdit,
+  type SaveState,
+} from "$lib/stores/library/save-queue.svelte";
 import { SelectionModel } from "$lib/stores/library/selection.svelte";
 import { toasts } from "$lib/stores/toasts.svelte";
+import { announceOverwrite } from "$lib/stores/agents.svelte";
+import { mayHaveWritten, parseActivityLog, type AgentActivity } from "$lib/agent-activity";
+import { boardFromText } from "$lib/whiteboard/excalidraw";
 import { listen } from "@tauri-apps/api/event";
 
 export type { SaveState };
@@ -71,6 +84,8 @@ class LibraryStore {
   // Revisit: capture-born notes never opened in the library. The count keeps
   // the sidebar entry honest (hidden at zero); the mode filters the list.
   revisitMode = $state(false);
+  /** The Graph view: the library drawn as notes, tags, and Spaces. */
+  graphMode = $state(false);
   revisitCount = $state(0);
   searchText = $state("");
   notes = $state<Note[]>([]);
@@ -81,6 +96,9 @@ class LibraryStore {
   selectedTags = $state<Tag[]>([]);
   selectedWorkspaces = $state<Workspace[]>([]);
   error = $state<string | null>(null);
+  // Notes popped out as stickies. Each sticky is its note's only editor, so
+  // the library stops editing a note the moment it appears here.
+  stickyIds = $state<ReadonlySet<string>>(new Set());
 
   // Ids checked for bulk actions (the open note's id on a plain click; grows
   // via cmd-click / shift-click). Size > 1 swaps the editor for the bulk panel.
@@ -91,21 +109,39 @@ class LibraryStore {
     return this.#selection.ids;
   }
 
-  // Body persistence (debounce, retry, flush) lives in its own single-writer
+  // Edit persistence (debounce, retry, flush) lives in its own single-writer
   // unit; the store composes one and delegates. A confirmed write updates the
   // open note; a terminal failure surfaces an error.
   #saveQueue = new SaveQueue({
     onPersisted: async (id, updated) => {
       if (this.selected?.id === id) {
-        // Keep local body if the user kept typing past this save.
-        const localBody = this.selected.body;
-        this.selected = { ...updated, body: localBody };
+        // Keep the local body and canvas: the user may have kept editing
+        // past this save, and the reply never carries the canvas.
+        const { body, surfaceData } = this.selected;
+        this.selected = { ...updated, body, surfaceData };
         this.selectedTags = await tagsForNote(id);
       }
       this.error = null;
     },
     onError: (e) => this.#fail(e),
+    onOverwrote: (id, theirs) => announceOverwrite(id, () => this.#restoreExternal(id, theirs)),
   });
+
+  // Editors that hold an edit not yet handed to the queue (a whiteboard
+  // batches canvas changes before serializing them) register here, and are
+  // asked to hand it over before any flush, trash, or note switch.
+  #beforeFlush = new Set<() => void>();
+
+  /** Register a hook run before every flush, trash, and note switch;
+   *  returns the unregister function. */
+  onBeforeFlush(hook: () => void): () => void {
+    this.#beforeFlush.add(hook);
+    return () => this.#beforeFlush.delete(hook);
+  }
+
+  #collectPending(): void {
+    for (const hook of this.#beforeFlush) hook();
+  }
 
   #initialized = false;
 
@@ -126,19 +162,94 @@ class LibraryStore {
     // Listeners before the initial fetches: a change event arriving during
     // startup must trigger a re-query, not be dropped.
     await Promise.all([
-      listen("notes:changed", () => {
+      listen(EVENTS.NOTES_CHANGED, () => {
         this.#refreshDebounced();
         this.#revisitCountDebounced();
       }),
-      listen("tags:changed", () => void this.refreshTags()),
-      listen("workspaces:changed", () => void this.refreshWorkspaces()),
+      listen(EVENTS.TAGS_CHANGED, () => void this.refreshTags()),
+      listen(EVENTS.WORKSPACES_CHANGED, () => void this.refreshWorkspaces()),
+      listen(EVENTS.STICKIES_CHANGED, () => void this.refreshStickies()),
+      listen<unknown>(EVENTS.LIBRARY_EXTERNAL_CHANGE, (e) => {
+        void this.#adoptExternal(parseActivityLog(e.payload));
+      }),
     ]);
     await Promise.all([
       this.refresh(),
       this.refreshTags(),
       this.refreshWorkspaces(),
       this.#refreshRevisitCount(),
+      this.refreshStickies(),
     ]);
+  }
+
+  // ---- stickies ----
+
+  isSticky(id: string | undefined): boolean {
+    return id !== undefined && this.stickyIds.has(id);
+  }
+
+  /** Re-read which notes are stickies. A note that just came back from one
+   *  is reopened from disk if it is the open note: the sticky wrote it last. */
+  async refreshStickies(): Promise<void> {
+    try {
+      const next = new Set(await listStickies());
+      const returned = [...this.stickyIds].filter((id) => !next.has(id));
+      this.stickyIds = next;
+      const open = this.selected?.id;
+      if (open && returned.includes(open)) await this.#open(open);
+    } catch (e) {
+      this.#fail(e);
+    }
+  }
+
+  /**
+   * Pop a note out as a sticky. Every pending edit is written first and the
+   * note's must have landed: the sticky loads the note from disk, and an edit
+   * still queued here would later overwrite whatever is typed there.
+   */
+  async popOut(id: string): Promise<void> {
+    if (isVirtualNoteId(id)) return;
+    await this.flushPendingEdits();
+    if (this.#saveQueue.peek(id) !== undefined) {
+      toasts.show("Couldn't save this note, so it stays here for now.");
+      return;
+    }
+    try {
+      await popOutNote(id);
+      await this.refreshStickies();
+    } catch (e) {
+      this.#fail(e);
+    }
+  }
+
+  /** Bring a sticky back into the library. Resolves once its edits are on
+   *  disk and the open note shows them. */
+  async popIn(id: string): Promise<void> {
+    await this.#popInAll([id]);
+  }
+
+  /** The File menu's toggle: pop the open note out, or back in. */
+  async toggleSticky(): Promise<void> {
+    const note = this.selected;
+    if (!note || note.isDeleted) return;
+    await (this.isSticky(note.id) ? this.popIn(note.id) : this.popOut(note.id));
+  }
+
+  /** Pop in whichever of these notes are stickies, before anything that ends
+   *  their life here (trash, destroy). False when a sticky could not save,
+   *  in which case the caller must not go ahead. */
+  async #popInAll(ids: string[]): Promise<boolean> {
+    const stickies = ids.filter((id) => this.stickyIds.has(id));
+    if (stickies.length === 0) return true;
+    try {
+      for (const id of stickies) await popInNote(id);
+      return true;
+    } catch (e) {
+      this.#fail(e);
+      return false;
+    } finally {
+      await this.refreshStickies();
+    }
   }
 
   #filter(): NoteFilter {
@@ -171,6 +282,16 @@ class LibraryStore {
 
   async refresh(): Promise<void> {
     const token = ++this.#refreshToken;
+    // The update Space is synthetic: its two notes come from the updater, not
+    // the store, so there is nothing to query. A search still runs globally,
+    // which is why it is the one thing that takes precedence over the Space.
+    if (isUpdateSpaceId(this.activeWorkspaceId) && !this.searchText.trim()) {
+      this.searchResults = null;
+      this.notes = [];
+      this.workspaceTags = [];
+      this.error = null;
+      return;
+    }
     try {
       const text = this.searchText.trim();
       if (text) {
@@ -230,6 +351,7 @@ class LibraryStore {
     // so it clears revisit and search but keeps the space/tag scope.
     this.statusFilter = filter;
     this.revisitMode = false;
+    this.graphMode = false;
     this.searchText = "";
     this.clearMultiSelect();
     void this.refresh();
@@ -247,9 +369,17 @@ class LibraryStore {
     this.scopedTagId = null;
     this.workspaceTags = [];
     this.revisitMode = false;
+    this.graphMode = false;
     this.statusFilter = "active";
     this.searchText = "";
     this.clearMultiSelect();
+  }
+
+  /** Show the library as a graph. */
+  selectGraph(): void {
+    this.#resetForNavigation();
+    this.graphMode = true;
+    void this.refresh();
   }
 
   /** Show All Notes (null) or one workspace's collected notes. */
@@ -318,7 +448,8 @@ class LibraryStore {
       this.workspaceTags = [];
       // The workspace can be deleted between the list refresh and this
       // query; refreshWorkspaces resets the selection, nothing to surface.
-      if (!(e instanceof ApiError && e.code === "NOT_FOUND")) this.#fail(e);
+      if (!(e instanceof ApiError && e.code === ERROR_CODES.NOT_FOUND))
+        this.#fail(e);
     }
   }
 
@@ -338,19 +469,40 @@ class LibraryStore {
   }
 
   async select(id: string): Promise<void> {
+    // Opening a note shows it, wherever it was chosen from (the graph, the
+    // palette), so the graph steps aside.
+    this.graphMode = false;
     this.#selection.reset([id], id);
     await this.#open(id);
   }
 
+  /**
+   * Open one of the update Space's synthetic notes. It has no row in the store,
+   * so there is nothing to fetch and nothing to persist; the pending edit of
+   * the note being left is still flushed first, exactly as a real switch does.
+   */
+  selectVirtual(note: Note): void {
+    this.graphMode = false;
+    this.#collectPending();
+    this.#saveQueue.flushDebounce();
+    this.#selection.reset([note.id], note.id);
+    this.selected = note;
+    this.selectedTags = [];
+    this.selectedWorkspaces = [];
+    this.error = null;
+  }
+
   async #open(id: string): Promise<void> {
     // Flush any pending edit of the previous note before switching.
+    this.#collectPending();
     this.#saveQueue.flushDebounce();
     try {
       const note = await getNote(id, true);
+      this.#saveQueue.known(note);
       // A queued edit (debounced or awaiting retry) is newer than what disk
       // returned; showing the disk body would fork the note's history.
       const queued = this.#saveQueue.peek(id);
-      this.selected = queued !== undefined ? { ...note, body: queued } : note;
+      this.selected = queued !== undefined ? { ...note, ...queued } : note;
       [this.selectedTags, this.selectedWorkspaces] = await Promise.all([
         tagsForNote(id),
         workspacesForNote(id),
@@ -448,8 +600,10 @@ class LibraryStore {
 
   async bulkDelete(): Promise<void> {
     const ids = [...this.multiSelected];
+    if (!(await this.#popInAll(ids))) return;
     // Trash is reversible and Undo promises fidelity: persist any pending
     // edit first, so a restored note holds the user's last keystrokes.
+    this.#collectPending();
     this.#saveQueue.cancelDebounce();
     await this.#saveQueue.flushIds(ids);
     this.#saveQueue.drop(ids);
@@ -481,6 +635,7 @@ class LibraryStore {
    */
   async destroyNotes(ids: string[]): Promise<void> {
     if (ids.length === 0) return;
+    if (!(await this.#popInAll(ids))) return;
     // Destroyed notes must also forget their queued edits, or the retry and
     // every later flush re-attempts a write against a row that no longer
     // exists and surfaces NOT_FOUND forever.
@@ -520,11 +675,20 @@ class LibraryStore {
     }
   }
 
-  async newNote(): Promise<void> {
+  /** Create a note and open it. Resolves to its id, or null if creating
+   *  failed (the error is already surfaced). */
+  async newNote(): Promise<string | null> {
     try {
       const activeTag = this.activeTagId
         ? this.tags.find((t) => t.id === this.activeTagId)
         : null;
+
+      // A note cannot be born in the synthetic update Space; creating one there
+      // drops the view back to All Notes rather than filing the note under a
+      // workspace id that is not in the database.
+      if (isUpdateSpaceId(this.activeWorkspaceId)) {
+        this.activeWorkspaceId = null;
+      }
 
       const note = await createNote(
         activeTag ? { tags: [activeTag.name] } : {},
@@ -542,8 +706,10 @@ class LibraryStore {
       this.searchText = "";
       void this.refresh();
       await this.select(note.id);
+      return note.id;
     } catch (e) {
       this.#fail(e);
+      return null;
     }
   }
 
@@ -634,7 +800,7 @@ class LibraryStore {
       const message =
         e instanceof ApiError
           ? friendlyMessage(e.code, e.message)
-          : friendlyMessage("");
+          : GENERIC_MESSAGE;
       return { ok: false, message };
     }
   }
@@ -662,17 +828,67 @@ class LibraryStore {
   }
 
   editBody(body: string): void {
-    if (!this.selected) return;
+    // A sticky is the note's only editor; see stickyIds.
+    if (!this.selected || this.isSticky(this.selected.id)) return;
     // Optimistic local state; persistence is debounced. The note is dirty
     // from this moment until a write of this (or a newer) body succeeds.
     this.selected.body = body;
-    this.#saveQueue.queue(this.selected.id, body);
+    // A synthetic note (the update Space's release notes) is not user data:
+    // the edit lives while the note is open and is gone when it closes.
+    if (isVirtualNoteId(this.selected.id)) return;
+    this.#saveQueue.queue(this.selected.id, { body });
+  }
+
+  /**
+   * A whiteboard save: the canvas and the text written on it, queued like a
+   * body edit (debounced, retried, flushed on switch and quit). Takes the id
+   * because a board hands over its last change while the library is already
+   * switching away from it.
+   */
+  editBoard(id: string, edit: Required<QueuedEdit>): void {
+    if (this.isSticky(id)) return;
+    if (this.selected?.id === id) {
+      this.selected.surfaceData = edit.surfaceData;
+      this.selected.body = edit.body;
+    }
+    this.#saveQueue.queue(id, edit);
+  }
+
+  /**
+   * Turn the open note into a whiteboard, for good. Its text goes onto the
+   * board as a text block, so nothing written disappears; the confirm lives
+   * with the callers (whiteboard/convert.ts).
+   */
+  async convertToWhiteboard(): Promise<void> {
+    const note = this.selected;
+    if (!note || note.isDeleted || note.contentKind === "whiteboard") return;
+    if (this.isSticky(note.id)) return;
+    await this.flushPendingEdits();
+    const current = this.selected;
+    if (current?.id !== note.id) return;
+    try {
+      const surfaceData = await boardFromText(current.body);
+      await this.#applyUpdate(note.id, { contentKind: "whiteboard", surfaceData });
+    } catch (e) {
+      this.#fail(e);
+    }
+  }
+
+  /** A new note, opened as an empty whiteboard. Converts only the note it
+   *  just created: if creating failed, the open note is someone's writing. */
+  async newWhiteboard(): Promise<void> {
+    const id = await this.newNote();
+    if (id && this.selected?.id === id) await this.convertToWhiteboard();
   }
 
   editTitle(title: string): void {
-    if (!this.selected) return;
+    if (!this.selected || this.isSticky(this.selected.id)) return;
     const trimmed = title.trim();
     if (!trimmed || trimmed === this.selected.title) return;
+    if (isVirtualNoteId(this.selected.id)) {
+      this.selected.title = trimmed;
+      return;
+    }
     void this.#applyUpdate(this.selected.id, { title: trimmed });
   }
 
@@ -693,8 +909,10 @@ class LibraryStore {
   async deleteSelected(): Promise<void> {
     if (!this.selected) return;
     const id = this.selected.id;
+    if (!(await this.#popInAll([id]))) return;
     // Trash is reversible and Undo promises fidelity: persist any pending
     // edit first, so a restored note holds the user's last keystrokes.
+    this.#collectPending();
     this.#saveQueue.cancelDebounce();
     await this.#saveQueue.flushIds([id]);
     this.#saveQueue.drop([id]);
@@ -750,6 +968,7 @@ class LibraryStore {
    * queued for the next flush.
    */
   async flushPendingEdits(): Promise<void> {
+    this.#collectPending();
     await this.#saveQueue.flushAll();
   }
 
@@ -772,16 +991,56 @@ class LibraryStore {
     toasts.show(message);
   }
 
+  /**
+   * Another process (an agent) wrote while a note is open. With nothing
+   * unsaved, the open note takes the new version and the editor applies it
+   * as a change under the caret. With unsaved typing it is left alone: that
+   * save meets the other write through the version check (SaveQueue).
+   */
+  async #adoptExternal(entries: AgentActivity[]): Promise<void> {
+    const open = this.selected;
+    if (!open || isVirtualNoteId(open.id) || open.contentKind === "whiteboard") return;
+    if (!mayHaveWritten(entries, open.id)) return;
+    const shown = open.body;
+    // The user may have typed, or moved on, while this was read.
+    const fresh = await this.#saveQueue.readExternal(
+      open.id,
+      () => this.selected?.id === open.id && this.selected.body === shown,
+    );
+    if (!fresh || !this.selected) return;
+    this.selected = { ...fresh, surfaceData: this.selected.surfaceData };
+    [this.selectedTags, this.selectedWorkspaces] = await Promise.all([
+      tagsForNote(open.id),
+      workspacesForNote(open.id),
+    ]);
+  }
+
+  /** "Restore theirs": put an agent's overwritten body back, as an edit. */
+  #restoreExternal(id: string, body: string): void {
+    if (this.selected?.id === id) {
+      this.selected.body = body;
+      this.#saveQueue.queue(id, { body });
+    } else {
+      void this.#applyUpdate(id, { body });
+    }
+  }
+
   async #applyUpdate(
     id: string,
     patch: Parameters<typeof updateNote>[1],
   ): Promise<void> {
     try {
       const updated = await updateNote(id, patch);
+      this.#saveQueue.known(updated);
       if (this.selected?.id === id) {
-        // Keep local body if user kept typing past this save.
-        const localBody = this.selected.body;
-        this.selected = { ...updated, body: patch.body ?? localBody };
+        // Keep local body if user kept typing past this save, and the local
+        // canvas, which the reply never carries.
+        const { body, surfaceData } = this.selected;
+        this.selected = {
+          ...updated,
+          body: patch.body ?? body,
+          surfaceData: patch.surfaceData ?? surfaceData,
+        };
         this.selectedTags = await tagsForNote(id);
       }
       this.error = null;
@@ -794,7 +1053,7 @@ class LibraryStore {
     this.error =
       e instanceof ApiError
         ? friendlyMessage(e.code, e.message)
-        : friendlyMessage("");
+        : GENERIC_MESSAGE;
   }
 }
 

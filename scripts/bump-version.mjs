@@ -104,6 +104,12 @@ function main(argv) {
   console.log(`  3. git tag v${next} && git push origin v${next}   # CI builds, signs, publishes`);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+const argv1 = process.argv[1] ?? "";
+const isMain =
+  argv1 &&
+  typeof pathToFileURL === "function" &&
+  import.meta.url === pathToFileURL(argv1).href;
+
+if (isMain) {
   main(process.argv);
 }

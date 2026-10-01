@@ -2,3 +2,4 @@
 # and on all three CI runners, so builds cannot drift between machines.
 [toolchain]
 channel = "1.91.1"
+components = ["rust-analyzer"]
