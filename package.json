@@ -19,7 +19,7 @@
     "tauri:dev": "node scripts/tauri-dev.mjs",
     "bump": "node scripts/bump-version.mjs"
   },
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE.md",
   "dependencies": {
     "@codemirror/commands": "^6",
     "@codemirror/lang-markdown": "^6.5.0",
