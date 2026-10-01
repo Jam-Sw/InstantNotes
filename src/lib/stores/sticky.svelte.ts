@@ -1,15 +1,19 @@
 // One sticky window's note (Svelte 5 runes). While a note is a sticky this is
-// its only editor: the library shows a placeholder instead, so the save queue
-// here is the note's single writer, the same SaveQueue the library composes.
+// its only editor in the app: the library shows a placeholder instead, so the
+// save queue here is the note's single in-app writer, the same SaveQueue the
+// library composes.
 //
-// Only metadata follows change events (title, pin, trash). The body never
-// does: nothing else may write it while the sticky is open, and re-reading it
-// would race this window's own unsaved typing.
+// Only metadata follows change events (title, pin, trash). The body follows
+// an agent's write the way the library's open note does (`adoptExternal`),
+// never a plain change event: re-reading it then would race this window's own
+// unsaved typing.
 
 import { ApiError, getNote } from "$lib/api/client";
 import type { Note } from "$lib/api/types";
 import { ERROR_CODES } from "$lib/api/error-codes";
 import { friendlyMessage, GENERIC_MESSAGE } from "$lib/errors";
+import { mayHaveWritten, type AgentActivity } from "$lib/agent-activity";
+import { announceOverwrite } from "$lib/stores/agents.svelte";
 import {
   SaveQueue,
   type QueuedEdit,
@@ -32,6 +36,10 @@ export class StickyNote {
       this.error = null;
     },
     onError: (e) => this.#fail(e),
+    onOverwrote: (id, theirs) =>
+      announceOverwrite(id, () => {
+        if (this.note?.id === id) this.editBody(theirs);
+      }),
   });
 
   // A whiteboard batches canvas changes before handing them over; it
@@ -50,6 +58,7 @@ export class StickyNote {
   async load(id: string): Promise<void> {
     try {
       this.note = await getNote(id, true);
+      this.#queue.known(this.note);
       this.gone = this.note.isDeleted;
       this.error = null;
     } catch (e) {
@@ -94,6 +103,23 @@ export class StickyNote {
     } catch (e) {
       if (e instanceof ApiError && e.code === ERROR_CODES.NOT_FOUND) this.#markGone();
     }
+  }
+
+  /** An agent wrote. With nothing unsaved here, the sticky takes the new
+   *  version and the editor applies it under the caret; with unsaved typing
+   *  it is left alone, and that save meets the agent's write through the
+   *  version check, which offers the agent's text back. */
+  async adoptExternal(entries: AgentActivity[]): Promise<void> {
+    const open = this.note;
+    if (!open || this.gone || open.contentKind === "whiteboard") return;
+    if (!mayHaveWritten(entries, open.id)) return;
+    const shown = open.body;
+    const fresh = await this.#queue.readExternal(
+      open.id,
+      () => this.note?.id === open.id && this.note.body === shown && !this.gone,
+    );
+    if (!fresh || !this.note) return;
+    this.note = { ...fresh, surfaceData: this.note.surfaceData };
   }
 
   #markGone(): void {

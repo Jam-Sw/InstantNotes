@@ -11,9 +11,11 @@
 import { listen } from "@tauri-apps/api/event";
 import { getAgentConnection, getSetting, setSetting } from "$lib/api/client";
 import { EVENTS } from "$lib/api/events";
+import { toasts } from "$lib/stores/toasts.svelte";
 import {
   AGENT_ACCESS_KEY,
   AGENT_ACTIVITY_KEY,
+  clientLabel,
   parseAccess,
   parseActivityLog,
   type AgentAccess,
@@ -141,3 +143,14 @@ class AgentsStore {
 }
 
 export const agents = new AgentsStore();
+
+/** The user's typing replaced an agent's edit to a note. Say so, by name, and
+ *  offer it back; the restore is itself an edit, so Cmd-Z undoes it. Shown by
+ *  whichever window was editing the note: the library or its sticky. */
+export function announceOverwrite(noteId: string, restore: () => void): void {
+  const who = clientLabel(agents.lastWriter(noteId) ?? "");
+  toasts.show(`${who}'s change to this note was replaced by your typing.`, {
+    label: "Restore theirs",
+    run: restore,
+  });
+}

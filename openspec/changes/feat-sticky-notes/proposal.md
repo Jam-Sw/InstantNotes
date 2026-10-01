@@ -28,7 +28,10 @@ and goes back into the library when it does.
   window is the note's only editor and the library shows a placeholder with
   Show Sticky and Bring Back. `update_note` is last-write-wins, so two live
   editors on one note would silently overwrite each other; one writer per note
-  removes the problem instead of reconciling it.
+  removes the problem instead of reconciling it. The one writer outside the
+  app, an agent over MCP (`feat-agent-access`), reaches a sticky exactly as
+  it reaches the library's open note: taken in place when nothing is unsaved,
+  and offered back by name when typing replaced it.
 - **Popping out writes first.** The library flushes every pending edit and
   refuses to pop out a note whose edit did not land, since the sticky loads
   from disk.

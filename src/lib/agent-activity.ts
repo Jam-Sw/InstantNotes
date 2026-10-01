@@ -44,6 +44,16 @@ export function parseActivityLog(value: unknown): AgentActivity[] {
   );
 }
 
+/** Whether a batch of outside writes may have changed this note. No entries
+ *  means a write the log does not describe (a second copy of the app), which
+ *  may have touched anything. */
+export function mayHaveWritten(entries: AgentActivity[], noteId: string): boolean {
+  return (
+    entries.length === 0 ||
+    entries.some((e) => e.kind === "write" && e.noteIds.includes(noteId))
+  );
+}
+
 const KNOWN_CLIENTS: Record<string, string> = {
   "claude-code": "Claude Code",
   "claude-ai": "Claude",

@@ -51,8 +51,8 @@ import {
 } from "$lib/stores/library/save-queue.svelte";
 import { SelectionModel } from "$lib/stores/library/selection.svelte";
 import { toasts } from "$lib/stores/toasts.svelte";
-import { agents } from "$lib/stores/agents.svelte";
-import { clientLabel, parseActivityLog, type AgentActivity } from "$lib/agent-activity";
+import { announceOverwrite } from "$lib/stores/agents.svelte";
+import { mayHaveWritten, parseActivityLog, type AgentActivity } from "$lib/agent-activity";
 import { boardFromText } from "$lib/whiteboard/excalidraw";
 import { listen } from "@tauri-apps/api/event";
 
@@ -124,15 +124,7 @@ class LibraryStore {
       this.error = null;
     },
     onError: (e) => this.#fail(e),
-    // The user's typing replaced an agent's edit. Say so, by name, and offer
-    // it back; the restore is itself an edit, so Cmd-Z undoes it.
-    onOverwrote: (id, theirs) => {
-      const who = clientLabel(agents.lastWriter(id) ?? "");
-      toasts.show(`${who}'s change to this note was replaced by your typing.`, {
-        label: "Restore theirs",
-        run: () => this.#restoreExternal(id, theirs),
-      });
-    },
+    onOverwrote: (id, theirs) => announceOverwrite(id, () => this.#restoreExternal(id, theirs)),
   });
 
   // Editors that hold an edit not yet handed to the queue (a whiteboard
@@ -1008,26 +1000,15 @@ class LibraryStore {
   async #adoptExternal(entries: AgentActivity[]): Promise<void> {
     const open = this.selected;
     if (!open || isVirtualNoteId(open.id) || open.contentKind === "whiteboard") return;
-    // No entries means a write the log does not describe (a second copy of
-    // the app), which may have touched anything.
-    const touched =
-      entries.length === 0 ||
-      entries.some((e) => e.kind === "write" && e.noteIds.includes(open.id));
-    if (!touched || this.#saveQueue.peek(open.id) !== undefined) return;
+    if (!mayHaveWritten(entries, open.id)) return;
     const shown = open.body;
-    let fresh: Note;
-    try {
-      fresh = await getNote(open.id, false);
-    } catch {
-      return;
-    }
     // The user may have typed, or moved on, while this was read.
-    const now = this.selected;
-    if (now?.id !== open.id || now.body !== shown || this.#saveQueue.peek(open.id) !== undefined) {
-      return;
-    }
-    this.#saveQueue.known(fresh);
-    this.selected = { ...fresh, surfaceData: now.surfaceData };
+    const fresh = await this.#saveQueue.readExternal(
+      open.id,
+      () => this.selected?.id === open.id && this.selected.body === shown,
+    );
+    if (!fresh || !this.selected) return;
+    this.selected = { ...fresh, surfaceData: this.selected.surfaceData };
     [this.selectedTags, this.selectedWorkspaces] = await Promise.all([
       tagsForNote(open.id),
       workspacesForNote(open.id),

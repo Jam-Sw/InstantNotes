@@ -23,6 +23,8 @@
   import type { StickyLevel } from "$lib/api/types";
   import { debounce } from "$lib/debounce";
   import { StickyNote } from "$lib/stores/sticky.svelte";
+  import { agents } from "$lib/stores/agents.svelte";
+  import { parseActivityLog } from "$lib/agent-activity";
   import { theme } from "$lib/stores/theme.svelte";
   import { editorPrefs } from "$lib/stores/editor.svelte";
   import { imagePrefs } from "$lib/stores/images.svelte";
@@ -107,6 +109,8 @@
     void editorPrefs.init();
     void imagePrefs.init();
     void linkPrefs.init();
+    // Names the agent when typing here replaces its edit.
+    void agents.init();
     void getStickyView()
       .then((v) => ({ level, collapsed } = v))
       .catch(() => {});
@@ -123,6 +127,9 @@
         await quitApp();
       }),
       listen(EVENTS.NOTES_CHANGED, () => void sticky.refreshMeta()),
+      listen<unknown>(EVENTS.LIBRARY_EXTERNAL_CHANGE, (e) => {
+        void sticky.adoptExternal(parseActivityLog(e.payload));
+      }),
       win.onMoved(() => persistGeometry()),
       win.onResized(() => persistGeometry()),
       // Theme may have changed in the library while this sat unfocused.
@@ -195,6 +202,7 @@
       >
         <Editor
           value={sticky.note.body}
+          docKey={sticky.note.id}
           placeholder="Write here…"
           previewMode
           onchange={(v) => sticky.editBody(v)}

@@ -88,6 +88,25 @@ export class SaveQueue {
     this.#disk.set(note.id, { updatedAt: note.updatedAt, body: note.body });
   }
 
+  /**
+   * Read a note another process (an agent) just wrote, for the window to show
+   * in place. Null while this window has unsaved typing for it, before or
+   * after the read, or once `stillShown` says the user moved on: that typing
+   * meets the other write through the version check instead (see #write).
+   */
+  async readExternal(id: string, stillShown: () => boolean): Promise<Note | null> {
+    if (this.peek(id) !== undefined) return null;
+    let fresh: Note;
+    try {
+      fresh = await getNote(id, false);
+    } catch {
+      return null;
+    }
+    if (!stillShown() || this.peek(id) !== undefined) return null;
+    this.known(fresh);
+    return fresh;
+  }
+
   /** Save status of one note id, for the editor status bar. */
   stateFor(id: string | undefined): SaveState {
     if (!id || !this.#unsaved.has(id)) return "saved";

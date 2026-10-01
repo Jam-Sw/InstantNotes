@@ -5,6 +5,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, getNote, updateNote } from "$lib/api/client";
 import type { Note } from "$lib/api/types";
+import type { AgentActivity } from "$lib/agent-activity";
+import { agents } from "./agents.svelte";
+import { toasts } from "./toasts.svelte";
 import { StickyNote } from "./sticky.svelte";
 
 vi.mock("$lib/api/client", () => {
@@ -61,7 +64,11 @@ describe("StickyNote", () => {
     sticky.editBody("milk, eggs");
 
     expect(await sticky.flush()).toBe(true);
-    expect(mockUpdateNote).toHaveBeenCalledWith("n1", { body: "milk, eggs" });
+    // Based on the version it opened, so an agent's write in between is seen.
+    expect(mockUpdateNote).toHaveBeenCalledWith("n1", {
+      body: "milk, eggs",
+      expectedUpdatedAt: "2026-01-01T00:00:00Z",
+    });
     expect(sticky.saveState).toBe("saved");
   });
 
@@ -115,5 +122,70 @@ describe("StickyNote", () => {
     // Nothing is left queued against a row that no longer exists.
     expect(await destroyed.flush()).toBe(true);
     expect(mockUpdateNote).not.toHaveBeenCalled();
+  });
+});
+
+describe("StickyNote when an agent writes its note", () => {
+  const write = (noteId: string): AgentActivity => ({
+    at: 1,
+    client: "claude-code",
+    tool: "append_to_note",
+    kind: "write",
+    noteIds: [noteId],
+    noteCount: 1,
+    titles: ["Groceries"],
+    space: null,
+    tag: null,
+    query: null,
+  });
+
+  it("takes the agent's version in place when nothing is unsaved", async () => {
+    const sticky = await loaded();
+    mockGetNote.mockResolvedValueOnce(
+      mkNote({ body: "milk\n- bread", updatedAt: "2026-01-01T00:05:00Z" }),
+    );
+
+    await sticky.adoptExternal([write("other"), { ...write("n1"), kind: "read" }]);
+    expect(sticky.note?.body).toBe("milk");
+
+    await sticky.adoptExternal([write("n1")]);
+    expect(sticky.note?.body).toBe("milk\n- bread");
+
+    // The next save is based on the agent's version: no conflict, no toast.
+    mockUpdateNote.mockResolvedValueOnce(mkNote({ body: "milk\n- bread!" }));
+    sticky.editBody("milk\n- bread!");
+    await sticky.flush();
+    expect(mockUpdateNote).toHaveBeenCalledWith("n1", {
+      body: "milk\n- bread!",
+      expectedUpdatedAt: "2026-01-01T00:05:00Z",
+    });
+  });
+
+  it("keeps unsaved typing, then names the agent and offers its text back", async () => {
+    const sticky = await loaded();
+    agents.play([write("n1")]);
+    sticky.editBody("milk, mine");
+    await sticky.adoptExternal([write("n1")]);
+    expect(sticky.note?.body).toBe("milk, mine");
+
+    const theirs = "milk\n- bread";
+    mockUpdateNote
+      .mockRejectedValueOnce(new ApiError("CONFLICT", "changed"))
+      .mockResolvedValueOnce(mkNote({ body: "milk, mine", updatedAt: "2026-01-01T00:06:00Z" }));
+    mockGetNote.mockResolvedValueOnce(mkNote({ body: theirs, updatedAt: "2026-01-01T00:05:00Z" }));
+
+    expect(await sticky.flush()).toBe(true);
+    const toast = toasts.items.at(-1)!;
+    expect(toast.message).toBe("Claude Code's change to this note was replaced by your typing.");
+
+    // Restoring is an ordinary edit in this window.
+    mockUpdateNote.mockResolvedValueOnce(mkNote({ body: theirs }));
+    toast.action!.run();
+    expect(sticky.note?.body).toBe(theirs);
+    await sticky.flush();
+    expect(mockUpdateNote).toHaveBeenLastCalledWith("n1", {
+      body: theirs,
+      expectedUpdatedAt: "2026-01-01T00:06:00Z",
+    });
   });
 });
