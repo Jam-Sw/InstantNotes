@@ -33,6 +33,8 @@
   import { effectiveVariant } from "$lib/themes/apply";
   import { formatExact } from "$lib/format";
   import Toast from "$lib/components/Toast.svelte";
+  import LicenseLocked from "$lib/components/LicenseLocked.svelte";
+  import { agreements } from "$lib/agreements.svelte";
 
   const win = getCurrentWindow();
   const noteId = win.label.slice("sticky-".length);
@@ -182,7 +184,10 @@
     </button>
   </header>
 
-  {#if sticky.note && !collapsed}
+  {#if !agreements.done && !collapsed}
+    <!-- A sticky restored after a new license or EULA version waits for it. -->
+    <LicenseLocked />
+  {:else if sticky.note && !collapsed}
     {#if sticky.note.contentKind === "whiteboard"}
       <div class="body board">
         <WhiteboardCanvas

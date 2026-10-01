@@ -9,6 +9,8 @@
   import { groupNotes } from "$lib/note-groups";
   import { updateSpace } from "$lib/stores/update-space";
   import { isUpdateSpaceId } from "$lib/update/space";
+  import { agreements } from "$lib/agreements.svelte";
+  import { licenseSpace } from "$lib/stores/license-space.svelte";
 
   const statusFilters: { id: StatusFilter; label: string }[] = [
     { id: "active", label: "Active" },
@@ -62,6 +64,26 @@
 </script>
 
 <section class="list-pane">
+  {#if licenseSpace.locked}
+    <!-- The License Space's two documents. Nothing else is reachable until
+         both are agreed, so no search or New here. -->
+    <div class="note-list">
+      {#each licenseSpace.documents as doc (doc.id)}
+        <button
+          class="note-row"
+          class:selected={licenseSpace.shown?.id === doc.id}
+          onclick={() => licenseSpace.show(doc.id)}
+        >
+          <div class="row-title">
+            {#if licenseSpace.isAgreed(doc.id)}<span class="agreed-mark" aria-label={agreements.copy.agreed}>✓</span>{/if}
+            {doc.title}
+          </div>
+          <div class="row-preview">{licenseSpace.isAgreed(doc.id) ? agreements.copy.agreed : `Version ${doc.version}`}</div>
+        </button>
+      {/each}
+      <div class="empty-state">{agreements.copy.lead}</div>
+    </div>
+  {:else}
   <div class="list-toolbar">
     <input
       class="search"
@@ -225,6 +247,7 @@
       {/if}
     {/if}
   </div>
+  {/if}
 </section>
 
 {#if newMenu}
@@ -445,6 +468,10 @@
     text-align: center;
     color: var(--text-tertiary);
     line-height: 1.5;
+  }
+  .agreed-mark {
+    color: var(--accent-text);
+    margin-right: 4px;
   }
   .action {
     padding: 4px 10px;

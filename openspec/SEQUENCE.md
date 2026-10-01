@@ -293,6 +293,17 @@ in its own worktree while sticky notes (13c) and agent access (13d) were in
 flight, then rebased onto both and landed on `0.9.0-pre` on 2026-09-30. See
 `changes/feat-stickies-import/`.
 
+## 13f. `feat-license-gate` (BUILT, open until checked in the app)
+
+The source license and the EULA as a License Space that every window waits
+on until both are agreed. It renders the installers agreement gate
+(`agreements.svelte.ts`, generated) instead of the generic `AgreementGate`
+view, so the rules and the texts stay owned by `installers` and only the form
+is InstantNotes'. No store, vault, or Rust change: agreement is stored per
+document version on the device, as the gate's contract says. It follows the
+merge of `main` (PR #58) into `0.9.0-pre`, which brought the license itself.
+See `changes/feat-license-gate/`.
+
 ## 14. Local AI
 
 Needs embedding storage, so it cannot precede unit 10. Embeddings are a

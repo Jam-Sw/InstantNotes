@@ -31,6 +31,8 @@
   import { isWhiteboardTarget } from "$lib/whiteboard/keys";
   import { excalidrawFile, parseBoard } from "$lib/whiteboard/document";
   import { updateSpace } from "$lib/stores/update-space";
+  import { licenseSpace } from "$lib/stores/license-space.svelte";
+  import LicenseNote from "$lib/components/LicenseNote.svelte";
   import {
     isUpdateNoteId,
     isUpdateSpaceId,
@@ -83,29 +85,36 @@
 
     // Menu bar events.
     let unlistenSettings: (() => void) | undefined;
+    // The menu bar's entry points stand down until the license and EULA are
+    // agreed (licenseSpace.locked), the same as the keyboard's.
     void listen(EVENTS.SETTINGS_OPEN, () => {
+      if (licenseSpace.locked) return;
       settingsOpen = true;
     }).then((un) => (unlistenSettings = un));
 
     let unlistenNewNote: (() => void) | undefined;
     void listen(EVENTS.MENU_NEW_NOTE, () => {
+      if (licenseSpace.locked) return;
       settingsOpen = false;
       void library.newNote();
     }).then((un) => (unlistenNewNote = un));
 
     let unlistenNewBoard: (() => void) | undefined;
     void listen(EVENTS.MENU_NEW_WHITEBOARD, () => {
+      if (licenseSpace.locked) return;
       settingsOpen = false;
       void library.newWhiteboard();
     }).then((un) => (unlistenNewBoard = un));
 
     let unlistenExport: (() => void) | undefined;
     void listen(EVENTS.MENU_EXPORT_NOTE, () => {
+      if (licenseSpace.locked) return;
       void exportSelectedNote();
     }).then((un) => (unlistenExport = un));
 
     let unlistenSticky: (() => void) | undefined;
     void listen(EVENTS.MENU_TOGGLE_STICKY, () => {
+      if (licenseSpace.locked) return;
       void library.toggleSticky();
     }).then((un) => (unlistenSticky = un));
 
@@ -147,6 +156,7 @@
   // and hears keys before the window does, so claim it on the way down;
   // stopping it here also keeps onKeydown from toggling the palette twice.
   function onBoardPaletteKey(e: KeyboardEvent) {
+    if (licenseSpace.locked) return;
     if ((e.metaKey || e.ctrlKey) && e.key === "k" && isWhiteboardTarget(e.target)) {
       e.preventDefault();
       e.stopPropagation();
@@ -159,6 +169,8 @@
     // dispatched through it; this guard catches the rest (focus on body after
     // an invoker unmounted) so nothing moves under an open modal.
     if (confirmDialog.request) return;
+    // Until the license and EULA are agreed, no shortcut does its work.
+    if (licenseSpace.locked) return;
     const mod = e.metaKey || e.ctrlKey;
     // ⌘K toggles the command palette from anywhere, including input fields.
     if (mod && e.key === "k") {
@@ -315,7 +327,7 @@
   }
 </script>
 
-{#if settingsOpen}
+{#if settingsOpen && !licenseSpace.locked}
   <SettingsView
     {appVersion}
     onBack={() => (settingsOpen = false)}
@@ -353,7 +365,7 @@
         onkeydown={onHandleKeydown}
       ></div>
     {/if}
-    {#if library.graphMode}
+    {#if library.graphMode && !licenseSpace.locked}
       <!-- The graph takes the list and editor columns together. -->
       <section class="graph-span">
         <GraphView />
@@ -361,7 +373,9 @@
     {:else}
       <NoteList />
       <section class="editor-pane">
-        {#if library.multiSelected.size > 1}
+        {#if licenseSpace.locked}
+          <LicenseNote />
+        {:else if library.multiSelected.size > 1}
           <BulkActions />
         {:else if library.selected}
           {#if isUpdateNoteId(library.selected.id)}

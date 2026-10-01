@@ -1,0 +1,60 @@
+{
+  "about": "The agreement gate's rules as cases (README, \"The agreement gate\"). Every platform's gate runs these against its own implementation: stored is what the device holds under the manifest's storageKey, accept is agreed to in order, and pending and storedAfter are what must follow.",
+  "documents": [
+    { "id": "license", "version": "PolyForm-Strict-1.0.0" },
+    { "id": "eula", "version": "2026-09-30" }
+  ],
+  "cases": [
+    {
+      "name": "a first launch asks for every document, in manifest order",
+      "stored": {},
+      "pending": ["license", "eula"]
+    },
+    {
+      "name": "each document needs its own agreement",
+      "stored": { "license": "PolyForm-Strict-1.0.0" },
+      "pending": ["eula"]
+    },
+    {
+      "name": "agreeing to both opens the app",
+      "stored": { "license": "PolyForm-Strict-1.0.0", "eula": "2026-09-30" },
+      "pending": []
+    },
+    {
+      "name": "a new version asks again for that document only",
+      "stored": { "license": "PolyForm-Strict-1.0.0", "eula": "2026-01-01" },
+      "pending": ["eula"]
+    },
+    {
+      "name": "unreadable storage counts as nothing agreed",
+      "stored": "accepted",
+      "pending": ["license", "eula"]
+    },
+    {
+      "name": "a stored value that is not a version string does not count",
+      "stored": { "license": true, "eula": "2026-09-30" },
+      "pending": ["license"]
+    },
+    {
+      "name": "agreeing records the version that was shown",
+      "stored": {},
+      "accept": ["eula"],
+      "pending": ["license"],
+      "storedAfter": { "eula": "2026-09-30" }
+    },
+    {
+      "name": "agreeing to a document the manifest does not list changes nothing",
+      "stored": { "license": "PolyForm-Strict-1.0.0" },
+      "accept": ["privacy"],
+      "pending": ["eula"],
+      "storedAfter": { "license": "PolyForm-Strict-1.0.0" }
+    },
+    {
+      "name": "agreements to documents no longer listed are dropped on the next write",
+      "stored": { "terms": "2025-01-01" },
+      "accept": ["license", "eula"],
+      "pending": [],
+      "storedAfter": { "license": "PolyForm-Strict-1.0.0", "eula": "2026-09-30" }
+    }
+  ]
+}

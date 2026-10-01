@@ -11,6 +11,7 @@
   import { normalizeTagInput } from "$lib/tag-name";
   import { updateSpace } from "$lib/stores/update-space";
   import { UPDATE_SPACE_ID, UPDATE_SPACE_NAME } from "$lib/update/space";
+  import { LICENSE_SPACE_NAME, licenseSpace } from "$lib/stores/license-space.svelte";
   import type { TagWithCount, WorkspaceWithCount } from "$lib/api/types";
 
   let newSpaceInput = $state("");
@@ -87,6 +88,27 @@
 </script>
 
 <aside class="sidebar">
+  {#if licenseSpace.locked}
+    <!-- Until the license and EULA are agreed, the License Space is the one
+         place to go; everything below is shown but out of reach. -->
+    <nav class="license-nav">
+      <SidebarEntityRow
+        name={LICENSE_SPACE_NAME}
+        count={licenseSpace.documents.length}
+        normalize={(s) => s.trim()}
+        noun="Space"
+        active
+        editing={false}
+        readonly
+        onSelect={() => {}}
+        onStartRename={() => {}}
+        onRename={async () => ({ ok: true as const })}
+        onDoneRename={() => {}}
+        onMenu={() => {}}
+      />
+    </nav>
+  {/if}
+  <div class="lockable" class:locked={licenseSpace.locked} inert={licenseSpace.locked}>
   <nav class="sections">
     <button
       class="nav-item"
@@ -216,6 +238,7 @@
       <div class="empty-hint">Type #tag in a note</div>
     {/each}
   </nav>
+  </div>
 </aside>
 
 {#if spaceMenu}
@@ -252,6 +275,16 @@
     padding: 12px 8px;
     min-height: 0;
     overflow-y: auto;
+  }
+  /* A wrapper for the lock only; it adds no box of its own. */
+  .lockable {
+    display: contents;
+  }
+  .lockable.locked > * {
+    opacity: 0.4;
+  }
+  .license-nav {
+    margin-bottom: 8px;
   }
   .nav-item {
     display: flex;

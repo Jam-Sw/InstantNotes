@@ -34,6 +34,9 @@ vi.mock("$lib/stores/library.svelte", () => ({
   },
 }));
 vi.mock("$lib/stores/update-space", () => ({ updateSpace: { notes: [] } }));
+// A user who has agreed to the license and EULA; the locked list is
+// license-space.svelte.test.ts's subject.
+vi.mock("$lib/stores/license-space.svelte", () => ({ licenseSpace: { locked: false } }));
 
 import NoteList from "./NoteList.svelte";
 
