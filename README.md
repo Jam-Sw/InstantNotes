@@ -100,3 +100,11 @@ This is a private project developed by the jam-sw team.
 - All changes land via pull request into `main`
 - Commit subjects stay short and concrete; bodies explain what changed in one or two sentences
 - Core behavior is covered with Rust tests against SQLite, frontend utilities with Vitest, and components must pass `svelte-check`
+
+## License
+
+InstantNotes is source-available under the [PolyForm Strict License 1.0.0](LICENSE.md).
+You can read the code and use the app for personal, noncommercial purposes. Using it for
+a business or paid work, redistributing it, or publishing modified versions needs a
+commercial license from Jam-Sw: write to jam.sw.org@gmail.com. Installing or using the
+app means agreeing to the [end user license agreement](src-tauri/installer/EULA.txt).

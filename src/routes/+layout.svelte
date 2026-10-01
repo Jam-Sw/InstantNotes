@@ -1,6 +1,7 @@
 <script lang="ts">
   import "$lib/app.css";
   import { theme } from "$lib/stores/theme.svelte";
+  import EulaGate from "$lib/EulaGate.svelte";
   let { children } = $props();
 
   // Apply the persisted theme as early as possible. The CSS base fallback
@@ -13,7 +14,9 @@
   const buildTag = import.meta.env.DEV ? new Date().toLocaleTimeString() : "";
 </script>
 
-{@render children()}
+<EulaGate>
+  {@render children()}
+</EulaGate>
 
 {#if import.meta.env.DEV}
   <div class="dev-badge">dev · {buildTag}</div>
