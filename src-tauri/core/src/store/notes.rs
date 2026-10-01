@@ -379,10 +379,11 @@ impl Store {
              FROM notes_fts \
              JOIN notes n ON n.seq = notes_fts.rowid \
              WHERE notes_fts MATCH ?1 AND n.is_deleted = 0 AND n.is_archived = 0 \
-             ORDER BY bm25(notes_fts) \
+             ORDER BY lower(n.title) = lower(?3) DESC, bm25(notes_fts) \
              LIMIT ?2",
         )?;
-        let rows = stmt.query_map(params![match_expr, limit], |row| {
+        // A query that is a note's exact title finds that note first.
+        let rows = stmt.query_map(params![match_expr, limit, text.trim()], |row| {
             Ok(SearchResult {
                 note_id: row.get(0)?,
                 title: row.get(1)?,

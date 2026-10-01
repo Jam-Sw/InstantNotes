@@ -52,9 +52,13 @@ blocks, > quotes, - lists (indent to nest), - [ ] tasks, [links](url), and \
 images as ![](attachments/<file>). A #word in the text is a tag.
 
 Working with notes: search or list before creating, so you add to an existing \
-note instead of duplicating it. Prefer append_to_note to add to a note. To \
-rewrite one, read it with get_note and pass its updatedAt to update_note; a \
-CONFLICT means the user changed it since, so read it again. Nothing you do \
+note instead of duplicating it. search_notes matches titles, so search a \
+note's title to find it; its results already carry the id, spaces, and \
+updatedAt. Prefer append_to_note to add to a note. To rewrite one, pass the \
+updatedAt from search_notes, list_notes, or get_note to update_note; you do \
+not need to read the note first unless you need its current text. A CONFLICT \
+means the user changed it since; it includes the current note, so retry from \
+that. Nothing you do \
 deletes for good: trash_note is undoable by the user.
 
 Open loops: list_notes with status \"revisit\" gives captures the user has \

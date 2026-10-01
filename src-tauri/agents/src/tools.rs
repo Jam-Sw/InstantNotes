@@ -62,7 +62,7 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Read,
         destructive: false,
         idempotent: true,
-        description: "Full-text search over note titles and bodies. Returns ids, titles, and a matching excerpt.",
+        description: "Full-text search over note titles and bodies; a note's exact title finds it first. Returns ids, titles, spaces, a matching excerpt, and updatedAt (enough to call update_note directly).",
         schema: || object(json!({
             "query": { "type": "string", "description": "Words to search for." },
             "limit": limit_param()
@@ -135,10 +135,10 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Write,
         destructive: true,
         idempotent: true,
-        description: "Replace a note's title and/or body. expectedUpdatedAt must be the updatedAt from get_note; a CONFLICT means the note changed since, so read it again.",
+        description: "Replace a note's title and/or body. expectedUpdatedAt is the updatedAt from search_notes, list_notes, or get_note; no need to read the note first. A CONFLICT means the user changed it since, and carries the current note to retry from. Returns the note without its body.",
         schema: || object(json!({
             "id": id_param(),
-            "expectedUpdatedAt": { "type": "string", "description": "The note's updatedAt, exactly as get_note returned it." },
+            "expectedUpdatedAt": { "type": "string", "description": "The note's updatedAt, exactly as search_notes, list_notes, or get_note returned it." },
             "title": { "type": "string" },
             "body": { "type": "string", "description": "Markdown; replaces the whole body." }
         }), &["id", "expectedUpdatedAt"]),
@@ -382,12 +382,18 @@ impl<'a> Tools<'a> {
             .store
             .search_notes(&a.query, clamp_limit(a.limit))
             .map_err(fail)?;
-        Ok(json!({ "results": hits.iter().map(|h| json!({
-            "id": h.note_id,
-            "title": unmark(&h.title),
-            "excerpt": unmark(&h.excerpt),
-            "updatedAt": h.updated_at,
-        })).collect::<Vec<_>>() }))
+        let mut results = Vec::with_capacity(hits.len());
+        for h in &hits {
+            let spaces = self.store.workspaces_for_note(&h.note_id).map_err(fail)?;
+            results.push(json!({
+                "id": h.note_id,
+                "title": unmark(&h.title),
+                "spaces": spaces.iter().map(|w| &w.name).collect::<Vec<_>>(),
+                "excerpt": unmark(&h.excerpt),
+                "updatedAt": h.updated_at,
+            }));
+        }
+        Ok(json!({ "results": results }))
     }
 
     fn list_notes(&mut self, a: ListArgs) -> ToolResult {
@@ -449,18 +455,31 @@ impl<'a> Tools<'a> {
         if a.body.is_some() {
             refuse_whiteboard(&current)?;
         }
-        self.store
-            .update_note(
-                &a.id,
-                UpdateNotePatch {
-                    title: a.title,
-                    body: a.body,
-                    expected_updated_at: Some(a.expected_updated_at),
-                    ..Default::default()
-                },
-            )
-            .map_err(fail)?;
-        self.note_view(&a.id)
+        let patch = UpdateNotePatch {
+            title: a.title,
+            body: a.body,
+            expected_updated_at: Some(a.expected_updated_at),
+            ..Default::default()
+        };
+        match self.store.update_note(&a.id, patch) {
+            Ok(_) => {}
+            // Hand back what is there now, so the retry needs no extra read.
+            Err(AppError::Conflict(_)) => {
+                let now = self.note_view(&a.id)?;
+                return Err(format!(
+                    "CONFLICT: the note changed since that updatedAt. Retry with the current note:\n{}",
+                    pretty(&now)
+                ));
+            }
+            Err(e) => return Err(fail(e)),
+        }
+        // The caller just sent the body; echoing it back only costs tokens.
+        let mut view = self.note_view(&a.id)?;
+        if let Value::Object(fields) = &mut view {
+            fields.remove("body");
+            fields.remove("attachmentsDir");
+        }
+        Ok(view)
     }
 
     fn append_to_note(&mut self, a: AppendArgs) -> ToolResult {

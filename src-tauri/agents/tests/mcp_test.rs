@@ -506,3 +506,60 @@ fn every_successful_call_is_recorded_for_the_app_newest_first() {
     assert_eq!(log[0]["titles"], json!(["Roadmap"]));
     assert_eq!(log[1]["tool"], "list_notes");
 }
+
+#[test]
+fn a_titled_note_is_found_by_its_title_and_rewritten_without_a_read() {
+    let mut store = store_with("write");
+    let note = store
+        .create_note(CreateNoteInput {
+            title: Some("Install InstantNotes on CachyOS/Arch".into()),
+            body: Some("hello world".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    let ws = store.get_or_create_workspace("Instant Notes").unwrap();
+    store.add_note_to_workspace(&note.id, &ws.id).unwrap();
+
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(
+                1,
+                "search_notes",
+                json!({ "query": "Install InstantNotes on CachyOS/Arch" }),
+            ),
+        ],
+    );
+    let (_, _, found) = result_of(&replies[1]);
+    let hit = &found["results"][0];
+    assert_eq!(hit["id"], json!(note.id));
+    assert_eq!(hit["spaces"], json!(["Instant Notes"]));
+
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(
+                1,
+                "update_note",
+                json!({ "id": note.id, "expectedUpdatedAt": hit["updatedAt"], "body": "steps" }),
+            ),
+            // Stale now: the conflict carries the current note.
+            call(
+                2,
+                "update_note",
+                json!({ "id": note.id, "expectedUpdatedAt": hit["updatedAt"], "body": "again" }),
+            ),
+        ],
+    );
+    let (is_error, text, written) = result_of(&replies[1]);
+    assert!(!is_error, "{text}");
+    assert!(written.get("body").is_none(), "{text}");
+    let (is_error, text, _) = result_of(&replies[2]);
+    assert!(is_error);
+    assert!(
+        text.starts_with("CONFLICT") && text.contains("\"body\": \"steps\""),
+        "{text}"
+    );
+}

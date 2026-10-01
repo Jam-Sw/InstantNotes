@@ -343,15 +343,13 @@ fn attach_tag(conn: &Connection, note_id: &str, tag_id: &str, source: &str) -> R
 }
 
 /// Build an FTS5 MATCH expression from raw user text. Tokens are reduced to
-/// word characters so user input can never produce FTS syntax errors.
+/// word characters so user input can never produce FTS syntax errors. Other
+/// punctuation splits words, as the unicode61 tokenizer does when indexing:
+/// "CachyOS/Arch" is indexed as `cachyos` `arch`, so it must be queried that
+/// way, not as `CachyOSArch`.
 fn fts_match_expr(text: &str) -> Option<String> {
-    let tokens: Vec<String> = text
-        .split_whitespace()
-        .map(|t| {
-            t.chars()
-                .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
-                .collect::<String>()
-        })
+    let tokens: Vec<&str> = text
+        .split(|c: char| !(c.is_alphanumeric() || c == '-' || c == '_'))
         .filter(|t| !t.is_empty())
         .collect();
     if tokens.is_empty() {
