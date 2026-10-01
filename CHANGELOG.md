@@ -2,7 +2,7 @@
 
 All notable changes to InstantNotes are recorded here. The section for each
 release becomes the GitHub release notes and the "What's new" text shown by the
-in-app updater, so write it for users. Newest first.
+in-app updater, written for users. Newest first.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -12,75 +12,38 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.9.0] - 2026-09-25
 
 ### Added
-- Connect an agent. Claude Code, Codex, Cursor, or any app that speaks the
-  Model Context Protocol can search, read, and, if you allow it, write your
-  notes, using the same search and rules you do. Settings > Agents turns it
-  on (it starts off), sets read or read-and-write, and gives the one line to
-  paste into Claude Code or the settings for other apps.
-- You see an agent at work as it happens: the notes, Spaces, and tags it is
-  reading light up, a line under All Notes says who is doing what, and text it
-  adds to the note you have open appears in place, highlighted, without moving
-  your cursor. Cmd-Z takes it back out.
-- If you are typing in a note when an agent changes it, your typing wins and
-  you are told, with a button to restore the agent's version.
-- Sticky notes: pop any note or whiteboard out of the library into its own
-  small window and put it anywhere. Keep it on top of everything, let it sit
-  like any other window, or lay it on the desktop under your windows like a
-  widget. Move it by its header, and double-click the header to roll it up to
-  a single line, as in Stickies. Edit it right there; it saves as you type.
-  Bring it back with one click and it opens in the library exactly as you left
-  it. Use the Sticky button, right-click a note in the list, the command
-  palette, or File > Pop Out as Sticky (⌘⇧O). Stickies come back where you
-  left them the next time InstantNotes starts.
-- The Settings front page is now a dashboard: live counts for your notes and how
-  many are pinned, archived, or in the Trash, for your tags and Spaces, and for
-  your attachments with the space they take up, alongside how quickly capture is
-  ready and the release notes for the version you are running.
-- An Images settings page: choose whether an added image is copied into
-  InstantNotes or linked from its original file, set how tall images preview,
-  and see where attachments live with a button to open the folder.
-- Insert an image from a file with the Image button in the editor toolbar, in
-  addition to pasting or dropping one.
-- An Editor settings page with a "Show exact save time" option; the exact save
-  time, to the minute, is always available on hover over any note's date.
-- Contexting can rewrite images to their absolute path (the new default), keep
-  the reference as written, or drop images entirely when you copy a note as
-  context.
-- Send feedback from inside the app: the new Feedback page files a bug or idea,
-  saves a copy on your machine, and opens a prefilled GitHub issue. A "Reveal
-  saved feedback" button shows exactly what has accumulated there; nothing is
-  pruned automatically.
-- A Vault: keep every note as a plain Markdown file, with its tags and Spaces,
-  in a folder you choose. Readable in any editor, with InstantNotes closed, on
-  any device. Changes reach the folder a moment after you make them, trashed
-  notes move to its trash folder, and your attachments come along. Point it at
-  a synced folder to carry your notes elsewhere. "Check vault" confirms every
-  file matches its note. For now InstantNotes writes the folder but does not
-  read it back, so edit your notes in the app. A one-time "Export a copy" is
-  there too.
-- Whiteboards: a note can be a freeform canvas for boxes, arrows, frames, and
-  sketches. Start one from the note list: the + button now has a chevron beside
-  it that offers New note and New whiteboard, and a right-click anywhere on the
-  button opens the same choice. New Whiteboard (Cmd+Shift+N) and the File menu
-  still work, and the command palette can still turn an existing note into one;
-  its text moves onto the board. Words written on a board stay searchable and
-  #tags on it still tag the note. In your vault a board is saved as a standard
-  .excalidraw file next to its note, and Export Note saves it the same way.
-- Graph: a new place in the sidebar that draws your notes, tags, and Spaces and
-  how they connect. Hover a note to light up what it shares with others, then
-  click through to open a note, filter by a tag, or go into a Space. It opens
-  around the note you have open.
-- An update is now a notification instead of a dialog: an Update Space with a
-  green `*` that appears at the top of your Spaces. It holds two notes - the
-  version you are going to and the one you are coming from, how much larger or
-  smaller the download is, and the button to install it, plus the release notes
-  kept as a note you can read. Answering the finished install with Ok dismisses
-  the Space; the update applies the next time you open the app.
-- Bring your Apple Stickies into InstantNotes (Mac). Settings > Import shows
-  every sticky in its own color; choose which ones come in and the Space they
-  go to. Formatting, lists, links, images, and each sticky's original dates
-  come along, and Stickies keeps its own copies. Importing again brings in only
-  the new ones.
+- License and EULA: on first launch they open as two notes in a License Space;
+  agree to each to start. A new version of either asks again.
+- Sticky notes (beta): pop any note or whiteboard out of the library into its own
+  small window and put it anywhere. Or Pop Out as Sticky (⌘⇧O).
+- Import Apple Stickies (Mac): Settings > Import. Colors, formatting, images,
+  and dates come along; importing again brings in only new ones.
+- Connect agents (Claude Code, Codex, Cursor) over MCP: Settings > Agents. Off
+  until you turn it on; read only or read and write.
+- See an agent at work: what it reads or edits lights up as it happens. If you
+  are typing when it edits, your typing wins and you can restore theirs.
+- Change Settings front page to settings dashboard + release notes reference
+- Configure image settings: Modify how images behave.
+- Added importing images.
+- Configure UI settings: Show exact save time
+- Contexting can rewrite images to their absolute path (new default)
+- Send feedback from app (Github Issue) (beta)
+- Vault: InstantNotes mirrors your notes as plain files in a folder you choose,
+  organized by Space. Open them in any editor, on any device, even with the app
+  closed. Edits sync within seconds; attachments are included and trashed notes
+  go to the vault's trash folder. Use a synced folder (iCloud, Dropbox) to reach
+  them elsewhere. "Check vault" verifies every file matches its note.
+  Note: syncing is one-way for now, so keep editing in the app.
+  "Export a copy" is still available for one-off backups.
+- Whiteboards (beta): freeform canvases for boxes, arrows, frames, and sketches.
+  Create one from the chevron next to + in the note list, with Cmd+Shift+N, or
+  from the File menu. The command palette can convert an existing note; its text
+  moves onto the board. Board text is searchable and #tags still apply. Boards
+  save as standard .excalidraw files, in the vault and on export.
+- Graph: a new sidebar view of how your notes, tags, and Spaces connect. It opens
+  centered on the current note. Hover to highlight connections; click to open a
+  note, filter by tag, or enter a Space.
+- Changed update dialog into custom notification: a special "Update" Space.
 
 ### Fixed
 - Images no longer pile up forever: deleting a note for good also deletes the
@@ -105,19 +68,11 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   no longer crashes there.
 - The update dialog's "Remind me later" options are gone: an update is now a
   place you can simply ignore rather than a reminder you have to silence.
-- A note whose first line is bold, italic, or struck through no longer carries
-  the asterisks or tildes into its title.
-- A note that starts with an image takes its title from its first line of
-  words, not from the image's file path.
+- Note titles skip bold/italic markers and leading images.
 
 ### Changed
-- A new app icon: a lightning bolt striking a note, for notes that are there the
-  instant you need them. The menu bar icon is now the same bolt.
-- Under the hood, the names the two halves of the app use for each other - the
-  error codes and the event names - each live in exactly one place per half now,
-  with a test that holds the two halves equal. Nothing looks or behaves
-  differently; it means a whole class of silent breakage, where one half is
-  renamed and the other quietly stops listening, can no longer happen.
+- A new app icon, New menu bar icon.
+- Under the hood: error codes and event names each live in one place per side.
 
 ## [0.8.0] - 2026-07-11
 
