@@ -255,6 +255,19 @@ phases 0-4 and 6; branded id types (phase 5) and collapsing the two-file IPC
 command surface are deliberately not part of it. Landed on `0.9.0-pre` on
 2026-09-25. See `changes/archive/chore-boundary-registries/tasks.md`.
 
+## 13c. Sticky notes (BUILT, open until checked in the app)
+
+`feat-sticky-notes`. A note pops out of the library into its own window that
+floats, sits like any window, or lies on the desktop, and pops back in. Which
+notes are stickies and where they sit is per-device window state in the
+existing settings table (`stickies`), the same kind of row as a UI preference:
+no note shape changes, nothing reaches the vault, and no write path moves, so
+it is placed like a settings page on the key/value table, in any slot; it took
+its own. A sticky is its note's only editor while it is out, so there is never
+a second writer to reconcile. Built on `0.9.0-pre` on 2026-09-30 with its
+tests green; it stays open until the in-app checks in
+`changes/feat-sticky-notes/tasks.md` pass, then archives.
+
 ## 14. Local AI
 
 Needs embedding storage, so it cannot precede unit 10. Embeddings are a

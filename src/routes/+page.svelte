@@ -102,6 +102,11 @@
       void exportSelectedNote();
     }).then((un) => (unlistenExport = un));
 
+    let unlistenSticky: (() => void) | undefined;
+    void listen(EVENTS.MENU_TOGGLE_STICKY, () => {
+      void library.toggleSticky();
+    }).then((un) => (unlistenSticky = un));
+
     // Quit handshake: persist the debounced edit, then tell Rust to exit for
     // real. If this webview is hung the Rust-side fallback exits anyway.
     let unlistenQuit: (() => void) | undefined;
@@ -121,6 +126,7 @@
       unlistenNewNote?.();
       unlistenNewBoard?.();
       unlistenExport?.();
+      unlistenSticky?.();
       unlistenQuit?.();
       window.removeEventListener("blur", flush);
       window.removeEventListener("keydown", onKeydown);

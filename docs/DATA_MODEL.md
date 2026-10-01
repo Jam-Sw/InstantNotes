@@ -101,6 +101,13 @@ accepts plain user input without exposing FTS syntax errors.
 preferences. Reads are best-effort: a missing or malformed value falls back to
 the code default.
 
+`stickies` holds which notes are popped out as sticky windows on this device,
+as a map from note id to `{ x, y, width, height, level, collapsed }` in
+logical pixels (`x`/`y` null means centered; `level` is `float`, `normal`, or
+`desktop`; while `collapsed`, `height` keeps the expanded height). It
+is window state, not note data: it never reaches the vault, and losing it only
+means stickies reopen in the library.
+
 ## 9. Migrations
 
 `MIGRATIONS` is an ordered list of SQL scripts; `user_version` records how many

@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Library and capture windows: app IPC + events only. No network, no shell, no opener.",
-  "windows": ["library", "capture"],
+  "description": "Library, capture, and sticky windows: app IPC + events only. No network, no shell, no opener.",
+  "windows": ["library", "capture", "sticky-*"],
   "permissions": [
     "core:default"
   ]

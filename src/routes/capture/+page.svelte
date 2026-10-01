@@ -70,7 +70,7 @@
     });
     // Quit handshake: push a debounced draft write through before the process
     // exits, so the draft is not 300ms stale on the next launch. Only the
-    // library window answers with quit_app.
+    // library window and stickies answer with quit_app.
     const unlistenQuit = listen(EVENTS.APP_QUIT_REQUESTED, () => {
       persistDraft.flush();
     });

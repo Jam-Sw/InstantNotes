@@ -8,7 +8,8 @@
   import { imagePrefs } from "$lib/stores/images.svelte";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
-  import { importImageFile, allowImageFile, openUrl } from "$lib/api/client";
+  import { importImageFile, allowImageFile, openUrl, popOutNote } from "$lib/api/client";
+  import { modKey, shiftKey } from "$lib/platform";
   import { theme } from "$lib/stores/theme.svelte";
   import { effectiveVariant } from "$lib/themes/apply";
   import { attachmentMarkdown } from "$lib/editor/images";
@@ -84,7 +85,22 @@
   }
 </script>
 
-{#if library.selected}
+{#if library.selected && library.isSticky(library.selected.id)}
+  <!-- The sticky is this note's only editor while it is out. -->
+  {@const id = library.selected.id}
+  <div class="popped-out">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="3" y="7" width="12" height="12" rx="2" />
+      <path d="M10 4h9a2 2 0 0 1 2 2v9M13 11l7-7M15 4h5v5" />
+    </svg>
+    <h2>{library.selected.title || "Untitled"}</h2>
+    <p>This note is open as a sticky. Edit it there, or bring it back here.</p>
+    <div class="popped-actions">
+      <button class="action" onclick={() => void popOutNote(id)}>Show Sticky</button>
+      <button class="action primary" onclick={() => void library.popIn(id)}>Bring Back</button>
+    </div>
+  </div>
+{:else if library.selected}
   <div class="editor-toolbar">
     <input
       class="title-input"
@@ -117,6 +133,13 @@
             Aa
           </button>
         {/if}
+        <button
+          class="action"
+          title={`Pop out as a sticky (${modKey}${shiftKey}O)`}
+          onclick={() => void library.popOut(library.selected!.id)}
+        >
+          Sticky
+        </button>
         <button
           class="action"
           title={library.selected.isPinned ? "Unpin" : "Pin"}
@@ -228,6 +251,46 @@
 {/if}
 
 <style>
+  .popped-out {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 24px;
+    text-align: center;
+    color: var(--text-secondary);
+  }
+  .popped-out svg {
+    width: 40px;
+    height: 40px;
+    fill: none;
+    stroke: var(--text-tertiary);
+    stroke-width: 1.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .popped-out h2 {
+    margin: 4px 0 0;
+    font-size: 16px;
+    color: var(--text);
+  }
+  .popped-out p {
+    margin: 0;
+    font-size: 13px;
+    max-width: 300px;
+  }
+  .popped-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .action.primary {
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    border-color: var(--accent);
+  }
   .editor-toolbar {
     display: flex;
     align-items: center;

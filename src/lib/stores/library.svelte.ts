@@ -12,7 +12,10 @@ import {
   listNotes,
   listTags,
   listWorkspaces,
+  listStickies,
   listWorkspaceTags,
+  popInNote,
+  popOutNote,
   removeNoteFromWorkspace,
   removeTagFromNote,
   renameWorkspace,
@@ -91,6 +94,9 @@ class LibraryStore {
   selectedTags = $state<Tag[]>([]);
   selectedWorkspaces = $state<Workspace[]>([]);
   error = $state<string | null>(null);
+  // Notes popped out as stickies. Each sticky is its note's only editor, so
+  // the library stops editing a note the moment it appears here.
+  stickyIds = $state<ReadonlySet<string>>(new Set());
 
   // Ids checked for bulk actions (the open note's id on a plain click; grows
   // via cmd-click / shift-click). Size > 1 swaps the editor for the bulk panel.
@@ -159,13 +165,85 @@ class LibraryStore {
       }),
       listen(EVENTS.TAGS_CHANGED, () => void this.refreshTags()),
       listen(EVENTS.WORKSPACES_CHANGED, () => void this.refreshWorkspaces()),
+      listen(EVENTS.STICKIES_CHANGED, () => void this.refreshStickies()),
     ]);
     await Promise.all([
       this.refresh(),
       this.refreshTags(),
       this.refreshWorkspaces(),
       this.#refreshRevisitCount(),
+      this.refreshStickies(),
     ]);
+  }
+
+  // ---- stickies ----
+
+  isSticky(id: string | undefined): boolean {
+    return id !== undefined && this.stickyIds.has(id);
+  }
+
+  /** Re-read which notes are stickies. A note that just came back from one
+   *  is reopened from disk if it is the open note: the sticky wrote it last. */
+  async refreshStickies(): Promise<void> {
+    try {
+      const next = new Set(await listStickies());
+      const returned = [...this.stickyIds].filter((id) => !next.has(id));
+      this.stickyIds = next;
+      const open = this.selected?.id;
+      if (open && returned.includes(open)) await this.#open(open);
+    } catch (e) {
+      this.#fail(e);
+    }
+  }
+
+  /**
+   * Pop a note out as a sticky. Every pending edit is written first and the
+   * note's must have landed: the sticky loads the note from disk, and an edit
+   * still queued here would later overwrite whatever is typed there.
+   */
+  async popOut(id: string): Promise<void> {
+    if (isVirtualNoteId(id)) return;
+    await this.flushPendingEdits();
+    if (this.#saveQueue.peek(id) !== undefined) {
+      toasts.show("Couldn't save this note, so it stays here for now.");
+      return;
+    }
+    try {
+      await popOutNote(id);
+      await this.refreshStickies();
+    } catch (e) {
+      this.#fail(e);
+    }
+  }
+
+  /** Bring a sticky back into the library. Resolves once its edits are on
+   *  disk and the open note shows them. */
+  async popIn(id: string): Promise<void> {
+    await this.#popInAll([id]);
+  }
+
+  /** The File menu's toggle: pop the open note out, or back in. */
+  async toggleSticky(): Promise<void> {
+    const note = this.selected;
+    if (!note || note.isDeleted) return;
+    await (this.isSticky(note.id) ? this.popIn(note.id) : this.popOut(note.id));
+  }
+
+  /** Pop in whichever of these notes are stickies, before anything that ends
+   *  their life here (trash, destroy). False when a sticky could not save,
+   *  in which case the caller must not go ahead. */
+  async #popInAll(ids: string[]): Promise<boolean> {
+    const stickies = ids.filter((id) => this.stickyIds.has(id));
+    if (stickies.length === 0) return true;
+    try {
+      for (const id of stickies) await popInNote(id);
+      return true;
+    } catch (e) {
+      this.#fail(e);
+      return false;
+    } finally {
+      await this.refreshStickies();
+    }
   }
 
   #filter(): NoteFilter {
@@ -515,6 +593,7 @@ class LibraryStore {
 
   async bulkDelete(): Promise<void> {
     const ids = [...this.multiSelected];
+    if (!(await this.#popInAll(ids))) return;
     // Trash is reversible and Undo promises fidelity: persist any pending
     // edit first, so a restored note holds the user's last keystrokes.
     this.#collectPending();
@@ -549,6 +628,7 @@ class LibraryStore {
    */
   async destroyNotes(ids: string[]): Promise<void> {
     if (ids.length === 0) return;
+    if (!(await this.#popInAll(ids))) return;
     // Destroyed notes must also forget their queued edits, or the retry and
     // every later flush re-attempts a write against a row that no longer
     // exists and surfaces NOT_FOUND forever.
@@ -741,7 +821,8 @@ class LibraryStore {
   }
 
   editBody(body: string): void {
-    if (!this.selected) return;
+    // A sticky is the note's only editor; see stickyIds.
+    if (!this.selected || this.isSticky(this.selected.id)) return;
     // Optimistic local state; persistence is debounced. The note is dirty
     // from this moment until a write of this (or a newer) body succeeds.
     this.selected.body = body;
@@ -758,6 +839,7 @@ class LibraryStore {
    * switching away from it.
    */
   editBoard(id: string, edit: Required<QueuedEdit>): void {
+    if (this.isSticky(id)) return;
     if (this.selected?.id === id) {
       this.selected.surfaceData = edit.surfaceData;
       this.selected.body = edit.body;
@@ -773,6 +855,7 @@ class LibraryStore {
   async convertToWhiteboard(): Promise<void> {
     const note = this.selected;
     if (!note || note.isDeleted || note.contentKind === "whiteboard") return;
+    if (this.isSticky(note.id)) return;
     await this.flushPendingEdits();
     const current = this.selected;
     if (current?.id !== note.id) return;
@@ -792,7 +875,7 @@ class LibraryStore {
   }
 
   editTitle(title: string): void {
-    if (!this.selected) return;
+    if (!this.selected || this.isSticky(this.selected.id)) return;
     const trimmed = title.trim();
     if (!trimmed || trimmed === this.selected.title) return;
     if (isVirtualNoteId(this.selected.id)) {
@@ -819,6 +902,7 @@ class LibraryStore {
   async deleteSelected(): Promise<void> {
     if (!this.selected) return;
     const id = this.selected.id;
+    if (!(await this.#popInAll([id]))) return;
     // Trash is reversible and Undo promises fidelity: persist any pending
     // edit first, so a restored note holds the user's last keystrokes.
     this.#collectPending();

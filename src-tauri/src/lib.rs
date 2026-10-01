@@ -60,7 +60,7 @@ mod events;
 mod shell;
 use commands::{feedback::*, notes::*, settings::*, stats::*, tags::*, vault::*, workspaces::*};
 use error::{CmdError, CmdResult};
-use shell::{capture::*, files::*, mirror::*, quit::*, windows::*};
+use shell::{capture::*, files::*, mirror::*, quit::*, stickies::*, windows::*};
 
 // ---- app shell ----
 
@@ -205,11 +205,19 @@ pub fn run() {
             )?;
             let export_item =
                 MenuItem::with_id(app, "export_note", "Export Note As…", true, None::<&str>)?;
+            let sticky_item = MenuItem::with_id(
+                app,
+                "toggle_sticky",
+                "Pop Out as Sticky",
+                true,
+                Some("CmdOrCtrl+Shift+O"),
+            )?;
             let file_submenu = {
                 let builder = SubmenuBuilder::new(app, "File")
                     .item(&new_note_item)
                     .item(&new_board_item)
                     .separator()
+                    .item(&sticky_item)
                     .item(&export_item);
                 #[cfg(not(target_os = "macos"))]
                 let builder = builder
@@ -253,6 +261,10 @@ pub fn run() {
                 "export_note" => {
                     show_library_window(app);
                     let _ = app.emit(events::MENU_EXPORT_NOTE, ());
+                }
+                // Library only: the note it acts on is the library's open one.
+                "toggle_sticky" => {
+                    let _ = app.emit_to("library", events::MENU_TOGGLE_STICKY, ());
                 }
                 "quit" => request_quit(app),
                 _ => {}
@@ -408,6 +420,10 @@ pub fn run() {
                     let _ = library.set_focus();
                 }
             }
+
+            // Last: the store is managed and the library exists, so a sticky
+            // restored now is never the app's first window.
+            restore_stickies(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -467,7 +483,15 @@ pub fn run() {
             quit_app,
             capture_input_ready,
             get_capture_latency,
-            get_shortcut_failure
+            get_shortcut_failure,
+            pop_out_note,
+            pop_in_note,
+            answer_pop_in,
+            list_stickies,
+            get_sticky_view,
+            set_sticky_level,
+            set_sticky_collapsed,
+            save_sticky_geometry
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

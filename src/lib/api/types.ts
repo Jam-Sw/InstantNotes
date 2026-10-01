@@ -24,6 +24,10 @@ export interface Note {
   surfaceData?: string | null;
 }
 
+/** Where a sticky sits: above every window, as an ordinary window, or below
+ *  every window like a desktop widget. */
+export type StickyLevel = "float" | "normal" | "desktop";
+
 export interface Tag {
   id: string;
   name: string;

@@ -1,0 +1,9 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "stickies",
+  "description": "Sticky windows only: move the frameless window by its header, as a title bar would.",
+  "windows": ["sticky-*"],
+  "permissions": [
+    "core:window:allow-start-dragging"
+  ]
+}

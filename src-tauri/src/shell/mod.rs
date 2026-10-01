@@ -7,4 +7,5 @@ pub(crate) mod capture;
 pub(crate) mod files;
 pub(crate) mod mirror;
 pub(crate) mod quit;
+pub(crate) mod stickies;
 pub(crate) mod windows;

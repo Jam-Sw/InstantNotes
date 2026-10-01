@@ -30,6 +30,9 @@
   let newMenu = $state<{ x: number; y: number } | null>(null);
   let newControl = $state<HTMLDivElement>();
 
+  // Right-click on a row: pop that note out as a sticky, or bring it back.
+  let rowMenu = $state<{ x: number; y: number; id: string } | null>(null);
+
   function openNewMenu() {
     const rect = newControl?.getBoundingClientRect();
     if (!rect) return;
@@ -161,6 +164,11 @@
           data-note-id={note.id}
           class:selected={library.isSelected(note.id)}
           onclick={(e) => rowClick(e, note.id)}
+          oncontextmenu={(e) => {
+            if (note.isDeleted || isUpdateSpaceId(library.activeWorkspaceId)) return;
+            e.preventDefault();
+            rowMenu = { x: e.clientX, y: e.clientY, id: note.id };
+          }}
         >
           <div class="row-title">
             {#if note.isPinned}<span class="pin">📌</span>{/if}
@@ -168,6 +176,12 @@
               <svg class="board-cue" viewBox="0 0 16 16" aria-label="Whiteboard" role="img">
                 <rect x="1.5" y="2.5" width="13" height="11" rx="2" />
                 <path d="M4.5 10.5 7 7.5l2 2 2.5-3" />
+              </svg>
+            {/if}
+            {#if library.isSticky(note.id)}
+              <svg class="board-cue" viewBox="0 0 16 16" aria-label="Open as a sticky" role="img">
+                <rect x="1.5" y="4.5" width="9" height="9" rx="1.5" />
+                <path d="M7 2.5h5.5a1 1 0 0 1 1 1V9" />
               </svg>
             {/if}
             {note.title}
@@ -224,6 +238,18 @@
       },
     ]}
     onclose={() => (newMenu = null)}
+  />
+{/if}
+
+{#if rowMenu}
+  {@const id = rowMenu.id}
+  <ContextMenu
+    x={rowMenu.x}
+    y={rowMenu.y}
+    items={library.isSticky(id)
+      ? [{ label: "Bring back from sticky", run: () => void library.popIn(id) }]
+      : [{ label: "Open as sticky", run: () => void library.popOut(id) }]}
+    onclose={() => (rowMenu = null)}
   />
 {/if}
 

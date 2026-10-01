@@ -22,8 +22,11 @@ import {
   listNotes,
   listTags,
   listWorkspaces,
+  listStickies,
   listWorkspaceTags,
   permanentlyDeleteNote,
+  popInNote,
+  popOutNote,
   renameWorkspace,
   searchNotes,
   softDeleteNote,
@@ -77,6 +80,9 @@ vi.mock("$lib/api/client", () => {
     addTagToNote: vi.fn(),
     removeTagFromNote: vi.fn(),
     tagsForNote: vi.fn(),
+    listStickies: vi.fn(),
+    popOutNote: vi.fn(),
+    popInNote: vi.fn(),
   };
 });
 
@@ -111,6 +117,9 @@ const mockGetOrCreateWorkspace = vi.mocked(getOrCreateWorkspace);
 const mockAddNoteToWorkspace = vi.mocked(addNoteToWorkspace);
 const mockListWorkspaceTags = vi.mocked(listWorkspaceTags);
 const mockListen = vi.mocked(listen);
+const mockListStickies = vi.mocked(listStickies);
+const mockPopOutNote = vi.mocked(popOutNote);
+const mockPopInNote = vi.mocked(popInNote);
 
 function mkNote(id: string, overrides: Partial<Note> = {}): Note {
   return {
@@ -188,6 +197,9 @@ beforeEach(() => {
   mockAddNoteToWorkspace.mockReset();
   mockListWorkspaceTags.mockReset().mockResolvedValue([]);
   mockListen.mockReset().mockResolvedValue(() => {});
+  mockListStickies.mockReset().mockResolvedValue([]);
+  mockPopOutNote.mockReset().mockResolvedValue(undefined);
+  mockPopInNote.mockReset().mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -535,6 +547,7 @@ describe("init ordering", () => {
       EVENTS.NOTES_CHANGED,
       EVENTS.TAGS_CHANGED,
       EVENTS.WORKSPACES_CHANGED,
+      EVENTS.STICKIES_CHANGED,
     ]);
     expect(mockListNotes).not.toHaveBeenCalled();
     expect(mockListTags).not.toHaveBeenCalled();
@@ -556,7 +569,7 @@ describe("init ordering", () => {
     const p2 = library.init();
     await Promise.all([p1, p2]);
 
-    expect(mockListen).toHaveBeenCalledTimes(3);
+    expect(mockListen).toHaveBeenCalledTimes(4);
     // Two listNotes calls: the visible list and the revisit count.
     expect(mockListNotes).toHaveBeenCalledTimes(2);
     expect(mockListTags).toHaveBeenCalledTimes(1);
@@ -1035,5 +1048,83 @@ describe("the update Space (synthetic)", () => {
 
     expect(library.activeWorkspaceId).toBeNull();
     expect(mockAddNoteToWorkspace).not.toHaveBeenCalled();
+  });
+});
+
+describe("stickies", () => {
+  it("writes the note's pending edit before popping it out", async () => {
+    const library = await load();
+    await selectNote(library, "n1");
+    mockUpdateNote.mockResolvedValue(mkNote("n1", { body: "typed" }));
+    library.editBody("typed");
+    mockListStickies.mockResolvedValue(["n1"]);
+
+    await library.popOut("n1");
+
+    expect(mockUpdateNote).toHaveBeenCalledWith("n1", { body: "typed" });
+    expect(mockUpdateNote.mock.invocationCallOrder[0]).toBeLessThan(
+      mockPopOutNote.mock.invocationCallOrder[0],
+    );
+    expect(library.isSticky("n1")).toBe(true);
+  });
+
+  it("keeps the note here when its pending edit cannot be written", async () => {
+    const library = await load();
+    await selectNote(library, "n1");
+    mockUpdateNote.mockRejectedValue(new ApiError("STORAGE_ERROR", "locked"));
+    library.editBody("typed");
+
+    await library.popOut("n1");
+
+    expect(mockPopOutNote).not.toHaveBeenCalled();
+    expect(library.isSticky("n1")).toBe(false);
+  });
+
+  it("stops editing a note while it is a sticky", async () => {
+    const library = await load();
+    await selectNote(library, "n1", { body: "disk" });
+    mockListStickies.mockResolvedValue(["n1"]);
+    await library.refreshStickies();
+
+    library.editBody("from the library");
+    library.editTitle("Renamed");
+    library.editBoard("n1", { surfaceData: "{}", body: "board" });
+    await vi.advanceTimersByTimeAsync(3000);
+
+    expect(library.selected?.body).toBe("disk");
+    expect(mockUpdateNote).not.toHaveBeenCalled();
+  });
+
+  it("reopens the note from disk when its sticky comes back", async () => {
+    const library = await load();
+    await selectNote(library, "n1", { body: "before" });
+    mockListStickies.mockResolvedValue(["n1"]);
+    await library.refreshStickies();
+
+    mockListStickies.mockResolvedValue([]);
+    mockGetNote.mockResolvedValueOnce(mkNote("n1", { body: "typed in the sticky" }));
+    await library.popIn("n1");
+
+    expect(mockPopInNote).toHaveBeenCalledWith("n1");
+    expect(library.isSticky("n1")).toBe(false);
+    expect(library.selected?.body).toBe("typed in the sticky");
+  });
+
+  it("brings a sticky back before trashing its note, and not at all if it cannot save", async () => {
+    const library = await load();
+    await selectNote(library, "n1");
+    mockListStickies.mockResolvedValue(["n1"]);
+    await library.refreshStickies();
+
+    mockPopInNote.mockRejectedValueOnce(new ApiError("STORAGE_ERROR", "sticky kept"));
+    await library.deleteSelected();
+    expect(mockSoftDeleteNote).not.toHaveBeenCalled();
+
+    mockListStickies.mockResolvedValue([]);
+    mockGetNote.mockResolvedValue(mkNote("n1"));
+    mockSoftDeleteNote.mockResolvedValue(mkNote("n1", { isDeleted: true }));
+    await library.deleteSelected();
+    expect(mockPopInNote).toHaveBeenCalledTimes(2);
+    expect(mockSoftDeleteNote).toHaveBeenCalledWith("n1");
   });
 });

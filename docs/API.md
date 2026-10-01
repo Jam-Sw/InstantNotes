@@ -156,8 +156,43 @@ carry no note data beyond what the user explicitly exports. `export_note_file`
 writes `.md`, `.txt`, or `.excalidraw` (a whiteboard's canvas).
 
 The File menu announces itself to the library window with `menu:new-note`,
-`menu:new-whiteboard`, and `menu:export-note` (no payload). Every event name the
+`menu:new-whiteboard`, `menu:export-note`, and `menu:toggle-sticky` (no
+payload). Every event name the
 shell emits is declared in `src-tauri/src/events.rs`.
+
+### 9.1 Stickies
+
+A sticky is a note popped out of the library into its own window
+(`sticky-<noteId>`, route `/sticky`). While it is open it is the note's only
+editor; the library shows a placeholder and refuses body, title, and canvas
+edits for that note, so the store never has two writers on one note.
+
+| Command | Purpose |
+| --- | --- |
+| `pop_out_note(id)` | Open the note as a sticky, or bring its window forward. Rejects a note in the Trash. The library writes the note's pending edit first. |
+| `pop_in_note(id)` | Emit `sticky:close-requested` to that window, wait for `answer_pop_in`, then close it. Resolves once the edits are on disk; rejects, leaving the sticky open, when the sticky reports its save failed. A sticky that does not answer within 1.5s is closed anyway. |
+| `answer_pop_in(saved)` | The sticky's answer to `sticky:close-requested`. |
+| `list_stickies()` | Ids of the notes that are stickies. |
+| `get_sticky_view()` | The calling sticky's `{ level, collapsed }`, for its header on load. |
+| `set_sticky_level(level)` | The calling sticky's level: `float` (above every window, on every Space), `normal`, or `desktop` (below every window, on every Space). |
+| `set_sticky_collapsed(collapsed)` | Roll the calling sticky up to its 30px header, or back down to its saved height. |
+| `save_sticky_geometry()` | Remember the calling sticky's position and size, read from the window itself. |
+
+A sticky's header is its title bar: pressing and dragging it moves the window
+(the `stickies` capability grants `core:window:allow-start-dragging` to
+`sticky-*` windows only), and double-clicking it collapses or expands the
+note, as Apple's Stickies does. The window accepts the first click, so an
+unfocused sticky moves in one gesture.
+
+The level and geometry commands act on the window that calls them, never on an
+id the webview names. `stickies:changed` (no payload) fires whenever a note
+becomes a sticky or stops being one. Stickies reopen at launch; one whose note
+is gone or in the Trash is dropped, and one saved on a display that is no longer
+attached is centered.
+
+Quitting waits for every window that holds edits: the library and each sticky
+flush on `app:quit-requested` and answer with `quit_app`, and the app exits on
+the last answer (or after the 800ms fallback).
 
 ## 10. Capture
 

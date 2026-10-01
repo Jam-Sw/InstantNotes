@@ -16,6 +16,9 @@ export const EVENTS = {
   VAULT_STATUS: "vault:status",
   APP_QUIT_REQUESTED: "app:quit-requested",
   CAPTURE_SHOWN: "capture:shown",
+  MENU_TOGGLE_STICKY: "menu:toggle-sticky",
+  STICKIES_CHANGED: "stickies:changed",
+  STICKY_CLOSE_REQUESTED: "sticky:close-requested",
 } as const;
 
 export type AppEvent = (typeof EVENTS)[keyof typeof EVENTS];

@@ -1,10 +1,39 @@
 //! The quit handshake. Body edits are debounced in the webview, so exiting the
 //! process directly would drop the tail of whatever was just typed. Every quit
-//! path (menu, tray, Dock) emits "app:quit-requested"; the library window
-//! flushes its pending edits and answers with quit_app, which really exits.
+//! path (menu, tray, Dock) emits "app:quit-requested"; every window that holds
+//! edits (the library and each sticky) flushes and answers with quit_app, and
+//! the last answer really exits.
 
 use crate::*;
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Labels of the windows whose flush the current quit still waits for.
+static AWAITING: std::sync::LazyLock<Mutex<HashSet<String>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
+
+/// Windows that answer the quit handshake: the library and every sticky. The
+/// capture panel persists its draft on the event and never answers.
+fn answering_windows(app: &AppHandle) -> HashSet<String> {
+    app.webview_windows()
+        .into_keys()
+        .filter(|label| label == "library" || label.starts_with("sticky-"))
+        .collect()
+}
+
+/// Record one window's answer; true once no window is left to wait for.
+fn record_answer(awaiting: &mut HashSet<String>, label: &str) -> bool {
+    awaiting.remove(label);
+    awaiting.is_empty()
+}
+
+/// Exit once, whichever of the last answer and the fallback gets here first.
+fn finish_quit(app: &AppHandle) {
+    if !QUIT_READY.swap(true, Ordering::AcqRel) {
+        flush_vault_now(app, Some(QUIT_VAULT_CHUNKS));
+        app.exit(0);
+    }
+}
 
 /// True once the frontend flushed and called quit_app, or once the fallback
 /// gave up waiting. ExitRequested lets the exit proceed only when this is set,
@@ -23,28 +52,49 @@ const QUIT_VAULT_CHUNKS: usize = 1;
 /// quit must not block forever on a dead webview: if the frontend never
 /// answers with quit_app, exit anyway after the grace period.
 pub(crate) fn request_quit(app: &AppHandle) {
+    if let Ok(mut awaiting) = AWAITING.lock() {
+        *awaiting = answering_windows(app);
+    }
     let _ = app.emit(events::APP_QUIT_REQUESTED, ());
     let handle = app.clone();
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(QUIT_FLUSH_GRACE_MS));
-        // swap keeps the fallback and quit_app from racing: whichever runs
-        // first marks the handshake done and the other becomes a no-op.
-        if !QUIT_READY.swap(true, Ordering::AcqRel) {
-            flush_vault_now(&handle, Some(QUIT_VAULT_CHUNKS));
-            handle.exit(0);
-        }
+        finish_quit(&handle);
     });
 }
 
-/// Final leg of the handshake: the library webview has flushed pending edits.
+/// A window's leg of the handshake: it has flushed its pending edits. The
+/// app exits when the last window it waits for has answered.
 #[tauri::command]
-pub fn quit_app(app: AppHandle) {
-    QUIT_READY.store(true, Ordering::Release);
-    flush_vault_now(&app, Some(QUIT_VAULT_CHUNKS));
-    app.exit(0);
+pub fn quit_app(app: AppHandle, window: tauri::WebviewWindow) {
+    let done = AWAITING
+        .lock()
+        .map(|mut awaiting| record_answer(&mut awaiting, window.label()))
+        .unwrap_or(true);
+    if done {
+        finish_quit(&app);
+    }
 }
 
 #[tauri::command]
 pub fn get_shortcut_failure(state: State<'_, ShortcutStatus>) -> Option<String> {
     state.failed.clone()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::record_answer;
+    use std::collections::HashSet;
+
+    #[test]
+    fn quit_waits_for_every_window_that_holds_edits() {
+        let mut awaiting: HashSet<String> = ["library", "sticky-a"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert!(!record_answer(&mut awaiting, "library"));
+        // A repeat answer from the same window does not count twice.
+        assert!(!record_answer(&mut awaiting, "library"));
+        assert!(record_answer(&mut awaiting, "sticky-a"));
+    }
 }

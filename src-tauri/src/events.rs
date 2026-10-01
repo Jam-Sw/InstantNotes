@@ -27,3 +27,9 @@ pub const VAULT_STATUS: &str = "vault:status";
 pub const APP_QUIT_REQUESTED: &str = "app:quit-requested";
 /// The capture panel became visible (emitted to that window only).
 pub const CAPTURE_SHOWN: &str = "capture:shown";
+/// File menu: pop the open note out as a sticky, or back in.
+pub const MENU_TOGGLE_STICKY: &str = "menu:toggle-sticky";
+/// A note became a sticky or stopped being one; re-read `list_stickies`.
+pub const STICKIES_CHANGED: &str = "stickies:changed";
+/// Pop in: the sticky flushes, then answers `answer_pop_in` (that window only).
+pub const STICKY_CLOSE_REQUESTED: &str = "sticky:close-requested";

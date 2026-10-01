@@ -13,6 +13,7 @@ import type {
   Note,
   NoteFilter,
   SearchResult,
+  StickyLevel,
   Tag,
   TagWithCount,
   UpdateNotePatch,
@@ -163,6 +164,23 @@ export const setWindowVibrancy = (material: string | null) =>
 // the in-app variant. A no-op off macOS; the capture window is left alone.
 export const setWindowTheme = (variant: "light" | "dark") =>
   call<void>("set_window_theme", { variant });
+
+// ---- stickies ----
+// A sticky is a note popped out into its own window, which is then that
+// note's only editor. Popping in resolves once the sticky's edits are on disk
+// and its window is gone. The level and geometry commands act on the calling
+// sticky window, never on an id the webview names.
+export const popOutNote = (id: string) => call<void>("pop_out_note", { id });
+export const popInNote = (id: string) => call<void>("pop_in_note", { id });
+export const listStickies = () => call<string[]>("list_stickies");
+export const answerPopIn = (saved: boolean) => call<void>("answer_pop_in", { saved });
+export const getStickyView = () =>
+  call<{ level: StickyLevel; collapsed: boolean }>("get_sticky_view");
+export const setStickyLevel = (level: StickyLevel) =>
+  call<void>("set_sticky_level", { level });
+export const setStickyCollapsed = (collapsed: boolean) =>
+  call<void>("set_sticky_collapsed", { collapsed });
+export const saveStickyGeometry = () => call<void>("save_sticky_geometry");
 
 // ---- theme files ----
 // Byte I/O for portable .intheme.json files; the open/save dialog runs in JS.
