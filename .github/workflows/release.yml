@@ -99,6 +99,6 @@ jobs:
           # latest.json missing the platforms still building. Publishing the
           # smoke-tested draft is the ship gate.
           releaseDraft: true
-          includeUpdaterJson: true
+          uploadUpdaterJson: true
           updaterJsonPreferNsis: true
           releaseBody: ${{ steps.notes.outputs.body }}
