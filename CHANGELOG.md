@@ -7,8 +7,7 @@ in-app updater, written for users. Newest first.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-## [0.9.1]
+## [0.9.1] - 2026-10-01
 
 ### Added
 - Claude Code plugin: search, read, and capture notes from a pane inside Claude
