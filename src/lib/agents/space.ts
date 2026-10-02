@@ -6,7 +6,7 @@
 
 import type { Note } from "$lib/api/types";
 import {
-  clientLabel,
+  agentName,
   describeActivity,
   type AgentActivity,
   type AgentPresence,
@@ -53,6 +53,11 @@ export interface AgentConversation extends AgentSession {
   connected: boolean;
   connectedAt: number | null;
   disconnectedAt: number | null;
+  /** The client's name for its session, its id for it, and where it runs,
+   *  for a client that says (Claude Code does). */
+  label: string | null;
+  clientSession: string | null;
+  cwd: string | null;
 }
 
 /** Join the trace's sessions with the connections. A connected agent that
@@ -70,6 +75,9 @@ export function joinConversations(
       connected: p?.connected ?? false,
       connectedAt: p?.connectedAt ?? null,
       disconnectedAt: p?.disconnectedAt ?? null,
+      label: p?.label ?? null,
+      clientSession: p?.clientSession ?? null,
+      cwd: p?.cwd ?? null,
     };
   });
   const traced = new Set(sessions.map((s) => s.session));
@@ -87,6 +95,9 @@ export function joinConversations(
       connected: true,
       connectedAt: p.connectedAt,
       disconnectedAt: null,
+      label: p.label ?? null,
+      clientSession: p.clientSession ?? null,
+      cwd: p.cwd ?? null,
     });
   }
   return out.sort(
@@ -104,7 +115,7 @@ export function buildAgentNotes(
     const now = doing(s.session);
     return {
       id: agentNoteId(s.session),
-      title: clientLabel(s.client),
+      title: agentName(s.client, s.label),
       // Only the list row ever shows this; opening the note renders the trace.
       body: now
         ? describeActivity(now)

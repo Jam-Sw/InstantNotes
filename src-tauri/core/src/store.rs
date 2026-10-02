@@ -255,6 +255,17 @@ CREATE TABLE agent_sessions (
   disconnected_at INTEGER
 );
 "#,
+    // v10: which instance of the client a connection is. `label` is the
+    // name the client gives its own session (Claude Code's `/rename`),
+    // `client_session` that session's id, `cwd` where it runs, and
+    // `client_pid` the client's process, which is how its name is looked up
+    // while it lives. All NULL for a client that tells us none of it.
+    r#"
+ALTER TABLE agent_sessions ADD COLUMN label TEXT;
+ALTER TABLE agent_sessions ADD COLUMN client_session TEXT;
+ALTER TABLE agent_sessions ADD COLUMN cwd TEXT;
+ALTER TABLE agent_sessions ADD COLUMN client_pid INTEGER;
+"#,
 ];
 
 const NOTE_COLUMNS: &str = "id, title, body, created_at, updated_at, last_opened_at, \

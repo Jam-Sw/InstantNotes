@@ -134,6 +134,7 @@ public so tests can build fixtures at a historical schema version.
 | v7 | `agent_activity`: the trace of agent calls, with before-snapshots for reverting writes (section 11). |
 | v8 | `agent_activity.request` and `response`: the raw JSON-RPC exchange behind each call (section 11). |
 | v9 | `agent_sessions`: one row per agent connection, for a truthful connected status (section 11). |
+| v10 | `agent_sessions.label`, `client_session`, `cwd`, `client_pid`: which instance of the client a connection is (section 11). |
 
 v4 exists because pre-release builds that carried the whiteboard already
 migrated some libraries to it before the whiteboard was lifted off the 0.9.0
@@ -196,6 +197,16 @@ operating system drops that lock however the process ends. The app treats a
 row as connected only while the lock is held, and closes the row of a process
 it finds gone, so a crash never leaves an agent looking connected. Ended
 rows are dropped after 30 days, and when the history is cleared.
+
+A row also says which instance of the client it is, for a client that lets
+on: `client_session` (the client's own session id), `cwd`, `client_pid`, and
+`label`, the name the client gives the session. Claude Code is the one that
+does: it puts `CLAUDE_CODE_SESSION_ID` and `CLAUDE_PROJECT_DIR` in the
+environment of every server it starts, and keeps the session's name (what
+`/rename` sets) in `~/.claude/sessions/<pid>.json`, which the app re-reads
+while the agent is connected so a rename shows as it happens. That file is
+Claude Code's own; when it is missing or changes shape there is simply no
+name.
 
 `before` is what makes a write revertable: the note as it was just before,
 as JSON (`title`, `title_is_auto`, `body`, the flags, `updated_at`, every

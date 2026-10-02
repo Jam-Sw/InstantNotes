@@ -12,6 +12,9 @@ use crate::access::Access;
 use crate::activity::{Kind, Scope, Trace};
 use crate::fail;
 use instantnotes_core::domain::{normalize_tag_name, normalize_workspace_name};
+#[cfg(unix)]
+use instantnotes_core::store::activity::claude_code_session;
+use instantnotes_core::store::activity::ClientSession;
 use instantnotes_core::types::{
     CreateNoteInput, Note, NoteFilter, UpdateNotePatch, CONTENT_KIND_WHITEBOARD,
 };
@@ -259,6 +262,7 @@ impl<'a> Tools<'a> {
         session: String,
     ) -> Self {
         let _ = store.open_agent_session(&session, "agent");
+        let _ = store.describe_agent_session(&session, &client_session());
         Tools {
             store,
             attachments_dir,
@@ -681,6 +685,32 @@ fn unmark(s: &str) -> String {
 
 /// A session id without a uuid dependency: the process id and the start
 /// time, which no two concurrent servers on one machine share.
+/// Which instance of the client launched this server, as far as it lets on.
+/// Claude Code puts its session id and project directory in the environment
+/// of every server it starts, and is this process's parent; its session's
+/// name comes from the file it keeps for itself. Any other client: nothing.
+fn client_session() -> ClientSession {
+    let env = |key: &str| std::env::var(key).ok().filter(|v| !v.trim().is_empty());
+    let mut about = ClientSession {
+        client_session: env("CLAUDE_CODE_SESSION_ID"),
+        cwd: env("CLAUDE_PROJECT_DIR"),
+        ..Default::default()
+    };
+    #[cfg(unix)]
+    if about.client_session.is_some() {
+        let pid = i64::from(std::os::unix::process::parent_id());
+        about.client_pid = Some(pid);
+        if let Some((name, current)) = claude_code_session(pid) {
+            about.label = name;
+            // The file follows a resumed session; the environment does not.
+            if current.is_some() {
+                about.client_session = current;
+            }
+        }
+    }
+    about
+}
+
 pub(crate) fn session_id() -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

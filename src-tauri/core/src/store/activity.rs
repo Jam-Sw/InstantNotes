@@ -103,6 +103,50 @@ pub struct AgentSession {
     /// Set when the process ended, by itself on a clean exit or by the app
     /// once it finds the process gone.
     pub disconnected_at: Option<i64>,
+    /// The name the client gives this session of its own ("bob", after
+    /// Claude Code's `/rename bob`), when it has one.
+    pub label: Option<String>,
+    /// The client's own id for the session, to trace a change back to the
+    /// exact conversation that made it.
+    pub client_session: Option<String>,
+    /// Where the client is running.
+    pub cwd: Option<String>,
+    /// The client's process, while it lives.
+    pub client_pid: Option<i64>,
+}
+
+/// What a client lets its server know about the session it belongs to.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ClientSession {
+    pub label: Option<String>,
+    pub client_session: Option<String>,
+    pub cwd: Option<String>,
+    pub client_pid: Option<i64>,
+}
+
+/// What Claude Code says about one of its running instances, in the file it
+/// keeps per process (`~/.claude/sessions/<pid>.json`): the session's name,
+/// which `/rename` sets, and its id. That file is Claude Code's own
+/// bookkeeping, so everything here is best effort: no file, or a file in a
+/// shape this does not know, is simply no name.
+pub fn claude_code_session(pid: i64) -> Option<(Option<String>, Option<String>)> {
+    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))?;
+    claude_code_session_in(&PathBuf::from(home).join(".claude").join("sessions"), pid)
+}
+
+/// `claude_code_session`, reading from a given directory.
+pub fn claude_code_session_in(dir: &Path, pid: i64) -> Option<(Option<String>, Option<String>)> {
+    let raw = std::fs::read_to_string(dir.join(format!("{pid}.json"))).ok()?;
+    let file: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let text = |key: &str| {
+        file.get(key)
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            // A name is shown to the user: keep it to a line of sane length.
+            .map(|s| s.chars().take(80).collect::<String>())
+    };
+    Some((text("name"), text("sessionId")))
 }
 
 /// How long an ended connection's row is kept.
@@ -557,6 +601,24 @@ impl Store {
         Ok(())
     }
 
+    /// What the client told its server about the session it belongs to. Only
+    /// what is given is written: a later call with less never erases more.
+    pub fn describe_agent_session(&mut self, session: &str, about: &ClientSession) -> Result<()> {
+        self.conn.execute(
+            "UPDATE agent_sessions SET label = COALESCE(?1, label), \
+             client_session = COALESCE(?2, client_session), cwd = COALESCE(?3, cwd), \
+             client_pid = COALESCE(?4, client_pid) WHERE session = ?5",
+            params![
+                about.label,
+                about.client_session,
+                about.cwd,
+                about.client_pid,
+                session
+            ],
+        )?;
+        Ok(())
+    }
+
     /// The client said who it is.
     pub fn name_agent_session(&mut self, session: &str, client: &str) -> Result<()> {
         self.conn.execute(
@@ -579,7 +641,8 @@ impl Store {
     /// Connections, newest first.
     pub fn list_agent_sessions(&self, limit: i64) -> Result<Vec<AgentSession>> {
         let mut stmt = self.conn.prepare(
-            "SELECT session, client, connected_at, disconnected_at FROM agent_sessions \
+            "SELECT session, client, connected_at, disconnected_at, label, client_session, \
+             cwd, client_pid FROM agent_sessions \
              ORDER BY connected_at DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map(params![limit.clamp(1, 5000)], |r| {
@@ -588,6 +651,10 @@ impl Store {
                 client: r.get(1)?,
                 connected_at: r.get(2)?,
                 disconnected_at: r.get(3)?,
+                label: r.get(4)?,
+                client_session: r.get(5)?,
+                cwd: r.get(6)?,
+                client_pid: r.get(7)?,
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)

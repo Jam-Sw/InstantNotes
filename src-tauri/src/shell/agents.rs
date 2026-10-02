@@ -18,7 +18,8 @@
 
 use crate::*;
 use instantnotes_core::store::activity::{
-    session_alive, ActivityWire, AgentActivity, AgentSession, NoteSnapshot,
+    claude_code_session, session_alive, ActivityWire, AgentActivity, AgentSession, ClientSession,
+    NoteSnapshot,
 };
 use instantnotes_core::Store;
 use std::path::Path;
@@ -63,6 +64,24 @@ fn sessions(store: &mut Store, db: &Path) -> Vec<AgentSessionView> {
                         .map(|d| d.as_millis() as i64)
                         .unwrap_or_default(),
                 );
+            }
+            // A connected client may rename its session at any time; follow it,
+            // and keep what was last seen for after it has gone.
+            if connected {
+                if let Some((label, current)) = session.client_pid.and_then(claude_code_session) {
+                    let renamed = label.is_some() && label != session.label;
+                    let resumed = current.is_some() && current != session.client_session;
+                    if renamed || resumed {
+                        let about = ClientSession {
+                            label: label.clone(),
+                            client_session: current.clone(),
+                            ..Default::default()
+                        };
+                        let _ = store.describe_agent_session(&session.session, &about);
+                        session.label = label.or(session.label);
+                        session.client_session = current.or(session.client_session);
+                    }
+                }
             }
             AgentSessionView { session, connected }
         })

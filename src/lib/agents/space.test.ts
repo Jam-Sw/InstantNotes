@@ -94,4 +94,15 @@ describe("the Agents Space", () => {
     expect(live[1].body).toBe("Connected. Nothing asked yet.");
     expect(buildAgentNotes(convs)[0].body).toBe("3 changes · 5 reads · 1 failed");
   });
+
+  it("names a conversation by its client and the session's own name", () => {
+    const named = joinConversations(
+      [session()],
+      [presence({ label: "bob", clientSession: "ec23c3e6", cwd: "/work" })],
+    );
+    expect(buildAgentNotes(named)[0].title).toBe("Claude Code: bob");
+    expect(named[0].clientSession).toBe("ec23c3e6");
+    // A client that names nothing is just itself.
+    expect(buildAgentNotes(joinConversations([session()], [presence()]))[0].title).toBe("Claude Code");
+  });
 });

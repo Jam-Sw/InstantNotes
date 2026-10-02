@@ -1,7 +1,7 @@
 <script lang="ts">
   import { library } from "$lib/stores/library.svelte";
   import { agents } from "$lib/stores/agents.svelte";
-  import { clientLabel } from "$lib/agent-activity";
+  import { agentName } from "$lib/agent-activity";
   import { ApiError, deleteTag, updateTag } from "$lib/api/client";
   import { friendlyMessage, GENERIC_MESSAGE } from "$lib/errors";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
@@ -28,7 +28,7 @@
 
   // "Claude Code and Codex connected", "Claude Code and 19 more connected".
   const connectedTitle = $derived.by(() => {
-    const names = agents.sessions.filter((s) => s.connected).map((s) => clientLabel(s.client));
+    const names = agents.sessions.filter((s) => s.connected).map((s) => agentName(s.client, s.label));
     if (names.length === 0) return "";
     if (names.length <= 3) {
       return `${new Intl.ListFormat("en", { type: "conjunction" }).format(names)} connected`;

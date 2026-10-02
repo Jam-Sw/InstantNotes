@@ -97,6 +97,20 @@ export interface AgentPresence {
   connectedAt: number;
   disconnectedAt: number | null;
   connected: boolean;
+  /** The name the client gives this session of its own (Claude Code's
+   *  `/rename`), when it has one. */
+  label?: string | null;
+  /** The client's own id for the session. */
+  clientSession?: string | null;
+  /** Where the client is running. */
+  cwd?: string | null;
+}
+
+/** Who a conversation is, as a person would say it: "Claude Code: bob" when
+ *  the client names its session, else just "Claude Code". */
+export function agentName(client: string, label?: string | null): string {
+  const who = clientLabel(client);
+  return label ? `${who}: ${label}` : who;
 }
 
 export function parsePresence(value: unknown): AgentPresence[] {

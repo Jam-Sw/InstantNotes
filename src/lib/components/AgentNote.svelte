@@ -12,7 +12,7 @@
   import { agentActivityBefore, agentActivityWire } from "$lib/api/client";
   import {
     canRevert,
-    clientLabel,
+    agentName,
     clockTime,
     describeActivity,
     formatDuration,
@@ -126,7 +126,7 @@
 <div class="agent-note">
   <div class="column">
     {#if session}
-      <h1 class="title">{clientLabel(session.client)}</h1>
+      <h1 class="title">{agentName(session.client, session.label)}</h1>
       <!-- The connection, as it is: this line is always here and only its
            words change, so the page below it never moves. -->
       <p class="status" role="status" aria-live="polite">
@@ -153,6 +153,20 @@
           {/if}
         </span>
       </p>
+      <!-- Exactly which instance of the client this is, so a change can be
+           traced back to the conversation that made it. -->
+      {#if session.clientSession || session.cwd}
+        <dl class="origin">
+          {#if session.clientSession}
+            <dt>Session</dt>
+            <dd><code>{session.clientSession}</code></dd>
+          {/if}
+          {#if session.cwd}
+            <dt>Running in</dt>
+            <dd><code>{session.cwd}</code></dd>
+          {/if}
+        </dl>
+      {/if}
       <div class="filters" role="group" aria-label="Show">
         <button class="filter" aria-pressed={filter === "all"} onclick={() => (filter = "all")}>
           All <span class="n">{session.entries.length}</span>
@@ -297,6 +311,29 @@
   }
   .status-access {
     margin-left: auto;
+  }
+  .origin {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 3px 12px;
+    margin: 12px 0 0;
+    font-family: var(--font-ui);
+    font-size: 12px;
+  }
+  .origin dt {
+    color: var(--text-tertiary);
+  }
+  .origin dd {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .origin code {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    user-select: text;
+    -webkit-user-select: text;
   }
   .filters {
     display: flex;

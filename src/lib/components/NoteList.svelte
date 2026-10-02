@@ -45,6 +45,10 @@
         : null,
   );
 
+  // An agent's latest search, shown only while the field is empty: the
+  // user's own words always come first.
+  const agentSearch = $derived(library.searchText ? null : agents.currentSearch);
+
   let newMenu = $state<{ x: number; y: number } | null>(null);
   let newControl = $state<HTMLDivElement>();
 
@@ -101,13 +105,31 @@
     </div>
   {:else}
   <div class="pane-header list-toolbar" data-tauri-drag-region>
-    <input
-      class="search"
-      type="search"
-      placeholder="Search notes…"
-      value={library.searchText}
-      oninput={(e) => library.setSearch(e.currentTarget.value)}
-    />
+    <!-- An agent just searched: its words show in the search field itself,
+         where a search belongs, in place of the placeholder. Nothing is
+         added above the list, so the list does not move. The button runs
+         the same search for you. -->
+    <div class="search-wrap" data-agent={agentSearch ? "search" : null}>
+      <input
+        class="search"
+        type="search"
+        placeholder={agentSearch
+          ? `${clientLabel(agentSearch.client)} searched “${agentSearch.query}”`
+          : "Search notes…"}
+        value={library.searchText}
+        oninput={(e) => library.setSearch(e.currentTarget.value)}
+      />
+      {#if agentSearch}
+        {@const search = agentSearch}
+        <button
+          class="agent-search-run"
+          title="Run this search yourself"
+          onclick={() => library.setSearch(search.query ?? "")}
+        >
+          {search.noteCount} hit{search.noteCount === 1 ? "" : "s"}
+        </button>
+      {/if}
+    </div>
     <div
       class="new-control"
       bind:this={newControl}
@@ -130,22 +152,6 @@
       </button>
     </div>
   </div>
-  {#if agents.currentSearch}
-    {@const search = agents.currentSearch}
-    <!-- An agent just searched: show the words, where the user's own search
-         goes, so "searching" is something seen, not inferred. Click to run
-         the same search yourself. -->
-    <button
-      class="agent-search"
-      data-agent="search"
-      title="Run this search yourself"
-      onclick={() => library.setSearch(search.query ?? "")}
-    >
-      <span class="agent-search-who">{clientLabel(search.client)}</span>
-      searched for “{search.query}”
-      {#if search.noteCount > 0}<span class="agent-search-n">{search.noteCount} hit{search.noteCount === 1 ? "" : "s"}</span>{/if}
-    </button>
-  {/if}
   {#if library.activeWorkspaceId && !library.searchResults && library.workspaceTags.length > 0}
     <!-- Tags found on this space's notes; a chip filters within the space,
          unlike the sidebar's global tags which replace it. -->
@@ -559,28 +565,27 @@
   .action.danger {
     color: var(--danger);
   }
-  .agent-search {
+  .search-wrap {
+    flex: 1;
+    min-width: 0;
     display: flex;
-    align-items: baseline;
-    gap: 6px;
-    margin: 0 10px 6px;
-    padding: 5px 10px;
-    border-radius: var(--radius);
-    font-size: 12px;
-    color: var(--text-secondary);
-    text-align: left;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+    position: relative;
   }
-  .agent-search-who {
+  /* Room for the hit count, so the agent's words stop short of it. */
+  .search-wrap[data-agent] .search {
+    padding-right: 68px;
+  }
+  /* Sits inside the field's right edge, over its padding. */
+  .agent-search-run {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 1px 8px;
+    border-radius: 99px;
+    background: var(--select-bg);
     color: var(--accent-text);
-    font-weight: 600;
-  }
-  .agent-search-n {
-    margin-left: auto;
     font-family: var(--font-meta);
     font-size: 11px;
-    color: var(--text-tertiary);
   }
 </style>

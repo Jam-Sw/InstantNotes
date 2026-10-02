@@ -6,6 +6,7 @@
   import { onMount } from "svelte";
   import { agents } from "$lib/stores/agents.svelte";
   import {
+    agentName,
     claudeCodeCommand,
     clientLabel,
     codexCommand,
@@ -160,7 +161,7 @@
       {#if agents.connectedCount === 0}
         No agent is connected right now.
       {:else}
-        {agents.connectedCount} connected: {agents.sessions.filter((s) => s.connected).map((s) => clientLabel(s.client)).join(", ")}
+        {agents.connectedCount} connected: {agents.sessions.filter((s) => s.connected).map((s) => agentName(s.client, s.label)).join(", ")}
       {/if}
     </p>
     {#if recent.length === 0}
