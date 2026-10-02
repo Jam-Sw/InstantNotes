@@ -162,8 +162,16 @@ fn snapshot(conn: &Connection, id: &str) -> Result<Option<NoteSnapshot>> {
             },
         )
         .optional()?;
-    let Some((title, title_is_auto, body, is_pinned, is_archived, is_deleted, deleted_at, updated_at)) =
-        head
+    let Some((
+        title,
+        title_is_auto,
+        body,
+        is_pinned,
+        is_archived,
+        is_deleted,
+        deleted_at,
+        updated_at,
+    )) = head
     else {
         return Ok(None);
     };
@@ -321,11 +329,11 @@ impl Store {
     /// The newest `seq`, or 0 for an empty trace. One indexed lookup: cheap
     /// enough to poll.
     pub fn latest_activity_seq(&self) -> Result<i64> {
-        Ok(self
-            .conn
-            .query_row("SELECT COALESCE(MAX(seq), 0) FROM agent_activity", [], |r| {
-                r.get(0)
-            })?)
+        Ok(self.conn.query_row(
+            "SELECT COALESCE(MAX(seq), 0) FROM agent_activity",
+            [],
+            |r| r.get(0),
+        )?)
     }
 
     /// The snapshot a write row carries, for a preview of what a revert

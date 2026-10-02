@@ -7,15 +7,40 @@ in-app updater, written for users. Newest first.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.1] - 2026-10-01
+## [0.9.1] - 2026-10-02
 
 ### Added
+- Agent activity: a full trace of every call an agent makes, grouped by
+  conversation, in a panel off the sidebar (⌘⇧A, or "Show agent activity"
+  in the palette). Each row says who, what, which notes, how long it took,
+  and what it failed with. Every change an agent makes can be reverted from
+  there, and from the toast that announces it; a revert can itself be undone.
+- Agents: an agent's search shows its words above your note list as it
+  happens, and the notes it found light up with a dashed outline. Settings >
+  Agents lets you choose which calls raise a toast (changes, everything, or
+  none), shows connect snippets for Claude Code, Codex, and other apps, and
+  sums up recent activity.
+- Appearance: a new Settings page shows every theme as a live preview, with
+  light/dark/auto, the body font, and import, export, and remove in one place.
+- Three themes: Fjord (cool arctic blue), Ember (warm charcoal and amber), and
+  Contrast (high contrast, larger text, firm borders).
 - Claude Code plugin: search, read, and capture notes from a pane inside Claude
   Code. Install it with `/plugin marketplace add jamubc/toolbox`, then
   `/plugin install instantnotes@toolbox`; `/notes` opens the pane and
   `/note <text>` saves a note.
 
 ### Changed
+- Settings is now a preferences window: a grouped list of pages down the left
+  with a filter (type, then Enter), the page on the right, and an Overview
+  with library stats, what's new, and the state of theme and agent access.
+- Themes: dates, counts, and other third-tier text are legible in every
+  built-in theme, light and dark. Themes can set success, warning, selection,
+  code-block, and focus-ring colors; those left unset follow the palette. One
+  focus ring, in the theme's focus color, for keyboard users everywhere.
+- MCP: notes are also offered as `instantnotes://notes/<id>` resources for
+  clients that browse them. A request that hits a bug is answered with an
+  error instead of ending the connection. Tag, Space, and search lookups go
+  straight to the index.
 - MCP: optimized rewriting a note, 3 less tool calls.
 
 ### Fixed

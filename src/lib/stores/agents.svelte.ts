@@ -44,6 +44,8 @@ export const PRESENCE_MS = 4000;
 const RECENT_KEEP = 500;
 /** How many rows one load fetches. */
 const PAGE = 200;
+/** More calls than this in one batch are announced as one toast. */
+const BURST = 3;
 
 export type AgentMark = AgentKind;
 
@@ -201,15 +203,25 @@ class AgentsStore {
   }
 
   /** Toasts for what just happened, as the notify setting asks. A write
-   *  offers Revert right there; the panel has the rest. */
+   *  offers Revert right there; the panel has the rest. A burst of changes
+   *  is one toast that opens the panel, not a stack that evicts itself. */
   #announce(entries: AgentActivity[]): void {
+    // The app's own revert is already confirmed where it was asked for.
+    const theirs = entries.filter((e) => e.client !== "instantnotes");
+    const writes = theirs.filter((e) => e.kind === "write" && e.status === "ok");
+    if (!this.panelOpen) this.unseen += writes.length;
     if (this.notify === "off") return;
-    for (const e of entries) {
-      // The app's own revert is already confirmed where it was asked for.
-      if (e.client === "instantnotes") continue;
-      const isWrite = e.kind === "write" && e.status === "ok";
-      if (isWrite && !this.panelOpen) this.unseen++;
-      if (this.notify === "writes" && !isWrite) continue;
+    const shown = this.notify === "writes" ? writes : theirs;
+    if (shown.length > BURST) {
+      const who = clientLabel(shown[0].client);
+      const n = writes.length;
+      toasts.show(
+        n > 0 ? `${who} made ${n} change${n === 1 ? "" : "s"}.` : `${who} made ${shown.length} calls.`,
+        { label: "Show", run: () => this.openPanel() },
+      );
+      return;
+    }
+    for (const e of shown) {
       const text = `${clientLabel(e.client)}: ${describeActivity(e)}`;
       if (canRevert(e)) {
         toasts.show(text, { label: "Revert", run: () => void this.revert(e.seq) });
@@ -222,10 +234,16 @@ class AgentsStore {
   /** Undo one agent write. The shell answers with the revert row and emits it
    *  as an external change, which `play` folds in; the toast confirms. */
   async revert(seq: number): Promise<boolean> {
+    const original = this.recent.find((r) => r.seq === seq);
     try {
       const row = await revertAgentActivity(seq);
       this.recent = this.recent.map((r) => (r.seq === seq ? { ...r, revertedAt: row.at } : r));
-      toasts.show(`Reverted. ${describeActivity(row)}`, {
+      const title = `“${row.titles[0] || "Untitled"}”`;
+      const what =
+        original && original.client !== "instantnotes"
+          ? `Reverted ${clientLabel(original.client)}'s change to ${title}.`
+          : `Put ${title} back.`;
+      toasts.show(what, {
         label: "Undo",
         run: () => void this.revert(row.seq),
       });

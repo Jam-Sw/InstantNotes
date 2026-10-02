@@ -529,8 +529,11 @@ fn a_write_keeps_the_note_as_it_was_and_the_app_can_revert_it() {
     let mut store = store_with("write");
     let note = store
         .create_note(CreateNoteInput {
-            body: Some("Plan
-- one #work".into()),
+            body: Some(
+                "Plan
+- one #work"
+                    .into(),
+            ),
             ..Default::default()
         })
         .unwrap();
@@ -538,7 +541,11 @@ fn a_write_keeps_the_note_as_it_was_and_the_app_can_revert_it() {
         &mut store,
         &[
             init(),
-            call(1, "append_to_note", json!({ "id": note.id, "text": "- two" })),
+            call(
+                1,
+                "append_to_note",
+                json!({ "id": note.id, "text": "- two" }),
+            ),
             call(2, "untag_note", json!({ "id": note.id, "tag": "work" })),
             call(3, "create_note", json!({ "body": "Fresh" })),
         ],
@@ -562,9 +569,15 @@ fn a_write_keeps_the_note_as_it_was_and_the_app_can_revert_it() {
         "after_updated_at is the note's updatedAt once the write landed"
     );
     let before = store.activity_before(appended.seq).unwrap().unwrap();
-    assert_eq!(before.body, "Plan
-- one #work");
-    assert_eq!(before.tags, vec![("work".to_string(), "inline".to_string())]);
+    assert_eq!(
+        before.body,
+        "Plan
+- one #work"
+    );
+    assert_eq!(
+        before.tags,
+        vec![("work".to_string(), "inline".to_string())]
+    );
 
     // Revert the untag: the tag comes back with its original source.
     let untag = log.iter().find(|e| e.tool == "untag_note").unwrap();
@@ -574,8 +587,11 @@ fn a_write_keeps_the_note_as_it_was_and_the_app_can_revert_it() {
     assert_eq!(tags[0].name, "work");
     // Then the append: the body is as it was, and the tag survives.
     store.revert_activity(appended.seq).unwrap();
-    assert_eq!(store.get_note(&note.id, false).unwrap().body, "Plan
-- one #work");
+    assert_eq!(
+        store.get_note(&note.id, false).unwrap().body,
+        "Plan
+- one #work"
+    );
     // A create is reverted by trashing, never deleting.
     let create = log.iter().find(|e| e.tool == "create_note").unwrap();
     assert!(store.activity_before(create.seq).unwrap().is_none());
@@ -588,12 +604,19 @@ fn a_write_keeps_the_note_as_it_was_and_the_app_can_revert_it() {
     let log = trace(&store);
     let reverts: Vec<&AgentActivity> = log.iter().filter(|e| e.tool == "revert").collect();
     assert_eq!(reverts.len(), 3);
-    assert!(reverts.iter().all(|e| e.client == "instantnotes" && e.revertable));
+    assert!(reverts
+        .iter()
+        .all(|e| e.client == "instantnotes" && e.revertable));
     assert_eq!(reverts[0].reverts, Some(create.seq));
     store.revert_activity(reverts[0].seq).unwrap();
     assert!(!store.get_note(&created_id, false).unwrap().is_deleted);
     // The reverted rows say so.
-    assert!(log.iter().find(|e| e.seq == create.seq).unwrap().reverted_at.is_some());
+    assert!(log
+        .iter()
+        .find(|e| e.seq == create.seq)
+        .unwrap()
+        .reverted_at
+        .is_some());
 }
 
 #[test]
@@ -601,8 +624,11 @@ fn notes_are_also_resources_behind_the_same_access_gate() {
     let mut store = store_with("off");
     let note = store
         .create_note(CreateNoteInput {
-            body: Some("Roadmap
-Q4".into()),
+            body: Some(
+                "Roadmap
+Q4"
+                .into(),
+            ),
             ..Default::default()
         })
         .unwrap();
@@ -633,11 +659,16 @@ Q4".into()),
     assert_eq!(listed[0]["uri"], json!(uri));
     assert_eq!(listed[0]["title"], "Roadmap");
     assert_eq!(listed[0]["mimeType"], "text/markdown");
-    let templates = replies[2]["result"]["resourceTemplates"].as_array().unwrap();
+    let templates = replies[2]["result"]["resourceTemplates"]
+        .as_array()
+        .unwrap();
     assert_eq!(templates[0]["uriTemplate"], "instantnotes://notes/{id}");
     let contents = &replies[3]["result"]["contents"][0];
-    assert_eq!(contents["text"], "Roadmap
-Q4");
+    assert_eq!(
+        contents["text"],
+        "Roadmap
+Q4"
+    );
     assert_eq!(contents["uri"], json!(uri));
     assert_eq!(replies[4]["error"]["code"], -32002);
 }

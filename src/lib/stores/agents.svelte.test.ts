@@ -122,7 +122,7 @@ describe("agents presence", () => {
     expect(await agents.revert(write.seq)).toBe(true);
     expect(agents.recent.find((e) => e.seq === write.seq)?.revertedAt).toBe(99);
     const toast = toasts.items.at(-1)!;
-    expect(toast.message).toBe("Reverted. Reverted a change to “Plan”");
+    expect(toast.message).toBe("Reverted Claude Code's change to “Plan”.");
     expect(toast.action?.label).toBe("Undo");
     // The shell echoes the revert as an external change: folded in once,
     // and the row it undid stays marked. No toast for the app's own row.
@@ -131,6 +131,23 @@ describe("agents presence", () => {
     expect(agents.recent.filter((e) => e.seq === revertRow.seq)).toHaveLength(1);
     expect(toasts.items.length).toBe(before);
     expect(agents.lastWriter("n")).toBe("instantnotes");
+  });
+
+  it("folds a burst of changes into one toast that opens the panel", () => {
+    toasts.items = [];
+    agents.closePanel();
+    agents.unseen = 0;
+    const burst = [1, 2, 3, 4, 5].map((i) =>
+      entry({ tool: "tag_note", kind: "write", noteIds: [`n${i}`], titles: ["Plan"], revertable: true }),
+    );
+    agents.play(burst);
+    expect(toasts.items).toHaveLength(1);
+    expect(toasts.items[0].message).toBe("Claude Code made 5 changes.");
+    expect(toasts.items[0].action?.label).toBe("Show");
+    expect(agents.unseen).toBe(5);
+    toasts.items[0].action!.run();
+    expect(agents.panelOpen).toBe(true);
+    agents.closePanel();
   });
 
   it("says so when a revert fails", async () => {

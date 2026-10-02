@@ -203,7 +203,8 @@ fn request(tools: &mut Tools, method: &str, params: &Value) -> Result<Value, Val
         // prefers resources to tool calls (Claude Desktop's picker) gets
         // the same notes the same way.
         "resources/list" => {
-            Access::check(tools.store(), Access::Read).map_err(|m| error_object(INVALID_PARAMS, &m))?;
+            Access::check(tools.store(), Access::Read)
+                .map_err(|m| error_object(INVALID_PARAMS, &m))?;
             json!({ "resources": tools.resources().map_err(|m| error_object(INTERNAL_ERROR, &m))? })
         }
         "resources/templates/list" => json!({
@@ -216,7 +217,8 @@ fn request(tools: &mut Tools, method: &str, params: &Value) -> Result<Value, Val
             }]
         }),
         "resources/read" => {
-            Access::check(tools.store(), Access::Read).map_err(|m| error_object(INVALID_PARAMS, &m))?;
+            Access::check(tools.store(), Access::Read)
+                .map_err(|m| error_object(INVALID_PARAMS, &m))?;
             let uri = params
                 .get("uri")
                 .and_then(Value::as_str)

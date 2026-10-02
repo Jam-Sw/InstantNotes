@@ -58,6 +58,9 @@ pub(crate) fn start_agent_watcher(app: &AppHandle, db_path: PathBuf) -> AgentBri
                             announce(&handle, fresh);
                         }
                     }
+                    // Rows this connection wrote itself (a revert): already
+                    // announced by the command, so only move the cursor.
+                    _ if newest > last_seq => last_seq = newest,
                     _ => {}
                 }
                 last_version = Some(version);
@@ -199,12 +202,18 @@ mod tests {
 
     #[test]
     fn reads_and_searches_alone_do_not_requery_the_library() {
-        assert!(!library_changed(&[entry(1, "read", "ok"), entry(2, "search", "ok")]));
+        assert!(!library_changed(&[
+            entry(1, "read", "ok"),
+            entry(2, "search", "ok")
+        ]));
     }
 
     #[test]
     fn a_successful_write_requeries_the_library() {
-        assert!(library_changed(&[entry(1, "read", "ok"), entry(2, "write", "ok")]));
+        assert!(library_changed(&[
+            entry(1, "read", "ok"),
+            entry(2, "write", "ok")
+        ]));
     }
 
     #[test]
@@ -214,6 +223,9 @@ mod tests {
 
     #[test]
     fn a_change_no_agent_traced_is_a_write_from_elsewhere() {
-        assert!(library_changed(&[]), "a second copy of the app wrote; re-query");
+        assert!(
+            library_changed(&[]),
+            "a second copy of the app wrote; re-query"
+        );
     }
 }

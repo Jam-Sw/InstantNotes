@@ -52,10 +52,9 @@ impl Store {
              JOIN workspaces w ON w.id = nw.workspace_id \
              WHERE nw.note_id IN ({placeholders}) ORDER BY w.name COLLATE NOCASE"
         ))?;
-        let rows = stmt.query_map(
-            rusqlite::params_from_iter(note_ids.iter()),
-            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
-        )?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(note_ids.iter()), |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        })?;
         for row in rows {
             let (id, name) = row?;
             out.entry(id).or_default().push(name);

@@ -47,7 +47,7 @@
     ].join(";");
   }
 
-  const isCustom = (t: Theme) => !theme.allThemes.slice(0, theme.allThemes.length - theme.customThemes.length).some((b) => b.id === t.id);
+  const isCustom = (t: Theme) => theme.customThemes.some((c) => c.id === t.id);
 
   async function onImport() {
     const r = await importTheme();

@@ -96,7 +96,13 @@ impl Trace {
 
     /// Record the outcome. Best effort: an agent's call never fails because
     /// its trace could not be written.
-    pub(crate) fn finish(self, store: &mut Store, session: &str, client: &str, result: &Result<Value, String>) {
+    pub(crate) fn finish(
+        self,
+        store: &mut Store,
+        session: &str,
+        client: &str,
+        result: &Result<Value, String>,
+    ) {
         let (status, error, notes, after) = match result {
             Ok(value) => {
                 let notes = touched_notes(value);
@@ -110,7 +116,11 @@ impl Trace {
                 "error",
                 Some(message.chars().take(ERROR_CHARS).collect::<String>()),
                 // The note it was about, so the row still points somewhere.
-                self.scope.id.iter().map(|id| (id.clone(), String::new())).collect(),
+                self.scope
+                    .id
+                    .iter()
+                    .map(|id| (id.clone(), String::new()))
+                    .collect(),
                 None,
             ),
         };
@@ -124,13 +134,13 @@ impl Trace {
             status: status.to_string(),
             error,
             duration_ms: self.started.elapsed().as_millis() as i64,
-            note_ids: notes.iter().take(NOTE_IDS).map(|(id, _)| id.clone()).collect(),
-            note_count: notes.len() as i64,
-            titles: notes
+            note_ids: notes
                 .iter()
-                .take(TITLES)
-                .map(|(_, t)| t.clone())
+                .take(NOTE_IDS)
+                .map(|(id, _)| id.clone())
                 .collect(),
+            note_count: notes.len() as i64,
+            titles: notes.iter().take(TITLES).map(|(_, t)| t.clone()).collect(),
             space: self.scope.space,
             tag: self.scope.tag,
             query: self.scope.query,

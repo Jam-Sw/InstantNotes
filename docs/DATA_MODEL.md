@@ -131,6 +131,7 @@ public so tests can build fixtures at a historical schema version.
 | v4 | `content_kind`, `surface_data`: the whiteboard's surface mode. |
 | v5 | The vault mirror: columns, `vault_tombstones`, and triggers (section 10). |
 | v6 | `board_sha`, and triggers that carry whiteboards through the vault mirror (section 10). |
+| v7 | `agent_activity`: the trace of agent calls, with before-snapshots for reverting writes (section 11). |
 
 v4 exists because pre-release builds that carried the whiteboard already
 migrated some libraries to it before the whiteboard was lifted off the 0.9.0
@@ -169,3 +170,21 @@ permanent delete queues the file, and a whiteboard's canvas file, in
 still hold the bytes it wrote, and clears the flags. A crash between the
 commit and the file write leaves the flag set, and the next launch catches
 up.
+
+## 11. Agent activity
+
+`agent_activity` is the trace of every call an agent made through the MCP
+server (API.md section 15), one row per call, written by the MCP process and
+read by the app: `seq` (the cursor), `at`, `session`, `client`, `tool`,
+`kind`, `status`, `error`, `duration_ms`, `note_ids` and `titles` (JSON
+arrays), `note_count`, `space`, `tag`, `query`, `after_updated_at`, `before`,
+`reverted_at`, and `reverts`.
+
+`before` is what makes a write revertable: the note as it was just before,
+as JSON (`title`, `title_is_auto`, `body`, the flags, `updated_at`, every
+tag edge with its source, every Space name), or JSON `null` for a note the
+call created. Reverting restores exactly that snapshot (recreating a tag or
+Space that has since gone), or trashes the created note; it sets
+`reverted_at` on the row and inserts a `revert` row of its own carrying the
+state it replaced. Reads carry no snapshot. The table keeps the newest 2000
+rows; older ones are pruned on insert. Clearing it never touches a note.
