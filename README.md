@@ -2,6 +2,16 @@
 
 Instantly externalize your writing. Capture and locate your thoughts.
 
+> [!TIP]
+> **NEW! Use InstantNotes inside Claude Code.** Search, read, and capture notes from a pane in [Claude Code](https://claude.com/product/claude-code) with the `instantnotes` plugin from [toolbox](https://github.com/jamubc/toolbox). With the app installed, run in Claude Code:
+>
+> ```
+> /plugin marketplace add jamubc/toolbox
+> /plugin install instantnotes@toolbox
+> ```
+>
+> Then `/notes` opens the pane and `/note <text>` saves a note. See the [plugin's readme](https://github.com/jamubc/toolbox/tree/main/plugins/instantnotes) for the rest.
+
 ## Features
 
 - **Quick Capture:** Global hotkey (`Opt` / `Ctrl+Shift+Space`) with drafts.
@@ -31,6 +41,7 @@ Alternatively, after the blocked first launch, open System Settings, go to Priva
 Download release then run installer. 
 You will get a SmartScreen flags due to the unsigned build: 
     1. To proceed --> click "More info", then "Run anyway".
+
 
 ## Development
 To build from source instead
