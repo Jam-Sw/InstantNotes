@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach, type Mock } from "vitest";
 import { render, fireEvent, cleanup, waitFor } from "@testing-library/svelte";
 import SettingsImport from "./SettingsImport.svelte";
 import { importStickies, openUrl, scanStickies } from "$lib/api/client";
@@ -43,10 +43,10 @@ const BOARD: StickiesScan = {
   ],
 };
 
-let onShowSpace: ReturnType<typeof vi.fn>;
+let onShowSpace: Mock<(workspaceId: string) => void>;
 
 function page() {
-  onShowSpace = vi.fn();
+  onShowSpace = vi.fn<(workspaceId: string) => void>();
   return render(SettingsImport, { onShowSpace });
 }
 
