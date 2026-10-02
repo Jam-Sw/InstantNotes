@@ -135,6 +135,7 @@ public so tests can build fixtures at a historical schema version.
 | v8 | `agent_activity.request` and `response`: the raw JSON-RPC exchange behind each call (section 11). |
 | v9 | `agent_sessions`: one row per agent connection, for a truthful connected status (section 11). |
 | v10 | `agent_sessions.label`, `client_session`, `cwd`, `client_pid`: which instance of the client a connection is (section 11). |
+| v11 | `agent_sessions.matched`: whether that session was stated by the client or inferred (section 11). |
 
 v4 exists because pre-release builds that carried the whiteboard already
 migrated some libraries to it before the whiteboard was lifted off the 0.9.0
@@ -198,15 +199,25 @@ row as connected only while the lock is held, and closes the row of a process
 it finds gone, so a crash never leaves an agent looking connected. Ended
 rows are dropped after 30 days, and when the history is cleared.
 
-A row also says which instance of the client it is, for a client that lets
-on: `client_session` (the client's own session id), `cwd`, `client_pid`, and
-`label`, the name the client gives the session. Claude Code is the one that
-does: it puts `CLAUDE_CODE_SESSION_ID` and `CLAUDE_PROJECT_DIR` in the
-environment of every server it starts, and keeps the session's name (what
-`/rename` sets) in `~/.claude/sessions/<pid>.json`, which the app re-reads
-while the agent is connected so a rename shows as it happens. That file is
-Claude Code's own; when it is missing or changes shape there is simply no
-name.
+A row also says which session of the client it is: `client_session` (the
+client's own session id), `label` (the name the client gives that session),
+`cwd`, `client_pid`, and `matched`, which is `exact` when the client stated
+it and `inferred` when it was matched from outside. No client names its
+session in the MCP handshake, so each has an adapter (core `clients.rs`),
+keyed off the process that started the server:
+
+| Client | Session id | Name | `matched` |
+| --- | --- | --- | --- |
+| Claude Code | `CLAUDE_CODE_SESSION_ID` in the server's environment, then `~/.claude/sessions/<pid>.json` | `name` in that file (what `/rename` sets) | `exact` |
+| Codex | the newest rollout under `~/.codex/sessions` that runs in the same folder and began no earlier than the Codex process | `thread_name` in `~/.codex/session_index.jsonl` | `inferred` |
+| Hermes | the newest open row of `sessions` in `~/.hermes/state.db` that began no earlier than the Hermes process | that row's `title` | `inferred` |
+| any | `INSTANTNOTES_SESSION_ID` in the server's environment | `INSTANTNOTES_SESSION_NAME` | `exact` |
+
+The app re-reads the name while the agent is connected, so a rename shows as
+it happens, and keeps the last one seen. Those files are the clients' own:
+they are only ever read, and one that is missing or has changed shape means
+no name, not an error. Hermes introduces itself as `mcp`; it is recognised
+by the process that started the server.
 
 `before` is what makes a write revertable: the note as it was just before,
 as JSON (`title`, `title_is_auto`, `body`, the flags, `updated_at`, every

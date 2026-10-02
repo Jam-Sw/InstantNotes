@@ -266,6 +266,12 @@ ALTER TABLE agent_sessions ADD COLUMN client_session TEXT;
 ALTER TABLE agent_sessions ADD COLUMN cwd TEXT;
 ALTER TABLE agent_sessions ADD COLUMN client_pid INTEGER;
 "#,
+    // v11: how a connection's session was identified. `exact` when the
+    // client said so itself (Claude Code); `inferred` when it was matched
+    // from the client's own records (Codex, Hermes; see `clients.rs`).
+    r#"
+ALTER TABLE agent_sessions ADD COLUMN matched TEXT;
+"#,
 ];
 
 const NOTE_COLUMNS: &str = "id, title, body, created_at, updated_at, last_opened_at, \

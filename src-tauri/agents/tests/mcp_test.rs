@@ -792,7 +792,7 @@ fn a_held_lock_reads_as_alive_and_a_dropped_one_as_gone() {
 
 #[test]
 fn a_connection_carries_what_its_client_says_about_its_session() {
-    use instantnotes_core::store::activity::{claude_code_session_in, ClientSession};
+    use instantnotes_core::store::activity::ClientSession;
     let mut store = store_with("read");
     session(&mut store, &[init()]);
     let id = store.list_agent_sessions(1).unwrap()[0].session.clone();
@@ -804,6 +804,7 @@ fn a_connection_carries_what_its_client_says_about_its_session() {
                 client_session: Some("ec23c3e6".into()),
                 cwd: Some("/work".into()),
                 client_pid: Some(42),
+                matched: Some("inferred".into()),
             },
         )
         .unwrap();
@@ -821,21 +822,4 @@ fn a_connection_carries_what_its_client_says_about_its_session() {
     assert_eq!(row.label.as_deref(), Some("alice"));
     assert_eq!(row.client_session.as_deref(), Some("ec23c3e6"));
     assert_eq!(row.cwd.as_deref(), Some("/work"));
-
-    // Claude Code's own file for a running instance: its name and session id.
-    let dir = std::env::temp_dir().join(format!("instantnotes-cc-test-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(
-        dir.join("42.json"),
-        r#"{"pid":42,"sessionId":"ec23c3e6","name":" bob ","nameSource":"user"}"#,
-    )
-    .unwrap();
-    assert_eq!(
-        claude_code_session_in(&dir, 42),
-        Some((Some("bob".into()), Some("ec23c3e6".into())))
-    );
-    assert_eq!(claude_code_session_in(&dir, 43), None, "no file, no name");
-    std::fs::write(dir.join("44.json"), "not json").unwrap();
-    assert_eq!(claude_code_session_in(&dir, 44), None);
-    std::fs::remove_dir_all(&dir).unwrap();
 }

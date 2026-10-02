@@ -98,8 +98,16 @@ describe("the Agents Space", () => {
   it("names a conversation by its client and the session's own name", () => {
     const named = joinConversations(
       [session()],
-      [presence({ label: "bob", clientSession: "ec23c3e6", cwd: "/work" })],
+      [presence({ label: "bob", clientSession: "ec23c3e6", cwd: "/work", matched: "exact" })],
     );
+    expect(named[0].inferred).toBe(false);
+    // Codex and Hermes are matched from their own records, and say so.
+    const matched = joinConversations(
+      [session()],
+      [presence({ client: "hermes", label: "Fix the build", matched: "inferred" })],
+    );
+    expect(buildAgentNotes(matched)[0].title).toBe("Hermes: Fix the build");
+    expect(matched[0].inferred).toBe(true);
     expect(buildAgentNotes(named)[0].title).toBe("Claude Code: bob");
     expect(named[0].clientSession).toBe("ec23c3e6");
     // A client that names nothing is just itself.

@@ -22,9 +22,14 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   to a summary; its page has a live status line, filters for changes and
   failures, and Revert on every change's own line. Settings > Agents adds a
   connect snippet for Hermes.
-- Agents: a Claude Code conversation is named after its session ("Claude
-  Code: bob" after `/rename bob`), and its page shows the session id and the
-  folder it runs in, so a change traces back to the exact conversation.
+- Agents: a conversation is named after its client's own session ("Claude
+  Code: bob" after `/rename bob`; a Codex thread's name; a Hermes session's
+  title), and its page shows the session id and the folder it runs in, so a
+  change traces back to the conversation that made it. Claude Code states its
+  session; Codex and Hermes do not, so theirs is matched from their own
+  records and marked as a best match. Hermes is now shown as Hermes instead
+  of "Mcp". Any client can state its session with `INSTANTNOTES_SESSION_ID`
+  and `INSTANTNOTES_SESSION_NAME`.
 - Agents: an agent's search now shows inside the search field instead of in
   a line above the note list, so the list no longer moves.
 - Agents: an agent's search shows its words above your note list as it

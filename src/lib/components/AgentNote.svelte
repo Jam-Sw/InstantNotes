@@ -159,7 +159,16 @@
         <dl class="origin">
           {#if session.clientSession}
             <dt>Session</dt>
-            <dd><code>{session.clientSession}</code></dd>
+            <dd>
+              <code>{session.clientSession}</code>
+              {#if session.inferred}
+                <span
+                  class="inferred"
+                  title="This client does not tell its servers which session they belong to. This is the session its process began, matched from the client's own records."
+                  >best match</span
+                >
+              {/if}
+            </dd>
           {/if}
           {#if session.cwd}
             <dt>Running in</dt>
@@ -334,6 +343,15 @@
     color: var(--text-secondary);
     user-select: text;
     -webkit-user-select: text;
+  }
+  .inferred {
+    margin-left: 6px;
+    padding: 0 6px;
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    font-family: var(--font-meta);
+    font-size: 10px;
+    color: var(--text-tertiary);
   }
   .filters {
     display: flex;

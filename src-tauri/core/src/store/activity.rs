@@ -113,6 +113,9 @@ pub struct AgentSession {
     pub cwd: Option<String>,
     /// The client's process, while it lives.
     pub client_pid: Option<i64>,
+    /// How the session was identified: `exact` (the client said) or
+    /// `inferred` (matched from the client's own records).
+    pub matched: Option<String>,
 }
 
 /// What a client lets its server know about the session it belongs to.
@@ -122,31 +125,7 @@ pub struct ClientSession {
     pub client_session: Option<String>,
     pub cwd: Option<String>,
     pub client_pid: Option<i64>,
-}
-
-/// What Claude Code says about one of its running instances, in the file it
-/// keeps per process (`~/.claude/sessions/<pid>.json`): the session's name,
-/// which `/rename` sets, and its id. That file is Claude Code's own
-/// bookkeeping, so everything here is best effort: no file, or a file in a
-/// shape this does not know, is simply no name.
-pub fn claude_code_session(pid: i64) -> Option<(Option<String>, Option<String>)> {
-    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))?;
-    claude_code_session_in(&PathBuf::from(home).join(".claude").join("sessions"), pid)
-}
-
-/// `claude_code_session`, reading from a given directory.
-pub fn claude_code_session_in(dir: &Path, pid: i64) -> Option<(Option<String>, Option<String>)> {
-    let raw = std::fs::read_to_string(dir.join(format!("{pid}.json"))).ok()?;
-    let file: serde_json::Value = serde_json::from_str(&raw).ok()?;
-    let text = |key: &str| {
-        file.get(key)
-            .and_then(serde_json::Value::as_str)
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            // A name is shown to the user: keep it to a line of sane length.
-            .map(|s| s.chars().take(80).collect::<String>())
-    };
-    Some((text("name"), text("sessionId")))
+    pub matched: Option<String>,
 }
 
 /// How long an ended connection's row is kept.
@@ -607,12 +586,14 @@ impl Store {
         self.conn.execute(
             "UPDATE agent_sessions SET label = COALESCE(?1, label), \
              client_session = COALESCE(?2, client_session), cwd = COALESCE(?3, cwd), \
-             client_pid = COALESCE(?4, client_pid) WHERE session = ?5",
+             client_pid = COALESCE(?4, client_pid), matched = COALESCE(?5, matched) \
+             WHERE session = ?6",
             params![
                 about.label,
                 about.client_session,
                 about.cwd,
                 about.client_pid,
+                about.matched,
                 session
             ],
         )?;
@@ -642,7 +623,7 @@ impl Store {
     pub fn list_agent_sessions(&self, limit: i64) -> Result<Vec<AgentSession>> {
         let mut stmt = self.conn.prepare(
             "SELECT session, client, connected_at, disconnected_at, label, client_session, \
-             cwd, client_pid FROM agent_sessions \
+             cwd, client_pid, matched FROM agent_sessions \
              ORDER BY connected_at DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map(params![limit.clamp(1, 5000)], |r| {
@@ -655,6 +636,7 @@ impl Store {
                 client_session: r.get(5)?,
                 cwd: r.get(6)?,
                 client_pid: r.get(7)?,
+                matched: r.get(8)?,
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)

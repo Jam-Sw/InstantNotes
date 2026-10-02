@@ -11,10 +11,8 @@
 use crate::access::Access;
 use crate::activity::{Kind, Scope, Trace};
 use crate::fail;
+use instantnotes_core::clients::{identify, parent_process, Client, ClientProcess};
 use instantnotes_core::domain::{normalize_tag_name, normalize_workspace_name};
-#[cfg(unix)]
-use instantnotes_core::store::activity::claude_code_session;
-use instantnotes_core::store::activity::ClientSession;
 use instantnotes_core::types::{
     CreateNoteInput, Note, NoteFilter, UpdateNotePatch, CONTENT_KIND_WHITEBOARD,
 };
@@ -49,6 +47,8 @@ pub(crate) struct Tools<'a> {
     /// This process, in the trace: one agent conversation's calls group
     /// under it.
     session: String,
+    /// The client, as the process that started this server shows it.
+    launched_by: Option<Client>,
     /// The trace row of the call just made, until the transport attaches the
     /// raw messages to it.
     traced: Option<i64>,
@@ -261,12 +261,19 @@ impl<'a> Tools<'a> {
         attachments_dir: Option<PathBuf>,
         session: String,
     ) -> Self {
-        let _ = store.open_agent_session(&session, "agent");
-        let _ = store.describe_agent_session(&session, &client_session());
+        // Who started this server says which client it is, even one whose
+        // handshake will name nothing (Hermes sends `mcp`), and which of
+        // that client's sessions this is.
+        let (process, launched_by) = launcher();
+        let client = launched_by.map_or("agent", Client::as_str).to_string();
+        let _ = store.open_agent_session(&session, &client);
+        let _ =
+            store.describe_agent_session(&session, &identify(launched_by, process.as_ref(), &env));
         Tools {
             store,
             attachments_dir,
-            client: "agent".into(),
+            client,
+            launched_by,
             session,
             traced: None,
         }
@@ -282,8 +289,13 @@ impl<'a> Tools<'a> {
     }
 
     pub(crate) fn set_client(&mut self, name: &str) {
-        if !name.trim().is_empty() {
-            self.client = name.trim().to_string();
+        let name = name.trim();
+        // A handshake that names no client in particular (`mcp` is the MCP
+        // SDK's own default) does not replace what the launcher showed.
+        let generic = matches!(name, "mcp" | "agent");
+        let keep_launcher = generic && self.launched_by.is_some();
+        if !name.is_empty() && !keep_launcher {
+            self.client = name.to_string();
             let _ = self.store.name_agent_session(&self.session, &self.client);
         }
     }
@@ -685,30 +697,19 @@ fn unmark(s: &str) -> String {
 
 /// A session id without a uuid dependency: the process id and the start
 /// time, which no two concurrent servers on one machine share.
-/// Which instance of the client launched this server, as far as it lets on.
-/// Claude Code puts its session id and project directory in the environment
-/// of every server it starts, and is this process's parent; its session's
-/// name comes from the file it keeps for itself. Any other client: nothing.
-fn client_session() -> ClientSession {
-    let env = |key: &str| std::env::var(key).ok().filter(|v| !v.trim().is_empty());
-    let mut about = ClientSession {
-        client_session: env("CLAUDE_CODE_SESSION_ID"),
-        cwd: env("CLAUDE_PROJECT_DIR"),
-        ..Default::default()
-    };
-    #[cfg(unix)]
-    if about.client_session.is_some() {
-        let pid = i64::from(std::os::unix::process::parent_id());
-        about.client_pid = Some(pid);
-        if let Some((name, current)) = claude_code_session(pid) {
-            about.label = name;
-            // The file follows a resumed session; the environment does not.
-            if current.is_some() {
-                about.client_session = current;
-            }
-        }
-    }
-    about
+/// The process that started this server, and which client it is.
+fn launcher() -> (Option<ClientProcess>, Option<Client>) {
+    let process = parent_process();
+    let client = process
+        .as_ref()
+        .and_then(|p| Client::from_command(&p.command))
+        // Claude Code is not always called `claude`, but it always says so.
+        .or_else(|| env("CLAUDE_CODE_SESSION_ID").map(|_| Client::ClaudeCode));
+    (process, client)
+}
+
+fn env(key: &str) -> Option<String> {
+    std::env::var(key).ok().filter(|v| !v.trim().is_empty())
 }
 
 pub(crate) fn session_id() -> String {

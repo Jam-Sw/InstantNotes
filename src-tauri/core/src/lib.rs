@@ -1,4 +1,5 @@
 pub mod attachments;
+pub mod clients;
 pub mod domain;
 pub mod error;
 pub mod import;

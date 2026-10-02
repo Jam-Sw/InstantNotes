@@ -104,6 +104,9 @@ export interface AgentPresence {
   clientSession?: string | null;
   /** Where the client is running. */
   cwd?: string | null;
+  /** How the session was identified: "exact" (the client said so itself) or
+   *  "inferred" (matched from the client's own records). */
+  matched?: string | null;
 }
 
 /** Who a conversation is, as a person would say it: "Claude Code: bob" when

@@ -58,6 +58,8 @@ export interface AgentConversation extends AgentSession {
   label: string | null;
   clientSession: string | null;
   cwd: string | null;
+  /** True when the session was matched from the outside, not stated. */
+  inferred: boolean;
 }
 
 /** Join the trace's sessions with the connections. A connected agent that
@@ -78,6 +80,7 @@ export function joinConversations(
       label: p?.label ?? null,
       clientSession: p?.clientSession ?? null,
       cwd: p?.cwd ?? null,
+      inferred: p?.matched === "inferred",
     };
   });
   const traced = new Set(sessions.map((s) => s.session));
@@ -98,6 +101,7 @@ export function joinConversations(
       label: p.label ?? null,
       clientSession: p.clientSession ?? null,
       cwd: p.cwd ?? null,
+      inferred: p.matched === "inferred",
     });
   }
   return out.sort(

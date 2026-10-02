@@ -17,9 +17,9 @@
 //! the newest `seq` it has announced: one indexed lookup per poll.
 
 use crate::*;
+use instantnotes_core::clients::{self, Client};
 use instantnotes_core::store::activity::{
-    claude_code_session, session_alive, ActivityWire, AgentActivity, AgentSession, ClientSession,
-    NoteSnapshot,
+    session_alive, ActivityWire, AgentActivity, AgentSession, ClientSession, NoteSnapshot,
 };
 use instantnotes_core::Store;
 use std::path::Path;
@@ -68,18 +68,25 @@ fn sessions(store: &mut Store, db: &Path) -> Vec<AgentSessionView> {
             // A connected client may rename its session at any time; follow it,
             // and keep what was last seen for after it has gone.
             if connected {
-                if let Some((label, current)) = session.client_pid.and_then(claude_code_session) {
-                    let renamed = label.is_some() && label != session.label;
-                    let resumed = current.is_some() && current != session.client_session;
+                let now = Client::from_name(&session.client).and_then(|client| {
+                    clients::current(
+                        client,
+                        session.client_pid,
+                        session.client_session.as_deref(),
+                    )
+                });
+                if let Some(now) = now {
+                    let renamed = now.label.is_some() && now.label != session.label;
+                    let resumed = now.id.is_some() && now.id != session.client_session;
                     if renamed || resumed {
                         let about = ClientSession {
-                            label: label.clone(),
-                            client_session: current.clone(),
+                            label: now.label.clone(),
+                            client_session: now.id.clone(),
                             ..Default::default()
                         };
                         let _ = store.describe_agent_session(&session.session, &about);
-                        session.label = label.or(session.label);
-                        session.client_session = current.or(session.client_session);
+                        session.label = now.label.or(session.label);
+                        session.client_session = now.id.or(session.client_session);
                     }
                 }
             }
