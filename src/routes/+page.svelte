@@ -34,6 +34,7 @@
   import { updateSpace } from "$lib/stores/update-space";
   import { licenseSpace } from "$lib/stores/license-space.svelte";
   import LicenseNote from "$lib/components/LicenseNote.svelte";
+  import { isMac } from "$lib/platform";
   import {
     isUpdateNoteId,
     isUpdateSpaceId,
@@ -67,6 +68,9 @@
   }
 
   onMount(() => {
+    // On macOS the library's title bar is an overlay: the traffic lights sit
+    // over the page, and the leading pane header keeps clear of them.
+    if (isMac) document.documentElement.dataset.chrome = "overlay";
     void library.init();
     void editorPrefs.init();
     void imagePrefs.init();
@@ -380,18 +384,20 @@
     {:else}
       <NoteList />
       <section class="editor-pane">
-        {#if licenseSpace.locked}
-          <LicenseNote />
-        {:else if library.multiSelected.size > 1}
-          <BulkActions />
-        {:else if library.selected}
-          {#if isUpdateNoteId(library.selected.id)}
+        {#if !licenseSpace.locked && library.multiSelected.size <= 1 && library.selected && !isUpdateNoteId(library.selected.id)}
+          <!-- The editor brings its own header, with the note's actions. -->
+          <NoteEditor />
+        {:else}
+          <div class="pane-header" data-tauri-drag-region></div>
+          {#if licenseSpace.locked}
+            <LicenseNote />
+          {:else if library.multiSelected.size > 1}
+            <BulkActions />
+          {:else if library.selected}
             <UpdateNote />
           {:else}
-            <NoteEditor />
+            <WelcomeScreen {appVersion} onOpenUpdate={openUpdate} />
           {/if}
-        {:else}
-          <WelcomeScreen {appVersion} onOpenUpdate={openUpdate} />
         {/if}
       </section>
     {/if}
@@ -438,6 +444,8 @@
     flex-direction: column;
     min-width: 0;
     min-height: 0;
+    /* The page: the top surface, and opaque over the window material. */
+    background: var(--bg);
   }
   .graph-span {
     grid-column: span 2;

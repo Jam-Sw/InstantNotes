@@ -39,6 +39,88 @@
   --shadow-lg: 0 18px 50px rgba(0, 0, 0, 0.4);
   --leading: 1.5;
   --tracking: 0;
+
+  /* Window chrome. Every pane starts with a header of this height; where the
+     macOS traffic lights sit over the page (data-chrome="overlay", set by the
+     library window) the leading header keeps clear of them. */
+  --chrome-h: 48px;
+  --chrome-inset: 0px;
+  /* The longest line of note text worth reading across. */
+  --measure: 70ch;
+
+  /* Surfaces step from the navigation (--bg-sidebar) through the note list to
+     the page (--bg). Derived from the theme's own tokens, so every theme,
+     imported ones included, gets the steps without naming them. */
+  --surface-list: color-mix(in srgb, var(--bg) 96%, var(--text));
+  --divider: color-mix(in srgb, var(--border) 86%, var(--text));
+  /* One selection for every list: the sidebar, the note list, Settings. */
+  --select-bg: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+html[data-chrome="overlay"] {
+  --chrome-inset: 80px;
+}
+
+/* A pane's header row. Its empty space moves the window (the element carries
+   data-tauri-drag-region); controls inside it stay controls. */
+.pane-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--chrome-h);
+  padding: 0 12px;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+/* Whichever pane is leftmost sits under the traffic lights. */
+.layout > :first-child .pane-header,
+.settings-root > :first-child .pane-header {
+  padding-left: max(12px, var(--chrome-inset));
+}
+
+/* Section labels (Spaces, Tags, Today, Yesterday): anchors to scan by, set
+   well below the rows they group. */
+.section-label {
+  font-family: var(--font-meta);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  opacity: 0.62;
+}
+
+/* Icon buttons in a header, in groups split by a hairline. */
+.icon-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.icon-group + .icon-group {
+  margin-left: 6px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+}
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+}
+.icon-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.icon-btn[aria-pressed="true"] {
+  background: var(--select-bg);
+  color: var(--accent-text);
+}
+.icon-btn.danger:hover {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
 }
 
 * {
@@ -126,26 +208,31 @@ textarea:focus-visible,
 .cm-editor .cm-placeholder {
   color: var(--text-tertiary);
 }
+/* In the library, note text is a centred column of readable width, not the
+   width of the window. The line padding sits outside the measure. */
+.editor-pane .cm-editor .cm-content {
+  max-width: calc(var(--measure) + 32px * var(--density));
+  margin: 0 auto;
+}
 
 /* Native macOS vibrancy. Set by the theme store on the library window only when
-   the active theme requests a material AND the OS actually applied it. The body
-   goes transparent so the window material shows behind the translucent sidebar
-   (its --bg-sidebar token carries the alpha); the note list and editor stay
-   opaque so dense text keeps full contrast. Off by default, so every other
-   theme renders exactly as before. */
+   a material is in force AND the OS actually applied it. The root and body go
+   transparent so the window material shows behind the translucent sidebar; the
+   note list, the page, and Settings paint their own opaque surfaces, so dense
+   text keeps full contrast. */
+html[data-vibrancy],
 html[data-vibrancy] body {
   background: transparent;
 }
-html[data-vibrancy] .list-pane,
-html[data-vibrancy] .editor-pane {
-  background: var(--bg);
+/* A theme that names a material carries the alpha in its own --bg-sidebar. A
+   theme that names none gets the default material, and its opaque sidebar
+   colour is thinned here so the material shows through as a tint. */
+html[data-vibrancy][data-vibrancy-derived] .sidebar {
+  background: color-mix(in srgb, var(--bg-sidebar) 68%, transparent);
 }
 
 /* Terminal theme flourishes - the non-tokenizable personality. Markup stays
    theme-agnostic; these rules only switch on [data-theme="terminal"]. */
-[data-theme="terminal"] .tags-header {
-  text-transform: uppercase;
-}
 [data-theme="terminal"] .tags-header::before {
   content: "// ";
   opacity: 0.6;

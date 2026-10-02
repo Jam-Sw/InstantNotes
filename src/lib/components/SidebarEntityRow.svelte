@@ -169,9 +169,8 @@
     background: var(--bg-hover);
   }
   .nav-item.active {
-    background: var(--accent-soft);
-    color: var(--accent-text);
-    font-weight: 500;
+    background: var(--select-bg);
+    font-weight: 600;
   }
   .entity-name {
     overflow: hidden;

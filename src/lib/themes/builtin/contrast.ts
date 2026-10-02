@@ -22,6 +22,7 @@ export const contrast: Theme = {
     shadow: "0 0 0 1px rgba(0, 0, 0, 0.8)",
     shadowLg: "0 0 0 2px rgba(0, 0, 0, 0.9)",
   },
+  material: "none",
   dark: {
     bg: "#000000",
     bgSidebar: "#0d0d0d",

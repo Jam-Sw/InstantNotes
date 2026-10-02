@@ -121,10 +121,11 @@ export interface Theme {
   appearance: "dual" | "dark" | "light";
   fonts: ThemeFonts;
   metrics: ThemeMetrics;
-  /** Optional native macOS window material. When set, the app makes the sidebar
-   *  translucent and asks the OS to render this vibrancy behind it; omit for a
-   *  flat, fully opaque theme. */
-  material?: ThemeMaterial;
+  /** The native macOS window material behind the sidebar. A named material
+   *  means the theme's bgSidebar carries its own alpha. Omitted, the sidebar
+   *  gets the default material on macOS, tinted with the theme's opaque
+   *  bgSidebar. "none" keeps the theme flat and fully opaque everywhere. */
+  material?: ThemeMaterial | "none";
   dark?: TokenSet;
   light?: TokenSet;
 }

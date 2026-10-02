@@ -117,7 +117,11 @@ export function validateTheme(input: unknown): ValidationResult {
   if (t.appearance !== "dual" && t.appearance !== "dark" && t.appearance !== "light") {
     return { ok: false, error: "Theme appearance is invalid." };
   }
-  if (t.material !== undefined && !MATERIAL_KEYS.includes(t.material as ThemeMaterial)) {
+  if (
+    t.material !== undefined &&
+    t.material !== "none" &&
+    !MATERIAL_KEYS.includes(t.material as ThemeMaterial)
+  ) {
     return { ok: false, error: "Theme material is invalid." };
   }
 
@@ -188,7 +192,7 @@ export function validateTheme(input: unknown): ValidationResult {
       ...(metrics.leading !== undefined && { leading: (metrics.leading as string).trim() }),
       ...(metrics.tracking !== undefined && { tracking: (metrics.tracking as string).trim() }),
     },
-    material: t.material as ThemeMaterial | undefined,
+    material: t.material as ThemeMaterial | "none" | undefined,
     dark,
     light,
   };

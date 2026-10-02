@@ -192,10 +192,10 @@
 </script>
 
 <section class="graph-pane" aria-label="Graph">
-  <header class="graph-bar">
-    <h2>Graph</h2>
+  <header class="pane-header graph-bar" data-tauri-drag-region>
+    <h2 data-tauri-drag-region>Graph</h2>
     {#if graph && graph.nodes.length > 0}
-      <span class="graph-counts">
+      <span class="graph-counts" data-tauri-drag-region>
         {plural(counts.note, "note", "notes")} · {plural(counts.tag, "tag", "tags")} ·
         {plural(counts.space, "Space", "Spaces")}
       </span>
@@ -288,11 +288,10 @@
     height: 100%;
     background: var(--bg);
   }
+  /* Layout comes from .pane-header (app.css). */
   .graph-bar {
-    display: flex;
-    align-items: center;
     gap: 12px;
-    padding: 12px 16px 8px;
+    padding-right: 16px;
   }
   h2 {
     margin: 0;

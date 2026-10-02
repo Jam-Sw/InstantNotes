@@ -8,9 +8,12 @@ import { applyTheme } from "$lib/themes/apply";
 import { BUILTIN_THEMES, DEFAULT_THEME_ID } from "$lib/themes/builtin";
 import { validateTheme } from "$lib/themes/validate";
 import { BODY_FONTS, type BodyFontId } from "$lib/themes/fonts";
-import type { Theme, Variant } from "$lib/themes/types";
+import type { Theme, ThemeMaterial, Variant } from "$lib/themes/types";
+import { isMac } from "$lib/platform";
 
 export type ThemeMode = "auto" | "light" | "dark";
+
+const DEFAULT_MATERIAL: ThemeMaterial = "sidebar";
 
 const KEY_ACTIVE = "theme.active";
 const KEY_MODE = "theme.mode";
@@ -99,16 +102,27 @@ class ThemeStore {
    *  native call is unavailable (browser dev, non-macOS, older OS) the document
    *  stays opaque so nothing looks broken. */
   async #syncVibrancy(): Promise<void> {
-    if (location.pathname.startsWith("/capture")) return;
-    const material = this.activeTheme.material ?? null;
+    // The library is the one window with a material behind it; a sticky or the
+    // capture panel marked translucent would show its desktop through.
+    if (location.pathname !== "/") return;
+    const root = document.documentElement;
+    const named = this.activeTheme.material;
+    // Materials are macOS's. Elsewhere the page stays opaque and a theme's
+    // translucent sidebar colour sits over --bg. On macOS a theme that names
+    // no material gets the sidebar one, which is what a sidebar is made of.
+    const material = !isMac || named === "none" ? null : (named ?? DEFAULT_MATERIAL);
     try {
       await setWindowVibrancy(material);
     } catch {
-      delete document.documentElement.dataset.vibrancy;
+      delete root.dataset.vibrancy;
+      delete root.dataset.vibrancyDerived;
       return;
     }
-    if (material) document.documentElement.dataset.vibrancy = material;
-    else delete document.documentElement.dataset.vibrancy;
+    if (material) root.dataset.vibrancy = material;
+    else delete root.dataset.vibrancy;
+    // Derived: the theme's sidebar colour is opaque and the CSS thins it.
+    if (material && !named) root.dataset.vibrancyDerived = "";
+    else delete root.dataset.vibrancyDerived;
   }
 
   /** Match the native window chrome (titlebar, traffic lights) to the resolved

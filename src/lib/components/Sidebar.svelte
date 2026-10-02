@@ -88,6 +88,10 @@
 </script>
 
 <aside class="sidebar">
+  <!-- The window's title bar, where the traffic lights sit: it moves the
+       window and holds nothing else. -->
+  <div class="pane-header" data-tauri-drag-region></div>
+  <div class="sidebar-scroll">
   {#if licenseSpace.locked}
     <!-- Until the license and EULA are agreed, the License Space is the one
          place to go; everything below is shown but out of reach. -->
@@ -177,7 +181,7 @@
       Graph
     </button>
   </nav>
-  <div class="tags-header" bind:this={spacesHeader} tabindex="-1">Spaces</div>
+  <div class="tags-header section-label" bind:this={spacesHeader} tabindex="-1">Spaces</div>
   <nav class="workspaces">
     <!-- The update notification, first: the same row as any Space, with a green
          asterisk and no management gestures. It exists only while an update is
@@ -230,7 +234,7 @@
       />
     </form>
   </nav>
-  <div class="tags-header" bind:this={tagsHeader} tabindex="-1">Tags</div>
+  <div class="tags-header section-label" bind:this={tagsHeader} tabindex="-1">Tags</div>
   <nav class="tags">
     {#each library.tags.filter((t) => t.usageCount > 0) as tag (tag.id)}
       <SidebarEntityRow
@@ -253,6 +257,7 @@
       <div class="empty-hint">Type #tag in a note</div>
     {/each}
   </nav>
+  </div>
   </div>
 </aside>
 
@@ -285,11 +290,17 @@
 <style>
   /* sidebar */
   .sidebar {
+    display: flex;
+    flex-direction: column;
     background: var(--bg-sidebar);
-    border-right: 1px solid var(--border);
-    padding: 12px 8px;
+    border-right: 1px solid var(--divider);
+    min-height: 0;
+  }
+  .sidebar-scroll {
+    flex: 1;
     min-height: 0;
     overflow-y: auto;
+    padding: 0 8px 12px;
   }
   /* A wrapper for the lock only; it adds no box of its own. */
   .lockable {
@@ -314,9 +325,8 @@
     background: var(--bg-hover);
   }
   .nav-item.active {
-    background: var(--accent-soft);
-    color: var(--accent-text);
-    font-weight: 500;
+    background: var(--select-bg);
+    font-weight: 600;
   }
   .agent-line {
     display: flex;
@@ -399,14 +409,9 @@
       animation: none;
     }
   }
+  /* Type comes from .section-label (app.css); this is only where it sits. */
   .tags-header {
-    margin: 16px 10px 4px;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    color: var(--text-tertiary);
-    font-family: var(--font-meta);
+    margin: 22px 10px 6px;
   }
   .nav-count {
     color: var(--text-tertiary);

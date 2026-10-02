@@ -166,6 +166,7 @@
 
 <div class="settings-root">
   <nav class="settings-nav" aria-label="Settings pages">
+    <div class="pane-header" data-tauri-drag-region></div>
     <div class="nav-top">
       <button class="back-btn" onclick={onBack} title="Back to the library (Esc)">
         <span class="back-arrow" aria-hidden="true">&#8592;</span> Library
@@ -211,6 +212,7 @@
 
   <div class="settings-main">
     {#if page === "home"}
+      <div class="pane-header" data-tauri-drag-region></div>
       <div class="settings-home">
         <header class="home-head">
           <h2 class="home-title">Overview</h2>
@@ -292,7 +294,7 @@
         {/if}
       </div>
     {:else}
-      <header class="page-head">
+      <header class="pane-header page-head" data-tauri-drag-region>
         <nav class="crumb" aria-label="Breadcrumb">
           <button class="crumb-link" onclick={() => (page = "home")}>Settings</button>
           <span class="crumb-sep" aria-hidden="true">&rsaquo;</span>
@@ -341,8 +343,8 @@
     flex-direction: column;
     min-height: 0;
     background: var(--bg-sidebar);
-    border-right: 1px solid var(--border);
-    padding: 12px 10px;
+    border-right: 1px solid var(--divider);
+    padding: 0 10px 12px;
     gap: 10px;
   }
   .nav-top {
@@ -431,9 +433,8 @@
     background: var(--bg-hover);
   }
   .nav-item.active {
-    background: var(--accent-soft);
-    color: var(--accent-text);
-    font-weight: 500;
+    background: var(--select-bg);
+    font-weight: 600;
   }
   .nav-badge {
     min-width: 18px;
@@ -469,11 +470,10 @@
     min-height: 0;
     min-width: 0;
   }
+  /* Layout comes from .pane-header (app.css). */
   .page-head {
-    display: flex;
-    align-items: center;
     gap: 12px;
-    padding: 12px 40px 0;
+    padding: 0 40px;
   }
   .crumb {
     display: flex;
@@ -506,7 +506,7 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 28px 40px 40px;
+    padding: 4px 40px 40px;
     display: flex;
     flex-direction: column;
     gap: 22px;
