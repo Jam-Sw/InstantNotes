@@ -1,7 +1,7 @@
 <script lang="ts">
   import { library } from "$lib/stores/library.svelte";
   import { agents } from "$lib/stores/agents.svelte";
-  import { clientLabel, describeActivity } from "$lib/agent-activity";
+  import { agentName } from "$lib/agent-activity";
   import { ApiError, deleteTag, updateTag } from "$lib/api/client";
   import { friendlyMessage, GENERIC_MESSAGE } from "$lib/errors";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
@@ -11,6 +11,8 @@
   import { normalizeTagInput } from "$lib/tag-name";
   import { updateSpace } from "$lib/stores/update-space";
   import { UPDATE_SPACE_ID, UPDATE_SPACE_NAME } from "$lib/update/space";
+  import { agentsSpace } from "$lib/stores/agents-space";
+  import { AGENTS_SPACE_ID, AGENTS_SPACE_NAME } from "$lib/agents/space";
   import { LICENSE_SPACE_NAME, licenseSpace } from "$lib/stores/license-space.svelte";
   import type { TagWithCount, WorkspaceWithCount } from "$lib/api/types";
 
@@ -23,6 +25,16 @@
   let spaceMenu = $state<{ x: number; y: number; ws: WorkspaceWithCount } | null>(null);
   let renamingTagId = $state<string | null>(null);
   let tagMenu = $state<{ x: number; y: number; tag: TagWithCount } | null>(null);
+
+  // "Claude Code and Codex connected", "Claude Code and 19 more connected".
+  const connectedTitle = $derived.by(() => {
+    const names = agents.sessions.filter((s) => s.connected).map((s) => agentName(s.client, s.label));
+    if (names.length === 0) return "";
+    if (names.length <= 3) {
+      return `${new Intl.ListFormat("en", { type: "conjunction" }).format(names)} connected`;
+    }
+    return `${names[0]} and ${names.length - 1} more connected`;
+  });
 
   async function submitNewSpace(e: Event) {
     e.preventDefault();
@@ -88,6 +100,10 @@
 </script>
 
 <aside class="sidebar">
+  <!-- The window's title bar, where the traffic lights sit: it moves the
+       window and holds nothing else. -->
+  <div class="pane-header" data-tauri-drag-region></div>
+  <div class="sidebar-scroll">
   {#if licenseSpace.locked}
     <!-- Until the license and EULA are agreed, the License Space is the one
          place to go; everything below is shown but out of reach. -->
@@ -120,25 +136,6 @@
     >
       All Notes
     </button>
-    <!-- An agent at work: who, and what, in one line that exists only while
-         it is happening. The rows it touches light up on their own; this
-         says in words what the light means. Opens the note it names. -->
-    <div class="agent-live" role="status" aria-live="polite">
-      {#if agents.current}
-        {@const act = agents.current}
-        <button
-          class="agent-line"
-          data-kind={act.kind}
-          title="An agent connected to InstantNotes. Settings > Agents controls what it may do."
-          onclick={() => act.noteIds.length === 1 && void library.select(act.noteIds[0])}
-        >
-          <span class="agent-dot" aria-hidden="true"></span>
-          <span class="agent-text"
-            ><strong>{clientLabel(act.client)}</strong> {describeActivity(act)}</span
-          >
-        </button>
-      {/if}
-    </div>
     <!-- Open loops: capture-born notes never opened since. Hidden at zero
          (useful by default, invisible when there's nothing to do), but held
          visible while active so the row doesn't vanish mid burn-down. -->
@@ -162,7 +159,7 @@
       Graph
     </button>
   </nav>
-  <div class="tags-header" bind:this={spacesHeader} tabindex="-1">Spaces</div>
+  <div class="tags-header section-label" bind:this={spacesHeader} tabindex="-1">Spaces</div>
   <nav class="workspaces">
     <!-- The update notification, first: the same row as any Space, with a green
          asterisk and no management gestures. It exists only while an update is
@@ -186,6 +183,36 @@
         onMenu={() => {}}
       >
         {#snippet suffix()}<span class="update-star" aria-hidden="true">*</span>{/snippet}
+      </SidebarEntityRow>
+    {/if}
+    <!-- The agent trace: a Space with one note per agent conversation, drawn
+         like the update's and, like it, with no management gestures. -->
+    {#if agentsSpace.visible}
+      <SidebarEntityRow
+        name={AGENTS_SPACE_NAME}
+        count={agentsSpace.notes.length}
+        normalize={(s) => s.trim()}
+        noun="Space"
+        active={library.activeWorkspaceId === AGENTS_SPACE_ID}
+        editing={false}
+        readonly
+        onSelect={() =>
+          library.activeWorkspaceId === AGENTS_SPACE_ID
+            ? library.selectWorkspace(null)
+            : agentsSpace.open()}
+        onStartRename={() => {}}
+        onRename={async () => ({ ok: true as const })}
+        onDoneRename={() => {}}
+        onMenu={() => {}}
+      >
+        <!-- Who is connected lives on the row itself, which is always here:
+             nothing appears or goes, so nothing below it ever moves. -->
+        {#snippet suffix()}{#if agents.connectedCount > 0}<span
+              class="agents-live"
+              title={connectedTitle}
+              aria-label={connectedTitle}
+              ><span class="live-dot" data-state={agents.working ? "working" : "connected"}></span>{agents.connectedCount}</span
+            >{/if}{#if agents.unseen > 0}<span class="badge" aria-label="{agents.unseen} new changes">{agents.unseen}</span>{/if}{/snippet}
       </SidebarEntityRow>
     {/if}
     {#each library.workspaces as ws (ws.id)}
@@ -215,7 +242,7 @@
       />
     </form>
   </nav>
-  <div class="tags-header" bind:this={tagsHeader} tabindex="-1">Tags</div>
+  <div class="tags-header section-label" bind:this={tagsHeader} tabindex="-1">Tags</div>
   <nav class="tags">
     {#each library.tags.filter((t) => t.usageCount > 0) as tag (tag.id)}
       <SidebarEntityRow
@@ -238,6 +265,7 @@
       <div class="empty-hint">Type #tag in a note</div>
     {/each}
   </nav>
+  </div>
   </div>
 </aside>
 
@@ -270,11 +298,17 @@
 <style>
   /* sidebar */
   .sidebar {
+    display: flex;
+    flex-direction: column;
     background: var(--bg-sidebar);
-    border-right: 1px solid var(--border);
-    padding: 12px 8px;
+    border-right: 1px solid var(--divider);
+    min-height: 0;
+  }
+  .sidebar-scroll {
+    flex: 1;
     min-height: 0;
     overflow-y: auto;
+    padding: 0 8px 12px;
   }
   /* A wrapper for the lock only; it adds no box of its own. */
   .lockable {
@@ -299,74 +333,36 @@
     background: var(--bg-hover);
   }
   .nav-item.active {
-    background: var(--accent-soft);
-    color: var(--accent-text);
-    font-weight: 500;
-  }
-  .agent-line {
-    display: flex;
-    align-items: baseline;
-    gap: 7px;
-    width: 100%;
-    margin: 2px 0 4px;
-    padding: 4px 10px;
-    border-radius: var(--radius);
-    text-align: left;
-    font-size: 12px;
-    line-height: 1.35;
-    color: var(--text-secondary);
-    animation: agent-line-in 180ms ease-out;
-  }
-  .agent-line:hover {
-    background: var(--bg-hover);
-  }
-  .agent-line strong {
-    color: var(--accent-text);
+    background: var(--select-bg);
     font-weight: 600;
   }
-  .agent-text {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .agent-dot {
-    flex: none;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--accent);
-    transform: translateY(-1px);
-    animation: agent-dot 1.2s ease-in-out infinite;
-  }
-  .agent-line[data-kind="write"] .agent-dot {
-    box-shadow: 0 0 0 3px var(--accent-soft);
-  }
-  @keyframes agent-line-in {
-    from {
-      opacity: 0;
-      transform: translateY(-2px);
-    }
-  }
-  @keyframes agent-dot {
-    50% {
-      opacity: 0.35;
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .agent-line,
-    .agent-dot {
-      animation: none;
-    }
-  }
-  .tags-header {
-    margin: 16px 10px 4px;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    color: var(--text-tertiary);
+  .agents-live {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-left: 8px;
     font-family: var(--font-meta);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+  .badge {
+    display: inline-block;
+    margin-left: 6px;
+    min-width: 18px;
+    padding: 0 5px;
+    border-radius: 99px;
+    background: var(--accent);
+    color: var(--bg);
+    font-family: var(--font-meta);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 18px;
+    text-align: center;
+  }
+  /* Type comes from .section-label (app.css); this is only where it sits. */
+  .tags-header {
+    margin: 22px 10px 6px;
   }
   .nav-count {
     color: var(--text-tertiary);

@@ -25,8 +25,18 @@ export const TOKEN_KEYS = [
 
 export type TokenKey = (typeof TOKEN_KEYS)[number];
 
-/** A complete set of color values for one appearance (light or dark). */
-export type TokenSet = Record<TokenKey, string>;
+/** Tokens a theme may set but need not: each has a fallback derived from the
+ *  required set (see `apply.ts`), so every theme written before they existed
+ *  keeps rendering unchanged. `success` and `warning` are the two states the
+ *  app reports besides `danger` (a vault in sync, an agent's change); the
+ *  rest tune surfaces that used to borrow neighbouring tokens. */
+export const OPTIONAL_TOKEN_KEYS = ["success", "warning", "selection", "codeBg", "focus"] as const;
+
+export type OptionalTokenKey = (typeof OPTIONAL_TOKEN_KEYS)[number];
+
+/** A complete set of color values for one appearance (light or dark), plus
+ *  any of the optional tokens. */
+export type TokenSet = Record<TokenKey, string> & Partial<Record<OptionalTokenKey, string>>;
 
 /** Which CSS custom property each token writes to. */
 export const TOKEN_VAR: Record<TokenKey, string> = {
@@ -44,6 +54,14 @@ export const TOKEN_VAR: Record<TokenKey, string> = {
   accentSoft: "--accent-soft",
   danger: "--danger",
   tag: "--tag",
+};
+
+export const OPTIONAL_TOKEN_VAR: Record<OptionalTokenKey, string> = {
+  success: "--success",
+  warning: "--warning",
+  selection: "--selection",
+  codeBg: "--code-bg",
+  focus: "--focus",
 };
 
 /** Native macOS vibrancy materials a theme may request behind the window. Each
@@ -96,15 +114,18 @@ export interface Theme {
   id: string;
   name: string;
   author?: string;
+  /** One line on what the theme is for, shown on the Appearance page. */
+  description?: string;
   version: 1;
   /** "dual" defines both light and dark; otherwise only the named variant. */
   appearance: "dual" | "dark" | "light";
   fonts: ThemeFonts;
   metrics: ThemeMetrics;
-  /** Optional native macOS window material. When set, the app makes the sidebar
-   *  translucent and asks the OS to render this vibrancy behind it; omit for a
-   *  flat, fully opaque theme. */
-  material?: ThemeMaterial;
+  /** The native macOS window material behind the sidebar. A named material
+   *  means the theme's bgSidebar carries its own alpha. Omitted, the sidebar
+   *  gets the default material on macOS, tinted with the theme's opaque
+   *  bgSidebar. "none" keeps the theme flat and fully opaque everywhere. */
+  material?: ThemeMaterial | "none";
   dark?: TokenSet;
   light?: TokenSet;
 }

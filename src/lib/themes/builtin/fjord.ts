@@ -1,0 +1,64 @@
+// Fjord - cool arctic neutrals with a glacial blue accent and a frost-green
+// success tone. Calm and low-saturation, in the Nordic tradition: the theme
+// for long sessions where the UI should recede and the text should stay.
+// Light variant is pale slate on near-white, same blue a shade deeper.
+
+import type { Theme } from "../types";
+import { MONO_STACK, SANS_STACK } from "../fonts";
+
+export const fjord: Theme = {
+  id: "fjord",
+  name: "Fjord",
+  author: "InstantNotes",
+  description: "Cool arctic neutrals and a glacial blue. Calm for long sessions.",
+  version: 1,
+  appearance: "dual",
+  fonts: { ui: SANS_STACK, mono: MONO_STACK, body: "ui", meta: "mono" },
+  metrics: {
+    radius: "7px",
+    density: 1.05,
+    leading: "1.6",
+    shadow: "0 1px 4px rgba(10, 16, 28, 0.28)",
+    shadowLg: "0 18px 48px rgba(10, 16, 28, 0.5)",
+  },
+  dark: {
+    bg: "#1f242c",
+    bgSidebar: "#262c36",
+    bgHover: "#2e3540",
+    bgActive: "#363e4b",
+    bgInput: "#262c36",
+    text: "#e3e9f0",
+    textSecondary: "#a2adbb",
+    textTertiary: "#6f7b8a",
+    border: "#333b47",
+    accent: "#7fb3d5",
+    accentText: "#96c5e4",
+    accentSoft: "rgba(127, 179, 213, 0.14)",
+    danger: "#d9868d",
+    tag: "#8fbcbb",
+    success: "#9ccf96",
+    warning: "#e6c27a",
+    selection: "rgba(127, 179, 213, 0.22)",
+    codeBg: "#262c36",
+  },
+  light: {
+    bg: "#f7f9fb",
+    bgSidebar: "#eceff4",
+    bgHover: "#e1e6ed",
+    bgActive: "#d4dbe5",
+    bgInput: "#ffffff",
+    text: "#22272f",
+    textSecondary: "#5a6473",
+    textTertiary: "#8591a1",
+    border: "#d9dfe8",
+    accent: "#3e7fa8",
+    accentText: "#2f6b91",
+    accentSoft: "rgba(62, 127, 168, 0.13)",
+    danger: "#bf4a55",
+    tag: "#3b8f8d",
+    success: "#4d8d4a",
+    warning: "#b58a2d",
+    selection: "rgba(62, 127, 168, 0.2)",
+    codeBg: "#eceff4",
+  },
+};

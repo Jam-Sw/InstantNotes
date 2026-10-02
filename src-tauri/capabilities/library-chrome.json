@@ -1,0 +1,9 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "library-chrome",
+  "description": "Library window only: the title bar is drawn by the app (macOS overlay style), so its header regions move the window, as a title bar would.",
+  "windows": ["library"],
+  "permissions": [
+    "core:window:allow-start-dragging"
+  ]
+}

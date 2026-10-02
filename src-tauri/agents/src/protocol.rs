@@ -12,7 +12,8 @@
 //! methods are few and stable, so this is written against `serde_json`
 //! directly rather than pulling in an async SDK and its runtime.
 
-use crate::tools::Tools;
+use crate::access::Access;
+use crate::tools::{session_id, Tools, NOTE_URI_PREFIX};
 use instantnotes_core::Store;
 use serde_json::{json, Map, Value};
 use std::io::{self, BufRead, Write};
@@ -37,7 +38,9 @@ const PARSE_ERROR: i64 = -32700;
 const INVALID_REQUEST: i64 = -32600;
 const METHOD_NOT_FOUND: i64 = -32601;
 const INVALID_PARAMS: i64 = -32602;
+const INTERNAL_ERROR: i64 = -32603;
 const UNSUPPORTED_PROTOCOL_VERSION: i64 = -32022;
+const RESOURCE_NOT_FOUND: i64 = -32002;
 
 const INSTRUCTIONS: &str = "You are connected to InstantNotes, the user's \
 personal notes app: a place to park thoughts fast and trust they come back. \
@@ -51,10 +54,22 @@ Formatting, as the editor renders it: Markdown with GitHub extensions. \
 blocks, > quotes, - lists (indent to nest), - [ ] tasks, [links](url), and \
 images as ![](attachments/<file>). A #word in the text is a tag.
 
+Reading: search, then read only what matters. search_notes returns the \
+matching passages with their line numbers and surrounding lines, and takes \
+match \"any\" to cast wide, a space, a tag, a status, and dates; that is \
+usually enough to answer without opening a note. To read notes in full, pass \
+their ids to get_notes, several at a time. Do not page through the whole \
+library with list_notes to read everything, and do not script around these \
+tools: results say total and hasMore, so you always know what is left.
+
 Working with notes: search or list before creating, so you add to an existing \
-note instead of duplicating it. Prefer append_to_note to add to a note. To \
-rewrite one, read it with get_note and pass its updatedAt to update_note; a \
-CONFLICT means the user changed it since, so read it again. Nothing you do \
+note instead of duplicating it. search_notes matches titles, so search a \
+note's title to find it; its results already carry the id, spaces, and \
+updatedAt. Prefer append_to_note to add to a note. To rewrite one, pass the \
+updatedAt from search_notes, list_notes, or get_note to update_note; you do \
+not need to read the note first unless you need its current text. A CONFLICT \
+means the user changed it since; it includes the current note, so retry from \
+that. Nothing you do \
 deletes for good: trash_note is undoable by the user.
 
 Open loops: list_notes with status \"revisit\" gives captures the user has \
@@ -66,14 +81,32 @@ reminders, or checklists the user did not ask for.";
 pub fn serve(
     store: &mut Store,
     attachments_dir: Option<PathBuf>,
+    input: impl BufRead,
+    output: impl Write,
+) -> io::Result<()> {
+    serve_as(store, attachments_dir, new_session(), input, output)
+}
+
+/// A name for this process's connection, for `serve_as`.
+pub fn new_session() -> String {
+    session_id()
+}
+
+/// `serve`, under a session id the caller already holds (the entry point
+/// takes the session's lock before the first message is read).
+pub fn serve_as(
+    store: &mut Store,
+    attachments_dir: Option<PathBuf>,
+    session: String,
     mut input: impl BufRead,
     mut output: impl Write,
 ) -> io::Result<()> {
-    let mut tools = Tools::new(store, attachments_dir);
+    let mut tools = Tools::new(store, attachments_dir, session);
     let mut line = Vec::new();
     loop {
         line.clear();
         if input.read_until(b'\n', &mut line)? == 0 {
+            tools.disconnect();
             return Ok(());
         }
         // A line that is not UTF-8 is one bad message, not a dead server.
@@ -107,7 +140,26 @@ fn handle_line(tools: &mut Tools, line: &str) -> Option<Value> {
 
 /// One message to at most one reply. Notifications, and responses (this
 /// server sends no requests, so any response answers nothing), get none.
+///
+/// A panic inside a request (a bug in one tool, a corrupt row) is caught and
+/// answered as an internal error, so one bad call never takes the whole
+/// connection, and the agent's conversation, down with it.
 fn handle(tools: &mut Tools, message: Value) -> Option<Value> {
+    let id = message.get("id").cloned().unwrap_or(Value::Null);
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        handle_unguarded(tools, message)
+    })) {
+        Ok(reply) => reply,
+        Err(_) => match id {
+            Value::String(_) | Value::Number(_) => {
+                Some(error(id, INTERNAL_ERROR, "internal error"))
+            }
+            _ => None,
+        },
+    }
+}
+
+fn handle_unguarded(tools: &mut Tools, message: Value) -> Option<Value> {
     let Value::Object(msg) = message else {
         return Some(error(Value::Null, INVALID_REQUEST, "invalid request"));
     };
@@ -127,10 +179,20 @@ fn handle(tools: &mut Tools, message: Value) -> Option<Value> {
     };
     let id = id?;
     let params = msg.get("params").cloned().unwrap_or(Value::Null);
-    Some(match request(tools, method, &params) {
+    let reply = match request(tools, method, &params) {
         Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
         Err(err) => json!({ "jsonrpc": "2.0", "id": id, "error": err }),
-    })
+    };
+    // The trace keeps the whole exchange, so the user can read exactly what
+    // an agent sent and what it was told.
+    if method == "tools/call" {
+        if let (Ok(sent), Ok(answered)) =
+            (serde_json::to_string(&msg), serde_json::to_string(&reply))
+        {
+            tools.record_wire(&sent, &answered);
+        }
+    }
+    Some(reply)
 }
 
 /// A request's result, or its JSON-RPC error object.
@@ -173,10 +235,39 @@ fn request(tools: &mut Tools, method: &str, params: &Value) -> Result<Value, Val
         "ping" => json!({}),
         "tools/list" => json!({ "tools": tools.list() }),
         "tools/call" => call(tools, params)?,
+        // Notes as resources, read-gated like the read tools. A client that
+        // prefers resources to tool calls (Claude Desktop's picker) gets
+        // the same notes the same way.
+        "resources/list" => {
+            Access::check(tools.store(), Access::Read)
+                .map_err(|m| error_object(INVALID_PARAMS, &m))?;
+            json!({ "resources": tools.resources().map_err(|m| error_object(INTERNAL_ERROR, &m))? })
+        }
+        "resources/templates/list" => json!({
+            "resourceTemplates": [{
+                "uriTemplate": format!("{NOTE_URI_PREFIX}{{id}}"),
+                "name": "note",
+                "title": "A note",
+                "description": "One note's Markdown, by the id search_notes or list_notes return.",
+                "mimeType": "text/markdown",
+            }]
+        }),
+        "resources/read" => {
+            Access::check(tools.store(), Access::Read)
+                .map_err(|m| error_object(INVALID_PARAMS, &m))?;
+            let uri = params
+                .get("uri")
+                .and_then(Value::as_str)
+                .ok_or_else(|| error_object(INVALID_PARAMS, "resources/read needs a uri"))?;
+            let contents = tools
+                .resource(uri)
+                .map_err(|m| error_object(RESOURCE_NOT_FOUND, &m))?;
+            json!({ "contents": [contents] })
+        }
         _ => return Err(error_object(METHOD_NOT_FOUND, "method not found")),
     };
     if modern {
-        if method == "tools/list" {
+        if method == "tools/list" || method == "resources/templates/list" {
             result["ttlMs"] = json!(CACHE_TTL_MS);
             result["cacheScope"] = json!("private");
         }
@@ -241,7 +332,8 @@ fn supported_versions() -> Vec<&'static str> {
 }
 
 fn capabilities() -> Value {
-    json!({ "tools": {} })
+    // Neither list changes while the process lives: no listChanged.
+    json!({ "tools": {}, "resources": {} })
 }
 
 fn server_info() -> Value {

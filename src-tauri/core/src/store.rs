@@ -207,6 +207,71 @@ CREATE TRIGGER notes_vault_ad AFTER DELETE ON notes
     WHERE old.board_sha IS NOT NULL;
 END;
 "#,
+    // v7: the agent activity trace (API.md section 15). Every call an agent
+    // makes through the MCP server is one row; a write also carries `before`,
+    // the note as it was (fields, tags, Spaces) as JSON, so the app can put
+    // it back. Written by the MCP process, read by the app, which appends
+    // its own `revert` rows. Pruned to the newest ACTIVITY_KEEP rows.
+    r#"
+CREATE TABLE agent_activity (
+  seq              INTEGER PRIMARY KEY,
+  at               INTEGER NOT NULL,
+  session          TEXT NOT NULL,
+  client           TEXT NOT NULL,
+  tool             TEXT NOT NULL,
+  kind             TEXT NOT NULL,
+  status           TEXT NOT NULL,
+  error            TEXT,
+  duration_ms      INTEGER NOT NULL DEFAULT 0,
+  note_ids         TEXT NOT NULL DEFAULT '[]',
+  note_count       INTEGER NOT NULL DEFAULT 0,
+  titles           TEXT NOT NULL DEFAULT '[]',
+  space            TEXT,
+  tag              TEXT,
+  query            TEXT,
+  after_updated_at TEXT,
+  before           TEXT,
+  reverted_at      INTEGER,
+  reverts          INTEGER
+);
+"#,
+    // v8: the raw exchange behind a traced call. `request` is the JSON-RPC
+    // message the agent sent and `response` the one it got back, whole, so
+    // the app can show exactly what crossed the wire. NULL on rows from
+    // before this, and on the app's own `revert` rows, which no agent sent.
+    r#"
+ALTER TABLE agent_activity ADD COLUMN request TEXT;
+ALTER TABLE agent_activity ADD COLUMN response TEXT;
+"#,
+    // v9: agent connections. One row per MCP server process: who connected
+    // and when, and when it said goodbye. A process that dies without saying
+    // so is found out by the lock it held (`store/activity.rs`), and the app
+    // closes its row.
+    r#"
+CREATE TABLE agent_sessions (
+  session         TEXT PRIMARY KEY,
+  client          TEXT NOT NULL,
+  connected_at    INTEGER NOT NULL,
+  disconnected_at INTEGER
+);
+"#,
+    // v10: which instance of the client a connection is. `label` is the
+    // name the client gives its own session (Claude Code's `/rename`),
+    // `client_session` that session's id, `cwd` where it runs, and
+    // `client_pid` the client's process, which is how its name is looked up
+    // while it lives. All NULL for a client that tells us none of it.
+    r#"
+ALTER TABLE agent_sessions ADD COLUMN label TEXT;
+ALTER TABLE agent_sessions ADD COLUMN client_session TEXT;
+ALTER TABLE agent_sessions ADD COLUMN cwd TEXT;
+ALTER TABLE agent_sessions ADD COLUMN client_pid INTEGER;
+"#,
+    // v11: how a connection's session was identified. `exact` when the
+    // client said so itself (Claude Code); `inferred` when it was matched
+    // from the client's own records (Codex, Hermes; see `clients.rs`).
+    r#"
+ALTER TABLE agent_sessions ADD COLUMN matched TEXT;
+"#,
 ];
 
 const NOTE_COLUMNS: &str = "id, title, body, created_at, updated_at, last_opened_at, \
@@ -343,15 +408,18 @@ fn attach_tag(conn: &Connection, note_id: &str, tag_id: &str, source: &str) -> R
 }
 
 /// Build an FTS5 MATCH expression from raw user text. Tokens are reduced to
-/// word characters so user input can never produce FTS syntax errors.
+/// word characters so user input can never produce FTS syntax errors. Other
+/// punctuation splits words, as the unicode61 tokenizer does when indexing:
+/// "CachyOS/Arch" is indexed as `cachyos` `arch`, so it must be queried that
+/// way, not as `CachyOSArch`.
 fn fts_match_expr(text: &str) -> Option<String> {
-    let tokens: Vec<String> = text
-        .split_whitespace()
-        .map(|t| {
-            t.chars()
-                .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
-                .collect::<String>()
-        })
+    fts_match_expr_with(text, false)
+}
+
+/// `fts_match_expr`, optionally matching any of the words instead of all.
+fn fts_match_expr_with(text: &str, any_term: bool) -> Option<String> {
+    let tokens: Vec<&str> = text
+        .split(|c: char| !(c.is_alphanumeric() || c == '-' || c == '_'))
         .filter(|t| !t.is_empty())
         .collect();
     if tokens.is_empty() {
@@ -362,7 +430,7 @@ fn fts_match_expr(text: &str) -> Option<String> {
                 .iter()
                 .map(|t| format!("\"{t}\"*"))
                 .collect::<Vec<_>>()
-                .join(" "),
+                .join(if any_term { " OR " } else { " " }),
         )
     }
 }
@@ -572,6 +640,7 @@ impl Store {
     }
 }
 
+pub mod activity;
 mod attachments;
 mod graph;
 mod import;

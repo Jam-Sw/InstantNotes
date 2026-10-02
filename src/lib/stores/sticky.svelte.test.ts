@@ -127,16 +127,25 @@ describe("StickyNote", () => {
 
 describe("StickyNote when an agent writes its note", () => {
   const write = (noteId: string): AgentActivity => ({
+    seq: 1,
     at: 1,
+    session: "s1",
     client: "claude-code",
     tool: "append_to_note",
     kind: "write",
+    status: "ok",
+    error: null,
+    durationMs: 1,
     noteIds: [noteId],
     noteCount: 1,
     titles: ["Groceries"],
     space: null,
     tag: null,
     query: null,
+    afterUpdatedAt: null,
+    revertable: true,
+    revertedAt: null,
+    reverts: null,
   });
 
   it("takes the agent's version in place when nothing is unsaved", async () => {

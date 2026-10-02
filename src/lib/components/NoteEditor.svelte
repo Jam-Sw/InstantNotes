@@ -2,6 +2,7 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import Editor from "$lib/components/Editor.svelte";
   import FormatToolbar from "$lib/components/FormatToolbar.svelte";
+  import Icon from "$lib/components/Icon.svelte";
   import WhiteboardCanvas from "$lib/components/whiteboard/WhiteboardCanvas.svelte";
   import { library } from "$lib/stores/library.svelte";
   import { agents } from "$lib/stores/agents.svelte";
@@ -17,7 +18,7 @@
   import { formatDate, formatExact, wordCount } from "$lib/format";
   import type { FormatKind } from "$lib/markdown-format";
   import { NO_MARKS, type ActiveMarks } from "$lib/markdown-active";
-  import { isVirtualNoteId } from "$lib/update/space";
+  import { isSyntheticNoteId } from "$lib/synthetic";
 
   let tagInput = $state("");
   let workspaceInput = $state("");
@@ -31,7 +32,7 @@
   const isBoard = $derived(library.selected?.contentKind === "whiteboard");
   // A synthetic note (the update Space's release notes) is not user data: its
   // body can be typed in, but it has no tags, no Space, and no lifecycle.
-  const isVirtual = $derived(isVirtualNoteId(library.selected?.id));
+  const isVirtual = $derived(isSyntheticNoteId(library.selected?.id));
   // The board follows the app's light or dark look, including themes that
   // only come in one of the two.
   const boardTheme = $derived(effectiveVariant(theme.activeTheme, theme.resolvedVariant));
@@ -89,6 +90,7 @@
 {#if library.selected && library.isSticky(library.selected.id)}
   <!-- The sticky is this note's only editor while it is out. -->
   {@const id = library.selected.id}
+  <div class="pane-header" data-tauri-drag-region></div>
   <div class="popped-out">
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <rect x="3" y="7" width="12" height="12" rx="2" />
@@ -102,7 +104,100 @@
     </div>
   </div>
 {:else if library.selected}
-  <div class="editor-toolbar">
+  <!-- The header holds what is done to the note, in two groups kept apart:
+       what goes into the text, then what becomes of the note. The note's own
+       name and where it is filed belong to the page below. -->
+  <header class="pane-header editor-header" data-tauri-drag-region>
+    {#if !isVirtual}
+      {#if library.selected.isDeleted}
+        <div class="icon-group">
+          <button
+            class="icon-btn"
+            title="Restore from Trash"
+            aria-label="Restore from Trash"
+            onclick={() => library.restoreSelected()}
+          >
+            <Icon name="restore" />
+          </button>
+          <button
+            class="icon-btn danger"
+            title="Delete forever"
+            aria-label="Delete forever"
+            onclick={confirmDestroy}
+          >
+            <Icon name="trash" />
+          </button>
+        </div>
+      {:else}
+        {#if !isBoard}
+          <div class="icon-group">
+            <button
+              class="icon-btn"
+              title="Insert image from a file"
+              aria-label="Insert image"
+              onclick={insertImage}
+            >
+              <Icon name="image" />
+            </button>
+            <button
+              class="icon-btn"
+              title="Formatting tools"
+              aria-label="Formatting tools"
+              aria-pressed={editorPrefs.toolbarOpen}
+              onclick={() => editorPrefs.toggleToolbar()}
+            >
+              <Icon name="format" />
+            </button>
+          </div>
+        {/if}
+        <div class="icon-group">
+          <button
+            class="icon-btn"
+            title={`Pop out as a sticky (${modKey}${shiftKey}O)`}
+            aria-label="Pop out as a sticky"
+            onclick={() => void library.popOut(library.selected!.id)}
+          >
+            <Icon name="sticky" />
+          </button>
+          <button
+            class="icon-btn"
+            title={library.selected.isPinned ? "Unpin" : "Pin"}
+            aria-label="Pin"
+            aria-pressed={library.selected.isPinned}
+            onclick={() => library.togglePinned()}
+          >
+            <Icon name="pin" />
+          </button>
+          <button
+            class="icon-btn"
+            title={library.selected.isArchived ? "Unarchive" : "Archive"}
+            aria-label="Archive"
+            aria-pressed={library.selected.isArchived}
+            onclick={() => library.toggleArchived()}
+          >
+            <Icon name="archive" />
+          </button>
+          <button
+            class="icon-btn danger"
+            title="Move to Trash"
+            aria-label="Move to Trash"
+            onclick={() => library.deleteSelected()}
+          >
+            <Icon name="trash" />
+          </button>
+        </div>
+      {/if}
+    {/if}
+  </header>
+  {#if !isBoard && editorPrefs.toolbarOpen}
+    <FormatToolbar {active} onFormat={(k) => editorRef?.applyFormat(k)} />
+  {/if}
+  <div
+    class="doc"
+    class:wide={isBoard}
+    style="--editor-zoom: {editorPrefs.zoom}; --image-max-height: {imagePrefs.maxPreviewHeight}px"
+  >
+  <div class="doc-head">
     <input
       class="title-input"
       value={library.selected.title}
@@ -110,52 +205,6 @@
       onchange={(e) => library.editTitle(e.currentTarget.value)}
       aria-label="Note title"
     />
-    {#if !isVirtual}
-    <div class="actions">
-      {#if library.selected.isDeleted}
-        <button class="action" onclick={() => library.restoreSelected()}>Restore</button>
-        <button class="action danger" onclick={confirmDestroy}>Delete Forever</button>
-      {:else}
-        {#if !isBoard}
-          <button
-            class="action"
-            title="Insert image from a file"
-            onclick={insertImage}
-          >
-            Image
-          </button>
-          <button
-            class="action"
-            class:active={editorPrefs.toolbarOpen}
-            title="Formatting tools"
-            aria-pressed={editorPrefs.toolbarOpen}
-            onclick={() => editorPrefs.toggleToolbar()}
-          >
-            Aa
-          </button>
-        {/if}
-        <button
-          class="action"
-          title={`Pop out as a sticky (${modKey}${shiftKey}O)`}
-          onclick={() => void library.popOut(library.selected!.id)}
-        >
-          Sticky
-        </button>
-        <button
-          class="action"
-          title={library.selected.isPinned ? "Unpin" : "Pin"}
-          onclick={() => library.togglePinned()}
-        >
-          {library.selected.isPinned ? "Unpin" : "Pin"}
-        </button>
-        <button class="action" onclick={() => library.toggleArchived()}>
-          {library.selected.isArchived ? "Unarchive" : "Archive"}
-        </button>
-        <button class="action danger" onclick={() => library.deleteSelected()}>Delete</button>
-      {/if}
-    </div>
-    {/if}
-  </div>
   {#if !isVirtual}
   <div class="tag-bar">
     {#each library.selectedTags as tag (tag.id)}
@@ -196,6 +245,7 @@
     </datalist>
   </div>
   {/if}
+  </div>
   {#if isBoard}
     <div class="editor-body board-body">
       <!-- One canvas per note: a new id mounts a fresh board. -->
@@ -212,14 +262,7 @@
       {/key}
     </div>
   {:else}
-    {#if editorPrefs.toolbarOpen}
-      <FormatToolbar {active} onFormat={(k) => editorRef?.applyFormat(k)} />
-    {/if}
-    <div
-      class="editor-body"
-      data-agent={agents.noteMark(library.selected.id)}
-      style="--editor-zoom: {editorPrefs.zoom}; --image-max-height: {imagePrefs.maxPreviewHeight}px"
-    >
+    <div class="editor-body" data-agent={agents.noteMark(library.selected.id)}>
       <Editor
         bind:this={editorRef}
         value={library.selected.body}
@@ -231,6 +274,7 @@
       />
     </div>
   {/if}
+  </div>
   <div class="status-bar">
     {#if !isVirtual}
     <span
@@ -294,25 +338,44 @@
     color: var(--accent-text);
     border-color: var(--accent);
   }
-  .editor-toolbar {
+  /* Layout comes from .pane-header (app.css); actions sit at the far end. */
+  .editor-header {
+    justify-content: flex-end;
+    gap: 0;
+  }
+  /* The note: its name, where it is filed, then its text, all in one column
+     of reading width. The column is measured in the editor's own type, so
+     the heading lines up with the text at every zoom. */
+  .doc {
+    flex: 1;
+    min-height: 0;
     display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 16px 6px;
+    flex-direction: column;
+    font-family: var(--font-body);
+    font-size: calc(14px * var(--density) * var(--editor-zoom, 1));
+  }
+  .doc-head {
+    flex: none;
+    width: 100%;
+    max-width: calc(var(--measure) + 32px * var(--density));
+    margin: 0 auto;
+    padding: 8px calc(16px * var(--density)) 0;
+  }
+  /* A whiteboard runs edge to edge, so its heading does too. */
+  .doc.wide .doc-head {
+    max-width: none;
   }
   .title-input {
-    flex: 1;
-    font-size: 17px;
+    display: block;
+    width: 100%;
+    padding: 0;
+    font-size: 1.7em;
     font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: -0.012em;
     border: none;
     outline: none;
     background: transparent;
-    min-width: 0;
-  }
-  .actions {
-    display: flex;
-    gap: 4px;
-    flex-shrink: 0;
   }
   .action {
     padding: 4px 10px;
@@ -323,14 +386,6 @@
   }
   .action:hover {
     background: var(--bg-hover);
-  }
-  .action.danger {
-    color: var(--danger);
-  }
-  .action.active {
-    background: var(--accent-soft);
-    color: var(--accent-text);
-    border-color: var(--accent);
   }
   .save-state.saving {
     display: inline-flex;
@@ -356,13 +411,16 @@
       opacity: 0;
     }
   }
+  /* Where the note is filed: a quiet row under its name, closed by a rule. */
   .tag-bar {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
     align-items: center;
-    padding: 0 16px 8px;
+    margin-top: 6px;
+    padding-bottom: 10px;
     border-bottom: 1px solid var(--border);
+    font-family: var(--font-ui);
   }
   .chip {
     display: inline-flex;
@@ -406,6 +464,7 @@
   }
   .board-body {
     position: relative;
+    margin-top: 10px;
     border-top: 1px solid var(--border);
   }
   .status-bar {

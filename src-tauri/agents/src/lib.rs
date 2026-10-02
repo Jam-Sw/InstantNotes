@@ -22,6 +22,10 @@
 //! Invariants:
 //! - stdout carries protocol messages only; stderr carries nothing that
 //!   includes note content (openspec/project.md: content never in logs).
+//! - Every call is traced in the library's `agent_activity` table, writes
+//!   with the note as it was, so the app can show and revert them.
+//! - A connection is on record in `agent_sessions` for as long as the process
+//!   lives, and holds a lock file beside the library that says so truthfully.
 //! - Access is off until the user turns it on in Settings > Agents, and is
 //!   re-read on every call, so turning it off applies immediately.
 //! - The store is opened with `Store::open`, never `open_or_recover`: an agent
@@ -33,9 +37,9 @@ mod protocol;
 mod tools;
 
 pub use access::{Access, ACCESS_KEY};
-pub use activity::ACTIVITY_KEY;
-pub use protocol::serve;
+pub use protocol::{new_session, serve, serve_as};
 
+use instantnotes_core::store::activity::hold_session_lock;
 use instantnotes_core::{AppError, Store};
 use std::ffi::OsString;
 use std::io::{stdin, stdout};
@@ -72,7 +76,17 @@ pub fn run_from_args(mut args: impl Iterator<Item = OsString>) -> Option<i32> {
             return Some(1);
         }
     };
-    match serve(&mut store, attachments, stdin().lock(), stdout().lock()) {
+    // Held until this process ends, however it ends: the app reads the lock
+    // to know the agent is still connected.
+    let session = new_session();
+    let _alive = hold_session_lock(&db, &session);
+    match serve_as(
+        &mut store,
+        attachments,
+        session,
+        stdin().lock(),
+        stdout().lock(),
+    ) {
         Ok(()) => Some(0),
         Err(e) => {
             eprintln!("instantnotes mcp: {e}");

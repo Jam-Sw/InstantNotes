@@ -1,7 +1,8 @@
 //! The MCP server driven the way a client drives it: JSON-RPC lines in,
 //! JSON-RPC lines out, against a real store.
 
-use instantnotes_agents::{serve, ACCESS_KEY, ACTIVITY_KEY};
+use instantnotes_agents::{serve, ACCESS_KEY};
+use instantnotes_core::store::activity::AgentActivity;
 use instantnotes_core::types::CreateNoteInput;
 use instantnotes_core::Store;
 use serde_json::{json, Value};
@@ -55,6 +56,11 @@ fn result_of(reply: &Value) -> (bool, String, Value) {
     (result["isError"].as_bool().unwrap(), text, parsed)
 }
 
+/// The trace, newest first.
+fn trace(store: &Store) -> Vec<AgentActivity> {
+    store.list_activity(100, 0).unwrap()
+}
+
 fn store_with(access: &str) -> Store {
     let mut store = Store::open_in_memory().unwrap();
     store.set_setting(ACCESS_KEY, json!(access)).unwrap();
@@ -87,7 +93,7 @@ fn unknown_version_gets_the_newest_and_unknown_method_an_error() {
         &[
             json!({ "jsonrpc": "2.0", "id": 0, "method": "initialize",
                     "params": { "protocolVersion": "1999-01-01" } }),
-            json!({ "jsonrpc": "2.0", "id": 1, "method": "resources/list" }),
+            json!({ "jsonrpc": "2.0", "id": 1, "method": "prompts/list" }),
             json!("not an object"),
         ],
     );
@@ -191,8 +197,7 @@ fn modern_clients_need_no_handshake() {
     assert_eq!(read["title"], "Roadmap");
     assert_eq!(replies[2]["result"]["resultType"], "complete");
     // Who is acting comes from the request itself, not a handshake.
-    let log = store.get_setting(ACTIVITY_KEY).unwrap().unwrap();
-    assert_eq!(log[0]["client"], "codex");
+    assert_eq!(trace(&store)[0].client, "codex");
 }
 
 #[test]
@@ -307,7 +312,7 @@ fn access_off_refuses_everything_and_leaves_no_trace() {
     let (is_error, text, _) = result_of(&replies[1]);
     assert!(is_error);
     assert!(text.contains("Settings > Agents"));
-    assert_eq!(store.get_setting(ACTIVITY_KEY).unwrap(), None);
+    assert!(trace(&store).is_empty());
 }
 
 #[test]
@@ -479,7 +484,30 @@ fn revisit_lists_only_fresh_captures_once_they_are_old_enough() {
 }
 
 #[test]
-fn every_successful_call_is_recorded_for_the_app_newest_first() {
+fn a_traced_call_keeps_the_whole_exchange_as_it_crossed_the_wire() {
+    let mut store = store_with("read");
+    let sent = [
+        call(1, "search_notes", json!({ "query": "road" })),
+        call(2, "get_note", json!({ "id": "missing" })),
+    ];
+    let replies = session(&mut store, &[init(), sent[0].clone(), sent[1].clone()]);
+    let log = trace(&store);
+    // Newest first: the failed get_note, then the search.
+    for (row, (request, reply)) in log
+        .iter()
+        .zip([(&sent[1], &replies[2]), (&sent[0], &replies[1])])
+    {
+        let wire = store.activity_wire(row.seq).unwrap();
+        let kept: Value = serde_json::from_str(wire.request.as_deref().unwrap()).unwrap();
+        assert_eq!(&kept, request, "the request, whole");
+        let kept: Value = serde_json::from_str(wire.response.as_deref().unwrap()).unwrap();
+        assert_eq!(&kept, reply, "the response, whole, an error included");
+    }
+    assert!(store.activity_wire(9999).is_err());
+}
+
+#[test]
+fn every_call_is_traced_for_the_app_newest_first_failures_included() {
     let mut store = store_with("read");
     let note = store
         .create_note(CreateNoteInput {
@@ -492,17 +520,509 @@ fn every_successful_call_is_recorded_for_the_app_newest_first() {
         &[
             init(),
             call(1, "list_notes", json!({})),
-            call(2, "get_note", json!({ "id": note.id })),
-            call(3, "get_note", json!({ "id": "missing" })),
+            call(2, "search_notes", json!({ "query": "road" })),
+            call(3, "get_note", json!({ "id": note.id })),
+            call(4, "get_note", json!({ "id": "missing" })),
         ],
     );
-    let log = store.get_setting(ACTIVITY_KEY).unwrap().unwrap();
-    let log = log.as_array().unwrap();
-    assert_eq!(log.len(), 2, "the failed call is not recorded");
-    assert_eq!(log[0]["tool"], "get_note");
-    assert_eq!(log[0]["client"], "claude-code");
-    assert_eq!(log[0]["kind"], "read");
-    assert_eq!(log[0]["noteIds"], json!([note.id]));
-    assert_eq!(log[0]["titles"], json!(["Roadmap"]));
-    assert_eq!(log[1]["tool"], "list_notes");
+    let log = trace(&store);
+    assert_eq!(log.len(), 4, "every call, the failed one too");
+    assert_eq!(log[0].tool, "get_note");
+    assert_eq!(log[0].status, "error");
+    assert!(log[0].error.as_deref().unwrap().contains("NOT_FOUND"));
+    assert_eq!(log[0].note_ids, vec!["missing".to_string()]);
+    assert!(!log[0].revertable);
+    assert_eq!(log[1].tool, "get_note");
+    assert_eq!(log[1].client, "claude-code");
+    assert_eq!(log[1].kind, "read");
+    assert_eq!(log[1].status, "ok");
+    assert_eq!(log[1].note_ids, vec![note.id.clone()]);
+    assert_eq!(log[1].titles, vec!["Roadmap".to_string()]);
+    assert_eq!(log[2].tool, "search_notes");
+    assert_eq!(log[2].kind, "search");
+    assert_eq!(log[2].query.as_deref(), Some("road"));
+    assert_eq!(log[3].tool, "list_notes");
+    // One process, one session: every row shares it.
+    assert!(log.iter().all(|e| e.session == log[0].session));
+    assert!(!log[0].session.is_empty());
+}
+
+#[test]
+fn a_write_keeps_the_note_as_it_was_and_the_app_can_revert_it() {
+    let mut store = store_with("write");
+    let note = store
+        .create_note(CreateNoteInput {
+            body: Some(
+                "Plan
+- one #work"
+                    .into(),
+            ),
+            ..Default::default()
+        })
+        .unwrap();
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(
+                1,
+                "append_to_note",
+                json!({ "id": note.id, "text": "- two" }),
+            ),
+            call(2, "untag_note", json!({ "id": note.id, "tag": "work" })),
+            call(3, "create_note", json!({ "body": "Fresh" })),
+        ],
+    );
+    for r in &replies[1..] {
+        assert!(!result_of(r).0, "{r}");
+    }
+    let (_, _, created) = result_of(&replies[3]);
+    let created_id = created["id"].as_str().unwrap().to_string();
+
+    let log = trace(&store);
+    assert_eq!(log.len(), 3);
+    assert!(log.iter().all(|e| e.kind == "write" && e.revertable));
+    let appended = log.iter().find(|e| e.tool == "append_to_note").unwrap();
+    // The untag came after, so the note has moved on since the append.
+    assert!(appended.after_updated_at.is_some());
+    let untagged = log.iter().find(|e| e.tool == "untag_note").unwrap();
+    assert_eq!(
+        untagged.after_updated_at.as_deref(),
+        Some(store.get_note(&note.id, false).unwrap().updated_at.as_str()),
+        "after_updated_at is the note's updatedAt once the write landed"
+    );
+    let before = store.activity_before(appended.seq).unwrap().unwrap();
+    assert_eq!(
+        before.body,
+        "Plan
+- one #work"
+    );
+    assert_eq!(
+        before.tags,
+        vec![("work".to_string(), "inline".to_string())]
+    );
+
+    // Revert the untag: the tag comes back with its original source.
+    let untag = log.iter().find(|e| e.tool == "untag_note").unwrap();
+    store.revert_activity(untag.seq).unwrap();
+    let tags = store.tags_for_note(&note.id).unwrap();
+    assert_eq!(tags.len(), 1);
+    assert_eq!(tags[0].name, "work");
+    // Then the append: the body is as it was, and the tag survives.
+    store.revert_activity(appended.seq).unwrap();
+    assert_eq!(
+        store.get_note(&note.id, false).unwrap().body,
+        "Plan
+- one #work"
+    );
+    // A create is reverted by trashing, never deleting.
+    let create = log.iter().find(|e| e.tool == "create_note").unwrap();
+    assert!(store.activity_before(create.seq).unwrap().is_none());
+    store.revert_activity(create.seq).unwrap();
+    assert!(store.get_note(&created_id, false).unwrap().is_deleted);
+    // Twice is refused.
+    assert!(store.revert_activity(create.seq).is_err());
+
+    // Each revert is itself a traced, revertable write, so it can be undone.
+    let log = trace(&store);
+    let reverts: Vec<&AgentActivity> = log.iter().filter(|e| e.tool == "revert").collect();
+    assert_eq!(reverts.len(), 3);
+    assert!(reverts
+        .iter()
+        .all(|e| e.client == "instantnotes" && e.revertable));
+    assert_eq!(reverts[0].reverts, Some(create.seq));
+    store.revert_activity(reverts[0].seq).unwrap();
+    assert!(!store.get_note(&created_id, false).unwrap().is_deleted);
+    // The reverted rows say so.
+    assert!(log
+        .iter()
+        .find(|e| e.seq == create.seq)
+        .unwrap()
+        .reverted_at
+        .is_some());
+}
+
+#[test]
+fn notes_are_also_resources_behind_the_same_access_gate() {
+    let mut store = store_with("off");
+    let note = store
+        .create_note(CreateNoteInput {
+            body: Some(
+                "Roadmap
+Q4"
+                .into(),
+            ),
+            ..Default::default()
+        })
+        .unwrap();
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            json!({ "jsonrpc": "2.0", "id": 1, "method": "resources/list" }),
+        ],
+    );
+    assert!(replies[0]["result"]["capabilities"]["resources"].is_object());
+    assert_eq!(replies[1]["error"]["code"], -32602, "off: refused");
+
+    store.set_setting(ACCESS_KEY, json!("read")).unwrap();
+    let uri = format!("instantnotes://notes/{}", note.id);
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            json!({ "jsonrpc": "2.0", "id": 1, "method": "resources/list" }),
+            json!({ "jsonrpc": "2.0", "id": 2, "method": "resources/templates/list" }),
+            json!({ "jsonrpc": "2.0", "id": 3, "method": "resources/read", "params": { "uri": uri } }),
+            json!({ "jsonrpc": "2.0", "id": 4, "method": "resources/read",
+                    "params": { "uri": "instantnotes://notes/nope" } }),
+        ],
+    );
+    let listed = replies[1]["result"]["resources"].as_array().unwrap();
+    assert_eq!(listed[0]["uri"], json!(uri));
+    assert_eq!(listed[0]["title"], "Roadmap");
+    assert_eq!(listed[0]["mimeType"], "text/markdown");
+    let templates = replies[2]["result"]["resourceTemplates"]
+        .as_array()
+        .unwrap();
+    assert_eq!(templates[0]["uriTemplate"], "instantnotes://notes/{id}");
+    let contents = &replies[3]["result"]["contents"][0];
+    assert_eq!(
+        contents["text"],
+        "Roadmap
+Q4"
+    );
+    assert_eq!(contents["uri"], json!(uri));
+    assert_eq!(replies[4]["error"]["code"], -32002);
+}
+
+#[test]
+fn a_titled_note_is_found_by_its_title_and_rewritten_without_a_read() {
+    let mut store = store_with("write");
+    let note = store
+        .create_note(CreateNoteInput {
+            title: Some("Install InstantNotes on CachyOS/Arch".into()),
+            body: Some("hello world".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    let ws = store.get_or_create_workspace("Instant Notes").unwrap();
+    store.add_note_to_workspace(&note.id, &ws.id).unwrap();
+
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(
+                1,
+                "search_notes",
+                json!({ "query": "Install InstantNotes on CachyOS/Arch" }),
+            ),
+        ],
+    );
+    let (_, _, found) = result_of(&replies[1]);
+    let hit = &found["results"][0];
+    assert_eq!(hit["id"], json!(note.id));
+    assert_eq!(hit["spaces"], json!(["Instant Notes"]));
+
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(
+                1,
+                "update_note",
+                json!({ "id": note.id, "expectedUpdatedAt": hit["updatedAt"], "body": "steps" }),
+            ),
+            // Stale now: the conflict carries the current note.
+            call(
+                2,
+                "update_note",
+                json!({ "id": note.id, "expectedUpdatedAt": hit["updatedAt"], "body": "again" }),
+            ),
+        ],
+    );
+    let (is_error, text, written) = result_of(&replies[1]);
+    assert!(!is_error, "{text}");
+    assert!(written.get("body").is_none(), "{text}");
+    let (is_error, text, _) = result_of(&replies[2]);
+    assert!(is_error);
+    assert!(
+        text.starts_with("CONFLICT") && text.contains("\"body\": \"steps\""),
+        "{text}"
+    );
+}
+
+#[test]
+fn a_connection_is_on_record_from_its_start_to_its_goodbye() {
+    let mut store = store_with("read");
+    session(&mut store, &[init(), call(1, "list_notes", json!({}))]);
+    let sessions = store.list_agent_sessions(10).unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].client, "claude-code", "named by the handshake");
+    assert!(
+        sessions[0].disconnected_at.is_some(),
+        "stdin closed: it said goodbye"
+    );
+    // The trace's rows carry the same session, so the two line up.
+    assert_eq!(trace(&store)[0].session, sessions[0].session);
+    // Clearing the history forgets ended connections with it.
+    store.clear_activity().unwrap();
+    assert!(store.list_agent_sessions(10).unwrap().is_empty());
+}
+
+#[test]
+fn a_held_lock_reads_as_alive_and_a_dropped_one_as_gone() {
+    use instantnotes_core::store::activity::{hold_session_lock, session_alive, session_lock_path};
+    let dir = std::env::temp_dir().join(format!("instantnotes-lock-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let db = dir.join("library.db");
+    assert!(!session_alive(&db, "s1"), "no lock file: not connected");
+    let held = hold_session_lock(&db, "s1").expect("the lock is free");
+    assert!(session_alive(&db, "s1"), "held: connected");
+    // However the process ends, the lock goes with it.
+    drop(held);
+    assert!(!session_alive(&db, "s1"));
+    assert!(
+        !session_lock_path(&db, "s1").exists(),
+        "and its file is cleared"
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_connection_carries_what_its_client_says_about_its_session() {
+    use instantnotes_core::store::activity::ClientSession;
+    let mut store = store_with("read");
+    session(&mut store, &[init()]);
+    let id = store.list_agent_sessions(1).unwrap()[0].session.clone();
+    store
+        .describe_agent_session(
+            &id,
+            &ClientSession {
+                label: Some("bob".into()),
+                client_session: Some("ec23c3e6".into()),
+                cwd: Some("/work".into()),
+                client_pid: Some(42),
+                matched: Some("inferred".into()),
+            },
+        )
+        .unwrap();
+    // A rename alone keeps the rest.
+    store
+        .describe_agent_session(
+            &id,
+            &ClientSession {
+                label: Some("alice".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let row = &store.list_agent_sessions(1).unwrap()[0];
+    assert_eq!(row.label.as_deref(), Some("alice"));
+    assert_eq!(row.client_session.as_deref(), Some("ec23c3e6"));
+    assert_eq!(row.cwd.as_deref(), Some("/work"));
+}
+
+fn note(store: &mut Store, body: &str) -> String {
+    store
+        .create_note(CreateNoteInput {
+            body: Some(body.into()),
+            ..Default::default()
+        })
+        .unwrap()
+        .id
+}
+
+#[test]
+fn search_shows_where_the_words_are_and_how_much_is_left() {
+    let mut store = store_with("read");
+    let taxes = note(
+        &mut store,
+        "Taxes\n\nGather the forms.\nThe deadline is April 30.\nAsk about the refund.\n\nUnrelated line.\nSecond deadline: the extension, in October.",
+    );
+    note(&mut store, "Groceries\n\nMilk, eggs.");
+    let renew = note(&mut store, "Passport\n\nRenew before the trip.");
+
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(1, "search_notes", json!({ "query": "deadline" })),
+            // Every word, by default: no note has both.
+            call(2, "search_notes", json!({ "query": "deadline renew" })),
+            call(
+                3,
+                "search_notes",
+                json!({ "query": "deadline renew", "match": "any", "limit": 1 }),
+            ),
+            call(
+                4,
+                "search_notes",
+                json!({ "query": "deadline renew", "match": "any", "limit": 1, "offset": 1 }),
+            ),
+        ],
+    );
+    let (_, _, found) = result_of(&replies[1]);
+    assert_eq!(found["total"], 1);
+    assert_eq!(found["hasMore"], false);
+    let hit = &found["results"][0];
+    assert_eq!(hit["id"], taxes);
+    assert_eq!(hit["matchingLines"], 2);
+    // The matching line with the lines around it, and where it is.
+    assert_eq!(hit["passages"][0]["line"], 4);
+    assert_eq!(
+        hit["passages"][0]["text"],
+        "Gather the forms.\nThe deadline is April 30.\nAsk about the refund."
+    );
+    assert_eq!(hit["passages"][1]["line"], 8);
+    assert!(hit["createdAt"].is_string() && hit["updatedAt"].is_string());
+
+    assert_eq!(result_of(&replies[2]).2["total"], 0);
+
+    let (_, _, first) = result_of(&replies[3]);
+    assert_eq!(first["total"], 2, "any of the words: both notes");
+    assert_eq!(first["results"].as_array().unwrap().len(), 1);
+    assert_eq!(first["hasMore"], true);
+    assert_eq!(first["nextOffset"], 1);
+    let (_, _, second) = result_of(&replies[4]);
+    assert_eq!(second["hasMore"], false);
+    let seen = [
+        first["results"][0]["id"].clone(),
+        second["results"][0]["id"].clone(),
+    ];
+    assert!(
+        seen.contains(&json!(taxes)) && seen.contains(&json!(renew)),
+        "no note skipped or repeated"
+    );
+}
+
+#[test]
+fn search_narrows_by_space_tag_status_and_date() {
+    let mut store = store_with("write");
+    let plan = note(&mut store, "Plan the launch #work");
+    let old = note(&mut store, "Launch retro");
+    session(
+        &mut store,
+        &[
+            init(),
+            call(
+                1,
+                "add_to_space",
+                json!({ "id": plan, "space": "Projects" }),
+            ),
+        ],
+    );
+    store
+        .set_notes_flags(std::slice::from_ref(&old), None, Some(true))
+        .unwrap();
+
+    let ids = |reply: &Value| -> Vec<String> {
+        result_of(reply).2["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["id"].as_str().unwrap().to_string())
+            .collect()
+    };
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(1, "search_notes", json!({ "query": "launch" })),
+            call(
+                2,
+                "search_notes",
+                json!({ "query": "launch", "status": "all" }),
+            ),
+            call(
+                3,
+                "search_notes",
+                json!({ "query": "launch", "status": "archived" }),
+            ),
+            call(
+                4,
+                "search_notes",
+                json!({ "query": "launch", "status": "all", "space": "projects" }),
+            ),
+            call(
+                5,
+                "search_notes",
+                json!({ "query": "launch", "status": "all", "tag": "#work" }),
+            ),
+            call(
+                6,
+                "search_notes",
+                json!({ "query": "launch", "updatedAfter": "2999-01-01" }),
+            ),
+            call(
+                7,
+                "search_notes",
+                json!({ "query": "launch", "updatedBefore": "2999-01-01" }),
+            ),
+            call(
+                8,
+                "search_notes",
+                json!({ "query": "launch", "updatedAfter": "last week" }),
+            ),
+        ],
+    );
+    assert_eq!(
+        ids(&replies[1]),
+        vec![plan.clone()],
+        "archived notes stay out by default"
+    );
+    assert_eq!(ids(&replies[2]).len(), 2);
+    assert_eq!(ids(&replies[3]), vec![old.clone()]);
+    assert_eq!(ids(&replies[4]), vec![plan.clone()]);
+    assert_eq!(ids(&replies[5]), vec![plan.clone()]);
+    assert!(ids(&replies[6]).is_empty());
+    assert_eq!(ids(&replies[7]), vec![plan.clone()]);
+    let (is_error, text, _) = result_of(&replies[8]);
+    assert!(is_error && text.contains("not a date"), "{text}");
+}
+
+#[test]
+fn several_notes_are_read_in_one_call_and_a_list_says_what_is_left() {
+    let mut store = store_with("read");
+    let a = note(&mut store, "Alpha\n\nfirst body");
+    let b = note(&mut store, "Beta\n\nsecond body");
+    note(&mut store, "Gamma");
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(1, "get_notes", json!({ "ids": [b, "nope", a] })),
+            call(2, "get_notes", json!({ "ids": [] })),
+            call(3, "list_notes", json!({ "limit": 2 })),
+            call(4, "list_notes", json!({ "limit": 2, "offset": 2 })),
+        ],
+    );
+    let (_, _, read) = result_of(&replies[1]);
+    let notes = read["notes"].as_array().unwrap();
+    assert_eq!(notes.len(), 2);
+    assert_eq!(notes[0]["id"], b, "in the order asked");
+    assert_eq!(notes[0]["body"], "Beta\n\nsecond body");
+    assert_eq!(notes[1]["id"], a);
+    assert_eq!(read["missing"], json!(["nope"]));
+    assert!(
+        result_of(&replies[2]).0,
+        "no ids is an error the model can fix"
+    );
+
+    let (_, _, page) = result_of(&replies[3]);
+    assert_eq!(page["total"], 3);
+    assert_eq!(page["hasMore"], true);
+    assert_eq!(page["nextOffset"], 2);
+    let (_, _, rest) = result_of(&replies[4]);
+    assert_eq!(rest["notes"].as_array().unwrap().len(), 1);
+    assert_eq!(rest["hasMore"], false);
+    assert!(rest.get("nextOffset").is_none());
+
+    // One trace row for the batch read, naming the notes it read.
+    let read_row = trace(&store)
+        .into_iter()
+        .find(|e| e.tool == "get_notes" && e.status == "ok")
+        .unwrap();
+    assert_eq!(read_row.note_count, 2);
 }

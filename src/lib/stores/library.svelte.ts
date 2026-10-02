@@ -43,7 +43,7 @@ import { debounce } from "$lib/debounce";
 import { ERROR_CODES } from "$lib/api/error-codes";
 import { EVENTS } from "$lib/api/events";
 import { friendlyMessage, GENERIC_MESSAGE } from "$lib/errors";
-import { isUpdateSpaceId, isVirtualNoteId } from "$lib/update/space";
+import { isSyntheticNoteId, isSyntheticSpaceId } from "$lib/synthetic";
 import {
   SaveQueue,
   type QueuedEdit,
@@ -208,7 +208,7 @@ class LibraryStore {
    * still queued here would later overwrite whatever is typed there.
    */
   async popOut(id: string): Promise<void> {
-    if (isVirtualNoteId(id)) return;
+    if (isSyntheticNoteId(id)) return;
     await this.flushPendingEdits();
     if (this.#saveQueue.peek(id) !== undefined) {
       toasts.show("Couldn't save this note, so it stays here for now.");
@@ -285,7 +285,7 @@ class LibraryStore {
     // The update Space is synthetic: its two notes come from the updater, not
     // the store, so there is nothing to query. A search still runs globally,
     // which is why it is the one thing that takes precedence over the Space.
-    if (isUpdateSpaceId(this.activeWorkspaceId) && !this.searchText.trim()) {
+    if (isSyntheticSpaceId(this.activeWorkspaceId) && !this.searchText.trim()) {
       this.searchResults = null;
       this.notes = [];
       this.workspaceTags = [];
@@ -686,7 +686,7 @@ class LibraryStore {
       // A note cannot be born in the synthetic update Space; creating one there
       // drops the view back to All Notes rather than filing the note under a
       // workspace id that is not in the database.
-      if (isUpdateSpaceId(this.activeWorkspaceId)) {
+      if (isSyntheticSpaceId(this.activeWorkspaceId)) {
         this.activeWorkspaceId = null;
       }
 
@@ -835,7 +835,7 @@ class LibraryStore {
     this.selected.body = body;
     // A synthetic note (the update Space's release notes) is not user data:
     // the edit lives while the note is open and is gone when it closes.
-    if (isVirtualNoteId(this.selected.id)) return;
+    if (isSyntheticNoteId(this.selected.id)) return;
     this.#saveQueue.queue(this.selected.id, { body });
   }
 
@@ -885,7 +885,7 @@ class LibraryStore {
     if (!this.selected || this.isSticky(this.selected.id)) return;
     const trimmed = title.trim();
     if (!trimmed || trimmed === this.selected.title) return;
-    if (isVirtualNoteId(this.selected.id)) {
+    if (isSyntheticNoteId(this.selected.id)) {
       this.selected.title = trimmed;
       return;
     }
@@ -999,7 +999,7 @@ class LibraryStore {
    */
   async #adoptExternal(entries: AgentActivity[]): Promise<void> {
     const open = this.selected;
-    if (!open || isVirtualNoteId(open.id) || open.contentKind === "whiteboard") return;
+    if (!open || isSyntheticNoteId(open.id) || open.contentKind === "whiteboard") return;
     if (!mayHaveWritten(entries, open.id)) return;
     const shown = open.body;
     // The user may have typed, or moved on, while this was read.

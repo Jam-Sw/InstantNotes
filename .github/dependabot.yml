@@ -27,3 +27,8 @@ updates:
     groups:
       github-actions:
         patterns: ["*"]
+    # This action's tags are Rust versions, not versions of the action: the
+    # ref is the toolchain pin and must match rust-toolchain.toml. A "bump"
+    # here asks CI for a compiler, and once for one that did not exist.
+    ignore:
+      - dependency-name: "dtolnay/rust-toolchain"

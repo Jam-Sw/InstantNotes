@@ -12,6 +12,22 @@ describe("validateTheme", () => {
     if (r.ok) expect(r.theme.id).toBe(manuscript.id);
   });
 
+  it("accepts optional tokens and a description, and checks them like the rest", () => {
+    const withExtras = {
+      ...manuscript,
+      description: "Warm ink on paper.",
+      dark: { ...manuscript.dark, success: "#3a3", warning: "rgb(200, 150, 50)" },
+    };
+    const r = validateTheme(withExtras);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.theme.dark?.success).toBe("#3a3");
+      expect(r.theme.description).toBe("Warm ink on paper.");
+    }
+    expect(validateTheme({ ...withExtras, dark: { ...withExtras.dark, success: "url(x)" } }).ok).toBe(false);
+    expect(validateTheme({ ...manuscript, description: "x".repeat(141) }).ok).toBe(false);
+  });
+
   it("rejects a non-object", () => {
     expect(validateTheme(null).ok).toBe(false);
     expect(validateTheme("nope").ok).toBe(false);

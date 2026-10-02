@@ -124,6 +124,10 @@ pub struct NoteFilter {
     pub never_opened: Option<bool>,
     /// Only notes created strictly before this ISO-8601 timestamp.
     pub created_before: Option<String>,
+    /// Only notes last changed at or after / strictly before this ISO-8601
+    /// timestamp or bare date.
+    pub updated_after: Option<String>,
+    pub updated_before: Option<String>,
     pub sort_by: Option<String>,
     pub sort_order: Option<String>,
     pub limit: Option<i64>,
@@ -156,6 +160,43 @@ pub struct SearchResult {
     pub excerpt: String,
     pub score: f64,
     pub updated_at: String,
+}
+
+/// A paged, filtered full-text search (`Store::search_notes_page`).
+#[derive(Debug, Clone, Default)]
+pub struct NoteSearch {
+    pub text: String,
+    /// Match notes with any of the words, not all of them.
+    pub any_term: bool,
+    pub workspace_id: Option<String>,
+    pub tag_id: Option<String>,
+    /// `Some(false)`: live notes only. `Some(true)`: archived only. `None`:
+    /// both. Trashed notes are never searched.
+    pub is_archived: Option<bool>,
+    pub updated_after: Option<String>,
+    pub updated_before: Option<String>,
+    pub limit: i64,
+    pub offset: i64,
+}
+
+/// One note a paged search found, with its whole body.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NoteMatch {
+    pub note_id: String,
+    pub title: String,
+    pub body: String,
+    /// The matching excerpt, hits bracketed as in `SearchResult`.
+    pub excerpt: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub is_archived: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct NoteSearchPage {
+    pub matches: Vec<NoteMatch>,
+    /// How many notes match in all, whatever the limit and offset.
+    pub total: i64,
 }
 
 /// What an attachment cleanup removed (or, for a preview, would remove).

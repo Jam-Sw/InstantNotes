@@ -18,6 +18,50 @@ impl Store {
         workspace_get_or_create(&self.conn, raw_name)
     }
 
+    /// The Space with this name, case-insensitively, if any.
+    pub fn find_workspace(&self, raw_name: &str) -> Result<Option<Workspace>> {
+        let Some(name) = domain::normalize_workspace_name(raw_name) else {
+            return Ok(None);
+        };
+        Ok(self
+            .conn
+            .query_row(
+                &format!(
+                    "SELECT {WORKSPACE_COLUMNS} FROM workspaces WHERE name = ?1 COLLATE NOCASE"
+                ),
+                params![name],
+                row_to_workspace,
+            )
+            .optional()?)
+    }
+
+    /// The Spaces of many notes in one query: note id to Space names, in
+    /// name order. Notes in no Space are absent.
+    pub fn workspaces_for_notes(
+        &self,
+        note_ids: &[String],
+    ) -> Result<std::collections::HashMap<String, Vec<String>>> {
+        let mut out: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        if note_ids.is_empty() {
+            return Ok(out);
+        }
+        let placeholders = vec!["?"; note_ids.len()].join(", ");
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT nw.note_id, w.name FROM note_workspaces nw \
+             JOIN workspaces w ON w.id = nw.workspace_id \
+             WHERE nw.note_id IN ({placeholders}) ORDER BY w.name COLLATE NOCASE"
+        ))?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(note_ids.iter()), |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        })?;
+        for row in rows {
+            let (id, name) = row?;
+            out.entry(id).or_default().push(name);
+        }
+        Ok(out)
+    }
+
     pub fn list_workspaces(&self) -> Result<Vec<WorkspaceWithCount>> {
         let mut stmt = self.conn.prepare(
             "SELECT w.id, w.name, w.created_at, w.updated_at, \

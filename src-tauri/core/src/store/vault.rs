@@ -49,7 +49,11 @@ impl VaultState {
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    // sha2 0.11's digest no longer formats as hex itself.
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 fn io_error(context: &str, path: &Path, e: std::io::Error) -> AppError {

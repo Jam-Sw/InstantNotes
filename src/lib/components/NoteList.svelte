@@ -1,14 +1,19 @@
 <script lang="ts">
   import { library, type StatusFilter } from "$lib/stores/library.svelte";
   import { agents } from "$lib/stores/agents.svelte";
+  import { clientLabel } from "$lib/agent-activity";
   import { formatDate, formatExact, preview } from "$lib/format";
   import { captureShortcut, modKey, shiftKey } from "$lib/platform";
   import { parseHighlightSegments } from "$lib/highlight";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
+  import Icon from "$lib/components/Icon.svelte";
   import { groupNotes } from "$lib/note-groups";
   import { updateSpace } from "$lib/stores/update-space";
   import { isUpdateSpaceId } from "$lib/update/space";
+  import { agentsSpace } from "$lib/stores/agents-space";
+  import { isAgentsSpaceId } from "$lib/agents/space";
+  import { isSyntheticSpaceId } from "$lib/synthetic";
   import { agreements } from "$lib/agreements.svelte";
   import { licenseSpace } from "$lib/stores/license-space.svelte";
 
@@ -30,6 +35,20 @@
   // the common case, in one click. The chevron (or a right-click anywhere on
   // the control) opens the list, which is the only visible place a whiteboard
   // can be started from.
+  // A synthetic Space (the update, the agent trace) has no rows in the store:
+  // its notes are derived, so they are rendered from where they come from.
+  const syntheticNotes = $derived(
+    isUpdateSpaceId(library.activeWorkspaceId)
+      ? updateSpace.notes
+      : isAgentsSpaceId(library.activeWorkspaceId)
+        ? agentsSpace.notes
+        : null,
+  );
+
+  // An agent's latest search, shown only while the field is empty: the
+  // user's own words always come first.
+  const agentSearch = $derived(library.searchText ? null : agents.currentSearch);
+
   let newMenu = $state<{ x: number; y: number } | null>(null);
   let newControl = $state<HTMLDivElement>();
 
@@ -67,6 +86,7 @@
   {#if licenseSpace.locked}
     <!-- The License Space's two documents. Nothing else is reachable until
          both are agreed, so no search or New here. -->
+    <div class="pane-header" data-tauri-drag-region></div>
     <div class="note-list">
       {#each licenseSpace.documents as doc (doc.id)}
         <button
@@ -84,14 +104,32 @@
       <div class="empty-state">{agreements.copy.lead}</div>
     </div>
   {:else}
-  <div class="list-toolbar">
-    <input
-      class="search"
-      type="search"
-      placeholder="Search notes…"
-      value={library.searchText}
-      oninput={(e) => library.setSearch(e.currentTarget.value)}
-    />
+  <div class="pane-header list-toolbar" data-tauri-drag-region>
+    <!-- An agent just searched: its words show in the search field itself,
+         where a search belongs, in place of the placeholder. Nothing is
+         added above the list, so the list does not move. The button runs
+         the same search for you. -->
+    <div class="search-wrap" data-agent={agentSearch ? "search" : null}>
+      <input
+        class="search"
+        type="search"
+        placeholder={agentSearch
+          ? `${clientLabel(agentSearch.client)} searched “${agentSearch.query}”`
+          : "Search notes…"}
+        value={library.searchText}
+        oninput={(e) => library.setSearch(e.currentTarget.value)}
+      />
+      {#if agentSearch}
+        {@const search = agentSearch}
+        <button
+          class="agent-search-run"
+          title="Run this search yourself"
+          onclick={() => library.setSearch(search.query ?? "")}
+        >
+          {search.noteCount} hit{search.noteCount === 1 ? "" : "s"}
+        </button>
+      {/if}
+    </div>
     <div
       class="new-control"
       bind:this={newControl}
@@ -158,28 +196,40 @@
           class:selected={library.isSelected(hit.noteId)}
           onclick={(e) => rowClick(e, hit.noteId)}
         >
-          <div class="row-title">{#each parseHighlightSegments(hit.title) as seg, i (i)}{#if seg.hit}<mark>{seg.text}</mark>{:else}{seg.text}{/if}{/each}</div>
+          <div class="row-head">
+            <div class="row-title">{#each parseHighlightSegments(hit.title) as seg, i (i)}{#if seg.hit}<mark>{seg.text}</mark>{:else}{seg.text}{/if}{/each}</div>
+            <div class="row-date" title={formatExact(hit.updatedAt)}>{formatDate(hit.updatedAt)}</div>
+          </div>
           <div class="row-preview">{#each parseHighlightSegments(hit.excerpt) as seg, i (i)}{#if seg.hit}<mark>{seg.text}</mark>{:else}{seg.text}{/if}{/each}</div>
-          <div class="row-date" title={formatExact(hit.updatedAt)}>{formatDate(hit.updatedAt)}</div>
         </button>
       {:else}
         <div class="empty-state">No notes match your search.</div>
       {/each}
-    {:else if isUpdateSpaceId(library.activeWorkspaceId)}
-      <!-- The update Space's two synthetic notes: the version jump and the
-           release notes. They have no rows in the store, so they are rendered
-           from the updater rather than listed. -->
-      {#each updateSpace.notes as note (note.id)}
+    {:else if syntheticNotes}
+      {#each syntheticNotes as note (note.id)}
+        {@const live = agentsSpace.stateOf(note.id)}
         <button
           class="note-row"
           data-note-id={note.id}
           class:selected={library.isSelected(note.id)}
           onclick={() => library.selectVirtual(note)}
         >
-          <div class="row-title">{note.title}</div>
-          <div class="row-preview">{preview(note.body) || "Empty note"}</div>
-          <div class="row-date" title={formatExact(note.updatedAt)}>{formatDate(note.updatedAt)}</div>
+          <div class="row-head">
+            <div class="row-title">
+              {#if live}<span class="live-dot row-live" data-state={live} aria-label={live === "working" ? "Working" : "Connected"} role="img"></span>{/if}{note.title}
+            </div>
+            <div class="row-date" title={formatExact(note.updatedAt)}>{formatDate(note.updatedAt)}</div>
+          </div>
+          <div class="row-preview" class:doing={live === "working"}>{preview(note.body) || "Empty note"}</div>
         </button>
+      {:else}
+        <div class="empty-state">
+          {#if agents.access === "off"}
+            Agent access is off. Nothing can connect until you turn it on in Settings.
+          {:else}
+            No agent has connected yet. Connect one from Settings › Agents.
+          {/if}
+        </div>
       {/each}
     {:else}
       {#snippet noteRow(note: (typeof library.notes)[number])}
@@ -190,13 +240,14 @@
           class:selected={library.isSelected(note.id)}
           onclick={(e) => rowClick(e, note.id)}
           oncontextmenu={(e) => {
-            if (note.isDeleted || isUpdateSpaceId(library.activeWorkspaceId)) return;
+            if (note.isDeleted || isSyntheticSpaceId(library.activeWorkspaceId)) return;
             e.preventDefault();
             rowMenu = { x: e.clientX, y: e.clientY, id: note.id };
           }}
         >
+          <div class="row-head">
           <div class="row-title">
-            {#if note.isPinned}<span class="pin">📌</span>{/if}
+            {#if note.isPinned}<span class="pin" aria-label="Pinned" role="img"><Icon name="pin" size={11} /></span>{/if}
             {#if note.contentKind === "whiteboard"}
               <svg class="board-cue" viewBox="0 0 16 16" aria-label="Whiteboard" role="img">
                 <rect x="1.5" y="2.5" width="13" height="11" rx="2" />
@@ -211,10 +262,11 @@
             {/if}
             {note.title}
           </div>
+          <div class="row-date" title={formatExact(note.updatedAt)}>{formatDate(note.updatedAt)}</div>
+          </div>
           <div class="row-preview">
             {preview(note.body) || (note.contentKind === "whiteboard" ? "Empty whiteboard" : "Empty note")}
           </div>
-          <div class="row-date" title={formatExact(note.updatedAt)}>{formatDate(note.updatedAt)}</div>
         </button>
       {/snippet}
       {#if library.notes.length === 0}
@@ -235,7 +287,7 @@
         </div>
       {:else if groups}
         {#each groups as group (group.label)}
-          <div class="group-header">{group.label}</div>
+          <div class="group-header section-label">{group.label}</div>
           {#each group.notes as note (note.id)}
             {@render noteRow(note)}
           {/each}
@@ -281,20 +333,22 @@
 
 <style>
   .list-pane {
-    border-right: 1px solid var(--border);
+    /* The middle surface: a step up from the page, opaque over the window. */
+    background: var(--surface-list);
+    border-right: 1px solid var(--divider);
     display: flex;
     flex-direction: column;
     min-width: 0;
     min-height: 0;
   }
+  /* Layout comes from .pane-header (app.css). */
   .list-toolbar {
-    display: flex;
     gap: 6px;
-    padding: 10px;
-    border-bottom: 1px solid var(--border);
+    padding-right: 10px;
   }
   .search {
     flex: 1;
+    min-width: 0;
     padding: 5px 9px;
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -308,6 +362,7 @@
      reads as part of the ＋ button rather than a second control beside it. */
   .new-control {
     display: flex;
+    height: 28px;
     border: 1px solid var(--border);
     border-radius: var(--radius);
     overflow: hidden;
@@ -339,16 +394,14 @@
   .status-filter {
     display: flex;
     gap: 4px;
-    padding: 6px 10px;
-    border-bottom: 1px solid var(--border);
+    padding: 0 10px 8px;
   }
   /* Occupies the status-filter's slot: the pills hide inside a space. */
   .space-tags {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    padding: 6px 10px;
-    border-bottom: 1px solid var(--border);
+    padding: 0 10px 8px;
   }
   .space-tag-chip {
     padding: 2px 10px;
@@ -377,46 +430,56 @@
     background: var(--bg-hover);
   }
   .filter-pill.active {
-    background: var(--accent-soft);
-    color: var(--accent-text);
-    font-weight: 500;
+    background: var(--select-bg);
+    color: var(--text);
+    font-weight: 600;
   }
   .trash-bar {
     display: flex;
     justify-content: center;
-    padding: 8px 10px;
-    border-bottom: 1px solid var(--border);
+    padding: 0 10px 8px;
   }
   .note-list {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    padding: 0 8px 12px;
+    border-top: 1px solid var(--border);
   }
+  /* Type comes from .section-label (app.css). The label is stuck to the top
+     of the list as its notes scroll under it, so it paints the list surface;
+     opacity would let them show through, hence the solid colour here. */
   .group-header {
     position: sticky;
     top: 0;
     z-index: 1;
-    padding: 8px 16px 4px;
-    background: var(--bg);
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    color: var(--text-tertiary);
-    font-family: var(--font-meta);
+    margin: 0 -8px;
+    padding: 14px 18px 6px;
+    background: var(--surface-list);
+    opacity: 1;
+    color: color-mix(in srgb, var(--text-secondary) 62%, var(--surface-list));
   }
+  /* A row is the same object as a sidebar row: inset, rounded, and selected
+     with the same fill. Spacing, not rules, separates one from the next. */
   .note-row {
     display: block;
     width: 100%;
+    margin-bottom: 2px;
     text-align: left;
-    padding: 9px 12px;
-    border-bottom: 1px solid var(--border);
+    padding: 9px 10px 10px;
+    border-radius: var(--radius);
   }
   .note-row:hover {
     background: var(--bg-hover);
   }
   .note-row.selected {
-    background: var(--accent-soft);
+    background: var(--select-bg);
+  }
+  /* Title and date share the first line; the date never gives way. */
+  .row-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
   }
   .board-cue {
     width: 12px;
@@ -430,22 +493,37 @@
     stroke-linejoin: round;
   }
   .row-title {
+    flex: 1;
+    min-width: 0;
     font-weight: 600;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .pin {
-    font-size: 11px;
-    margin-right: 2px;
+    display: inline-block;
+    margin-right: 3px;
+    vertical-align: -1px;
+    color: var(--accent-text);
   }
+  .row-live {
+    margin-right: 6px;
+  }
+  /* What an agent is doing this moment, before it settles to the summary. */
+  .row-preview.doing {
+    color: var(--text);
+  }
+  /* Two lines of the note, then cut. */
   .row-preview {
     color: var(--text-secondary);
     font-size: 12px;
-    margin-top: 2px;
+    line-height: 1.45;
+    margin-top: 3px;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
   /* Reset UA mark styling (yellow bg, black text) so a search hit reads as
      a subtle emphasis in both themes, matching pill/tag styling elsewhere. */
@@ -458,10 +536,11 @@
     padding: 0 1px;
   }
   .row-date {
+    flex: none;
     color: var(--text-tertiary);
     font-size: 11px;
-    margin-top: 3px;
     font-family: var(--font-meta);
+    font-variant-numeric: tabular-nums;
   }
   .empty-state {
     padding: 32px 16px;
@@ -485,5 +564,28 @@
   }
   .action.danger {
     color: var(--danger);
+  }
+  .search-wrap {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    position: relative;
+  }
+  /* Room for the hit count, so the agent's words stop short of it. */
+  .search-wrap[data-agent] .search {
+    padding-right: 68px;
+  }
+  /* Sits inside the field's right edge, over its padding. */
+  .agent-search-run {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 1px 8px;
+    border-radius: 99px;
+    background: var(--select-bg);
+    color: var(--accent-text);
+    font-family: var(--font-meta);
+    font-size: 11px;
   }
 </style>

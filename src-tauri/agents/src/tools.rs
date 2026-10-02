@@ -9,9 +9,11 @@
 //! the vault, and whiteboard canvases.
 
 use crate::access::Access;
-use crate::activity::{self, Scope};
+use crate::activity::{Kind, Scope, Trace};
 use crate::fail;
+use instantnotes_core::clients::{identify, parent_process, Client, ClientProcess};
 use instantnotes_core::domain::{normalize_tag_name, normalize_workspace_name};
+use instantnotes_core::types::NoteSearch;
 use instantnotes_core::types::{
     CreateNoteInput, Note, NoteFilter, UpdateNotePatch, CONTENT_KIND_WHITEBOARD,
 };
@@ -21,9 +23,20 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::path::PathBuf;
 
+/// How many notes `resources/list` offers: the recent ones, as an index.
+const RESOURCE_LIST: i64 = 50;
+/// The URI scheme a note is read under.
+pub(crate) const NOTE_URI_PREFIX: &str = "instantnotes://notes/";
+
 const SNIPPET_CHARS: usize = 160;
 const DEFAULT_LIMIT: i64 = 50;
 const MAX_LIMIT: i64 = 200;
+/// Notes one get_notes call reads at most.
+const MAX_READ: usize = 50;
+/// Passages shown per search result; the rest are counted.
+const MAX_PASSAGES: usize = 3;
+/// A passage line longer than this is cut to a window around its match.
+const PASSAGE_LINE_CHARS: usize = 240;
 /// append_to_note re-reads and retries when the user saves in between.
 const APPEND_ATTEMPTS: usize = 3;
 /// A capture is an open loop once it has gone unopened this long. Matches
@@ -38,6 +51,14 @@ pub(crate) struct Tools<'a> {
     /// `clientInfo.name` from `initialize`, shown to the user as who is
     /// acting ("claude-code", "cursor").
     client: String,
+    /// This process, in the trace: one agent conversation's calls group
+    /// under it.
+    session: String,
+    /// The client, as the process that started this server shows it.
+    launched_by: Option<Client>,
+    /// The trace row of the call just made, until the transport attaches the
+    /// raw messages to it.
+    traced: Option<i64>,
 }
 
 struct ToolDef {
@@ -62,10 +83,27 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Read,
         destructive: false,
         idempotent: true,
-        description: "Full-text search over note titles and bodies. Returns ids, titles, and a matching excerpt.",
+        description: "Full-text search over note titles and bodies: the way to find what matters without reading every note. Each result carries the matching passages with their line numbers and the lines around them, plus id, title, spaces, tags, createdAt, and updatedAt (enough to call update_note directly). Narrow by space, tag, status, or when a note last changed. Results are paged: total says how many notes match in all, hasMore whether to ask again with nextOffset. Trashed notes are never searched.",
         schema: || object(json!({
-            "query": { "type": "string", "description": "Words to search for." },
-            "limit": limit_param()
+            "query": { "type": "string", "description": "Words to search for. A word also matches words that begin with it." },
+            "match": {
+                "type": "string",
+                "enum": ["all", "any"],
+                "default": "all",
+                "description": "all: notes with every word. any: notes with at least one, for casting wide (deadline due owe renew)."
+            },
+            "space": space_param(),
+            "tag": tag_param(),
+            "status": {
+                "type": "string",
+                "enum": ["active", "archived", "all"],
+                "default": "active",
+                "description": "all: active and archived together."
+            },
+            "updatedAfter": date_param("Only notes last changed on or after this."),
+            "updatedBefore": date_param("Only notes last changed before this."),
+            "limit": limit_param(),
+            "offset": { "type": "integer", "minimum": 0, "default": 0 }
         }), &["query"]),
     },
     ToolDef {
@@ -74,10 +112,12 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Read,
         destructive: false,
         idempotent: true,
-        description: "List notes, most recently updated first, optionally within a space or tag. Returns summaries, not full bodies.",
+        description: "List notes, most recently updated first, optionally within a space or tag or a span of time. Returns summaries, not full bodies: read the ones that matter with get_notes. Paged: total says how many notes match in all, hasMore whether to ask again with nextOffset.",
         schema: || object(json!({
             "space": space_param(),
             "tag": tag_param(),
+            "updatedAfter": date_param("Only notes last changed on or after this."),
+            "updatedBefore": date_param("Only notes last changed before this."),
             "status": {
                 "type": "string",
                 "enum": ["active", "pinned", "archived", "trash", "revisit"],
@@ -96,6 +136,23 @@ const TOOLS: &[ToolDef] = &[
         idempotent: true,
         description: "Read one note in full: body, tags, spaces, and updatedAt (pass it to update_note). Reading does not mark the note as opened.",
         schema: || object(json!({ "id": id_param() }), &["id"]),
+    },
+    ToolDef {
+        name: "get_notes",
+        title: "Read several notes",
+        level: Access::Read,
+        destructive: false,
+        idempotent: true,
+        description: "Read several notes in full in one call, in the order asked: what get_note returns, for each id. Ids that name no note come back in missing rather than failing the call. Reading does not mark a note as opened.",
+        schema: || object(json!({
+            "ids": {
+                "type": "array",
+                "items": id_param(),
+                "minItems": 1,
+                "maxItems": MAX_READ,
+                "description": "Note ids, as search_notes or list_notes return them."
+            }
+        }), &["ids"]),
     },
     ToolDef {
         name: "list_tags",
@@ -135,10 +192,10 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Write,
         destructive: true,
         idempotent: true,
-        description: "Replace a note's title and/or body. expectedUpdatedAt must be the updatedAt from get_note; a CONFLICT means the note changed since, so read it again.",
+        description: "Replace a note's title and/or body. expectedUpdatedAt is the updatedAt from search_notes, list_notes, or get_note; no need to read the note first. A CONFLICT means the user changed it since, and carries the current note to retry from. Returns the note without its body.",
         schema: || object(json!({
             "id": id_param(),
-            "expectedUpdatedAt": { "type": "string", "description": "The note's updatedAt, exactly as get_note returned it." },
+            "expectedUpdatedAt": { "type": "string", "description": "The note's updatedAt, exactly as search_notes, list_notes, or get_note returned it." },
             "title": { "type": "string" },
             "body": { "type": "string", "description": "Markdown; replaces the whole body." }
         }), &["id", "expectedUpdatedAt"]),
@@ -224,6 +281,13 @@ fn space_param() -> Value {
     json!({ "type": "string", "description": "Space name; case does not matter." })
 }
 
+fn date_param(description: &str) -> Value {
+    json!({
+        "type": "string",
+        "description": format!("{description} A date (2026-09-01) or a UTC timestamp (2026-09-01T08:00:00Z).")
+    })
+}
+
 fn limit_param() -> Value {
     json!({ "type": "integer", "minimum": 1, "maximum": MAX_LIMIT, "default": DEFAULT_LIMIT })
 }
@@ -240,17 +304,49 @@ fn object(properties: Value, required: &[&str]) -> Value {
 }
 
 impl<'a> Tools<'a> {
-    pub(crate) fn new(store: &'a mut Store, attachments_dir: Option<PathBuf>) -> Self {
+    /// A connection begins: the session is on record from here, so the app
+    /// can say an agent is connected before it has asked for anything.
+    pub(crate) fn new(
+        store: &'a mut Store,
+        attachments_dir: Option<PathBuf>,
+        session: String,
+    ) -> Self {
+        // Who started this server says which client it is, even one whose
+        // handshake will name nothing (Hermes sends `mcp`), and which of
+        // that client's sessions this is.
+        let (process, launched_by) = launcher();
+        let client = launched_by.map_or("agent", Client::as_str).to_string();
+        let _ = store.open_agent_session(&session, &client);
+        let _ =
+            store.describe_agent_session(&session, &identify(launched_by, process.as_ref(), &env));
         Tools {
             store,
             attachments_dir,
-            client: "agent".into(),
+            client,
+            launched_by,
+            session,
+            traced: None,
         }
     }
 
+    /// The connection ended cleanly.
+    pub(crate) fn disconnect(&mut self) {
+        let _ = self.store.close_agent_session(&self.session);
+    }
+
+    pub(crate) fn store(&self) -> &Store {
+        self.store
+    }
+
     pub(crate) fn set_client(&mut self, name: &str) {
-        if !name.trim().is_empty() {
-            self.client = name.trim().to_string();
+        let name = name.trim();
+        // A handshake that names no client in particular (`mcp` is the MCP
+        // SDK's own default) does not replace what the launcher showed.
+        let generic = matches!(name, "mcp" | "agent");
+        let keep_launcher = generic && self.launched_by.is_some();
+        if !name.is_empty() && !keep_launcher {
+            self.client = name.to_string();
+            let _ = self.store.name_agent_session(&self.session, &self.client);
         }
     }
 
@@ -287,14 +383,21 @@ impl<'a> Tools<'a> {
     /// `isError`, which the model sees and can act on. A success carries its
     /// JSON twice, as MCP asks: structured, and as text for older clients.
     pub(crate) fn call(&mut self, name: &str, args: Value) -> Value {
+        self.traced = None;
         let outcome = match TOOLS.iter().find(|t| t.name == name) {
             None => Err(format!("unknown tool: {name}")),
+            // A refused call leaves no trace: off means off.
             Some(def) => Access::check(self.store, def.level).and_then(|()| {
-                let scope = Scope::of(&args);
-                let value = self.dispatch(name, args)?;
-                let wrote = def.level == Access::Write;
-                activity::record(self.store, &self.client, def.name, wrote, &scope, &value);
-                Ok(value)
+                let kind = match (def.level, def.name) {
+                    (Access::Write, _) => Kind::Write,
+                    (_, "search_notes") => Kind::Search,
+                    _ => Kind::Read,
+                };
+                let mut trace = Trace::start(def.name, kind, Scope::of(&args));
+                trace.snapshot(self.store);
+                let outcome = self.dispatch(name, args);
+                self.traced = trace.finish(self.store, &self.session, &self.client, &outcome);
+                outcome
             }),
         };
         match outcome {
@@ -310,6 +413,15 @@ impl<'a> Tools<'a> {
         }
     }
 
+    /// Keep the raw exchange with the call just traced: the message as the
+    /// agent sent it and the reply as it goes back. Best effort, like the
+    /// trace itself. A refused call left no row, so it keeps nothing.
+    pub(crate) fn record_wire(&mut self, request: &str, response: &str) {
+        if let Some(seq) = self.traced.take() {
+            let _ = self.store.set_activity_wire(seq, request, response);
+        }
+    }
+
     fn dispatch(&mut self, name: &str, args: Value) -> ToolResult {
         match name {
             "search_notes" => self.search_notes(parse(args)?),
@@ -318,6 +430,7 @@ impl<'a> Tools<'a> {
                 let a: IdArgs = parse(args)?;
                 self.note_view(&a.id)
             }
+            "get_notes" => self.get_notes(parse(args)?),
             "list_tags" => {
                 let tags = self.store.list_tags().map_err(fail)?;
                 Ok(json!({ "tags": tags.iter().map(|t| json!({
@@ -378,16 +491,82 @@ impl<'a> Tools<'a> {
     }
 
     fn search_notes(&mut self, a: SearchArgs) -> ToolResult {
-        let hits = self
-            .store
-            .search_notes(&a.query, clamp_limit(a.limit))
-            .map_err(fail)?;
-        Ok(json!({ "results": hits.iter().map(|h| json!({
-            "id": h.note_id,
-            "title": unmark(&h.title),
-            "excerpt": unmark(&h.excerpt),
-            "updatedAt": h.updated_at,
-        })).collect::<Vec<_>>() }))
+        let limit = clamp_limit(a.limit);
+        let offset = a.offset.unwrap_or(0).max(0);
+        let search = NoteSearch {
+            text: a.query.clone(),
+            any_term: match a.r#match.as_deref().unwrap_or("all") {
+                "all" => false,
+                "any" => true,
+                other => return Err(format!("unknown match: {other}")),
+            },
+            workspace_id: a.space.as_deref().map(|s| self.space_id(s)).transpose()?,
+            tag_id: a.tag.as_deref().map(|t| self.tag_id(t)).transpose()?,
+            is_archived: match a.status.as_deref().unwrap_or("active") {
+                "active" => Some(false),
+                "archived" => Some(true),
+                "all" => None,
+                other => return Err(format!("unknown status: {other}")),
+            },
+            updated_after: a.updated_after.as_deref().map(date_bound).transpose()?,
+            updated_before: a.updated_before.as_deref().map(date_bound).transpose()?,
+            limit,
+            offset,
+        };
+        let page = self.store.search_notes_page(&search).map_err(fail)?;
+        // One query for every hit's Spaces, not one per hit.
+        let ids: Vec<String> = page.matches.iter().map(|h| h.note_id.clone()).collect();
+        let mut spaces = self.store.workspaces_for_notes(&ids).map_err(fail)?;
+        let terms = search_terms(&a.query);
+        let mut results = Vec::with_capacity(page.matches.len());
+        for hit in &page.matches {
+            let tags = self.store.tags_for_note(&hit.note_id).map_err(fail)?;
+            let (mut found, matching_lines) = passages(&hit.body, &terms);
+            // Stemming can match a word the text never spells the way it was
+            // asked (run, running): the index's own excerpt still shows why.
+            if found.is_empty() {
+                found.push(json!({ "text": unmark(&hit.excerpt) }));
+            }
+            results.push(json!({
+                "id": hit.note_id,
+                "title": hit.title,
+                "spaces": spaces.remove(&hit.note_id).unwrap_or_default(),
+                "tags": tags.iter().map(|t| &t.name).collect::<Vec<_>>(),
+                "excerpt": unmark(&hit.excerpt),
+                "passages": found,
+                "matchingLines": matching_lines,
+                "createdAt": hit.created_at,
+                "updatedAt": hit.updated_at,
+                "isArchived": hit.is_archived,
+            }));
+        }
+        Ok(paged(
+            json!({ "results": results }),
+            "results",
+            page.total,
+            offset,
+        ))
+    }
+
+    fn get_notes(&mut self, a: IdsArgs) -> ToolResult {
+        if a.ids.is_empty() {
+            return Err("give at least one id".into());
+        }
+        if a.ids.len() > MAX_READ {
+            return Err(format!(
+                "at most {MAX_READ} notes per call; ask again for the rest"
+            ));
+        }
+        let mut notes = Vec::with_capacity(a.ids.len());
+        let mut missing = Vec::new();
+        for id in &a.ids {
+            match self.store.get_note(id, false) {
+                Ok(_) => notes.push(self.note_view(id)?),
+                Err(AppError::NotFound(_)) => missing.push(id.clone()),
+                Err(e) => return Err(fail(e)),
+            }
+        }
+        Ok(json!({ "notes": notes, "missing": missing }))
     }
 
     fn list_notes(&mut self, a: ListArgs) -> ToolResult {
@@ -419,8 +598,17 @@ impl<'a> Tools<'a> {
         if let Some(tag) = &a.tag {
             filter.tag_ids = vec![self.tag_id(tag)?];
         }
+        filter.updated_after = a.updated_after.as_deref().map(date_bound).transpose()?;
+        filter.updated_before = a.updated_before.as_deref().map(date_bound).transpose()?;
+        let offset = filter.offset.unwrap_or(0);
+        let total = self.store.count_notes(&filter).map_err(fail)?;
         let notes = self.store.list_notes(filter).map_err(fail)?;
-        Ok(json!({ "notes": notes.iter().map(summary).collect::<Vec<_>>() }))
+        Ok(paged(
+            json!({ "notes": notes.iter().map(summary).collect::<Vec<_>>() }),
+            "notes",
+            total,
+            offset,
+        ))
     }
 
     fn create_note(&mut self, a: CreateArgs) -> ToolResult {
@@ -449,18 +637,31 @@ impl<'a> Tools<'a> {
         if a.body.is_some() {
             refuse_whiteboard(&current)?;
         }
-        self.store
-            .update_note(
-                &a.id,
-                UpdateNotePatch {
-                    title: a.title,
-                    body: a.body,
-                    expected_updated_at: Some(a.expected_updated_at),
-                    ..Default::default()
-                },
-            )
-            .map_err(fail)?;
-        self.note_view(&a.id)
+        let patch = UpdateNotePatch {
+            title: a.title,
+            body: a.body,
+            expected_updated_at: Some(a.expected_updated_at),
+            ..Default::default()
+        };
+        match self.store.update_note(&a.id, patch) {
+            Ok(_) => {}
+            // Hand back what is there now, so the retry needs no extra read.
+            Err(AppError::Conflict(_)) => {
+                let now = self.note_view(&a.id)?;
+                return Err(format!(
+                    "CONFLICT: the note changed since that updatedAt. Retry with the current note:\n{}",
+                    pretty(&now)
+                ));
+            }
+            Err(e) => return Err(fail(e)),
+        }
+        // The caller just sent the body; echoing it back only costs tokens.
+        let mut view = self.note_view(&a.id)?;
+        if let Value::Object(fields) = &mut view {
+            fields.remove("body");
+            fields.remove("attachmentsDir");
+        }
+        Ok(view)
     }
 
     fn append_to_note(&mut self, a: AppendArgs) -> ToolResult {
@@ -480,6 +681,45 @@ impl<'a> Tools<'a> {
             }
         }
         Err("CONFLICT: the note kept changing while appending; try again".into())
+    }
+
+    /// Recent notes as MCP resources, for `resources/list`.
+    pub(crate) fn resources(&self) -> Result<Vec<Value>, String> {
+        let notes = self
+            .store
+            .list_notes(NoteFilter {
+                limit: Some(RESOURCE_LIST),
+                ..Default::default()
+            })
+            .map_err(fail)?;
+        Ok(notes
+            .iter()
+            .map(|n| {
+                json!({
+                    "uri": format!("{NOTE_URI_PREFIX}{}", n.id),
+                    "name": n.id,
+                    "title": n.title,
+                    "mimeType": "text/markdown",
+                    "annotations": { "lastModified": n.updated_at },
+                })
+            })
+            .collect())
+    }
+
+    /// One note as a resource's contents: its Markdown.
+    pub(crate) fn resource(&mut self, uri: &str) -> Result<Value, String> {
+        let id = uri
+            .strip_prefix(NOTE_URI_PREFIX)
+            .filter(|id| !id.is_empty())
+            .ok_or_else(|| format!("unknown resource: {uri}"))?;
+        let note = self.store.get_note(id, false).map_err(fail)?;
+        Ok(json!({
+            "uri": uri,
+            "name": note.id,
+            "title": note.title,
+            "mimeType": "text/markdown",
+            "text": note.body,
+        }))
     }
 
     /// A note in full, as every read and write tool returns it.
@@ -510,20 +750,19 @@ impl<'a> Tools<'a> {
 
     fn tag_id(&self, raw: &str) -> Result<String, String> {
         let name = normalize_tag_name(raw).ok_or("tag name must not be empty")?;
-        let tags = self.store.list_tags().map_err(fail)?;
-        tags.into_iter()
-            .find(|t| t.tag.name == name)
-            .map(|t| t.tag.id)
+        self.store
+            .find_tag(&name)
+            .map_err(fail)?
+            .map(|t| t.id)
             .ok_or_else(|| format!("NOT_FOUND: no tag named {name}"))
     }
 
     fn space_id(&self, raw: &str) -> Result<String, String> {
         let name = normalize_workspace_name(raw).ok_or("space name must not be empty")?;
-        let spaces = self.store.list_workspaces().map_err(fail)?;
-        spaces
-            .into_iter()
-            .find(|w| w.workspace.name.eq_ignore_ascii_case(&name))
-            .map(|w| w.workspace.id)
+        self.store
+            .find_workspace(&name)
+            .map_err(fail)?
+            .map(|w| w.id)
             .ok_or_else(|| format!("NOT_FOUND: no space named {name}"))
     }
 }
@@ -568,8 +807,129 @@ fn clamp_limit(limit: Option<i64>) -> i64 {
 }
 
 /// Search marks matches with \u{1} and \u{2} for the app to highlight.
+/// A page of results with where it stands: how many there are in all, and
+/// whether, and from where, to ask for more.
+fn paged(mut page: Value, key: &str, total: i64, offset: i64) -> Value {
+    let shown = page[key].as_array().map_or(0, Vec::len) as i64;
+    let has_more = offset + shown < total;
+    page["total"] = json!(total);
+    page["offset"] = json!(offset);
+    page["hasMore"] = json!(has_more);
+    if has_more {
+        page["nextOffset"] = json!(offset + shown);
+    }
+    page
+}
+
+/// A date or timestamp an agent gave, as a bound the store can compare with
+/// its own timestamps (UTC ISO-8601, compared as text).
+fn date_bound(raw: &str) -> Result<String, String> {
+    let raw = raw.trim();
+    let is_date = chrono::NaiveDate::parse_from_str(raw, "%Y-%m-%d").is_ok();
+    if is_date {
+        return Ok(raw.to_string());
+    }
+    chrono::DateTime::parse_from_rfc3339(raw)
+        .map(|t| {
+            t.with_timezone(&chrono::Utc)
+                .to_rfc3339_opts(chrono::SecondsFormat::Micros, true)
+        })
+        .map_err(|_| format!("not a date: {raw}; use 2026-09-01 or 2026-09-01T08:00:00Z"))
+}
+
+/// The words of a query, as the search index splits them, lowercased.
+fn search_terms(query: &str) -> Vec<String> {
+    query
+        .split(|c: char| !(c.is_alphanumeric() || c == '-' || c == '_'))
+        .filter(|t| !t.is_empty())
+        .map(str::to_lowercase)
+        .collect()
+}
+
+/// Where in a note the words are: up to `MAX_PASSAGES` passages, each the
+/// matching line with the line before and after it and its line number, and
+/// how many lines match in all. Passages never overlap.
+fn passages(body: &str, terms: &[String]) -> (Vec<Value>, usize) {
+    let lines: Vec<&str> = body.lines().collect();
+    let hits = |line: &str| {
+        let lower = line.to_lowercase();
+        terms.iter().any(|t| lower.contains(t.as_str()))
+    };
+    let mut found = Vec::new();
+    let mut matching = 0;
+    let mut covered = 0; // lines before this index are already in a passage
+    for (i, line) in lines.iter().enumerate() {
+        if !hits(line) {
+            continue;
+        }
+        matching += 1;
+        if i < covered || found.len() == MAX_PASSAGES {
+            continue;
+        }
+        let from = i.saturating_sub(1).max(covered);
+        let to = (i + 1).min(lines.len() - 1);
+        let text = lines[from..=to]
+            .iter()
+            .map(|l| clip(l, terms))
+            .collect::<Vec<_>>()
+            .join("\n");
+        found.push(json!({ "line": i + 1, "text": text.trim() }));
+        covered = to + 1;
+    }
+    (found, matching)
+}
+
+/// A line cut to a readable window around its first match, when it is long.
+fn clip(line: &str, terms: &[String]) -> String {
+    let chars: Vec<char> = line.chars().collect();
+    if chars.len() <= PASSAGE_LINE_CHARS {
+        return line.to_string();
+    }
+    let lower = line.to_lowercase();
+    let at = terms
+        .iter()
+        .filter_map(|t| lower.find(t.as_str()))
+        .min()
+        .map_or(0, |byte| lower[..byte].chars().count());
+    let start = at.saturating_sub(PASSAGE_LINE_CHARS / 3);
+    let end = (start + PASSAGE_LINE_CHARS).min(chars.len());
+    let mut out: String = chars[start..end].iter().collect();
+    if start > 0 {
+        out.insert(0, '…');
+    }
+    if end < chars.len() {
+        out.push('…');
+    }
+    out
+}
+
 fn unmark(s: &str) -> String {
     s.replace(['\u{1}', '\u{2}'], "")
+}
+
+/// A session id without a uuid dependency: the process id and the start
+/// time, which no two concurrent servers on one machine share.
+/// The process that started this server, and which client it is.
+fn launcher() -> (Option<ClientProcess>, Option<Client>) {
+    let process = parent_process();
+    let client = process
+        .as_ref()
+        .and_then(|p| Client::from_command(&p.command))
+        // Claude Code is not always called `claude`, but it always says so.
+        .or_else(|| env("CLAUDE_CODE_SESSION_ID").map(|_| Client::ClaudeCode));
+    (process, client)
+}
+
+fn env(key: &str) -> Option<String> {
+    std::env::var(key).ok().filter(|v| !v.trim().is_empty())
+}
+
+pub(crate) fn session_id() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or_default();
+    format!("{:x}-{:x}", std::process::id(), now)
 }
 
 fn pretty(value: &Value) -> String {
@@ -588,17 +948,34 @@ struct IdArgs {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 struct SearchArgs {
     query: String,
+    r#match: Option<String>,
+    space: Option<String>,
+    tag: Option<String>,
+    status: Option<String>,
+    updated_after: Option<String>,
+    updated_before: Option<String>,
     limit: Option<i64>,
+    offset: Option<i64>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct IdsArgs {
+    ids: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 struct ListArgs {
     space: Option<String>,
     tag: Option<String>,
     status: Option<String>,
+    updated_after: Option<String>,
+    updated_before: Option<String>,
     limit: Option<i64>,
     offset: Option<i64>,
 }

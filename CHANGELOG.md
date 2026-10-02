@@ -7,7 +7,79 @@ in-app updater, written for users. Newest first.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.9.1] - 2026-10-02
+
+### Added
+- Agents: a full trace of every call an agent makes lives in an Agents Space
+  in the sidebar, one note per conversation (⌘⇧A, or "Show Agents" in the
+  palette). Each row says who, what, and how long it took, and unfolds to the
+  raw request and response exactly as they crossed MCP. Every change an agent makes can be reverted from there, and
+  from the toast that announces it; a revert can itself be undone.
+- Agents: the Agents row in the sidebar shows how many agents are connected
+  right now, and pulses while one is in the middle of a call. Connected is
+  the truth about the agent's process, including one that crashed. Each
+  conversation's row says what the agent is doing this moment, then settles
+  to a summary; its page has a live status line, filters for changes and
+  failures, and Revert on every change's own line. Settings > Agents adds a
+  connect snippet for Hermes.
+- Agents: a conversation is named after its client's own session ("Claude
+  Code: bob" after `/rename bob`; a Codex thread's name; a Hermes session's
+  title), and its page shows the session id and the folder it runs in, so a
+  change traces back to the conversation that made it. Claude Code states its
+  session; Codex and Hermes do not, so theirs is matched from their own
+  records and marked as a best match. Hermes is now shown as Hermes instead
+  of "Mcp". Any client can state its session with `INSTANTNOTES_SESSION_ID`
+  and `INSTANTNOTES_SESSION_NAME`.
+- Agents: an agent's search now shows inside the search field instead of in
+  a line above the note list, so the list no longer moves.
+- Agents: an agent's search shows its words above your note list as it
+  happens, and the notes it found light up with a dashed outline. Settings >
+  Agents lets you choose which calls raise a toast (changes, everything, or
+  none), shows connect snippets for Claude Code, Codex, and other apps, and
+  sums up recent activity.
+- Appearance: a new Settings page shows every theme as a live preview, with
+  light/dark/auto, the body font, and import, export, and remove in one place.
+- Three themes: Fjord (cool arctic blue), Ember (warm charcoal and amber), and
+  Contrast (high contrast, larger text, firm borders).
+- Claude Code plugin: search, read, and capture notes from a pane inside Claude
+  Code. Install it with `/plugin marketplace add jamubc/toolbox`, then
+  `/plugin install instantnotes@toolbox`; `/notes` opens the pane and
+  `/note <text>` saves a note.
+
+### Changed
+- The library draws its own title bar on macOS: every pane has a header that
+  moves the window, and the note's actions are icons in two groups, what goes
+  into the text and what becomes of the note.
+- Notes read in a centred column of readable width, with the title on the page
+  and tags and Spaces in a row beneath it.
+- The sidebar, note list, and page step apart in surface, every list selects
+  the same way, and note rows show the date beside the title over a two-line
+  snippet. On macOS the sidebar is the system's translucent material in every
+  theme except Contrast.
+- Dependencies: React 19, Vite 8, Vitest 5, and the Tauri plugins and Rust
+  crates brought up to date.
+- Settings is now a preferences window: a grouped list of pages down the left
+  with a filter (type, then Enter), the page on the right, and an Overview
+  with library stats, what's new, and the state of theme and agent access.
+- Themes: dates, counts, and other third-tier text are legible in every
+  built-in theme, light and dark. Themes can set success, warning, selection,
+  code-block, and focus-ring colors; those left unset follow the palette. One
+  focus ring, in the theme's focus color, for keyboard users everywhere.
+- MCP: notes are also offered as `instantnotes://notes/<id>` resources for
+  clients that browse them. A request that hits a bug is answered with an
+  error instead of ending the connection. Tag, Space, and search lookups go
+  straight to the index.
+- MCP: optimized rewriting a note, 3 less tool calls.
+- MCP: `search_notes` returns the matching passages with their line numbers
+  and the lines around them, can match any of the words instead of all, and
+  narrows by Space, tag, status, and date. `get_notes` reads several notes in
+  full in one call. `search_notes` and `list_notes` say how many results
+  there are in all and whether more remain. Together an agent can find what
+  matters without reading, or scripting its way through, the whole library.
+
+### Fixed
+- Search: punctuation inside a word (`CachyOS/Arch`) now splits the token
+  instead of being dropped; an exact title match ranks first.
 
 ## [0.9.0] - 2026-09-30
 

@@ -267,60 +267,8 @@ impl Store {
     /// Default filter excludes archived and deleted notes; sorts by
     /// updatedAt desc.
     pub fn list_notes(&self, filter: NoteFilter) -> Result<Vec<Note>> {
-        let mut conditions: Vec<String> = Vec::new();
-        let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-
+        let (conditions, args) = note_conditions(&filter);
         let deleted = filter.is_deleted.unwrap_or(false);
-        conditions.push("is_deleted = ?".into());
-        args.push(Box::new(i64::from(deleted)));
-
-        if !deleted {
-            conditions.push("is_archived = ?".into());
-            args.push(Box::new(i64::from(filter.is_archived.unwrap_or(false))));
-        } else if let Some(archived) = filter.is_archived {
-            conditions.push("is_archived = ?".into());
-            args.push(Box::new(i64::from(archived)));
-        }
-
-        if let Some(pinned) = filter.is_pinned {
-            conditions.push("is_pinned = ?".into());
-            args.push(Box::new(i64::from(pinned)));
-        }
-
-        if filter.never_opened == Some(true) {
-            conditions.push("last_opened_at IS NULL".into());
-        }
-
-        if let Some(created_before) = &filter.created_before {
-            // Timestamps are stored as UTC ISO-8601, so string comparison is
-            // chronological; differing sub-second precision only moves the
-            // boundary within a second, which no caller depends on.
-            conditions.push("created_at < ?".into());
-            args.push(Box::new(created_before.clone()));
-        }
-
-        if let Some(workspace_id) = &filter.workspace_id {
-            conditions
-                .push("id IN (SELECT note_id FROM note_workspaces WHERE workspace_id = ?)".into());
-            args.push(Box::new(workspace_id.clone()));
-        }
-
-        if !filter.tag_ids.is_empty() {
-            let placeholders = vec!["?"; filter.tag_ids.len()].join(", ");
-            conditions.push(format!(
-                "id IN (SELECT note_id FROM note_tags WHERE tag_id IN ({placeholders}))"
-            ));
-            for tag_id in &filter.tag_ids {
-                args.push(Box::new(tag_id.clone()));
-            }
-        }
-
-        if let Some(query) = filter.query.as_ref().filter(|q| !q.trim().is_empty()) {
-            conditions.push("(title LIKE ? OR body LIKE ?)".into());
-            let like = format!("%{}%", query.trim());
-            args.push(Box::new(like.clone()));
-            args.push(Box::new(like));
-        }
 
         let order_column = match filter.sort_by.as_deref() {
             Some("createdAt") => "created_at",
@@ -354,6 +302,167 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
+    /// How many notes a filter matches in all, whatever its limit and offset:
+    /// what lets a caller paging through `list_notes` know how far there is
+    /// to go.
+    pub fn count_notes(&self, filter: &NoteFilter) -> Result<i64> {
+        let (conditions, args) = note_conditions(filter);
+        let sql = format!(
+            "SELECT COUNT(*) FROM notes WHERE {}",
+            conditions.join(" AND ")
+        );
+        Ok(self.conn.query_row(
+            &sql,
+            rusqlite::params_from_iter(args.iter().map(|a| a.as_ref())),
+            |r| r.get(0),
+        )?)
+    }
+
+    /// Full-text search for a caller that reads many results and needs to
+    /// know where it stands: filtered by Space, tag, archive state, and when
+    /// a note last changed; paged, with the total; and with each note's body,
+    /// so the caller can cut its own passages. Never returns trashed notes.
+    pub fn search_notes_page(&self, q: &NoteSearch) -> Result<NoteSearchPage> {
+        let Some(match_expr) = fts_match_expr_with(&q.text, q.any_term) else {
+            return Ok(NoteSearchPage::default());
+        };
+        let mut conditions = vec!["notes_fts MATCH ?".to_string(), "n.is_deleted = 0".into()];
+        let mut args: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(match_expr)];
+        if let Some(archived) = q.is_archived {
+            conditions.push("n.is_archived = ?".into());
+            args.push(Box::new(i64::from(archived)));
+        }
+        if let Some(id) = &q.workspace_id {
+            conditions.push(
+                "n.id IN (SELECT note_id FROM note_workspaces WHERE workspace_id = ?)".into(),
+            );
+            args.push(Box::new(id.clone()));
+        }
+        if let Some(id) = &q.tag_id {
+            conditions.push("n.id IN (SELECT note_id FROM note_tags WHERE tag_id = ?)".into());
+            args.push(Box::new(id.clone()));
+        }
+        // Stored timestamps are UTC ISO-8601 and compare as text, so a bare
+        // date ("2026-09-01") is a valid bound.
+        if let Some(after) = &q.updated_after {
+            conditions.push("n.updated_at >= ?".into());
+            args.push(Box::new(after.clone()));
+        }
+        if let Some(before) = &q.updated_before {
+            conditions.push("n.updated_at < ?".into());
+            args.push(Box::new(before.clone()));
+        }
+        let filter = conditions.join(" AND ");
+        let from = "FROM notes_fts JOIN notes n ON n.seq = notes_fts.rowid";
+        let total: i64 = self.conn.query_row(
+            &format!("SELECT COUNT(*) {from} WHERE {filter}"),
+            rusqlite::params_from_iter(args.iter().map(|a| a.as_ref())),
+            |r| r.get(0),
+        )?;
+        // A query that is a note's exact title finds that note first, then
+        // best match; the id settles ties so paging never skips or repeats.
+        let sql = format!(
+            "SELECT n.id, n.title, n.body, \
+                    snippet(notes_fts, 1, '\u{1}', '\u{2}', '…', 16), \
+                    n.created_at, n.updated_at, n.is_archived \
+             {from} WHERE {filter} \
+             ORDER BY lower(n.title) = lower(?) DESC, bm25(notes_fts), n.id LIMIT {} OFFSET {}",
+            q.limit.clamp(1, 500),
+            q.offset.max(0)
+        );
+        args.push(Box::new(q.text.trim().to_string()));
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map(
+            rusqlite::params_from_iter(args.iter().map(|a| a.as_ref())),
+            |row| {
+                Ok(NoteMatch {
+                    note_id: row.get(0)?,
+                    title: row.get(1)?,
+                    body: row.get(2)?,
+                    excerpt: row.get(3)?,
+                    created_at: row.get(4)?,
+                    updated_at: row.get(5)?,
+                    is_archived: row.get::<_, i64>(6)? != 0,
+                })
+            },
+        )?;
+        Ok(NoteSearchPage {
+            matches: rows.collect::<rusqlite::Result<Vec<_>>>()?,
+            total,
+        })
+    }
+}
+
+/// The WHERE clauses a `NoteFilter` asks for, with their arguments in order.
+fn note_conditions(filter: &NoteFilter) -> (Vec<String>, Vec<Box<dyn rusqlite::ToSql>>) {
+    let mut conditions: Vec<String> = Vec::new();
+    let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+    let deleted = filter.is_deleted.unwrap_or(false);
+    conditions.push("is_deleted = ?".into());
+    args.push(Box::new(i64::from(deleted)));
+
+    if !deleted {
+        conditions.push("is_archived = ?".into());
+        args.push(Box::new(i64::from(filter.is_archived.unwrap_or(false))));
+    } else if let Some(archived) = filter.is_archived {
+        conditions.push("is_archived = ?".into());
+        args.push(Box::new(i64::from(archived)));
+    }
+
+    if let Some(pinned) = filter.is_pinned {
+        conditions.push("is_pinned = ?".into());
+        args.push(Box::new(i64::from(pinned)));
+    }
+
+    if filter.never_opened == Some(true) {
+        conditions.push("last_opened_at IS NULL".into());
+    }
+
+    if let Some(created_before) = &filter.created_before {
+        // Timestamps are stored as UTC ISO-8601, so string comparison is
+        // chronological; differing sub-second precision only moves the
+        // boundary within a second, which no caller depends on.
+        conditions.push("created_at < ?".into());
+        args.push(Box::new(created_before.clone()));
+    }
+
+    if let Some(workspace_id) = &filter.workspace_id {
+        conditions
+            .push("id IN (SELECT note_id FROM note_workspaces WHERE workspace_id = ?)".into());
+        args.push(Box::new(workspace_id.clone()));
+    }
+
+    if !filter.tag_ids.is_empty() {
+        let placeholders = vec!["?"; filter.tag_ids.len()].join(", ");
+        conditions.push(format!(
+            "id IN (SELECT note_id FROM note_tags WHERE tag_id IN ({placeholders}))"
+        ));
+        for tag_id in &filter.tag_ids {
+            args.push(Box::new(tag_id.clone()));
+        }
+    }
+
+    if let Some(query) = filter.query.as_ref().filter(|q| !q.trim().is_empty()) {
+        conditions.push("(title LIKE ? OR body LIKE ?)".into());
+        let like = format!("%{}%", query.trim());
+        args.push(Box::new(like.clone()));
+        args.push(Box::new(like));
+    }
+
+    if let Some(after) = &filter.updated_after {
+        conditions.push("updated_at >= ?".into());
+        args.push(Box::new(after.clone()));
+    }
+    if let Some(before) = &filter.updated_before {
+        conditions.push("updated_at < ?".into());
+        args.push(Box::new(before.clone()));
+    }
+
+    (conditions, args)
+}
+
+impl Store {
     /// Full-text search over title+body. Always excludes deleted notes;
     /// excludes archived notes. Special characters in `text` must not error.
     /// Title and excerpt matches are bracketed with U+0001 (start) / U+0002
@@ -379,10 +488,11 @@ impl Store {
              FROM notes_fts \
              JOIN notes n ON n.seq = notes_fts.rowid \
              WHERE notes_fts MATCH ?1 AND n.is_deleted = 0 AND n.is_archived = 0 \
-             ORDER BY bm25(notes_fts) \
+             ORDER BY lower(n.title) = lower(?3) DESC, bm25(notes_fts) \
              LIMIT ?2",
         )?;
-        let rows = stmt.query_map(params![match_expr, limit], |row| {
+        // A query that is a note's exact title finds that note first.
+        let rows = stmt.query_map(params![match_expr, limit, text.trim()], |row| {
             Ok(SearchResult {
                 note_id: row.get(0)?,
                 title: row.get(1)?,

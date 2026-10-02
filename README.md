@@ -2,12 +2,25 @@
 
 Instantly externalize your writing. Capture and locate your thoughts.
 
+> **02/10/2026: Use InstantNotes directly inside Claude Code, with offical UI mods** <br/> Search, read, and capture notes directly inside [Claude Code](https://claude.com/product/claude-code)! <br/> Get the new `instantnotes` plugin from [toolbox](https://github.com/jamubc/toolbox).<br/>
+Usage: 
+>
+> ```
+> /plugin marketplace add jamubc/toolbox
+> /plugin install instantnotes@toolbox
+> ```
+>
+> Explore notes with `/notes` or take ***an instant note*** with `/note <text>`. <br/>
+Usage: See the [plugin's readme](https://github.com/jamubc/toolbox/tree/main/plugins/instantnotes) for more details.
+
 ## Features
 
 - **Quick Capture:** Global hotkey (`Opt` / `Ctrl+Shift+Space`) with drafts.
 - **Command Palette:** `Cmd/Ctrl+P` for actions, search, and themes.
 - **Flexible Organization:** Group notes with Spaces and `#inline` tags instead of strict folders.
 - **Plain Markdown Vault:** Keep a live copy of every note as a Markdown file in a folder you choose, readable in any editor.
+- **Agents, on your terms:** Connect Claude Code, Codex, or Cursor over MCP (Settings > Agents). Off until you turn it on; what an agent reads or changes lights up as it happens, every call is traced, and every change can be reverted.
+- **Themes:** Eight built-in themes with live previews, light and dark, shareable as files.
 - **100% Local & Private:** Everything lives in a local SQLite database. Zero telemetry.
 
 ## Installation
@@ -31,6 +44,7 @@ Alternatively, after the blocked first launch, open System Settings, go to Priva
 Download release then run installer. 
 You will get a SmartScreen flags due to the unsigned build: 
     1. To proceed --> click "More info", then "Run anyway".
+
 
 ## Development
 To build from source instead

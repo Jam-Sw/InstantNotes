@@ -30,6 +30,10 @@ vi.mock("$lib/api/client", () => ({
   submitFeedback: vi.fn().mockResolvedValue(undefined),
   openFeedbackLog: vi.fn().mockResolvedValue(undefined),
   openUrl: vi.fn().mockResolvedValue(undefined),
+  getAgentConnection: vi.fn().mockResolvedValue(null),
+  listAgentActivity: vi.fn().mockResolvedValue([]),
+  setWindowVibrancy: vi.fn().mockResolvedValue(undefined),
+  setWindowTheme: vi.fn().mockResolvedValue(undefined),
 }));
 
 afterEach(cleanup);
@@ -41,8 +45,11 @@ function open() {
 }
 
 describe("SettingsView", () => {
-  it("lands on the dashboard with a card per page", () => {
+  it("lands on the overview with a page list down the side", () => {
     const { getByRole } = open();
+    expect(getByRole("navigation", { name: "Settings pages" })).toBeTruthy();
+    expect(getByRole("button", { name: /Overview/ })).toBeTruthy();
+    expect(getByRole("button", { name: /Appearance/ })).toBeTruthy();
     expect(getByRole("button", { name: /About/ })).toBeTruthy();
     expect(getByRole("button", { name: /Editor/ })).toBeTruthy();
     expect(getByRole("button", { name: /Images/ })).toBeTruthy();
@@ -67,7 +74,19 @@ describe("SettingsView", () => {
     expect(tile?.textContent).toContain("reveal to ready");
   });
 
-  it("shows the installed version's release notes on the dashboard", async () => {
+  it("lists every theme on the Appearance page and switches on a click", async () => {
+    const { getByRole, findByRole } = open();
+    await fireEvent.click(getByRole("button", { name: /Appearance/ }));
+    const group = await findByRole("radiogroup", { name: "Theme" });
+    const radios = within(group).getAllByRole("radio");
+    expect(radios.length).toBeGreaterThanOrEqual(8);
+    expect(within(group).getByRole("radio", { name: "Manuscript" }).getAttribute("aria-checked")).toBe("true");
+    await fireEvent.click(within(group).getByRole("radio", { name: "Fjord" }));
+    expect(vi.mocked(setSetting)).toHaveBeenCalledWith("theme.active", "fjord");
+    expect(document.documentElement.dataset.theme).toBe("fjord");
+  });
+
+  it("shows the installed version's release notes on the overview", async () => {
     const { findByText } = open();
     expect(await findByText(/What's new in v0\.8\.0/)).toBeTruthy();
   });
@@ -84,26 +103,44 @@ describe("SettingsView", () => {
     expect(queryByText(/What's new/)).toBeNull();
   });
 
-  it("opens a page from its card and shows a breadcrumb back to Settings", async () => {
+  it("filters the page list and opens the first match on Enter", async () => {
+    const { getByRole, queryByRole, getByLabelText } = open();
+    const filter = getByLabelText("Find a setting");
+    await fireEvent.input(filter, { target: { value: "mcp" } });
+    expect(getByRole("button", { name: /Agents/ })).toBeTruthy();
+    expect(queryByRole("button", { name: /Editor/ })).toBeNull();
+    await fireEvent.keyDown(filter, { key: "Enter" });
+    const crumb = getByRole("navigation", { name: "Breadcrumb" });
+    expect(within(crumb).getByText("Agents")).toBeTruthy();
+    // Escape in the filter clears it first, instead of leaving the page.
+    await fireEvent.input(filter, { target: { value: "x" } });
+    filter.focus();
+    await fireEvent.keyDown(window, { key: "Escape" });
+    expect(getByRole("button", { name: /Editor/ })).toBeTruthy();
+    expect(within(crumb).getByText("Agents")).toBeTruthy();
+  });
+
+  it("opens a page from the list and shows a breadcrumb back to Settings", async () => {
     const { getByRole, findByText } = open();
     await fireEvent.click(getByRole("button", { name: /About/ }));
     // The About page rendered (its heading), under a breadcrumb.
     expect(await findByText("InstantNotes")).toBeTruthy();
     const crumb = getByRole("navigation", { name: "Breadcrumb" });
     expect(within(crumb).getByText("About")).toBeTruthy();
-    // Breadcrumb "Settings" returns to the grid.
+    // Breadcrumb "Settings" returns to the overview.
     await fireEvent.click(within(crumb).getByRole("button", { name: "Settings" }));
-    expect(getByRole("button", { name: /Contexting/ })).toBeTruthy();
+    expect(getByRole("heading", { name: "Overview" })).toBeTruthy();
   });
 
-  it("Escape steps back to the grid before closing the view", async () => {
-    const { getByRole, onBack } = open();
+  it("Escape steps back to the overview before closing the view", async () => {
+    const { getByRole, queryByRole, onBack } = open();
     await fireEvent.click(getByRole("button", { name: /Links/ }));
-    // First Escape: back to the grid, view stays open.
+    expect(queryByRole("heading", { name: "Overview" })).toBeNull();
+    // First Escape: back to the overview, view stays open.
     await fireEvent.keyDown(window, { key: "Escape" });
     expect(onBack).not.toHaveBeenCalled();
-    expect(getByRole("button", { name: /About/ })).toBeTruthy();
-    // Second Escape from the grid: closes the whole view.
+    expect(getByRole("heading", { name: "Overview" })).toBeTruthy();
+    // Second Escape from the overview: closes the whole view.
     await fireEvent.keyDown(window, { key: "Escape" });
     expect(onBack).toHaveBeenCalledTimes(1);
   });

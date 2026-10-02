@@ -375,12 +375,19 @@ else follows the `initialize` handshake of 2025-11-25 back to 2024-11-05,
 including a JSON-RPC batch on one line. An unknown tool, or `arguments` that
 are not an object, is a JSON-RPC error (`-32602`); everything a tool refuses
 is a result with `isError`, which the model sees. Successful results carry
-their JSON as `structuredContent` and again as text. Every response is
-checked against the official MCP JSON Schema of its revision.
+their JSON as `structuredContent` and again as text. A request that panics
+inside the server is answered with `-32603` and the connection goes on. Every
+response is checked against the official MCP JSON Schema of its revision.
+
+Besides tools, the server declares `resources`: `resources/list` offers the
+fifty most recently updated live notes as `instantnotes://notes/<id>`
+(`text/markdown`), `resources/templates/list` names that template, and
+`resources/read` returns one note's Markdown, or `-32002` for an id that is
+not a note. Resources sit behind the same read gate as the read tools.
 
 | Tool | Access | Store call |
 | --- | --- | --- |
-| `search_notes`, `list_notes`, `get_note`, `list_tags`, `list_spaces` | read | `search_notes`, `list_notes`, `get_note(id, false)`, `list_tags`, `list_workspaces` |
+| `search_notes`, `list_notes`, `get_note`, `get_notes`, `list_tags`, `list_spaces` | read | `search_notes_page`, `list_notes` and `count_notes`, `get_note(id, false)`, `list_tags`, `list_workspaces` |
 | `create_note`, `update_note`, `append_to_note` | write | `create_note`, `update_note` with `expectedUpdatedAt` |
 | `tag_note`, `untag_note`, `add_to_space`, `remove_from_space` | write | the tag and workspace membership calls |
 | `trash_note`, `restore_note` | write | `soft_delete_note`, `restore_note` |
@@ -390,6 +397,18 @@ properties, and annotations: `readOnlyHint` for reads, `destructiveHint` for
 the writes that remove or replace (`update_note`, `untag_note`,
 `remove_from_space`, `trash_note`), `idempotentHint`, and `openWorldHint:
 false`, since a tool only ever touches this library.
+
+An agent is meant to search, then read only what matters. `search_notes`
+takes `query`, `match` (`all` or `any` of the words), `space`, `tag`, `status`
+(`active`, `archived`, `all`; never the Trash), `updatedAfter` and
+`updatedBefore` (a date or a UTC timestamp), `limit`, and `offset`. Each
+result carries `passages`: up to three, each the matching line with the
+line before and after it and its 1-based `line`, plus `matchingLines`, the
+count of lines that match in all. `get_notes` reads up to 50 notes in full
+in one call, in the order asked, and returns ids that name no note in
+`missing`. `search_notes` and `list_notes` are paged: `total` is how many
+match in all, `hasMore` whether to ask again, and `nextOffset` from where.
+`list_notes` takes the same two dates.
 
 `list_notes` with `status: "revisit"` is the Revisit view's filter. Reads never
 set `lastOpenedAt`. There is no permanent delete, no settings, no vault, and
@@ -401,19 +420,38 @@ Two settings keys belong to this surface:
 | Key | Written by | Meaning |
 | --- | --- | --- |
 | `agents.access` | Settings > Agents | `"off"` (default), `"read"`, or `"write"`; re-read on every call. |
-| `agents.activity` | the MCP process | The last 30 successful calls, newest first: `at` (epoch ms), `client` (the client's name, from the handshake or the request), `tool`, `kind`, `noteIds`, `noteCount`, `titles` (first three), `space`, `tag`, `query`. |
+| `agents.notify` | Settings > Agents | Which calls raise a toast: `"writes"` (default), `"all"`, or `"off"`. |
+
+Every call that passes the access gate is traced in the `agent_activity`
+table (DATA_MODEL.md section 11), failures included; a refused call leaves
+nothing. A row carries `seq`, `at` (epoch ms), `session` (one per server
+process), `client` (the client's name, from the handshake or the request),
+`tool`, `kind` (`read`, `search`, `write`), `status` (`ok`, `error`) and
+`error`, `durationMs`, `noteIds` (up to 50), `noteCount`, `titles` (first
+three), `space`, `tag`, `query`, `afterUpdatedAt`, `revertable`,
+`revertedAt`, and `reverts`. A successful write also stores the note as it
+was just before (fields, tags with their sources, Spaces), which is what
+makes it revertable; a create stores "no note", and reverting it trashes the
+note.
 
 | Command | Purpose |
 | --- | --- |
 | `agent_connection` | The running executable, the live library path, and the attachments dir, for the connect commands on Settings > Agents. |
+| `list_agent_activity` | The trace, newest first (`limit`, `offset`). |
+| `agent_activity_before` | The snapshot a write row holds, or `null` for a create. |
+| `list_agent_sessions` | Every known agent connection, newest first: `session`, `client`, `connectedAt`, `disconnectedAt`, `label`, `clientSession`, `cwd`, `matched` (`exact` or `inferred`), and `connected` (the process holds its lock right now). The same list arrives as the `agents:sessions` event whenever it changes. |
+| `agent_activity_wire` | The raw exchange a row holds: `request` and `response`, each the whole JSON-RPC message as JSON text, or `null` where none was kept. |
+| `revert_agent_activity` | Put the note back as the row's snapshot has it (or trash a created note), mark the row reverted, and record the revert as a row of its own (client `instantnotes`, tool `revert`) with the state it replaced, so it can be reverted in turn. Returns that row; `CONFLICT` for a row already reverted. |
+| `clear_agent_activity` | Forget the trace. Notes are untouched. |
 
 The app notices another process's commits through SQLite's `data_version`,
-read every 400 ms by `shell/agents.rs`. When it moves, the new
-`agents.activity` entries go to the webview as `library:external-change`
-(oldest first); if any was a write, or none describes the change, the three
-change events fire and the vault mirror flushes, as after the app's own
-writes. Write transactions begin `IMMEDIATE` so two processes queue on the
-busy timeout instead of failing on a lock upgrade.
+read every 400 ms by `shell/agents.rs`. When it moves, the rows newer than
+the last `seq` announced go to the webview as `library:external-change`
+(oldest first); if any was a successful write, or none describes the change,
+the three change events fire and the vault mirror flushes, as after the app's
+own writes. A revert made in the app is emitted the same way. Write
+transactions begin `IMMEDIATE` so two processes queue on the busy timeout
+instead of failing on a lock upgrade.
 
 ## 16. Import
 
