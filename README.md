@@ -2,15 +2,16 @@
 
 Instantly externalize your writing. Capture and locate your thoughts.
 
-> [!TIP]
-> **NEW! Use InstantNotes inside Claude Code.** Search, read, and capture notes from a pane in [Claude Code](https://claude.com/product/claude-code) with the `instantnotes` plugin from [toolbox](https://github.com/jamubc/toolbox). With the app installed, run in Claude Code:
+> **02/10/2026: Use InstantNotes directly inside Claude Code, with offical UI mods** <br/> Search, read, and capture notes directly inside [Claude Code](https://claude.com/product/claude-code)! <br/> Get the new `instantnotes` plugin from [toolbox](https://github.com/jamubc/toolbox).<br/>
+Usage: 
 >
 > ```
 > /plugin marketplace add jamubc/toolbox
 > /plugin install instantnotes@toolbox
 > ```
 >
-> Then `/notes` opens the pane and `/note <text>` saves a note. See the [plugin's readme](https://github.com/jamubc/toolbox/tree/main/plugins/instantnotes) for the rest.
+> Explore notes with `/notes` or take ***an instant note*** with `/note <text>`. <br/>
+Usage: See the [plugin's readme](https://github.com/jamubc/toolbox/tree/main/plugins/instantnotes) for more details.
 
 ## Features
 

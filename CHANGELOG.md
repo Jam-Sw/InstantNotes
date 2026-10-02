@@ -17,8 +17,7 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `/note <text>` saves a note.
 
 ### Changed
-- MCP: rewriting a note takes 2 calls (`search_notes`, `update_note`), not 5.
-  `update_note` takes any `updatedAt` and returns the current note on conflict.
+- MCP: optimized rewriting a note, 3 less tool calls.
 
 ### Fixed
 - Search: punctuation inside a word (`CachyOS/Arch`) now splits the token
