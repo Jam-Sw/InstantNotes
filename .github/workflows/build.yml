@@ -28,7 +28,7 @@ jobs:
       # override the pin, building CI on a different compiler than local.
       # components must be listed explicitly: the action installs a minimal
       # profile, and the clippy/fmt steps below die without them.
-      - uses: dtolnay/rust-toolchain@1.120.0
+      - uses: dtolnay/rust-toolchain@1.91.1
         with:
           components: clippy, rustfmt
 

@@ -34,7 +34,7 @@ jobs:
 
       # Must match rust-toolchain.toml; @stable would export RUSTUP_TOOLCHAIN and
       # override the pin, building CI on a different compiler than local.
-      - uses: dtolnay/rust-toolchain@1.120.0
+      - uses: dtolnay/rust-toolchain@1.91.1
 
       - uses: swatinem/rust-cache@v2
         with:
