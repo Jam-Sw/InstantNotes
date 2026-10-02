@@ -128,9 +128,9 @@
         {@const act = agents.current}
         <button
           class="agent-line"
-          data-kind={act.kind}
-          title="An agent connected to InstantNotes. Settings > Agents controls what it may do."
-          onclick={() => act.noteIds.length === 1 && void library.select(act.noteIds[0])}
+          data-kind={act.status === "error" ? "error" : act.kind}
+          title="An agent is working in your library. Click for the full trace."
+          onclick={() => agents.openPanel()}
         >
           <span class="agent-dot" aria-hidden="true"></span>
           <span class="agent-text"
@@ -139,6 +139,21 @@
         </button>
       {/if}
     </div>
+    <!-- The trace. Present whenever agents may connect or ever have, so the
+         user always has one place to see and undo what they did. -->
+    {#if agents.access !== "off" || agents.recent.length > 0}
+      <button
+        class="nav-item agent-nav"
+        class:active={agents.panelOpen}
+        title="Everything agents have read or changed, with Revert"
+        onclick={() => agents.togglePanel()}
+      >
+        <span class="agent-nav-label">Agent activity</span>
+        {#if agents.unseen > 0}
+          <span class="badge" aria-label="{agents.unseen} new changes">{agents.unseen}</span>
+        {/if}
+      </button>
+    {/if}
     <!-- Open loops: capture-born notes never opened since. Hidden at zero
          (useful by default, invisible when there's nothing to do), but held
          visible while active so the row doesn't vanish mid burn-down. -->
@@ -341,6 +356,31 @@
   }
   .agent-line[data-kind="write"] .agent-dot {
     box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .agent-line[data-kind="error"] .agent-dot {
+    background: var(--danger);
+  }
+  .agent-nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .agent-nav-label {
+    flex: 1;
+    min-width: 0;
+  }
+  .badge {
+    flex: none;
+    min-width: 18px;
+    padding: 0 5px;
+    border-radius: 99px;
+    background: var(--accent);
+    color: var(--bg);
+    font-family: var(--font-meta);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 18px;
+    text-align: center;
   }
   @keyframes agent-line-in {
     from {

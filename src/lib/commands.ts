@@ -6,6 +6,7 @@
 import { library } from "$lib/stores/library.svelte";
 import { sidebar } from "$lib/stores/sidebar.svelte";
 import { theme } from "$lib/stores/theme.svelte";
+import { agents } from "$lib/stores/agents.svelte";
 import { contexting } from "$lib/stores/contexting.svelte";
 import { confirmConvertToWhiteboard } from "$lib/whiteboard/convert";
 import { exportTheme, importTheme } from "$lib/themes/share";
@@ -85,6 +86,13 @@ export function buildCommands(): Command[] {
       group: "View",
       shortcut: `${modKey}\\`,
       run: () => sidebar.toggle(),
+    },
+    {
+      id: "view.agents",
+      title: "Show agent activity",
+      group: "View",
+      shortcut: `${modKey}${shiftKey}A`,
+      run: () => agents.openPanel(),
     },
   ];
 

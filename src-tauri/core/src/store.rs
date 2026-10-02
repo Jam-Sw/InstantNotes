@@ -207,6 +207,34 @@ CREATE TRIGGER notes_vault_ad AFTER DELETE ON notes
     WHERE old.board_sha IS NOT NULL;
 END;
 "#,
+    // v7: the agent activity trace (API.md section 15). Every call an agent
+    // makes through the MCP server is one row; a write also carries `before`,
+    // the note as it was (fields, tags, Spaces) as JSON, so the app can put
+    // it back. Written by the MCP process, read by the app, which appends
+    // its own `revert` rows. Pruned to the newest ACTIVITY_KEEP rows.
+    r#"
+CREATE TABLE agent_activity (
+  seq              INTEGER PRIMARY KEY,
+  at               INTEGER NOT NULL,
+  session          TEXT NOT NULL,
+  client           TEXT NOT NULL,
+  tool             TEXT NOT NULL,
+  kind             TEXT NOT NULL,
+  status           TEXT NOT NULL,
+  error            TEXT,
+  duration_ms      INTEGER NOT NULL DEFAULT 0,
+  note_ids         TEXT NOT NULL DEFAULT '[]',
+  note_count       INTEGER NOT NULL DEFAULT 0,
+  titles           TEXT NOT NULL DEFAULT '[]',
+  space            TEXT,
+  tag              TEXT,
+  query            TEXT,
+  after_updated_at TEXT,
+  before           TEXT,
+  reverted_at      INTEGER,
+  reverts          INTEGER
+);
+"#,
 ];
 
 const NOTE_COLUMNS: &str = "id, title, body, created_at, updated_at, last_opened_at, \
@@ -570,6 +598,7 @@ impl Store {
     }
 }
 
+pub mod activity;
 mod attachments;
 mod graph;
 mod import;

@@ -12,7 +12,8 @@
 //! methods are few and stable, so this is written against `serde_json`
 //! directly rather than pulling in an async SDK and its runtime.
 
-use crate::tools::Tools;
+use crate::access::Access;
+use crate::tools::{Tools, NOTE_URI_PREFIX};
 use instantnotes_core::Store;
 use serde_json::{json, Map, Value};
 use std::io::{self, BufRead, Write};
@@ -37,7 +38,9 @@ const PARSE_ERROR: i64 = -32700;
 const INVALID_REQUEST: i64 = -32600;
 const METHOD_NOT_FOUND: i64 = -32601;
 const INVALID_PARAMS: i64 = -32602;
+const INTERNAL_ERROR: i64 = -32603;
 const UNSUPPORTED_PROTOCOL_VERSION: i64 = -32022;
+const RESOURCE_NOT_FOUND: i64 = -32002;
 
 const INSTRUCTIONS: &str = "You are connected to InstantNotes, the user's \
 personal notes app: a place to park thoughts fast and trust they come back. \
@@ -111,7 +114,26 @@ fn handle_line(tools: &mut Tools, line: &str) -> Option<Value> {
 
 /// One message to at most one reply. Notifications, and responses (this
 /// server sends no requests, so any response answers nothing), get none.
+///
+/// A panic inside a request (a bug in one tool, a corrupt row) is caught and
+/// answered as an internal error, so one bad call never takes the whole
+/// connection, and the agent's conversation, down with it.
 fn handle(tools: &mut Tools, message: Value) -> Option<Value> {
+    let id = message.get("id").cloned().unwrap_or(Value::Null);
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        handle_unguarded(tools, message)
+    })) {
+        Ok(reply) => reply,
+        Err(_) => match id {
+            Value::String(_) | Value::Number(_) => {
+                Some(error(id, INTERNAL_ERROR, "internal error"))
+            }
+            _ => None,
+        },
+    }
+}
+
+fn handle_unguarded(tools: &mut Tools, message: Value) -> Option<Value> {
     let Value::Object(msg) = message else {
         return Some(error(Value::Null, INVALID_REQUEST, "invalid request"));
     };
@@ -177,10 +199,37 @@ fn request(tools: &mut Tools, method: &str, params: &Value) -> Result<Value, Val
         "ping" => json!({}),
         "tools/list" => json!({ "tools": tools.list() }),
         "tools/call" => call(tools, params)?,
+        // Notes as resources, read-gated like the read tools. A client that
+        // prefers resources to tool calls (Claude Desktop's picker) gets
+        // the same notes the same way.
+        "resources/list" => {
+            Access::check(tools.store(), Access::Read).map_err(|m| error_object(INVALID_PARAMS, &m))?;
+            json!({ "resources": tools.resources().map_err(|m| error_object(INTERNAL_ERROR, &m))? })
+        }
+        "resources/templates/list" => json!({
+            "resourceTemplates": [{
+                "uriTemplate": format!("{NOTE_URI_PREFIX}{{id}}"),
+                "name": "note",
+                "title": "A note",
+                "description": "One note's Markdown, by the id search_notes or list_notes return.",
+                "mimeType": "text/markdown",
+            }]
+        }),
+        "resources/read" => {
+            Access::check(tools.store(), Access::Read).map_err(|m| error_object(INVALID_PARAMS, &m))?;
+            let uri = params
+                .get("uri")
+                .and_then(Value::as_str)
+                .ok_or_else(|| error_object(INVALID_PARAMS, "resources/read needs a uri"))?;
+            let contents = tools
+                .resource(uri)
+                .map_err(|m| error_object(RESOURCE_NOT_FOUND, &m))?;
+            json!({ "contents": [contents] })
+        }
         _ => return Err(error_object(METHOD_NOT_FOUND, "method not found")),
     };
     if modern {
-        if method == "tools/list" {
+        if method == "tools/list" || method == "resources/templates/list" {
             result["ttlMs"] = json!(CACHE_TTL_MS);
             result["cacheScope"] = json!("private");
         }
@@ -245,7 +294,8 @@ fn supported_versions() -> Vec<&'static str> {
 }
 
 fn capabilities() -> Value {
-    json!({ "tools": {} })
+    // Neither list changes while the process lives: no listChanged.
+    json!({ "tools": {}, "resources": {} })
 }
 
 fn server_info() -> Value {

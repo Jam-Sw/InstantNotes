@@ -1,6 +1,7 @@
 <script lang="ts">
   import { library, type StatusFilter } from "$lib/stores/library.svelte";
   import { agents } from "$lib/stores/agents.svelte";
+  import { clientLabel } from "$lib/agent-activity";
   import { formatDate, formatExact, preview } from "$lib/format";
   import { captureShortcut, modKey, shiftKey } from "$lib/platform";
   import { parseHighlightSegments } from "$lib/highlight";
@@ -114,6 +115,22 @@
       </button>
     </div>
   </div>
+  {#if agents.currentSearch}
+    {@const search = agents.currentSearch}
+    <!-- An agent just searched: show the words, where the user's own search
+         goes, so "searching" is something seen, not inferred. Click to run
+         the same search yourself. -->
+    <button
+      class="agent-search"
+      data-agent="search"
+      title="Run this search yourself"
+      onclick={() => library.setSearch(search.query ?? "")}
+    >
+      <span class="agent-search-who">{clientLabel(search.client)}</span>
+      searched for “{search.query}”
+      {#if search.noteCount > 0}<span class="agent-search-n">{search.noteCount} hit{search.noteCount === 1 ? "" : "s"}</span>{/if}
+    </button>
+  {/if}
   {#if library.activeWorkspaceId && !library.searchResults && library.workspaceTags.length > 0}
     <!-- Tags found on this space's notes; a chip filters within the space,
          unlike the sidebar's global tags which replace it. -->
@@ -485,5 +502,29 @@
   }
   .action.danger {
     color: var(--danger);
+  }
+  .agent-search {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin: 0 10px 6px;
+    padding: 5px 10px;
+    border-radius: var(--radius);
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-align: left;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .agent-search-who {
+    color: var(--accent-text);
+    font-weight: 600;
+  }
+  .agent-search-n {
+    margin-left: auto;
+    font-family: var(--font-meta);
+    font-size: 11px;
+    color: var(--text-tertiary);
   }
 </style>

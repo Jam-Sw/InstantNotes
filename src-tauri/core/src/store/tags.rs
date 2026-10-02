@@ -7,6 +7,22 @@ impl Store {
         tag_get_or_create(&self.conn, name)
     }
 
+    /// The tag with this (normalized) name, if any. One indexed lookup: for
+    /// a caller that only needs an id, cheaper than listing every tag.
+    pub fn find_tag(&self, raw_name: &str) -> Result<Option<Tag>> {
+        let Some(name) = domain::normalize_tag_name(raw_name) else {
+            return Ok(None);
+        };
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT id, name, color, created_at, updated_at FROM tags WHERE name = ?1",
+                params![name],
+                row_to_tag,
+            )
+            .optional()?)
+    }
+
     pub fn list_tags(&self) -> Result<Vec<TagWithCount>> {
         let mut stmt = self.conn.prepare(
             "SELECT t.id, t.name, t.color, t.created_at, t.updated_at, \

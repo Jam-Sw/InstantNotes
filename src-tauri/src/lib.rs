@@ -497,7 +497,11 @@ pub fn run() {
             set_sticky_level,
             set_sticky_collapsed,
             save_sticky_geometry,
-            agent_connection
+            agent_connection,
+            list_agent_activity,
+            agent_activity_before,
+            revert_agent_activity,
+            clear_agent_activity
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

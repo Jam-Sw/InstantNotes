@@ -1,16 +1,20 @@
 <script lang="ts">
-  // Settings > Agents: whether agents may connect, what they may do, how to
-  // connect one, and what they have done. The live view of an agent at work
-  // is not here; it is on the notes themselves (see agents.svelte.ts).
+  // Settings > Agents: whether agents may connect, what they may do, how
+  // you hear about it, how to connect one, and a glance at what they have
+  // done. The live view of an agent at work is on the notes themselves
+  // (agents.svelte.ts); the full trace, with Revert, is the activity panel.
   import { onMount } from "svelte";
   import { agents } from "$lib/stores/agents.svelte";
   import {
     claudeCodeCommand,
     clientLabel,
+    codexCommand,
     describeActivity,
+    kindLabel,
     mcpServersJson,
     timeAgo,
     type AgentAccess,
+    type AgentNotify,
   } from "$lib/agent-activity";
   import { toasts } from "$lib/stores/toasts.svelte";
   import SegmentedRow from "$lib/components/settings/SegmentedRow.svelte";
@@ -25,10 +29,29 @@
     off: "No agent can see your notes.",
     read: "Agents can search and read notes, tags, and Spaces. They cannot change anything.",
     write:
-      "Agents can also write, tag, file, and trash notes. Nothing is ever deleted for good, and every change shows on the note as it happens.",
+      "Agents can also write, tag, file, and trash notes. Nothing is ever deleted for good, every change is traced, and each one can be reverted.",
   };
 
+  const NOTIFY_OPTIONS: { value: AgentNotify; label: string }[] = [
+    { value: "writes", label: "Changes" },
+    { value: "all", label: "Everything" },
+    { value: "off", label: "Off" },
+  ];
+
+  const NOTIFY_SUB: Record<AgentNotify, string> = {
+    writes: "A toast for every change an agent makes, with Revert on it. Reads stay quiet.",
+    all: "A toast for every call, reads and searches included.",
+    off: "No toasts. The live marks on your notes and the activity panel still show everything.",
+  };
+
+  type Client = "claude" | "codex" | "json";
+  let client = $state<Client>("claude");
   let now = $state(Date.now());
+
+  const RECENT_SHOWN = 8;
+  const recent = $derived(agents.recent.slice(0, RECENT_SHOWN));
+  const writes = $derived(agents.recent.filter((e) => e.kind === "write" && e.status === "ok").length);
+  const errors = $derived(agents.recent.filter((e) => e.status === "error").length);
 
   onMount(() => {
     void agents.loadConnection();
@@ -36,10 +59,24 @@
     return () => clearInterval(tick);
   });
 
-  async function copy(text: string, what: string) {
+  function snippet(): string {
+    const conn = agents.connection;
+    if (!conn) return "";
+    if (client === "claude") return claudeCodeCommand(conn);
+    if (client === "codex") return codexCommand(conn);
+    return mcpServersJson(conn);
+  }
+
+  const SNIPPET_HINT: Record<Client, string> = {
+    claude: "Run once in a terminal. Then ask Claude Code about your notes.",
+    codex: "Run once in a terminal.",
+    json: "Add to the app's MCP settings (Claude Desktop, Cursor, Zed, Windsurf).",
+  };
+
+  async function copy(text: string) {
     try {
       await navigator.clipboard.writeText(text);
-      toasts.show(`Copied the ${what}.`);
+      toasts.show("Copied.");
     } catch {
       toasts.show("Couldn't copy. Select the text and copy it instead.");
     }
@@ -51,8 +88,8 @@
   <p class="section-hint">
     Connect Claude Code, Codex, Cursor, or any agent that speaks the Model
     Context Protocol. It works through the same search and the same rules you
-    do, and whatever it reads or changes lights up in your library while it
-    does it.
+    do. Whatever it reads or changes lights up in your library as it happens,
+    and every change can be reverted.
   </p>
 
   <SegmentedRow
@@ -62,49 +99,72 @@
     value={agents.access}
     onchange={(v) => agents.setAccess(v)}
   />
+  <SegmentedRow
+    label="Notify me about"
+    sub={NOTIFY_SUB[agents.notify]}
+    options={NOTIFY_OPTIONS}
+    value={agents.notify}
+    onchange={(v) => agents.setNotify(v)}
+  />
 
   <span class="group-label">Connect an agent</span>
   {#if agents.connection}
-    {@const conn = agents.connection}
     <div class="connect">
-      <div class="connect-head">
-        <span>Claude Code: run once in a terminal</span>
-        <button class="card-btn" onclick={() => copy(claudeCodeCommand(conn), "command")}>
-          Copy
-        </button>
+      <div class="tabs" role="tablist" aria-label="Agent">
+        <button role="tab" aria-selected={client === "claude"} onclick={() => (client = "claude")}>Claude Code</button>
+        <button role="tab" aria-selected={client === "codex"} onclick={() => (client = "codex")}>Codex</button>
+        <button role="tab" aria-selected={client === "json"} onclick={() => (client = "json")}>Other apps</button>
       </div>
-      <pre class="code">{claudeCodeCommand(conn)}</pre>
       <div class="connect-head">
-        <span>Other apps: add to their MCP settings</span>
-        <button class="card-btn" onclick={() => copy(mcpServersJson(conn), "settings")}>
-          Copy
-        </button>
+        <span>{SNIPPET_HINT[client]}</span>
+        <button class="card-btn" onclick={() => copy(snippet())}>Copy</button>
       </div>
-      <pre class="code">{mcpServersJson(conn)}</pre>
+      <pre class="code">{snippet()}</pre>
     </div>
     <p class="fine-print">
       The agent runs InstantNotes itself in the background to reach your notes,
       so it works whether or not this window is open. Access applies to every
-      agent, and turning it off takes effect on their next request.
+      agent, and turning it off takes effect on their next request. Besides
+      tools, notes are offered as <code>instantnotes://notes/&lt;id&gt;</code>
+      resources for apps that browse them.
     </p>
   {:else}
     <p class="fine-print">Finding this app's location…</p>
   {/if}
 
-  <span class="group-label">Recent activity</span>
-  {#if agents.recent.length === 0}
-    <p class="fine-print">No agent has connected yet.</p>
-  {:else}
-    <ul class="activity" aria-label="Recent agent activity">
-      {#each agents.recent as entry, i (`${entry.at}-${i}`)}
-        <li data-kind={entry.kind}>
-          <span class="who">{clientLabel(entry.client)}</span>
-          <span class="what">{describeActivity(entry)}</span>
-          <span class="when">{timeAgo(entry.at, now)}</span>
-        </li>
-      {/each}
-    </ul>
-  {/if}
+  <span class="group-label">Activity</span>
+  <div class="activity-card">
+    <div class="activity-stats">
+      <div class="stat">
+        <span class="stat-num">{agents.recent.length}</span>
+        <span class="stat-label">calls</span>
+      </div>
+      <div class="stat">
+        <span class="stat-num">{writes}</span>
+        <span class="stat-label">changes</span>
+      </div>
+      <div class="stat">
+        <span class="stat-num" class:bad={errors > 0}>{errors}</span>
+        <span class="stat-label">failed</span>
+      </div>
+      <button class="card-btn open-trace" onclick={() => agents.openPanel()}>
+        Open the full trace
+      </button>
+    </div>
+    {#if recent.length === 0}
+      <p class="fine-print">No agent has connected yet.</p>
+    {:else}
+      <ul class="activity" aria-label="Recent agent activity">
+        {#each recent as entry (entry.seq)}
+          <li data-kind={entry.status === "error" ? "error" : kindLabel(entry)} class:reverted={entry.revertedAt !== null}>
+            <span class="who">{clientLabel(entry.client)}</span>
+            <span class="what">{describeActivity(entry)}</span>
+            <span class="when">{timeAgo(entry.at, now)}</span>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+  </div>
 </div>
 
 <style>
@@ -132,23 +192,44 @@
     color: var(--text-tertiary);
     font-family: var(--font-meta);
   }
-  .connect {
+  .connect,
+  .activity-card {
     background: var(--bg-sidebar);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 10px 14px 12px;
+  }
+  .tabs {
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    width: max-content;
+    background: var(--bg);
+  }
+  .tabs button {
+    padding: 3px 10px;
+    border-radius: calc(var(--radius) - 2px);
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .tabs button[aria-selected="true"] {
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    font-weight: 500;
   }
   .connect-head {
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: 12px;
-    margin-top: 6px;
+    margin-top: 10px;
     font-size: 12.5px;
     color: var(--text-secondary);
   }
   .code {
-    margin: 6px 0 4px;
+    margin: 6px 0 2px;
     padding: 8px 10px;
     background: var(--bg);
     border: 1px solid var(--border);
@@ -167,6 +248,7 @@
     border-radius: var(--radius);
     color: var(--accent);
     font-size: 12.5px;
+    white-space: nowrap;
   }
   .card-btn:hover {
     background: var(--bg-hover);
@@ -177,14 +259,47 @@
     font-size: 12px;
     line-height: 1.5;
   }
+  .fine-print code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+  .activity-stats {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin-bottom: 10px;
+  }
+  .stat {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+  }
+  .stat-num {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+    font-family: var(--font-ui);
+  }
+  .stat-num.bad {
+    color: var(--danger);
+  }
+  .stat-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-tertiary);
+    font-family: var(--font-meta);
+  }
+  .open-trace {
+    margin-left: auto;
+  }
   .activity {
     list-style: none;
     margin: 0;
     padding: 0;
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    max-height: 260px;
-    overflow-y: auto;
+    background: var(--bg);
   }
   .activity li {
     display: grid;
@@ -209,8 +324,16 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .activity li[data-kind="read"] .what {
+  .activity li[data-kind="read"] .what,
+  .activity li[data-kind="search"] .what {
     color: var(--text-secondary);
+  }
+  .activity li[data-kind="error"] .what {
+    color: var(--danger);
+  }
+  .activity li.reverted .what {
+    text-decoration: line-through;
+    color: var(--text-tertiary);
   }
   .when {
     color: var(--text-tertiary);

@@ -19,6 +19,7 @@
   import SettingsView from "$lib/components/SettingsView.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import Toast from "$lib/components/Toast.svelte";
+  import AgentActivityPanel from "$lib/components/AgentActivityPanel.svelte";
   import { library } from "$lib/stores/library.svelte";
   import { updater } from "$lib/stores/updater.svelte";
   import { editorPrefs } from "$lib/stores/editor.svelte";
@@ -176,6 +177,12 @@
     if (mod && e.key === "k") {
       e.preventDefault();
       paletteOpen = !paletteOpen;
+      return;
+    }
+    // ⌘⇧A opens the agent trace from anywhere.
+    if (mod && e.shiftKey && (e.key === "a" || e.key === "A")) {
+      e.preventDefault();
+      agents.togglePanel();
       return;
     }
     // ⌘\ toggles the sidebar from anywhere, including input fields and boards.
@@ -393,6 +400,7 @@
 
 <CommandPalette bind:open={paletteOpen} />
 <ConfirmDialog />
+<AgentActivityPanel />
 <Toast />
 
 <style>

@@ -30,6 +30,8 @@ vi.mock("$lib/api/client", () => ({
   submitFeedback: vi.fn().mockResolvedValue(undefined),
   openFeedbackLog: vi.fn().mockResolvedValue(undefined),
   openUrl: vi.fn().mockResolvedValue(undefined),
+  getAgentConnection: vi.fn().mockResolvedValue(null),
+  listAgentActivity: vi.fn().mockResolvedValue([]),
 }));
 
 afterEach(cleanup);

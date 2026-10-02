@@ -43,6 +43,9 @@ vi.mock("$lib/api/client", () => {
     getSetting: vi.fn(),
     setSetting: vi.fn(),
     getAgentConnection: vi.fn(),
+    listAgentActivity: vi.fn(async () => []),
+    revertAgentActivity: vi.fn(),
+    clearAgentActivity: vi.fn(),
   };
 });
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
@@ -69,17 +72,27 @@ const mkNote = (id: string, over: Partial<Note> = {}): Note => ({
   ...over,
 });
 
+let seq = 0;
 const write = (noteId: string): AgentActivity => ({
+  seq: ++seq,
   at: 1,
+  session: "s1",
   client: "claude-code",
   tool: "append_to_note",
   kind: "write",
+  status: "ok",
+  error: null,
+  durationMs: 1,
   noteIds: [noteId],
   noteCount: 1,
   titles: ["Plan"],
   space: null,
   tag: null,
   query: null,
+  afterUpdatedAt: null,
+  revertable: true,
+  revertedAt: null,
+  reverts: null,
 });
 
 /** Load a fresh store, run init, and hand back the external-change listener. */

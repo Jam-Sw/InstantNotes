@@ -22,6 +22,8 @@
 //! Invariants:
 //! - stdout carries protocol messages only; stderr carries nothing that
 //!   includes note content (openspec/project.md: content never in logs).
+//! - Every call is traced in the library's `agent_activity` table, writes
+//!   with the note as it was, so the app can show and revert them.
 //! - Access is off until the user turns it on in Settings > Agents, and is
 //!   re-read on every call, so turning it off applies immediately.
 //! - The store is opened with `Store::open`, never `open_or_recover`: an agent
@@ -33,7 +35,6 @@ mod protocol;
 mod tools;
 
 pub use access::{Access, ACCESS_KEY};
-pub use activity::ACTIVITY_KEY;
 pub use protocol::serve;
 
 use instantnotes_core::{AppError, Store};

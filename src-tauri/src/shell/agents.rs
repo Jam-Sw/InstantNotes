@@ -6,21 +6,24 @@
 //!
 //! - the library re-queries, and the vault mirror flushes what changed, as
 //!   after any write of the app's own;
-//! - the new entries of the agent activity log go to the webview as
-//!   `library:external-change`, which draws them on the notes themselves.
+//! - the new rows of the agent activity trace (`agent_activity`, core
+//!   `store/activity.rs`) go to the webview as `library:external-change`,
+//!   which draws them on the notes themselves and in the activity panel.
 //!
-//! An agent's read changes no note, but the server records every call in
-//! the activity log, and that write is what makes a read visible here too.
+//! An agent's read changes no note, but the server traces every call, and
+//! that row is what makes a read visible here too. The watcher's cursor is
+//! the newest `seq` it has announced: one indexed lookup per poll.
 
 use crate::*;
-use instantnotes_agents::ACTIVITY_KEY;
-use serde_json::Value;
+use instantnotes_core::store::activity::{AgentActivity, NoteSnapshot};
 use std::path::PathBuf;
 use std::time::Duration;
 
 /// How often `data_version` is read: a lock and one pragma, well under a
 /// millisecond, and quick enough for a highlight to feel live.
 const POLL: Duration = Duration::from_millis(400);
+/// Rows announced per poll at most; a burst past this is caught up next poll.
+const BATCH: i64 = 200;
 
 /// What Settings > Agents needs to print a working connect command.
 pub(crate) struct AgentBridge {
@@ -40,17 +43,24 @@ pub struct AgentConnection {
 pub(crate) fn start_agent_watcher(app: &AppHandle, db_path: PathBuf) -> AgentBridge {
     let handle = app.clone();
     std::thread::spawn(move || {
-        let mut last = Seen::default();
-        let mut first = true;
+        let mut last_version: Option<i64> = None;
+        let mut last_seq: i64 = 0;
         loop {
-            if let Some(now) = read_state(&handle) {
-                if first {
+            if let Some((version, newest)) = read_state(&handle) {
+                match last_version {
                     // History from before launch is not news.
-                    first = false;
-                } else if now.version != last.version {
-                    announce(&handle, &now, last.newest_at);
+                    None => last_seq = newest,
+                    Some(v) if v != version => {
+                        if let Some(fresh) = fresh_rows(&handle, last_seq) {
+                            if let Some(e) = fresh.last() {
+                                last_seq = e.seq;
+                            }
+                            announce(&handle, fresh);
+                        }
+                    }
+                    _ => {}
                 }
-                last = now;
+                last_version = Some(version);
             }
             std::thread::sleep(POLL);
         }
@@ -58,37 +68,22 @@ pub(crate) fn start_agent_watcher(app: &AppHandle, db_path: PathBuf) -> AgentBri
     AgentBridge { db_path }
 }
 
-#[derive(Default)]
-struct Seen {
-    version: i64,
-    /// `at` of the newest activity entry seen, so each is announced once.
-    newest_at: u64,
-    log: Vec<Value>,
-}
-
-fn read_state(app: &AppHandle) -> Option<Seen> {
+fn read_state(app: &AppHandle) -> Option<(i64, i64)> {
     let state = app.try_state::<AppState>()?;
     let store = state.store.lock().ok()?;
     let version = store.data_version().ok()?;
-    let log = match store.get_setting(ACTIVITY_KEY) {
-        Ok(Some(Value::Array(log))) => log,
-        _ => Vec::new(),
-    };
-    let newest_at = log.first().map(entry_at).unwrap_or_default();
-    Some(Seen {
-        version,
-        newest_at,
-        log,
-    })
+    let newest = store.latest_activity_seq().ok()?;
+    Some((version, newest))
 }
 
-fn entry_at(entry: &Value) -> u64 {
-    entry.get("at").and_then(Value::as_u64).unwrap_or_default()
+fn fresh_rows(app: &AppHandle, after_seq: i64) -> Option<Vec<AgentActivity>> {
+    let state = app.try_state::<AppState>()?;
+    let store = state.store.lock().ok()?;
+    store.activity_since(after_seq, BATCH).ok()
 }
 
-fn announce(app: &AppHandle, now: &Seen, seen_at: u64) {
-    let (fresh, wrote) = news(&now.log, seen_at);
-    if wrote {
+fn announce(app: &AppHandle, fresh: Vec<AgentActivity>) {
+    if library_changed(&fresh) {
         emit_notes_changed(app);
         emit_tags_changed(app);
         emit_workspaces_changed(app);
@@ -96,20 +91,12 @@ fn announce(app: &AppHandle, now: &Seen, seen_at: u64) {
     let _ = app.emit(events::LIBRARY_EXTERNAL_CHANGE, fresh);
 }
 
-/// What a move of `data_version` means, given the activity log (newest
-/// first) and the newest entry already announced: the entries not yet
-/// announced, oldest first so the webview plays them in order, and whether
-/// the library itself changed. Only reads since the last look change no
-/// note, so nothing needs re-querying; a move with no new entry at all is a
-/// write from elsewhere (a second copy of the app), and does.
-fn news(log: &[Value], seen_at: u64) -> (Vec<&Value>, bool) {
-    let mut fresh: Vec<&Value> = log.iter().take_while(|e| entry_at(e) > seen_at).collect();
-    fresh.reverse();
-    let wrote = fresh.is_empty()
-        || fresh
-            .iter()
-            .any(|e| e.get("kind").and_then(Value::as_str) == Some("write"));
-    (fresh, wrote)
+/// Whether a move of `data_version` changed the library itself, given the
+/// rows not yet announced. Reads and searches change no note, so nothing
+/// needs re-querying; a move with no new row at all is a write from
+/// elsewhere (a second copy of the app), and does.
+fn library_changed(fresh: &[AgentActivity]) -> bool {
+    fresh.is_empty() || fresh.iter().any(|e| e.kind == "write" && e.status == "ok")
 }
 
 /// The executable and library an agent should be pointed at.
@@ -129,47 +116,104 @@ pub fn agent_connection(
     })
 }
 
+/// The trace, newest first.
+#[tauri::command(async)]
+pub fn list_agent_activity(
+    state: State<'_, AppState>,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> CmdResult<Vec<AgentActivity>> {
+    Ok(locked(&state)?.list_activity(limit.unwrap_or(200), offset.unwrap_or(0))?)
+}
+
+/// The note as it was before a write, for a preview of what reverting it
+/// restores; `null` for a create.
+#[tauri::command(async)]
+pub fn agent_activity_before(
+    state: State<'_, AppState>,
+    seq: i64,
+) -> CmdResult<Option<NoteSnapshot>> {
+    Ok(locked(&state)?.activity_before(seq)?)
+}
+
+/// Undo one agent write. The revert is itself a traced write, so the trace
+/// shows it and it can be reverted in turn. Returns the revert row.
+#[tauri::command(async)]
+pub fn revert_agent_activity(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    seq: i64,
+) -> CmdResult<AgentActivity> {
+    let row = {
+        let mut store = locked(&state)?;
+        let new_seq = store.revert_activity(seq)?;
+        store
+            .activity_since(new_seq - 1, 1)?
+            .into_iter()
+            .next()
+            .ok_or_else(|| CmdError::storage("the revert left no trace"))?
+    };
+    emit_notes_changed(&app);
+    emit_tags_changed(&app);
+    emit_workspaces_changed(&app);
+    // The app's own write: the watcher does not see it (same connection), so
+    // tell the webview directly, the way an agent's row would arrive.
+    let _ = app.emit(events::LIBRARY_EXTERNAL_CHANGE, vec![row.clone()]);
+    Ok(row)
+}
+
+/// Forget the trace. Notes are untouched.
+#[tauri::command(async)]
+pub fn clear_agent_activity(state: State<'_, AppState>) -> CmdResult<()> {
+    Ok(locked(&state)?.clear_activity()?)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::news;
-    use serde_json::{json, Value};
+    use super::library_changed;
+    use instantnotes_core::store::activity::AgentActivity;
 
-    fn entry(at: u64, kind: &str) -> Value {
-        json!({ "at": at, "kind": kind })
-    }
-
-    fn ats(entries: &[&Value]) -> Vec<u64> {
-        entries.iter().map(|e| e["at"].as_u64().unwrap()).collect()
-    }
-
-    #[test]
-    fn new_entries_come_oldest_first_and_each_only_once() {
-        let log = [entry(30, "read"), entry(20, "read"), entry(10, "read")];
-        let (fresh, _) = news(&log, 10);
-        assert_eq!(ats(&fresh), [20, 30]);
-        let (fresh, _) = news(&log, 30);
-        assert!(fresh.is_empty(), "already announced");
-    }
-
-    #[test]
-    fn reads_alone_do_not_requery_the_library() {
-        let log = [entry(2, "read"), entry(1, "read")];
-        assert!(!news(&log, 0).1);
-    }
-
-    #[test]
-    fn any_write_requeries_the_library() {
-        let log = [entry(3, "read"), entry(2, "write"), entry(1, "read")];
-        assert!(news(&log, 1).1);
-        // The write was already announced; the new read alone changes nothing.
-        assert!(!news(&log, 2).1);
+    fn entry(seq: i64, kind: &str, status: &str) -> AgentActivity {
+        AgentActivity {
+            seq,
+            at: seq,
+            session: "s".into(),
+            client: "c".into(),
+            tool: "t".into(),
+            kind: kind.into(),
+            status: status.into(),
+            error: None,
+            duration_ms: 0,
+            note_ids: vec![],
+            note_count: 0,
+            titles: vec![],
+            space: None,
+            tag: None,
+            query: None,
+            after_updated_at: None,
+            revertable: false,
+            reverted_at: None,
+            reverts: None,
+        }
     }
 
     #[test]
-    fn a_change_no_agent_logged_is_a_write_from_elsewhere() {
-        let log = [entry(5, "read")];
-        let (fresh, wrote) = news(&log, 5);
-        assert!(fresh.is_empty());
-        assert!(wrote, "a second copy of the app wrote; re-query");
+    fn reads_and_searches_alone_do_not_requery_the_library() {
+        assert!(!library_changed(&[entry(1, "read", "ok"), entry(2, "search", "ok")]));
+    }
+
+    #[test]
+    fn a_successful_write_requeries_the_library() {
+        assert!(library_changed(&[entry(1, "read", "ok"), entry(2, "write", "ok")]));
+    }
+
+    #[test]
+    fn a_failed_write_changed_nothing() {
+        assert!(!library_changed(&[entry(1, "write", "error")]));
+    }
+
+    #[test]
+    fn a_change_no_agent_traced_is_a_write_from_elsewhere() {
+        assert!(library_changed(&[]), "a second copy of the app wrote; re-query");
     }
 }

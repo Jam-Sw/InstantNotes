@@ -1,7 +1,8 @@
 //! The MCP server driven the way a client drives it: JSON-RPC lines in,
 //! JSON-RPC lines out, against a real store.
 
-use instantnotes_agents::{serve, ACCESS_KEY, ACTIVITY_KEY};
+use instantnotes_agents::{serve, ACCESS_KEY};
+use instantnotes_core::store::activity::AgentActivity;
 use instantnotes_core::types::CreateNoteInput;
 use instantnotes_core::Store;
 use serde_json::{json, Value};
@@ -55,6 +56,11 @@ fn result_of(reply: &Value) -> (bool, String, Value) {
     (result["isError"].as_bool().unwrap(), text, parsed)
 }
 
+/// The trace, newest first.
+fn trace(store: &Store) -> Vec<AgentActivity> {
+    store.list_activity(100, 0).unwrap()
+}
+
 fn store_with(access: &str) -> Store {
     let mut store = Store::open_in_memory().unwrap();
     store.set_setting(ACCESS_KEY, json!(access)).unwrap();
@@ -87,7 +93,7 @@ fn unknown_version_gets_the_newest_and_unknown_method_an_error() {
         &[
             json!({ "jsonrpc": "2.0", "id": 0, "method": "initialize",
                     "params": { "protocolVersion": "1999-01-01" } }),
-            json!({ "jsonrpc": "2.0", "id": 1, "method": "resources/list" }),
+            json!({ "jsonrpc": "2.0", "id": 1, "method": "prompts/list" }),
             json!("not an object"),
         ],
     );
@@ -191,8 +197,7 @@ fn modern_clients_need_no_handshake() {
     assert_eq!(read["title"], "Roadmap");
     assert_eq!(replies[2]["result"]["resultType"], "complete");
     // Who is acting comes from the request itself, not a handshake.
-    let log = store.get_setting(ACTIVITY_KEY).unwrap().unwrap();
-    assert_eq!(log[0]["client"], "codex");
+    assert_eq!(trace(&store)[0].client, "codex");
 }
 
 #[test]
@@ -307,7 +312,7 @@ fn access_off_refuses_everything_and_leaves_no_trace() {
     let (is_error, text, _) = result_of(&replies[1]);
     assert!(is_error);
     assert!(text.contains("Settings > Agents"));
-    assert_eq!(store.get_setting(ACTIVITY_KEY).unwrap(), None);
+    assert!(trace(&store).is_empty());
 }
 
 #[test]
@@ -479,7 +484,7 @@ fn revisit_lists_only_fresh_captures_once_they_are_old_enough() {
 }
 
 #[test]
-fn every_successful_call_is_recorded_for_the_app_newest_first() {
+fn every_call_is_traced_for_the_app_newest_first_failures_included() {
     let mut store = store_with("read");
     let note = store
         .create_note(CreateNoteInput {
@@ -492,19 +497,149 @@ fn every_successful_call_is_recorded_for_the_app_newest_first() {
         &[
             init(),
             call(1, "list_notes", json!({})),
-            call(2, "get_note", json!({ "id": note.id })),
-            call(3, "get_note", json!({ "id": "missing" })),
+            call(2, "search_notes", json!({ "query": "road" })),
+            call(3, "get_note", json!({ "id": note.id })),
+            call(4, "get_note", json!({ "id": "missing" })),
         ],
     );
-    let log = store.get_setting(ACTIVITY_KEY).unwrap().unwrap();
-    let log = log.as_array().unwrap();
-    assert_eq!(log.len(), 2, "the failed call is not recorded");
-    assert_eq!(log[0]["tool"], "get_note");
-    assert_eq!(log[0]["client"], "claude-code");
-    assert_eq!(log[0]["kind"], "read");
-    assert_eq!(log[0]["noteIds"], json!([note.id]));
-    assert_eq!(log[0]["titles"], json!(["Roadmap"]));
-    assert_eq!(log[1]["tool"], "list_notes");
+    let log = trace(&store);
+    assert_eq!(log.len(), 4, "every call, the failed one too");
+    assert_eq!(log[0].tool, "get_note");
+    assert_eq!(log[0].status, "error");
+    assert!(log[0].error.as_deref().unwrap().contains("NOT_FOUND"));
+    assert_eq!(log[0].note_ids, vec!["missing".to_string()]);
+    assert!(!log[0].revertable);
+    assert_eq!(log[1].tool, "get_note");
+    assert_eq!(log[1].client, "claude-code");
+    assert_eq!(log[1].kind, "read");
+    assert_eq!(log[1].status, "ok");
+    assert_eq!(log[1].note_ids, vec![note.id.clone()]);
+    assert_eq!(log[1].titles, vec!["Roadmap".to_string()]);
+    assert_eq!(log[2].tool, "search_notes");
+    assert_eq!(log[2].kind, "search");
+    assert_eq!(log[2].query.as_deref(), Some("road"));
+    assert_eq!(log[3].tool, "list_notes");
+    // One process, one session: every row shares it.
+    assert!(log.iter().all(|e| e.session == log[0].session));
+    assert!(!log[0].session.is_empty());
+}
+
+#[test]
+fn a_write_keeps_the_note_as_it_was_and_the_app_can_revert_it() {
+    let mut store = store_with("write");
+    let note = store
+        .create_note(CreateNoteInput {
+            body: Some("Plan
+- one #work".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(1, "append_to_note", json!({ "id": note.id, "text": "- two" })),
+            call(2, "untag_note", json!({ "id": note.id, "tag": "work" })),
+            call(3, "create_note", json!({ "body": "Fresh" })),
+        ],
+    );
+    for r in &replies[1..] {
+        assert!(!result_of(r).0, "{r}");
+    }
+    let (_, _, created) = result_of(&replies[3]);
+    let created_id = created["id"].as_str().unwrap().to_string();
+
+    let log = trace(&store);
+    assert_eq!(log.len(), 3);
+    assert!(log.iter().all(|e| e.kind == "write" && e.revertable));
+    let appended = log.iter().find(|e| e.tool == "append_to_note").unwrap();
+    // The untag came after, so the note has moved on since the append.
+    assert!(appended.after_updated_at.is_some());
+    let untagged = log.iter().find(|e| e.tool == "untag_note").unwrap();
+    assert_eq!(
+        untagged.after_updated_at.as_deref(),
+        Some(store.get_note(&note.id, false).unwrap().updated_at.as_str()),
+        "after_updated_at is the note's updatedAt once the write landed"
+    );
+    let before = store.activity_before(appended.seq).unwrap().unwrap();
+    assert_eq!(before.body, "Plan
+- one #work");
+    assert_eq!(before.tags, vec![("work".to_string(), "inline".to_string())]);
+
+    // Revert the untag: the tag comes back with its original source.
+    let untag = log.iter().find(|e| e.tool == "untag_note").unwrap();
+    store.revert_activity(untag.seq).unwrap();
+    let tags = store.tags_for_note(&note.id).unwrap();
+    assert_eq!(tags.len(), 1);
+    assert_eq!(tags[0].name, "work");
+    // Then the append: the body is as it was, and the tag survives.
+    store.revert_activity(appended.seq).unwrap();
+    assert_eq!(store.get_note(&note.id, false).unwrap().body, "Plan
+- one #work");
+    // A create is reverted by trashing, never deleting.
+    let create = log.iter().find(|e| e.tool == "create_note").unwrap();
+    assert!(store.activity_before(create.seq).unwrap().is_none());
+    store.revert_activity(create.seq).unwrap();
+    assert!(store.get_note(&created_id, false).unwrap().is_deleted);
+    // Twice is refused.
+    assert!(store.revert_activity(create.seq).is_err());
+
+    // Each revert is itself a traced, revertable write, so it can be undone.
+    let log = trace(&store);
+    let reverts: Vec<&AgentActivity> = log.iter().filter(|e| e.tool == "revert").collect();
+    assert_eq!(reverts.len(), 3);
+    assert!(reverts.iter().all(|e| e.client == "instantnotes" && e.revertable));
+    assert_eq!(reverts[0].reverts, Some(create.seq));
+    store.revert_activity(reverts[0].seq).unwrap();
+    assert!(!store.get_note(&created_id, false).unwrap().is_deleted);
+    // The reverted rows say so.
+    assert!(log.iter().find(|e| e.seq == create.seq).unwrap().reverted_at.is_some());
+}
+
+#[test]
+fn notes_are_also_resources_behind_the_same_access_gate() {
+    let mut store = store_with("off");
+    let note = store
+        .create_note(CreateNoteInput {
+            body: Some("Roadmap
+Q4".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            json!({ "jsonrpc": "2.0", "id": 1, "method": "resources/list" }),
+        ],
+    );
+    assert!(replies[0]["result"]["capabilities"]["resources"].is_object());
+    assert_eq!(replies[1]["error"]["code"], -32602, "off: refused");
+
+    store.set_setting(ACCESS_KEY, json!("read")).unwrap();
+    let uri = format!("instantnotes://notes/{}", note.id);
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            json!({ "jsonrpc": "2.0", "id": 1, "method": "resources/list" }),
+            json!({ "jsonrpc": "2.0", "id": 2, "method": "resources/templates/list" }),
+            json!({ "jsonrpc": "2.0", "id": 3, "method": "resources/read", "params": { "uri": uri } }),
+            json!({ "jsonrpc": "2.0", "id": 4, "method": "resources/read",
+                    "params": { "uri": "instantnotes://notes/nope" } }),
+        ],
+    );
+    let listed = replies[1]["result"]["resources"].as_array().unwrap();
+    assert_eq!(listed[0]["uri"], json!(uri));
+    assert_eq!(listed[0]["title"], "Roadmap");
+    assert_eq!(listed[0]["mimeType"], "text/markdown");
+    let templates = replies[2]["result"]["resourceTemplates"].as_array().unwrap();
+    assert_eq!(templates[0]["uriTemplate"], "instantnotes://notes/{id}");
+    let contents = &replies[3]["result"]["contents"][0];
+    assert_eq!(contents["text"], "Roadmap
+Q4");
+    assert_eq!(contents["uri"], json!(uri));
+    assert_eq!(replies[4]["error"]["code"], -32002);
 }
 
 #[test]

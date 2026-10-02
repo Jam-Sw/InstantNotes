@@ -9,7 +9,7 @@
 //! the vault, and whiteboard canvases.
 
 use crate::access::Access;
-use crate::activity::{self, Scope};
+use crate::activity::{Kind, Scope, Trace};
 use crate::fail;
 use instantnotes_core::domain::{normalize_tag_name, normalize_workspace_name};
 use instantnotes_core::types::{
@@ -20,6 +20,11 @@ use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::path::PathBuf;
+
+/// How many notes `resources/list` offers: the recent ones, as an index.
+const RESOURCE_LIST: i64 = 50;
+/// The URI scheme a note is read under.
+pub(crate) const NOTE_URI_PREFIX: &str = "instantnotes://notes/";
 
 const SNIPPET_CHARS: usize = 160;
 const DEFAULT_LIMIT: i64 = 50;
@@ -38,6 +43,9 @@ pub(crate) struct Tools<'a> {
     /// `clientInfo.name` from `initialize`, shown to the user as who is
     /// acting ("claude-code", "cursor").
     client: String,
+    /// This process, in the trace: one agent conversation's calls group
+    /// under it.
+    session: String,
 }
 
 struct ToolDef {
@@ -245,7 +253,12 @@ impl<'a> Tools<'a> {
             store,
             attachments_dir,
             client: "agent".into(),
+            session: session_id(),
         }
+    }
+
+    pub(crate) fn store(&self) -> &Store {
+        self.store
     }
 
     pub(crate) fn set_client(&mut self, name: &str) {
@@ -289,12 +302,18 @@ impl<'a> Tools<'a> {
     pub(crate) fn call(&mut self, name: &str, args: Value) -> Value {
         let outcome = match TOOLS.iter().find(|t| t.name == name) {
             None => Err(format!("unknown tool: {name}")),
+            // A refused call leaves no trace: off means off.
             Some(def) => Access::check(self.store, def.level).and_then(|()| {
-                let scope = Scope::of(&args);
-                let value = self.dispatch(name, args)?;
-                let wrote = def.level == Access::Write;
-                activity::record(self.store, &self.client, def.name, wrote, &scope, &value);
-                Ok(value)
+                let kind = match (def.level, def.name) {
+                    (Access::Write, _) => Kind::Write,
+                    (_, "search_notes") => Kind::Search,
+                    _ => Kind::Read,
+                };
+                let mut trace = Trace::start(def.name, kind, Scope::of(&args));
+                trace.snapshot(self.store);
+                let outcome = self.dispatch(name, args);
+                trace.finish(self.store, &self.session, &self.client, &outcome);
+                outcome
             }),
         };
         match outcome {
@@ -382,17 +401,21 @@ impl<'a> Tools<'a> {
             .store
             .search_notes(&a.query, clamp_limit(a.limit))
             .map_err(fail)?;
-        let mut results = Vec::with_capacity(hits.len());
-        for h in &hits {
-            let spaces = self.store.workspaces_for_note(&h.note_id).map_err(fail)?;
-            results.push(json!({
-                "id": h.note_id,
-                "title": unmark(&h.title),
-                "spaces": spaces.iter().map(|w| &w.name).collect::<Vec<_>>(),
-                "excerpt": unmark(&h.excerpt),
-                "updatedAt": h.updated_at,
-            }));
-        }
+        // One query for every hit's Spaces, not one per hit.
+        let ids: Vec<String> = hits.iter().map(|h| h.note_id.clone()).collect();
+        let mut spaces = self.store.workspaces_for_notes(&ids).map_err(fail)?;
+        let results: Vec<Value> = hits
+            .iter()
+            .map(|h| {
+                json!({
+                    "id": h.note_id,
+                    "title": unmark(&h.title),
+                    "spaces": spaces.remove(&h.note_id).unwrap_or_default(),
+                    "excerpt": unmark(&h.excerpt),
+                    "updatedAt": h.updated_at,
+                })
+            })
+            .collect();
         Ok(json!({ "results": results }))
     }
 
@@ -501,6 +524,45 @@ impl<'a> Tools<'a> {
         Err("CONFLICT: the note kept changing while appending; try again".into())
     }
 
+    /// Recent notes as MCP resources, for `resources/list`.
+    pub(crate) fn resources(&self) -> Result<Vec<Value>, String> {
+        let notes = self
+            .store
+            .list_notes(NoteFilter {
+                limit: Some(RESOURCE_LIST),
+                ..Default::default()
+            })
+            .map_err(fail)?;
+        Ok(notes
+            .iter()
+            .map(|n| {
+                json!({
+                    "uri": format!("{NOTE_URI_PREFIX}{}", n.id),
+                    "name": n.id,
+                    "title": n.title,
+                    "mimeType": "text/markdown",
+                    "annotations": { "lastModified": n.updated_at },
+                })
+            })
+            .collect())
+    }
+
+    /// One note as a resource's contents: its Markdown.
+    pub(crate) fn resource(&mut self, uri: &str) -> Result<Value, String> {
+        let id = uri
+            .strip_prefix(NOTE_URI_PREFIX)
+            .filter(|id| !id.is_empty())
+            .ok_or_else(|| format!("unknown resource: {uri}"))?;
+        let note = self.store.get_note(id, false).map_err(fail)?;
+        Ok(json!({
+            "uri": uri,
+            "name": note.id,
+            "title": note.title,
+            "mimeType": "text/markdown",
+            "text": note.body,
+        }))
+    }
+
     /// A note in full, as every read and write tool returns it.
     fn note_view(&mut self, id: &str) -> ToolResult {
         let note = self.store.get_note(id, false).map_err(fail)?;
@@ -529,20 +591,19 @@ impl<'a> Tools<'a> {
 
     fn tag_id(&self, raw: &str) -> Result<String, String> {
         let name = normalize_tag_name(raw).ok_or("tag name must not be empty")?;
-        let tags = self.store.list_tags().map_err(fail)?;
-        tags.into_iter()
-            .find(|t| t.tag.name == name)
-            .map(|t| t.tag.id)
+        self.store
+            .find_tag(&name)
+            .map_err(fail)?
+            .map(|t| t.id)
             .ok_or_else(|| format!("NOT_FOUND: no tag named {name}"))
     }
 
     fn space_id(&self, raw: &str) -> Result<String, String> {
         let name = normalize_workspace_name(raw).ok_or("space name must not be empty")?;
-        let spaces = self.store.list_workspaces().map_err(fail)?;
-        spaces
-            .into_iter()
-            .find(|w| w.workspace.name.eq_ignore_ascii_case(&name))
-            .map(|w| w.workspace.id)
+        self.store
+            .find_workspace(&name)
+            .map_err(fail)?
+            .map(|w| w.id)
             .ok_or_else(|| format!("NOT_FOUND: no space named {name}"))
     }
 }
@@ -589,6 +650,16 @@ fn clamp_limit(limit: Option<i64>) -> i64 {
 /// Search marks matches with \u{1} and \u{2} for the app to highlight.
 fn unmark(s: &str) -> String {
     s.replace(['\u{1}', '\u{2}'], "")
+}
+
+/// A session id without a uuid dependency: the process id and the start
+/// time, which no two concurrent servers on one machine share.
+fn session_id() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or_default();
+    format!("{:x}-{:x}", std::process::id(), now)
 }
 
 fn pretty(value: &Value) -> String {
