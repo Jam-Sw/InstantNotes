@@ -25,6 +25,12 @@
   --accent-soft: rgba(134, 184, 163, 0.12);
   --danger: #d98a7a;
   --tag: #9ccdb8;
+  /* Optional tokens; the theme store derives them when a theme sets none. */
+  --success: #86b8a3;
+  --warning: #d9b07a;
+  --selection: rgba(134, 184, 163, 0.12);
+  --code-bg: #1c1c1d;
+  --focus: #86b8a3;
   --radius: 8px;
   --radius-lg: calc(var(--radius) + 4px);
   /* Unitless multiplier applied via calc() to base text size and key paddings. */
@@ -74,7 +80,18 @@ textarea {
 }
 
 ::selection {
-  background: var(--accent-soft);
+  background: var(--selection);
+}
+
+/* One focus ring for every keyboard user, in the theme's focus color. */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+input:focus-visible,
+textarea:focus-visible,
+.cm-editor:focus-visible {
+  outline: none;
 }
 
 /* CodeMirror */

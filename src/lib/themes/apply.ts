@@ -4,12 +4,32 @@
 // them up via var().
 
 import {
+  OPTIONAL_TOKEN_KEYS,
+  OPTIONAL_TOKEN_VAR,
   TOKEN_KEYS,
   TOKEN_VAR,
+  type OptionalTokenKey,
   type Theme,
   type TokenSet,
   type Variant,
 } from "./types";
+
+/** What an optional token means when the theme leaves it out: derived from
+ *  the required tokens so the result stays in the theme's own palette. */
+function optionalFallback(key: OptionalTokenKey, t: TokenSet): string {
+  switch (key) {
+    case "success":
+      return t.accent;
+    case "warning":
+      return `color-mix(in srgb, ${t.danger} 55%, ${t.accent})`;
+    case "selection":
+      return t.accentSoft;
+    case "codeBg":
+      return t.bgSidebar;
+    case "focus":
+      return t.accent;
+  }
+}
 
 /** The variant actually used, given what the theme defines. A dark-only theme
  *  asked for "light" falls back to its dark set, and vice versa. */
@@ -30,6 +50,9 @@ export function themeToVars(theme: Theme, variant: Variant): Record<string, stri
   const vars: Record<string, string> = {};
   for (const key of TOKEN_KEYS) {
     vars[TOKEN_VAR[key]] = tokens[key];
+  }
+  for (const key of OPTIONAL_TOKEN_KEYS) {
+    vars[OPTIONAL_TOKEN_VAR[key]] = tokens[key] ?? optionalFallback(key, tokens);
   }
   vars["--font-ui"] = theme.fonts.ui;
   vars["--font-mono"] = theme.fonts.mono;

@@ -26,6 +26,25 @@ describe("themeToVars", () => {
     expect(vars["--tag"]).toBe(manuscript.dark!.tag);
   });
 
+  it("derives the optional tokens from the palette when a theme omits them", () => {
+    // A theme written before the optional tokens existed: required set only.
+    const { success: _s, warning: _w, ...required } = manuscript.dark!;
+    const bare: Theme = { ...manuscript, dark: required };
+    const vars = themeToVars(bare, "dark");
+    expect(vars["--success"]).toBe(manuscript.dark!.accent);
+    expect(vars["--selection"]).toBe(manuscript.dark!.accentSoft);
+    expect(vars["--code-bg"]).toBe(manuscript.dark!.bgSidebar);
+    expect(vars["--focus"]).toBe(manuscript.dark!.accent);
+    expect(vars["--warning"]).toContain("color-mix(");
+    const explicit: Theme = {
+      ...manuscript,
+      dark: { ...manuscript.dark!, success: "#00ff00", warning: "#ffaa00" },
+    };
+    const v2 = themeToVars(explicit, "dark");
+    expect(v2["--success"]).toBe("#00ff00");
+    expect(v2["--warning"]).toBe("#ffaa00");
+  });
+
   it("resolves font slots and metrics", () => {
     const vars = themeToVars(manuscript, "dark");
     // Manuscript uses mono metadata, sans body.

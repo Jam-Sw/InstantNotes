@@ -5,6 +5,7 @@
 // friendly message and nothing is applied.
 
 import {
+  OPTIONAL_TOKEN_KEYS,
   TOKEN_KEYS,
   MATERIAL_KEYS,
   type Theme,
@@ -80,6 +81,13 @@ function validateTokenSet(input: unknown, label: string): TokenSet | string {
     if (!isColor(v)) return `${label}.${key} is not a valid color`;
     out[key] = (v as string).trim();
   }
+  // Optional tokens: absent is fine, present must be a color like the rest.
+  for (const key of OPTIONAL_TOKEN_KEYS) {
+    const v = rec[key];
+    if (v === undefined) continue;
+    if (!isColor(v)) return `${label}.${key} is not a valid color`;
+    out[key] = (v as string).trim();
+  }
   return out;
 }
 
@@ -99,6 +107,12 @@ export function validateTheme(input: unknown): ValidationResult {
   }
   if (t.author !== undefined && (typeof t.author !== "string" || t.author.length > 60)) {
     return { ok: false, error: "Theme author is invalid." };
+  }
+  if (
+    t.description !== undefined &&
+    (typeof t.description !== "string" || t.description.length > 140 || hasForbidden(t.description))
+  ) {
+    return { ok: false, error: "Theme description is invalid." };
   }
   if (t.appearance !== "dual" && t.appearance !== "dark" && t.appearance !== "light") {
     return { ok: false, error: "Theme appearance is invalid." };
@@ -156,6 +170,7 @@ export function validateTheme(input: unknown): ValidationResult {
     id: t.id,
     name: (t.name as string).trim(),
     author: t.author as string | undefined,
+    ...(t.description !== undefined && { description: (t.description as string).trim() }),
     version: 1,
     appearance: t.appearance,
     fonts: {
