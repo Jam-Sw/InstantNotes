@@ -1,6 +1,6 @@
 //! The trace of agent calls, kept in the library's `agent_activity` table
 //! (core `store/activity.rs`) where the app reads it to show, on the notes
-//! themselves and in its activity panel, what an agent looked at or changed.
+//! themselves and in its Agents Space, what an agent looked at or changed.
 //! Writing it is also what tells the app anything happened: a read changes
 //! no note, but this row moves SQLite's `data_version`.
 //!
@@ -94,15 +94,15 @@ impl Trace {
         };
     }
 
-    /// Record the outcome. Best effort: an agent's call never fails because
-    /// its trace could not be written.
+    /// Record the outcome; returns the row's `seq`. Best effort: an agent's
+    /// call never fails because its trace could not be written.
     pub(crate) fn finish(
         self,
         store: &mut Store,
         session: &str,
         client: &str,
         result: &Result<Value, String>,
-    ) {
+    ) -> Option<i64> {
         let (status, error, notes, after) = match result {
             Ok(value) => {
                 let notes = touched_notes(value);
@@ -126,28 +126,30 @@ impl Trace {
         };
         // A failed write changed nothing: no snapshot to go back to.
         let before = if status == "ok" { self.before } else { None };
-        let _ = store.record_activity(ActivityRecord {
-            session: session.to_string(),
-            client: client.to_string(),
-            tool: self.tool.to_string(),
-            kind: self.kind.as_str().to_string(),
-            status: status.to_string(),
-            error,
-            duration_ms: self.started.elapsed().as_millis() as i64,
-            note_ids: notes
-                .iter()
-                .take(NOTE_IDS)
-                .map(|(id, _)| id.clone())
-                .collect(),
-            note_count: notes.len() as i64,
-            titles: notes.iter().take(TITLES).map(|(_, t)| t.clone()).collect(),
-            space: self.scope.space,
-            tag: self.scope.tag,
-            query: self.scope.query,
-            after_updated_at: after,
-            before,
-            reverts: None,
-        });
+        store
+            .record_activity(ActivityRecord {
+                session: session.to_string(),
+                client: client.to_string(),
+                tool: self.tool.to_string(),
+                kind: self.kind.as_str().to_string(),
+                status: status.to_string(),
+                error,
+                duration_ms: self.started.elapsed().as_millis() as i64,
+                note_ids: notes
+                    .iter()
+                    .take(NOTE_IDS)
+                    .map(|(id, _)| id.clone())
+                    .collect(),
+                note_count: notes.len() as i64,
+                titles: notes.iter().take(TITLES).map(|(_, t)| t.clone()).collect(),
+                space: self.scope.space,
+                tag: self.scope.tag,
+                query: self.scope.query,
+                after_updated_at: after,
+                before,
+                reverts: None,
+            })
+            .ok()
     }
 }
 

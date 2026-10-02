@@ -235,6 +235,14 @@ CREATE TABLE agent_activity (
   reverts          INTEGER
 );
 "#,
+    // v8: the raw exchange behind a traced call. `request` is the JSON-RPC
+    // message the agent sent and `response` the one it got back, whole, so
+    // the app can show exactly what crossed the wire. NULL on rows from
+    // before this, and on the app's own `revert` rows, which no agent sent.
+    r#"
+ALTER TABLE agent_activity ADD COLUMN request TEXT;
+ALTER TABLE agent_activity ADD COLUMN response TEXT;
+"#,
 ];
 
 const NOTE_COLUMNS: &str = "id, title, body, created_at, updated_at, last_opened_at, \

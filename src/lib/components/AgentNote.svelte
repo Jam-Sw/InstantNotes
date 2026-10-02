@@ -9,18 +9,19 @@
   import { agentsSpace } from "$lib/stores/agents-space";
   import { library } from "$lib/stores/library.svelte";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
-  import { agentActivityBefore } from "$lib/api/client";
+  import { agentActivityBefore, agentActivityWire } from "$lib/api/client";
   import { sessionSummary } from "$lib/agents/space";
   import {
     canRevert,
     clientLabel,
     clockTime,
     describeActivity,
-    errorCode,
     formatDuration,
     kindLabel,
+    prettyWire,
     timeAgo,
     type AgentActivity,
+    type AgentWire,
     type NoteSnapshot,
   } from "$lib/agent-activity";
 
@@ -29,6 +30,8 @@
   let openSeq = $state<number | null>(null);
   let before = $state<NoteSnapshot | null | undefined>(undefined);
   let beforeFor = $state<number | null>(null);
+  // The raw exchange for the open row: undefined while it loads.
+  let wire = $state<AgentWire | null | undefined>(undefined);
 
   const session = $derived(agentsSpace.sessionFor(library.selected?.id));
 
@@ -50,6 +53,15 @@
       return;
     }
     openSeq = e.seq;
+    wire = undefined;
+    void agentActivityWire(e.seq).then(
+      (w) => {
+        if (openSeq === e.seq) wire = w;
+      },
+      () => {
+        if (openSeq === e.seq) wire = null;
+      },
+    );
     if (e.kind === "write" && e.revertable && beforeFor !== e.seq) {
       beforeFor = e.seq;
       before = undefined;
@@ -129,23 +141,22 @@
             </button>
             {#if openSeq === e.seq}
               <div class="details">
-                <dl>
-                  <dt>Tool</dt><dd><code>{e.tool}</code></dd>
-                  {#if e.query !== null}<dt>Query</dt><dd>“{e.query}”</dd>{/if}
-                  {#if e.space}<dt>Space</dt><dd>{e.space}</dd>{/if}
-                  {#if e.tag}<dt>Tag</dt><dd>#{e.tag}</dd>{/if}
-                  {#if e.noteCount > 0}
-                    <dt>Notes</dt>
-                    <dd>
-                      {e.noteCount}{#if e.titles.length}: {e.titles.map((t) => `“${t || "Untitled"}”`).join(", ")}{/if}{#if e.noteCount > e.titles.length}…{/if}
-                    </dd>
-                  {/if}
-                  {#if e.error}
-                    <dt>Error</dt>
-                    <dd class="err">{#if errorCode(e)}<code>{errorCode(e)}</code> {/if}{e.error.replace(/^[A-Z_]+:\s*/, "")}</dd>
-                  {/if}
-                  <dt>Session</dt><dd><code>{e.session}</code></dd>
-                </dl>
+                <!-- What crossed the wire, whole: the message the agent sent
+                     and the one it got back. Nothing is summarized. -->
+                {#if wire === undefined}
+                  <span class="muted">Loading…</span>
+                {:else if wire && (wire.request || wire.response)}
+                  <span class="wire-label section-label">Request</span>
+                  <pre class="wire">{wire.request ? prettyWire(wire.request) : "Not kept."}</pre>
+                  <span class="wire-label section-label">Response · {formatDuration(e.durationMs)}</span>
+                  <pre class="wire">{wire.response ? prettyWire(wire.response) : "Not kept."}</pre>
+                {:else if e.client === "instantnotes"}
+                  <span class="muted">Made in the app, not over MCP, so there are no messages to show.</span>
+                {:else}
+                  <span class="muted">
+                    This call was traced before raw messages were kept: {e.tool}{#if e.error}, which failed with {e.error}{/if}.
+                  </span>
+                {/if}
                 {#if e.kind === "write" && e.revertable}
                   <div class="before">
                     <span class="before-label section-label">Before this change</span>
@@ -321,33 +332,27 @@
     line-height: 1.5;
     color: var(--text-secondary);
   }
-  dl {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 2px 12px;
-    margin: 6px 0 0;
+  .wire-label {
+    display: block;
+    margin: 10px 0 4px;
   }
-  dt {
-    color: var(--text-tertiary);
-    font-family: var(--font-meta);
-    font-size: 11px;
-  }
-  dd {
+  /* Raw JSON, selectable, wrapped so a long note body stays on the page. */
+  .wire {
     margin: 0;
-    min-width: 0;
-    overflow-wrap: anywhere;
-    color: var(--text);
-  }
-  dd code {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    background: var(--bg);
+    max-height: 360px;
+    overflow: auto;
+    padding: 8px 10px;
     border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 0 4px;
-  }
-  .err {
-    color: var(--danger);
+    border-radius: var(--radius);
+    background: var(--code-bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    user-select: text;
+    -webkit-user-select: text;
   }
   .before {
     margin-top: 10px;

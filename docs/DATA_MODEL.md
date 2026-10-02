@@ -132,6 +132,7 @@ public so tests can build fixtures at a historical schema version.
 | v5 | The vault mirror: columns, `vault_tombstones`, and triggers (section 10). |
 | v6 | `board_sha`, and triggers that carry whiteboards through the vault mirror (section 10). |
 | v7 | `agent_activity`: the trace of agent calls, with before-snapshots for reverting writes (section 11). |
+| v8 | `agent_activity.request` and `response`: the raw JSON-RPC exchange behind each call (section 11). |
 
 v4 exists because pre-release builds that carried the whiteboard already
 migrated some libraries to it before the whiteboard was lifted off the 0.9.0
@@ -178,7 +179,12 @@ server (API.md section 15), one row per call, written by the MCP process and
 read by the app: `seq` (the cursor), `at`, `session`, `client`, `tool`,
 `kind`, `status`, `error`, `duration_ms`, `note_ids` and `titles` (JSON
 arrays), `note_count`, `space`, `tag`, `query`, `after_updated_at`, `before`,
-`reverted_at`, and `reverts`.
+`reverted_at`, `reverts`, `request`, and `response`.
+
+`request` and `response` are the raw exchange: the JSON-RPC `tools/call`
+message the agent sent and the reply it got, whole, as JSON text. The app
+shows them as they are when a call is unfolded in the Agents Space. They are
+NULL on rows written before v8 and on the app's own `revert` rows.
 
 `before` is what makes a write revertable: the note as it was just before,
 as JSON (`title`, `title_is_auto`, `body`, the flags, `updated_at`, every

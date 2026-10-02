@@ -427,6 +427,7 @@ note.
 | `agent_connection` | The running executable, the live library path, and the attachments dir, for the connect commands on Settings > Agents. |
 | `list_agent_activity` | The trace, newest first (`limit`, `offset`). |
 | `agent_activity_before` | The snapshot a write row holds, or `null` for a create. |
+| `agent_activity_wire` | The raw exchange a row holds: `request` and `response`, each the whole JSON-RPC message as JSON text, or `null` where none was kept. |
 | `revert_agent_activity` | Put the note back as the row's snapshot has it (or trash a created note), mark the row reverted, and record the revert as a row of its own (client `instantnotes`, tool `revert`) with the state it replaced, so it can be reverted in turn. Returns that row; `CONFLICT` for a row already reverted. |
 | `clear_agent_activity` | Forget the trace. Notes are untouched. |
 

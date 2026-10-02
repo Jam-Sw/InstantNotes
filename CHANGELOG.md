@@ -12,8 +12,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 - Agents: a full trace of every call an agent makes lives in an Agents Space
   in the sidebar, one note per conversation (⌘⇧A, or "Show Agents" in the
-  palette). Each row says who, what, which notes, how long it took, and what
-  it failed with. Every change an agent makes can be reverted from there, and
+  palette). Each row says who, what, and how long it took, and unfolds to the
+  raw request and response exactly as they crossed MCP. Every change an agent makes can be reverted from there, and
   from the toast that announces it; a revert can itself be undone.
 - Agents: an agent's search shows its words above your note list as it
   happens, and the notes it found light up with a dashed outline. Settings >

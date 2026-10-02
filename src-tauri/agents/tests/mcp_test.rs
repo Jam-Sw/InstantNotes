@@ -484,6 +484,29 @@ fn revisit_lists_only_fresh_captures_once_they_are_old_enough() {
 }
 
 #[test]
+fn a_traced_call_keeps_the_whole_exchange_as_it_crossed_the_wire() {
+    let mut store = store_with("read");
+    let sent = [
+        call(1, "search_notes", json!({ "query": "road" })),
+        call(2, "get_note", json!({ "id": "missing" })),
+    ];
+    let replies = session(&mut store, &[init(), sent[0].clone(), sent[1].clone()]);
+    let log = trace(&store);
+    // Newest first: the failed get_note, then the search.
+    for (row, (request, reply)) in log
+        .iter()
+        .zip([(&sent[1], &replies[2]), (&sent[0], &replies[1])])
+    {
+        let wire = store.activity_wire(row.seq).unwrap();
+        let kept: Value = serde_json::from_str(wire.request.as_deref().unwrap()).unwrap();
+        assert_eq!(&kept, request, "the request, whole");
+        let kept: Value = serde_json::from_str(wire.response.as_deref().unwrap()).unwrap();
+        assert_eq!(&kept, reply, "the response, whole, an error included");
+    }
+    assert!(store.activity_wire(9999).is_err());
+}
+
+#[test]
 fn every_call_is_traced_for_the_app_newest_first_failures_included() {
     let mut store = store_with("read");
     let note = store

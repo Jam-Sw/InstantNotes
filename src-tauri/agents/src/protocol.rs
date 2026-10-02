@@ -153,10 +153,20 @@ fn handle_unguarded(tools: &mut Tools, message: Value) -> Option<Value> {
     };
     let id = id?;
     let params = msg.get("params").cloned().unwrap_or(Value::Null);
-    Some(match request(tools, method, &params) {
+    let reply = match request(tools, method, &params) {
         Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
         Err(err) => json!({ "jsonrpc": "2.0", "id": id, "error": err }),
-    })
+    };
+    // The trace keeps the whole exchange, so the user can read exactly what
+    // an agent sent and what it was told.
+    if method == "tools/call" {
+        if let (Ok(sent), Ok(answered)) =
+            (serde_json::to_string(&msg), serde_json::to_string(&reply))
+        {
+            tools.record_wire(&sent, &answered);
+        }
+    }
+    Some(reply)
 }
 
 /// A request's result, or its JSON-RPC error object.

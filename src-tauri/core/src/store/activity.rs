@@ -80,6 +80,16 @@ pub struct NoteSnapshot {
     pub spaces: Vec<String>,
 }
 
+/// The raw exchange behind a call: the JSON-RPC message the agent sent and
+/// the one it got back, as JSON text. `None` where none was kept (a row from
+/// before they were, or the app's own revert).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivityWire {
+    pub request: Option<String>,
+    pub response: Option<String>,
+}
+
 /// A call to record. Everything the server knows once the tool returned.
 #[derive(Debug, Clone, Default)]
 pub struct ActivityRecord {
@@ -324,6 +334,33 @@ impl Store {
             row_to_activity,
         )?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// Attach the raw exchange to a row already recorded: the request as it
+    /// came in and the response as it went out.
+    pub fn set_activity_wire(&mut self, seq: i64, request: &str, response: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE agent_activity SET request = ?1, response = ?2 WHERE seq = ?3",
+            params![request, response, seq],
+        )?;
+        Ok(())
+    }
+
+    /// The raw exchange a row holds.
+    pub fn activity_wire(&self, seq: i64) -> Result<ActivityWire> {
+        self.conn
+            .query_row(
+                "SELECT request, response FROM agent_activity WHERE seq = ?1",
+                params![seq],
+                |r| {
+                    Ok(ActivityWire {
+                        request: r.get(0)?,
+                        response: r.get(1)?,
+                    })
+                },
+            )
+            .optional()?
+            .ok_or_else(|| AppError::NotFound(format!("activity {seq} not found")))
     }
 
     /// The newest `seq`, or 0 for an empty trace. One indexed lookup: cheap

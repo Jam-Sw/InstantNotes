@@ -46,6 +46,9 @@ pub(crate) struct Tools<'a> {
     /// This process, in the trace: one agent conversation's calls group
     /// under it.
     session: String,
+    /// The trace row of the call just made, until the transport attaches the
+    /// raw messages to it.
+    traced: Option<i64>,
 }
 
 struct ToolDef {
@@ -254,6 +257,7 @@ impl<'a> Tools<'a> {
             attachments_dir,
             client: "agent".into(),
             session: session_id(),
+            traced: None,
         }
     }
 
@@ -300,6 +304,7 @@ impl<'a> Tools<'a> {
     /// `isError`, which the model sees and can act on. A success carries its
     /// JSON twice, as MCP asks: structured, and as text for older clients.
     pub(crate) fn call(&mut self, name: &str, args: Value) -> Value {
+        self.traced = None;
         let outcome = match TOOLS.iter().find(|t| t.name == name) {
             None => Err(format!("unknown tool: {name}")),
             // A refused call leaves no trace: off means off.
@@ -312,7 +317,7 @@ impl<'a> Tools<'a> {
                 let mut trace = Trace::start(def.name, kind, Scope::of(&args));
                 trace.snapshot(self.store);
                 let outcome = self.dispatch(name, args);
-                trace.finish(self.store, &self.session, &self.client, &outcome);
+                self.traced = trace.finish(self.store, &self.session, &self.client, &outcome);
                 outcome
             }),
         };
@@ -326,6 +331,15 @@ impl<'a> Tools<'a> {
                 "content": [{ "type": "text", "text": message }],
                 "isError": true,
             }),
+        }
+    }
+
+    /// Keep the raw exchange with the call just traced: the message as the
+    /// agent sent it and the reply as it goes back. Best effort, like the
+    /// trace itself. A refused call left no row, so it keeps nothing.
+    pub(crate) fn record_wire(&mut self, request: &str, response: &str) {
+        if let Some(seq) = self.traced.take() {
+            let _ = self.store.set_activity_wire(seq, request, response);
         }
     }
 

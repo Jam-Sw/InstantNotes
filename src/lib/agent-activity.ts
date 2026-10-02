@@ -235,6 +235,24 @@ export function clockTime(at: number): string {
 }
 
 /** One conversation's calls, for the trace to group under a header. */
+/** The raw exchange behind a call, from `agent_activity_wire`: the JSON-RPC
+ *  message the agent sent and the one it got back, each as JSON text. Null
+ *  where none was kept (an older row, or the app's own revert). */
+export interface AgentWire {
+  request: string | null;
+  response: string | null;
+}
+
+/** A wire message laid out to read. The text a tool result carries is JSON
+ *  inside a JSON string; nothing is unwrapped or dropped, only indented. */
+export function prettyWire(raw: string): string {
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2);
+  } catch {
+    return raw;
+  }
+}
+
 export interface AgentSession {
   session: string;
   client: string;

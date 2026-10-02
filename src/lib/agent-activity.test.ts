@@ -146,3 +146,14 @@ describe("agent activity", () => {
     ]);
   });
 });
+
+describe("the raw exchange", () => {
+  it("is indented to read and otherwise left as it came", async () => {
+    const { prettyWire } = await import("./agent-activity");
+    const raw = '{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"{\\"id\\":\\"n\\"}"}]}}';
+    const shown = prettyWire(raw);
+    expect(JSON.parse(shown)).toEqual(JSON.parse(raw));
+    expect(shown).toContain('\n  "id": 1,');
+    expect(prettyWire("not json")).toBe("not json");
+  });
+});

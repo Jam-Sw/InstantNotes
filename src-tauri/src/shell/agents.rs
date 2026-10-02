@@ -15,7 +15,7 @@
 //! the newest `seq` it has announced: one indexed lookup per poll.
 
 use crate::*;
-use instantnotes_core::store::activity::{AgentActivity, NoteSnapshot};
+use instantnotes_core::store::activity::{ActivityWire, AgentActivity, NoteSnapshot};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -137,6 +137,13 @@ pub fn agent_activity_before(
     seq: i64,
 ) -> CmdResult<Option<NoteSnapshot>> {
     Ok(locked(&state)?.activity_before(seq)?)
+}
+
+/// The raw exchange behind a traced call: the JSON-RPC request and response,
+/// each as JSON text, or `null` where none was kept.
+#[tauri::command(async)]
+pub fn agent_activity_wire(state: State<'_, AppState>, seq: i64) -> CmdResult<ActivityWire> {
+    Ok(locked(&state)?.activity_wire(seq)?)
 }
 
 /// Undo one agent write. The revert is itself a traced write, so the trace

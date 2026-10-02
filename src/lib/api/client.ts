@@ -3,7 +3,12 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { ERROR_CODES, isErrorCode, type ErrorCode } from "./error-codes";
-import type { AgentActivity, AgentConnection, NoteSnapshot } from "$lib/agent-activity";
+import type {
+  AgentActivity,
+  AgentConnection,
+  AgentWire,
+  NoteSnapshot,
+} from "$lib/agent-activity";
 import type {
   AttachmentCleanup,
   LibraryGraph,
@@ -277,6 +282,10 @@ export const listAgentActivity = (limit = 200, offset = 0) =>
   call<AgentActivity[]>("list_agent_activity", { limit, offset });
 export const agentActivityBefore = (seq: number) =>
   call<NoteSnapshot | null>("agent_activity_before", { seq });
+// The raw exchange behind a call: the JSON-RPC request and response as JSON
+// text, or null where none was kept.
+export const agentActivityWire = (seq: number) =>
+  call<AgentWire>("agent_activity_wire", { seq });
 export const revertAgentActivity = (seq: number) =>
   call<AgentActivity>("revert_agent_activity", { seq });
 export const clearAgentActivity = () => call<void>("clear_agent_activity");
