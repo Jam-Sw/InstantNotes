@@ -74,6 +74,10 @@ export function joinConversations(
     const p = known.get(s.session);
     return {
       ...s,
+      // The connection knows its client best: it has the handshake and the
+      // process that started the server, where a trace row has only what
+      // was known when the call was made.
+      client: p?.client ?? s.client,
       connected: p?.connected ?? false,
       connectedAt: p?.connectedAt ?? null,
       disconnectedAt: p?.disconnectedAt ?? null,
