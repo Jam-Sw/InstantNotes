@@ -70,6 +70,12 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   error instead of ending the connection. Tag, Space, and search lookups go
   straight to the index.
 - MCP: optimized rewriting a note, 3 less tool calls.
+- MCP: `search_notes` returns the matching passages with their line numbers
+  and the lines around them, can match any of the words instead of all, and
+  narrows by Space, tag, status, and date. `get_notes` reads several notes in
+  full in one call. `search_notes` and `list_notes` say how many results
+  there are in all and whether more remain. Together an agent can find what
+  matters without reading, or scripting its way through, the whole library.
 
 ### Fixed
 - Search: punctuation inside a word (`CachyOS/Arch`) now splits the token

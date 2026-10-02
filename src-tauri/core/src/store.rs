@@ -413,6 +413,11 @@ fn attach_tag(conn: &Connection, note_id: &str, tag_id: &str, source: &str) -> R
 /// "CachyOS/Arch" is indexed as `cachyos` `arch`, so it must be queried that
 /// way, not as `CachyOSArch`.
 fn fts_match_expr(text: &str) -> Option<String> {
+    fts_match_expr_with(text, false)
+}
+
+/// `fts_match_expr`, optionally matching any of the words instead of all.
+fn fts_match_expr_with(text: &str, any_term: bool) -> Option<String> {
     let tokens: Vec<&str> = text
         .split(|c: char| !(c.is_alphanumeric() || c == '-' || c == '_'))
         .filter(|t| !t.is_empty())
@@ -425,7 +430,7 @@ fn fts_match_expr(text: &str) -> Option<String> {
                 .iter()
                 .map(|t| format!("\"{t}\"*"))
                 .collect::<Vec<_>>()
-                .join(" "),
+                .join(if any_term { " OR " } else { " " }),
         )
     }
 }

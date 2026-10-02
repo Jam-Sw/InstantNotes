@@ -823,3 +823,206 @@ fn a_connection_carries_what_its_client_says_about_its_session() {
     assert_eq!(row.client_session.as_deref(), Some("ec23c3e6"));
     assert_eq!(row.cwd.as_deref(), Some("/work"));
 }
+
+fn note(store: &mut Store, body: &str) -> String {
+    store
+        .create_note(CreateNoteInput {
+            body: Some(body.into()),
+            ..Default::default()
+        })
+        .unwrap()
+        .id
+}
+
+#[test]
+fn search_shows_where_the_words_are_and_how_much_is_left() {
+    let mut store = store_with("read");
+    let taxes = note(
+        &mut store,
+        "Taxes\n\nGather the forms.\nThe deadline is April 30.\nAsk about the refund.\n\nUnrelated line.\nSecond deadline: the extension, in October.",
+    );
+    note(&mut store, "Groceries\n\nMilk, eggs.");
+    let renew = note(&mut store, "Passport\n\nRenew before the trip.");
+
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(1, "search_notes", json!({ "query": "deadline" })),
+            // Every word, by default: no note has both.
+            call(2, "search_notes", json!({ "query": "deadline renew" })),
+            call(
+                3,
+                "search_notes",
+                json!({ "query": "deadline renew", "match": "any", "limit": 1 }),
+            ),
+            call(
+                4,
+                "search_notes",
+                json!({ "query": "deadline renew", "match": "any", "limit": 1, "offset": 1 }),
+            ),
+        ],
+    );
+    let (_, _, found) = result_of(&replies[1]);
+    assert_eq!(found["total"], 1);
+    assert_eq!(found["hasMore"], false);
+    let hit = &found["results"][0];
+    assert_eq!(hit["id"], taxes);
+    assert_eq!(hit["matchingLines"], 2);
+    // The matching line with the lines around it, and where it is.
+    assert_eq!(hit["passages"][0]["line"], 4);
+    assert_eq!(
+        hit["passages"][0]["text"],
+        "Gather the forms.\nThe deadline is April 30.\nAsk about the refund."
+    );
+    assert_eq!(hit["passages"][1]["line"], 8);
+    assert!(hit["createdAt"].is_string() && hit["updatedAt"].is_string());
+
+    assert_eq!(result_of(&replies[2]).2["total"], 0);
+
+    let (_, _, first) = result_of(&replies[3]);
+    assert_eq!(first["total"], 2, "any of the words: both notes");
+    assert_eq!(first["results"].as_array().unwrap().len(), 1);
+    assert_eq!(first["hasMore"], true);
+    assert_eq!(first["nextOffset"], 1);
+    let (_, _, second) = result_of(&replies[4]);
+    assert_eq!(second["hasMore"], false);
+    let seen = [
+        first["results"][0]["id"].clone(),
+        second["results"][0]["id"].clone(),
+    ];
+    assert!(
+        seen.contains(&json!(taxes)) && seen.contains(&json!(renew)),
+        "no note skipped or repeated"
+    );
+}
+
+#[test]
+fn search_narrows_by_space_tag_status_and_date() {
+    let mut store = store_with("write");
+    let plan = note(&mut store, "Plan the launch #work");
+    let old = note(&mut store, "Launch retro");
+    session(
+        &mut store,
+        &[
+            init(),
+            call(
+                1,
+                "add_to_space",
+                json!({ "id": plan, "space": "Projects" }),
+            ),
+        ],
+    );
+    store
+        .set_notes_flags(std::slice::from_ref(&old), None, Some(true))
+        .unwrap();
+
+    let ids = |reply: &Value| -> Vec<String> {
+        result_of(reply).2["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["id"].as_str().unwrap().to_string())
+            .collect()
+    };
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(1, "search_notes", json!({ "query": "launch" })),
+            call(
+                2,
+                "search_notes",
+                json!({ "query": "launch", "status": "all" }),
+            ),
+            call(
+                3,
+                "search_notes",
+                json!({ "query": "launch", "status": "archived" }),
+            ),
+            call(
+                4,
+                "search_notes",
+                json!({ "query": "launch", "status": "all", "space": "projects" }),
+            ),
+            call(
+                5,
+                "search_notes",
+                json!({ "query": "launch", "status": "all", "tag": "#work" }),
+            ),
+            call(
+                6,
+                "search_notes",
+                json!({ "query": "launch", "updatedAfter": "2999-01-01" }),
+            ),
+            call(
+                7,
+                "search_notes",
+                json!({ "query": "launch", "updatedBefore": "2999-01-01" }),
+            ),
+            call(
+                8,
+                "search_notes",
+                json!({ "query": "launch", "updatedAfter": "last week" }),
+            ),
+        ],
+    );
+    assert_eq!(
+        ids(&replies[1]),
+        vec![plan.clone()],
+        "archived notes stay out by default"
+    );
+    assert_eq!(ids(&replies[2]).len(), 2);
+    assert_eq!(ids(&replies[3]), vec![old.clone()]);
+    assert_eq!(ids(&replies[4]), vec![plan.clone()]);
+    assert_eq!(ids(&replies[5]), vec![plan.clone()]);
+    assert!(ids(&replies[6]).is_empty());
+    assert_eq!(ids(&replies[7]), vec![plan.clone()]);
+    let (is_error, text, _) = result_of(&replies[8]);
+    assert!(is_error && text.contains("not a date"), "{text}");
+}
+
+#[test]
+fn several_notes_are_read_in_one_call_and_a_list_says_what_is_left() {
+    let mut store = store_with("read");
+    let a = note(&mut store, "Alpha\n\nfirst body");
+    let b = note(&mut store, "Beta\n\nsecond body");
+    note(&mut store, "Gamma");
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(1, "get_notes", json!({ "ids": [b, "nope", a] })),
+            call(2, "get_notes", json!({ "ids": [] })),
+            call(3, "list_notes", json!({ "limit": 2 })),
+            call(4, "list_notes", json!({ "limit": 2, "offset": 2 })),
+        ],
+    );
+    let (_, _, read) = result_of(&replies[1]);
+    let notes = read["notes"].as_array().unwrap();
+    assert_eq!(notes.len(), 2);
+    assert_eq!(notes[0]["id"], b, "in the order asked");
+    assert_eq!(notes[0]["body"], "Beta\n\nsecond body");
+    assert_eq!(notes[1]["id"], a);
+    assert_eq!(read["missing"], json!(["nope"]));
+    assert!(
+        result_of(&replies[2]).0,
+        "no ids is an error the model can fix"
+    );
+
+    let (_, _, page) = result_of(&replies[3]);
+    assert_eq!(page["total"], 3);
+    assert_eq!(page["hasMore"], true);
+    assert_eq!(page["nextOffset"], 2);
+    let (_, _, rest) = result_of(&replies[4]);
+    assert_eq!(rest["notes"].as_array().unwrap().len(), 1);
+    assert_eq!(rest["hasMore"], false);
+    assert!(rest.get("nextOffset").is_none());
+
+    // One trace row for the batch read, naming the notes it read.
+    let read_row = trace(&store)
+        .into_iter()
+        .find(|e| e.tool == "get_notes" && e.status == "ok")
+        .unwrap();
+    assert_eq!(read_row.note_count, 2);
+}

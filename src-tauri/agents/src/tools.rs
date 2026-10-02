@@ -13,6 +13,7 @@ use crate::activity::{Kind, Scope, Trace};
 use crate::fail;
 use instantnotes_core::clients::{identify, parent_process, Client, ClientProcess};
 use instantnotes_core::domain::{normalize_tag_name, normalize_workspace_name};
+use instantnotes_core::types::NoteSearch;
 use instantnotes_core::types::{
     CreateNoteInput, Note, NoteFilter, UpdateNotePatch, CONTENT_KIND_WHITEBOARD,
 };
@@ -30,6 +31,12 @@ pub(crate) const NOTE_URI_PREFIX: &str = "instantnotes://notes/";
 const SNIPPET_CHARS: usize = 160;
 const DEFAULT_LIMIT: i64 = 50;
 const MAX_LIMIT: i64 = 200;
+/// Notes one get_notes call reads at most.
+const MAX_READ: usize = 50;
+/// Passages shown per search result; the rest are counted.
+const MAX_PASSAGES: usize = 3;
+/// A passage line longer than this is cut to a window around its match.
+const PASSAGE_LINE_CHARS: usize = 240;
 /// append_to_note re-reads and retries when the user saves in between.
 const APPEND_ATTEMPTS: usize = 3;
 /// A capture is an open loop once it has gone unopened this long. Matches
@@ -76,10 +83,27 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Read,
         destructive: false,
         idempotent: true,
-        description: "Full-text search over note titles and bodies; a note's exact title finds it first. Returns ids, titles, spaces, a matching excerpt, and updatedAt (enough to call update_note directly).",
+        description: "Full-text search over note titles and bodies: the way to find what matters without reading every note. Each result carries the matching passages with their line numbers and the lines around them, plus id, title, spaces, tags, createdAt, and updatedAt (enough to call update_note directly). Narrow by space, tag, status, or when a note last changed. Results are paged: total says how many notes match in all, hasMore whether to ask again with nextOffset. Trashed notes are never searched.",
         schema: || object(json!({
-            "query": { "type": "string", "description": "Words to search for." },
-            "limit": limit_param()
+            "query": { "type": "string", "description": "Words to search for. A word also matches words that begin with it." },
+            "match": {
+                "type": "string",
+                "enum": ["all", "any"],
+                "default": "all",
+                "description": "all: notes with every word. any: notes with at least one, for casting wide (deadline due owe renew)."
+            },
+            "space": space_param(),
+            "tag": tag_param(),
+            "status": {
+                "type": "string",
+                "enum": ["active", "archived", "all"],
+                "default": "active",
+                "description": "all: active and archived together."
+            },
+            "updatedAfter": date_param("Only notes last changed on or after this."),
+            "updatedBefore": date_param("Only notes last changed before this."),
+            "limit": limit_param(),
+            "offset": { "type": "integer", "minimum": 0, "default": 0 }
         }), &["query"]),
     },
     ToolDef {
@@ -88,10 +112,12 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Read,
         destructive: false,
         idempotent: true,
-        description: "List notes, most recently updated first, optionally within a space or tag. Returns summaries, not full bodies.",
+        description: "List notes, most recently updated first, optionally within a space or tag or a span of time. Returns summaries, not full bodies: read the ones that matter with get_notes. Paged: total says how many notes match in all, hasMore whether to ask again with nextOffset.",
         schema: || object(json!({
             "space": space_param(),
             "tag": tag_param(),
+            "updatedAfter": date_param("Only notes last changed on or after this."),
+            "updatedBefore": date_param("Only notes last changed before this."),
             "status": {
                 "type": "string",
                 "enum": ["active", "pinned", "archived", "trash", "revisit"],
@@ -110,6 +136,23 @@ const TOOLS: &[ToolDef] = &[
         idempotent: true,
         description: "Read one note in full: body, tags, spaces, and updatedAt (pass it to update_note). Reading does not mark the note as opened.",
         schema: || object(json!({ "id": id_param() }), &["id"]),
+    },
+    ToolDef {
+        name: "get_notes",
+        title: "Read several notes",
+        level: Access::Read,
+        destructive: false,
+        idempotent: true,
+        description: "Read several notes in full in one call, in the order asked: what get_note returns, for each id. Ids that name no note come back in missing rather than failing the call. Reading does not mark a note as opened.",
+        schema: || object(json!({
+            "ids": {
+                "type": "array",
+                "items": id_param(),
+                "minItems": 1,
+                "maxItems": MAX_READ,
+                "description": "Note ids, as search_notes or list_notes return them."
+            }
+        }), &["ids"]),
     },
     ToolDef {
         name: "list_tags",
@@ -236,6 +279,13 @@ fn tag_param() -> Value {
 
 fn space_param() -> Value {
     json!({ "type": "string", "description": "Space name; case does not matter." })
+}
+
+fn date_param(description: &str) -> Value {
+    json!({
+        "type": "string",
+        "description": format!("{description} A date (2026-09-01) or a UTC timestamp (2026-09-01T08:00:00Z).")
+    })
 }
 
 fn limit_param() -> Value {
@@ -380,6 +430,7 @@ impl<'a> Tools<'a> {
                 let a: IdArgs = parse(args)?;
                 self.note_view(&a.id)
             }
+            "get_notes" => self.get_notes(parse(args)?),
             "list_tags" => {
                 let tags = self.store.list_tags().map_err(fail)?;
                 Ok(json!({ "tags": tags.iter().map(|t| json!({
@@ -440,26 +491,82 @@ impl<'a> Tools<'a> {
     }
 
     fn search_notes(&mut self, a: SearchArgs) -> ToolResult {
-        let hits = self
-            .store
-            .search_notes(&a.query, clamp_limit(a.limit))
-            .map_err(fail)?;
+        let limit = clamp_limit(a.limit);
+        let offset = a.offset.unwrap_or(0).max(0);
+        let search = NoteSearch {
+            text: a.query.clone(),
+            any_term: match a.r#match.as_deref().unwrap_or("all") {
+                "all" => false,
+                "any" => true,
+                other => return Err(format!("unknown match: {other}")),
+            },
+            workspace_id: a.space.as_deref().map(|s| self.space_id(s)).transpose()?,
+            tag_id: a.tag.as_deref().map(|t| self.tag_id(t)).transpose()?,
+            is_archived: match a.status.as_deref().unwrap_or("active") {
+                "active" => Some(false),
+                "archived" => Some(true),
+                "all" => None,
+                other => return Err(format!("unknown status: {other}")),
+            },
+            updated_after: a.updated_after.as_deref().map(date_bound).transpose()?,
+            updated_before: a.updated_before.as_deref().map(date_bound).transpose()?,
+            limit,
+            offset,
+        };
+        let page = self.store.search_notes_page(&search).map_err(fail)?;
         // One query for every hit's Spaces, not one per hit.
-        let ids: Vec<String> = hits.iter().map(|h| h.note_id.clone()).collect();
+        let ids: Vec<String> = page.matches.iter().map(|h| h.note_id.clone()).collect();
         let mut spaces = self.store.workspaces_for_notes(&ids).map_err(fail)?;
-        let results: Vec<Value> = hits
-            .iter()
-            .map(|h| {
-                json!({
-                    "id": h.note_id,
-                    "title": unmark(&h.title),
-                    "spaces": spaces.remove(&h.note_id).unwrap_or_default(),
-                    "excerpt": unmark(&h.excerpt),
-                    "updatedAt": h.updated_at,
-                })
-            })
-            .collect();
-        Ok(json!({ "results": results }))
+        let terms = search_terms(&a.query);
+        let mut results = Vec::with_capacity(page.matches.len());
+        for hit in &page.matches {
+            let tags = self.store.tags_for_note(&hit.note_id).map_err(fail)?;
+            let (mut found, matching_lines) = passages(&hit.body, &terms);
+            // Stemming can match a word the text never spells the way it was
+            // asked (run, running): the index's own excerpt still shows why.
+            if found.is_empty() {
+                found.push(json!({ "text": unmark(&hit.excerpt) }));
+            }
+            results.push(json!({
+                "id": hit.note_id,
+                "title": hit.title,
+                "spaces": spaces.remove(&hit.note_id).unwrap_or_default(),
+                "tags": tags.iter().map(|t| &t.name).collect::<Vec<_>>(),
+                "excerpt": unmark(&hit.excerpt),
+                "passages": found,
+                "matchingLines": matching_lines,
+                "createdAt": hit.created_at,
+                "updatedAt": hit.updated_at,
+                "isArchived": hit.is_archived,
+            }));
+        }
+        Ok(paged(
+            json!({ "results": results }),
+            "results",
+            page.total,
+            offset,
+        ))
+    }
+
+    fn get_notes(&mut self, a: IdsArgs) -> ToolResult {
+        if a.ids.is_empty() {
+            return Err("give at least one id".into());
+        }
+        if a.ids.len() > MAX_READ {
+            return Err(format!(
+                "at most {MAX_READ} notes per call; ask again for the rest"
+            ));
+        }
+        let mut notes = Vec::with_capacity(a.ids.len());
+        let mut missing = Vec::new();
+        for id in &a.ids {
+            match self.store.get_note(id, false) {
+                Ok(_) => notes.push(self.note_view(id)?),
+                Err(AppError::NotFound(_)) => missing.push(id.clone()),
+                Err(e) => return Err(fail(e)),
+            }
+        }
+        Ok(json!({ "notes": notes, "missing": missing }))
     }
 
     fn list_notes(&mut self, a: ListArgs) -> ToolResult {
@@ -491,8 +598,17 @@ impl<'a> Tools<'a> {
         if let Some(tag) = &a.tag {
             filter.tag_ids = vec![self.tag_id(tag)?];
         }
+        filter.updated_after = a.updated_after.as_deref().map(date_bound).transpose()?;
+        filter.updated_before = a.updated_before.as_deref().map(date_bound).transpose()?;
+        let offset = filter.offset.unwrap_or(0);
+        let total = self.store.count_notes(&filter).map_err(fail)?;
         let notes = self.store.list_notes(filter).map_err(fail)?;
-        Ok(json!({ "notes": notes.iter().map(summary).collect::<Vec<_>>() }))
+        Ok(paged(
+            json!({ "notes": notes.iter().map(summary).collect::<Vec<_>>() }),
+            "notes",
+            total,
+            offset,
+        ))
     }
 
     fn create_note(&mut self, a: CreateArgs) -> ToolResult {
@@ -691,6 +807,102 @@ fn clamp_limit(limit: Option<i64>) -> i64 {
 }
 
 /// Search marks matches with \u{1} and \u{2} for the app to highlight.
+/// A page of results with where it stands: how many there are in all, and
+/// whether, and from where, to ask for more.
+fn paged(mut page: Value, key: &str, total: i64, offset: i64) -> Value {
+    let shown = page[key].as_array().map_or(0, Vec::len) as i64;
+    let has_more = offset + shown < total;
+    page["total"] = json!(total);
+    page["offset"] = json!(offset);
+    page["hasMore"] = json!(has_more);
+    if has_more {
+        page["nextOffset"] = json!(offset + shown);
+    }
+    page
+}
+
+/// A date or timestamp an agent gave, as a bound the store can compare with
+/// its own timestamps (UTC ISO-8601, compared as text).
+fn date_bound(raw: &str) -> Result<String, String> {
+    let raw = raw.trim();
+    let is_date = chrono::NaiveDate::parse_from_str(raw, "%Y-%m-%d").is_ok();
+    if is_date {
+        return Ok(raw.to_string());
+    }
+    chrono::DateTime::parse_from_rfc3339(raw)
+        .map(|t| {
+            t.with_timezone(&chrono::Utc)
+                .to_rfc3339_opts(chrono::SecondsFormat::Micros, true)
+        })
+        .map_err(|_| format!("not a date: {raw}; use 2026-09-01 or 2026-09-01T08:00:00Z"))
+}
+
+/// The words of a query, as the search index splits them, lowercased.
+fn search_terms(query: &str) -> Vec<String> {
+    query
+        .split(|c: char| !(c.is_alphanumeric() || c == '-' || c == '_'))
+        .filter(|t| !t.is_empty())
+        .map(str::to_lowercase)
+        .collect()
+}
+
+/// Where in a note the words are: up to `MAX_PASSAGES` passages, each the
+/// matching line with the line before and after it and its line number, and
+/// how many lines match in all. Passages never overlap.
+fn passages(body: &str, terms: &[String]) -> (Vec<Value>, usize) {
+    let lines: Vec<&str> = body.lines().collect();
+    let hits = |line: &str| {
+        let lower = line.to_lowercase();
+        terms.iter().any(|t| lower.contains(t.as_str()))
+    };
+    let mut found = Vec::new();
+    let mut matching = 0;
+    let mut covered = 0; // lines before this index are already in a passage
+    for (i, line) in lines.iter().enumerate() {
+        if !hits(line) {
+            continue;
+        }
+        matching += 1;
+        if i < covered || found.len() == MAX_PASSAGES {
+            continue;
+        }
+        let from = i.saturating_sub(1).max(covered);
+        let to = (i + 1).min(lines.len() - 1);
+        let text = lines[from..=to]
+            .iter()
+            .map(|l| clip(l, terms))
+            .collect::<Vec<_>>()
+            .join("\n");
+        found.push(json!({ "line": i + 1, "text": text.trim() }));
+        covered = to + 1;
+    }
+    (found, matching)
+}
+
+/// A line cut to a readable window around its first match, when it is long.
+fn clip(line: &str, terms: &[String]) -> String {
+    let chars: Vec<char> = line.chars().collect();
+    if chars.len() <= PASSAGE_LINE_CHARS {
+        return line.to_string();
+    }
+    let lower = line.to_lowercase();
+    let at = terms
+        .iter()
+        .filter_map(|t| lower.find(t.as_str()))
+        .min()
+        .map_or(0, |byte| lower[..byte].chars().count());
+    let start = at.saturating_sub(PASSAGE_LINE_CHARS / 3);
+    let end = (start + PASSAGE_LINE_CHARS).min(chars.len());
+    let mut out: String = chars[start..end].iter().collect();
+    if start > 0 {
+        out.insert(0, '…');
+    }
+    if end < chars.len() {
+        out.push('…');
+    }
+    out
+}
+
 fn unmark(s: &str) -> String {
     s.replace(['\u{1}', '\u{2}'], "")
 }
@@ -736,17 +948,34 @@ struct IdArgs {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 struct SearchArgs {
     query: String,
+    r#match: Option<String>,
+    space: Option<String>,
+    tag: Option<String>,
+    status: Option<String>,
+    updated_after: Option<String>,
+    updated_before: Option<String>,
     limit: Option<i64>,
+    offset: Option<i64>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct IdsArgs {
+    ids: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 struct ListArgs {
     space: Option<String>,
     tag: Option<String>,
     status: Option<String>,
+    updated_after: Option<String>,
+    updated_before: Option<String>,
     limit: Option<i64>,
     offset: Option<i64>,
 }

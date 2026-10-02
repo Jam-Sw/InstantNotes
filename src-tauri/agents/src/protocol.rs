@@ -54,6 +54,14 @@ Formatting, as the editor renders it: Markdown with GitHub extensions. \
 blocks, > quotes, - lists (indent to nest), - [ ] tasks, [links](url), and \
 images as ![](attachments/<file>). A #word in the text is a tag.
 
+Reading: search, then read only what matters. search_notes returns the \
+matching passages with their line numbers and surrounding lines, and takes \
+match \"any\" to cast wide, a space, a tag, a status, and dates; that is \
+usually enough to answer without opening a note. To read notes in full, pass \
+their ids to get_notes, several at a time. Do not page through the whole \
+library with list_notes to read everything, and do not script around these \
+tools: results say total and hasMore, so you always know what is left.
+
 Working with notes: search or list before creating, so you add to an existing \
 note instead of duplicating it. search_notes matches titles, so search a \
 note's title to find it; its results already carry the id, spaces, and \

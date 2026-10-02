@@ -387,7 +387,7 @@ not a note. Resources sit behind the same read gate as the read tools.
 
 | Tool | Access | Store call |
 | --- | --- | --- |
-| `search_notes`, `list_notes`, `get_note`, `list_tags`, `list_spaces` | read | `search_notes`, `list_notes`, `get_note(id, false)`, `list_tags`, `list_workspaces` |
+| `search_notes`, `list_notes`, `get_note`, `get_notes`, `list_tags`, `list_spaces` | read | `search_notes_page`, `list_notes` and `count_notes`, `get_note(id, false)`, `list_tags`, `list_workspaces` |
 | `create_note`, `update_note`, `append_to_note` | write | `create_note`, `update_note` with `expectedUpdatedAt` |
 | `tag_note`, `untag_note`, `add_to_space`, `remove_from_space` | write | the tag and workspace membership calls |
 | `trash_note`, `restore_note` | write | `soft_delete_note`, `restore_note` |
@@ -397,6 +397,18 @@ properties, and annotations: `readOnlyHint` for reads, `destructiveHint` for
 the writes that remove or replace (`update_note`, `untag_note`,
 `remove_from_space`, `trash_note`), `idempotentHint`, and `openWorldHint:
 false`, since a tool only ever touches this library.
+
+An agent is meant to search, then read only what matters. `search_notes`
+takes `query`, `match` (`all` or `any` of the words), `space`, `tag`, `status`
+(`active`, `archived`, `all`; never the Trash), `updatedAfter` and
+`updatedBefore` (a date or a UTC timestamp), `limit`, and `offset`. Each
+result carries `passages`: up to three, each the matching line with the
+line before and after it and its 1-based `line`, plus `matchingLines`, the
+count of lines that match in all. `get_notes` reads up to 50 notes in full
+in one call, in the order asked, and returns ids that name no note in
+`missing`. `search_notes` and `list_notes` are paged: `total` is how many
+match in all, `hasMore` whether to ask again, and `nextOffset` from where.
+`list_notes` takes the same two dates.
 
 `list_notes` with `status: "revisit"` is the Revisit view's filter. Reads never
 set `lastOpenedAt`. There is no permanent delete, no settings, no vault, and
