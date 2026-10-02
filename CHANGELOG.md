@@ -8,6 +8,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.9.1]
+
+### Added
+- Claude Code plugin: search, read, and capture notes from a pane inside Claude
+  Code. Install it with `/plugin marketplace add jamubc/toolbox`, then
+  `/plugin install instantnotes@toolbox`; `/notes` opens the pane and
+  `/note <text>` saves a note.
+
+### Changed
+- MCP: rewriting a note takes 2 calls (`search_notes`, `update_note`), not 5.
+  `update_note` takes any `updatedAt` and returns the current note on conflict.
+
+### Fixed
+- Search: punctuation inside a word (`CachyOS/Arch`) now splits the token
+  instead of being dropped; an exact title match ranks first.
 
 ## [0.9.0] - 2026-09-30
 
