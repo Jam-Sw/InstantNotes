@@ -10,7 +10,6 @@
   import { library } from "$lib/stores/library.svelte";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
   import { agentActivityBefore, agentActivityWire } from "$lib/api/client";
-  import { sessionSummary } from "$lib/agents/space";
   import {
     canRevert,
     clientLabel,
@@ -34,6 +33,22 @@
   let wire = $state<AgentWire | null | undefined>(undefined);
 
   const session = $derived(agentsSpace.sessionFor(library.selected?.id));
+  // The call this agent is in the middle of, if any.
+  const doing = $derived(session ? agents.doing(session.session) : null);
+
+  // A long conversation is mostly reads; the filter brings out the rest.
+  type Filter = "all" | "changes" | "failed";
+  let filter = $state<Filter>("all");
+  const isChange = (e: AgentActivity) => e.kind === "write" && e.status === "ok";
+  const shown = $derived(
+    !session
+      ? []
+      : filter === "changes"
+        ? session.entries.filter(isChange)
+        : filter === "failed"
+          ? session.entries.filter((e) => e.status === "error")
+          : session.entries,
+  );
 
   onMount(() => {
     const tick = setInterval(() => (now = Date.now()), 15_000);
@@ -112,33 +127,74 @@
   <div class="column">
     {#if session}
       <h1 class="title">{clientLabel(session.client)}</h1>
-      <p class="meta">
-        <span>{sessionSummary(session)}</span>
-        <span title={new Date(session.startedAt).toLocaleString()}>{timeAgo(session.endedAt, now)}</span>
-      </p>
-      <p class="lead">
-        {#if agents.access === "off"}
-          Agent access is off. Nothing can connect until you turn it on in Settings.
-        {:else if agents.access === "read"}
-          Agents may read. Every call is listed here as it happens.
+      <!-- The connection, as it is: this line is always here and only its
+           words change, so the page below it never moves. -->
+      <p class="status" role="status" aria-live="polite">
+        {#if session.connected}
+          <span class="live-dot" data-state={doing ? "working" : "connected"}></span>
+          <span class="status-main">{doing ? describeActivity(doing) : "Connected"}</span>
+          {#if session.connectedAt}<span title={new Date(session.connectedAt).toLocaleString()}>since {clockTime(session.connectedAt)}</span>{/if}
         {:else}
-          Agents may read and write. Every change can be reverted from here.
+          <span class="live-dot" data-state="off"></span>
+          <span class="status-main">Not connected</span>
+          {#if session.disconnectedAt}
+            <span title={new Date(session.disconnectedAt).toLocaleString()}>ended {timeAgo(session.disconnectedAt, now)}</span>
+          {:else}
+            <span title={new Date(session.endedAt).toLocaleString()}>last call {timeAgo(session.endedAt, now)}</span>
+          {/if}
         {/if}
+        <span class="status-access">
+          {#if agents.access === "off"}
+            Agent access is off
+          {:else if agents.access === "read"}
+            May read
+          {:else}
+            May read and write
+          {/if}
+        </span>
       </p>
-      <ol class="rows">
-        {#each session.entries as e (e.seq)}
+      <div class="filters" role="group" aria-label="Show">
+        <button class="filter" aria-pressed={filter === "all"} onclick={() => (filter = "all")}>
+          All <span class="n">{session.entries.length}</span>
+        </button>
+        <button class="filter" aria-pressed={filter === "changes"} onclick={() => (filter = "changes")}>
+          Changes <span class="n">{session.writes}</span>
+        </button>
+        <button class="filter" aria-pressed={filter === "failed"} onclick={() => (filter = "failed")}>
+          Failed <span class="n">{session.errors}</span>
+        </button>
+      </div>
+      {#if shown.length === 0}
+        <p class="lead">
+          {#if session.entries.length === 0}
+            Connected, and it has not asked for anything yet. Every call will be listed here as it happens.
+          {:else if filter === "changes"}
+            It has not changed anything.
+          {:else}
+            Nothing it tried has failed.
+          {/if}
+        </p>
+      {/if}
+      <ol class="rows" class:empty={shown.length === 0}>
+        {#each shown as e (e.seq)}
           {@const kind = e.status === "error" ? "error" : kindLabel(e)}
           <li class="row" data-kind={kind} class:reverted={e.revertedAt !== null} class:open={openSeq === e.seq}>
-            <button class="row-main" onclick={() => toggle(e)} aria-expanded={openSeq === e.seq}>
-              <span class="time">{clockTime(e.at)}</span>
-              <span class="chip" data-kind={kind}>{kind}</span>
-              <span class="what">
-                {describeActivity(e)}
-                {#if e.revertedAt !== null}<span class="flag">reverted</span>{/if}
-                {#if canRevert(e) && editedSince(e)}<span class="flag">edited since</span>{/if}
-              </span>
-              <span class="dur">{formatDuration(e.durationMs)}</span>
-            </button>
+            <div class="row-head">
+              <button class="row-main" onclick={() => toggle(e)} aria-expanded={openSeq === e.seq}>
+                <span class="time">{clockTime(e.at)}</span>
+                <span class="mark" data-kind={kind} title={kind} aria-label={kind} role="img"></span>
+                <span class="what">
+                  {describeActivity(e)}
+                  {#if e.revertedAt !== null}<span class="flag">reverted</span>{/if}
+                  {#if canRevert(e) && editedSince(e)}<span class="flag">edited since</span>{/if}
+                </span>
+                <span class="dur">{formatDuration(e.durationMs)}</span>
+              </button>
+              <!-- A change can be put back from its own line, without unfolding it. -->
+              {#if canRevert(e)}
+                <button class="btn revert" onclick={() => revert(e)}>Revert</button>
+              {/if}
+            </div>
             {#if openSeq === e.seq}
               <div class="details">
                 <!-- What crossed the wire, whole: the message the agent sent
@@ -181,9 +237,7 @@
                   {#if e.noteIds.length === 1}
                     <button class="btn" onclick={() => openNote(e)}>Open note</button>
                   {/if}
-                  {#if canRevert(e)}
-                    <button class="btn primary" onclick={() => revert(e)}>Revert</button>
-                  {:else if e.revertedAt !== null}
+                  {#if e.revertedAt !== null}
                     <span class="muted">Reverted {timeAgo(e.revertedAt, now)}</span>
                   {/if}
                 </div>
@@ -225,14 +279,48 @@
     letter-spacing: -0.012em;
     color: var(--text);
   }
-  .meta {
+  .status {
     display: flex;
-    gap: 10px;
-    margin: 6px 0 0;
-    padding-bottom: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 8px 0 0;
+    padding-bottom: 12px;
     border-bottom: 1px solid var(--border);
-    font-family: var(--font-meta);
+    font-family: var(--font-ui);
+    font-size: 12.5px;
+    color: var(--text-tertiary);
+  }
+  .status-main {
+    color: var(--text);
+    font-weight: 500;
+  }
+  .status-access {
+    margin-left: auto;
+  }
+  .filters {
+    display: flex;
+    gap: 4px;
+    margin: 14px 0 10px;
+  }
+  .filter {
+    padding: 3px 10px;
+    border-radius: 99px;
     font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .filter:hover {
+    background: var(--bg-hover);
+  }
+  .filter[aria-pressed="true"] {
+    background: var(--select-bg);
+    color: var(--text);
+    font-weight: 600;
+  }
+  .filter .n {
+    margin-left: 3px;
+    font-family: var(--font-meta);
+    font-size: 11px;
     color: var(--text-tertiary);
   }
   .lead {
@@ -249,32 +337,50 @@
     border-radius: var(--radius);
     overflow: hidden;
   }
+  .rows.empty {
+    display: none;
+  }
   .row + .row {
     border-top: 1px solid var(--border);
   }
-  .row-main {
-    display: grid;
-    grid-template-columns: auto auto 1fr auto;
-    align-items: baseline;
-    gap: 8px;
-    width: 100%;
-    padding: 7px 10px;
-    text-align: left;
-    font-size: 12.5px;
-    color: var(--text);
+  .row-head {
+    display: flex;
+    align-items: center;
   }
-  .row-main:hover,
-  .row.open .row-main {
+  .row-head:hover,
+  .row.open .row-head {
     background: var(--bg-hover);
   }
+  .row-main {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: auto auto 1fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    text-align: left;
+    font-size: 13px;
+    color: var(--text);
+  }
+  /* A change is what this list is for: it reads at full strength, and a
+     read or a search steps back. */
   .row[data-kind="read"] .what,
   .row[data-kind="search"] .what {
     color: var(--text-secondary);
+  }
+  .row[data-kind="write"] .what,
+  .row[data-kind="revert"] .what {
+    font-weight: 500;
+  }
+  .row[data-kind="error"] .what {
+    color: var(--danger);
   }
   .row.reverted .what {
     text-decoration: line-through;
     text-decoration-color: var(--text-tertiary);
     color: var(--text-tertiary);
+    font-weight: 400;
   }
   .time,
   .dur {
@@ -282,6 +388,27 @@
     font-size: 11px;
     color: var(--text-tertiary);
     white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  /* The kind of call, as a mark: hollow for a read, dashed for a search,
+     solid for a change, red for a failure. */
+  .mark {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: 1.5px solid var(--text-tertiary);
+  }
+  .mark[data-kind="search"] {
+    border-style: dashed;
+  }
+  .mark[data-kind="write"],
+  .mark[data-kind="revert"] {
+    border-color: var(--accent);
+    background: var(--accent);
+  }
+  .mark[data-kind="error"] {
+    border-color: var(--danger);
+    background: var(--danger);
   }
   .what {
     min-width: 0;
@@ -293,6 +420,7 @@
     margin-left: 6px;
     font-size: 10px;
     font-family: var(--font-meta);
+    font-weight: 400;
     color: var(--text-tertiary);
     border: 1px solid var(--border);
     border-radius: 99px;
@@ -300,30 +428,12 @@
     text-decoration: none;
     display: inline-block;
   }
-  .chip {
-    font-family: var(--font-meta);
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    padding: 1px 6px;
-    border-radius: 99px;
-    border: 1px solid var(--border);
-    color: var(--text-tertiary);
-    white-space: nowrap;
-  }
-  .chip[data-kind="write"],
-  .chip[data-kind="revert"] {
+  .btn.revert {
+    flex: none;
+    margin-right: 8px;
+    border-color: var(--accent);
     color: var(--accent-text);
-    background: var(--accent-soft);
-    border-color: transparent;
-  }
-  .chip[data-kind="search"] {
-    color: var(--text-secondary);
-  }
-  .chip[data-kind="error"] {
-    color: var(--danger);
-    border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+    font-weight: 600;
   }
   .details {
     padding: 4px 12px 12px;
@@ -395,11 +505,6 @@
   }
   .btn:hover {
     background: var(--bg-hover);
-  }
-  .btn.primary {
-    border-color: var(--accent);
-    color: var(--accent-text);
-    font-weight: 600;
   }
   .btn.quiet {
     margin-left: auto;

@@ -243,6 +243,18 @@ CREATE TABLE agent_activity (
 ALTER TABLE agent_activity ADD COLUMN request TEXT;
 ALTER TABLE agent_activity ADD COLUMN response TEXT;
 "#,
+    // v9: agent connections. One row per MCP server process: who connected
+    // and when, and when it said goodbye. A process that dies without saying
+    // so is found out by the lock it held (`store/activity.rs`), and the app
+    // closes its row.
+    r#"
+CREATE TABLE agent_sessions (
+  session         TEXT PRIMARY KEY,
+  client          TEXT NOT NULL,
+  connected_at    INTEGER NOT NULL,
+  disconnected_at INTEGER
+);
+"#,
 ];
 
 const NOTE_COLUMNS: &str = "id, title, body, created_at, updated_at, last_opened_at, \

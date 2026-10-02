@@ -1,7 +1,7 @@
 <script lang="ts">
   import { library } from "$lib/stores/library.svelte";
   import { agents } from "$lib/stores/agents.svelte";
-  import { clientLabel, describeActivity } from "$lib/agent-activity";
+  import { clientLabel } from "$lib/agent-activity";
   import { ApiError, deleteTag, updateTag } from "$lib/api/client";
   import { friendlyMessage, GENERIC_MESSAGE } from "$lib/errors";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
@@ -25,6 +25,16 @@
   let spaceMenu = $state<{ x: number; y: number; ws: WorkspaceWithCount } | null>(null);
   let renamingTagId = $state<string | null>(null);
   let tagMenu = $state<{ x: number; y: number; tag: TagWithCount } | null>(null);
+
+  // "Claude Code and Codex connected", "Claude Code and 19 more connected".
+  const connectedTitle = $derived.by(() => {
+    const names = agents.sessions.filter((s) => s.connected).map((s) => clientLabel(s.client));
+    if (names.length === 0) return "";
+    if (names.length <= 3) {
+      return `${new Intl.ListFormat("en", { type: "conjunction" }).format(names)} connected`;
+    }
+    return `${names[0]} and ${names.length - 1} more connected`;
+  });
 
   async function submitNewSpace(e: Event) {
     e.preventDefault();
@@ -126,25 +136,6 @@
     >
       All Notes
     </button>
-    <!-- An agent at work: who, and what, in one line that exists only while
-         it is happening. The rows it touches light up on their own; this
-         says in words what the light means. Opens the note it names. -->
-    <div class="agent-live" role="status" aria-live="polite">
-      {#if agents.current}
-        {@const act = agents.current}
-        <button
-          class="agent-line"
-          data-kind={act.status === "error" ? "error" : act.kind}
-          title="An agent is working in your library. Click for the full trace."
-          onclick={() => agents.show()}
-        >
-          <span class="agent-dot" aria-hidden="true"></span>
-          <span class="agent-text"
-            ><strong>{clientLabel(act.client)}</strong> {describeActivity(act)}</span
-          >
-        </button>
-      {/if}
-    </div>
     <!-- Open loops: capture-born notes never opened since. Hidden at zero
          (useful by default, invisible when there's nothing to do), but held
          visible while active so the row doesn't vanish mid burn-down. -->
@@ -214,7 +205,14 @@
         onDoneRename={() => {}}
         onMenu={() => {}}
       >
-        {#snippet suffix()}{#if agents.unseen > 0}<span class="badge" aria-label="{agents.unseen} new changes">{agents.unseen}</span>{/if}{/snippet}
+        <!-- Who is connected lives on the row itself, which is always here:
+             nothing appears or goes, so nothing below it ever moves. -->
+        {#snippet suffix()}{#if agents.connectedCount > 0}<span
+              class="agents-live"
+              title={connectedTitle}
+              aria-label={connectedTitle}
+              ><span class="live-dot" data-state={agents.working ? "working" : "connected"}></span>{agents.connectedCount}</span
+            >{/if}{#if agents.unseen > 0}<span class="badge" aria-label="{agents.unseen} new changes">{agents.unseen}</span>{/if}{/snippet}
       </SidebarEntityRow>
     {/if}
     {#each library.workspaces as ws (ws.id)}
@@ -338,47 +336,15 @@
     background: var(--select-bg);
     font-weight: 600;
   }
-  .agent-line {
-    display: flex;
-    align-items: baseline;
-    gap: 7px;
-    width: 100%;
-    margin: 2px 0 4px;
-    padding: 4px 10px;
-    border-radius: var(--radius);
-    text-align: left;
-    font-size: 12px;
-    line-height: 1.35;
+  .agents-live {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-left: 8px;
+    font-family: var(--font-meta);
+    font-size: 11px;
+    font-weight: 500;
     color: var(--text-secondary);
-    animation: agent-line-in 180ms ease-out;
-  }
-  .agent-line:hover {
-    background: var(--bg-hover);
-  }
-  .agent-line strong {
-    color: var(--accent-text);
-    font-weight: 600;
-  }
-  .agent-text {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .agent-dot {
-    flex: none;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--accent);
-    transform: translateY(-1px);
-    animation: agent-dot 1.2s ease-in-out infinite;
-  }
-  .agent-line[data-kind="write"] .agent-dot {
-    box-shadow: 0 0 0 3px var(--accent-soft);
-  }
-  .agent-line[data-kind="error"] .agent-dot {
-    background: var(--danger);
   }
   .badge {
     display: inline-block;
@@ -393,23 +359,6 @@
     font-weight: 700;
     line-height: 18px;
     text-align: center;
-  }
-  @keyframes agent-line-in {
-    from {
-      opacity: 0;
-      transform: translateY(-2px);
-    }
-  }
-  @keyframes agent-dot {
-    50% {
-      opacity: 0.35;
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .agent-line,
-    .agent-dot {
-      animation: none;
-    }
   }
   /* Type comes from .section-label (app.css); this is only where it sits. */
   .tags-header {

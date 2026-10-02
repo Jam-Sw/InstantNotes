@@ -7,6 +7,7 @@ vi.mock("$lib/api/client", () => ({
   setSetting: vi.fn(async () => {}),
   getAgentConnection: vi.fn(async () => null),
   listAgentActivity: vi.fn(async () => []),
+  listAgentSessions: vi.fn(async () => []),
   revertAgentActivity: vi.fn(),
   clearAgentActivity: vi.fn(async () => {}),
 }));
@@ -55,6 +56,9 @@ describe("agents presence", () => {
     expect(agents.spaceActive("ideas")).toBe(true);
     expect(agents.tagActive("plan")).toBe(true);
     expect(agents.current?.tool).toBe("append_to_note");
+    // Each conversation has its own "doing right now".
+    expect(agents.working).toBe(true);
+    expect(agents.doing("s1")?.tool).toBe("append_to_note");
     expect(agents.recent[0].tool).toBe("append_to_note");
     expect(agents.lastWriter("b")).toBe("claude-code");
 
@@ -68,6 +72,8 @@ describe("agents presence", () => {
     agents.expire(t0 + 2 * PRESENCE_MS);
     expect(agents.noteMark("a")).toBeNull();
     expect(agents.current).toBeNull();
+    expect(agents.working).toBe(false);
+    expect(agents.doing("s1")).toBeNull();
   });
 
   it("ignores an empty batch", () => {

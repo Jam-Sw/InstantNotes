@@ -20,6 +20,7 @@ export const EVENTS = {
   STICKIES_CHANGED: "stickies:changed",
   STICKY_CLOSE_REQUESTED: "sticky:close-requested",
   LIBRARY_EXTERNAL_CHANGE: "library:external-change",
+  AGENT_SESSIONS: "agents:sessions",
 } as const;
 
 export type AppEvent = (typeof EVENTS)[keyof typeof EVENTS];

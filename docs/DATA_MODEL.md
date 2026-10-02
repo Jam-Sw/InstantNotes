@@ -133,6 +133,7 @@ public so tests can build fixtures at a historical schema version.
 | v6 | `board_sha`, and triggers that carry whiteboards through the vault mirror (section 10). |
 | v7 | `agent_activity`: the trace of agent calls, with before-snapshots for reverting writes (section 11). |
 | v8 | `agent_activity.request` and `response`: the raw JSON-RPC exchange behind each call (section 11). |
+| v9 | `agent_sessions`: one row per agent connection, for a truthful connected status (section 11). |
 
 v4 exists because pre-release builds that carried the whiteboard already
 migrated some libraries to it before the whiteboard was lifted off the 0.9.0
@@ -185,6 +186,16 @@ arrays), `note_count`, `space`, `tag`, `query`, `after_updated_at`, `before`,
 message the agent sent and the reply it got, whole, as JSON text. The app
 shows them as they are when a call is unfolded in the Agents Space. They are
 NULL on rows written before v8 and on the app's own `revert` rows.
+
+`agent_sessions` is who is, and was, connected: one row per MCP server
+process (`session`, the same id its trace rows carry; `client`;
+`connected_at`; `disconnected_at`). The process writes its row when it starts
+and closes it when its client hangs up. For as long as it lives it also holds
+an exclusive lock on `agent-sessions/<session>.lock` beside the library; the
+operating system drops that lock however the process ends. The app treats a
+row as connected only while the lock is held, and closes the row of a process
+it finds gone, so a crash never leaves an agent looking connected. Ended
+rows are dropped after 30 days, and when the history is cleared.
 
 `before` is what makes a write revertable: the note as it was just before,
 as JSON (`title`, `title_is_auto`, `body`, the flags, `updated_at`, every

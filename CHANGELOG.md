@@ -15,6 +15,13 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   palette). Each row says who, what, and how long it took, and unfolds to the
   raw request and response exactly as they crossed MCP. Every change an agent makes can be reverted from there, and
   from the toast that announces it; a revert can itself be undone.
+- Agents: the Agents row in the sidebar shows how many agents are connected
+  right now, and pulses while one is in the middle of a call. Connected is
+  the truth about the agent's process, including one that crashed. Each
+  conversation's row says what the agent is doing this moment, then settles
+  to a summary; its page has a live status line, filters for changes and
+  failures, and Revert on every change's own line. Settings > Agents adds a
+  connect snippet for Hermes.
 - Agents: an agent's search shows its words above your note list as it
   happens, and the notes it found light up with a dashed outline. Settings >
   Agents lets you choose which calls raise a toast (changes, everything, or

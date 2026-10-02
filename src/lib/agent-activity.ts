@@ -88,6 +88,30 @@ export function parseActivityLog(value: unknown): AgentActivity[] {
   );
 }
 
+/** One agent connection, from `list_agent_sessions` and `agents:sessions`:
+ *  an MCP server process, and whether it is alive right now. */
+export interface AgentPresence {
+  session: string;
+  client: string;
+  /** Epoch milliseconds. */
+  connectedAt: number;
+  disconnectedAt: number | null;
+  connected: boolean;
+}
+
+export function parsePresence(value: unknown): AgentPresence[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (s): s is AgentPresence =>
+      !!s &&
+      typeof s === "object" &&
+      typeof s.session === "string" &&
+      typeof s.client === "string" &&
+      typeof s.connectedAt === "number" &&
+      typeof s.connected === "boolean",
+  );
+}
+
 /** Whether a batch of outside writes may have changed this note. No rows
  *  means a write the trace does not describe (a second copy of the app),
  *  which may have touched anything. */
@@ -113,6 +137,7 @@ const KNOWN_CLIENTS: Record<string, string> = {
   "cursor-vscode": "Cursor",
   "gemini-cli": "Gemini CLI",
   hermes: "Hermes",
+  "hermes-agent": "Hermes",
   instantnotes: "You",
   vscode: "VS Code",
   windsurf: "Windsurf",
@@ -323,6 +348,17 @@ export function codexCommand(c: AgentConnection): string {
   return ["codex", "mcp", "add", "instantnotes", "--", c.exe, ...serverArgs(c)]
     .map(shellQuote)
     .join(" ");
+}
+
+/** The `mcp_servers` entry for Hermes Agent's `~/.hermes/config.yaml`.
+ *  JSON strings are valid YAML, which keeps paths with spaces intact. */
+export function hermesConfig(c: AgentConnection): string {
+  return [
+    "mcp_servers:",
+    "  instantnotes:",
+    `    command: ${JSON.stringify(c.exe)}`,
+    `    args: ${JSON.stringify(serverArgs(c))}`,
+  ].join("\n");
 }
 
 /** The `mcpServers` entry most other clients take (Claude Desktop, Cursor). */

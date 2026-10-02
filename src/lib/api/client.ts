@@ -6,6 +6,7 @@ import { ERROR_CODES, isErrorCode, type ErrorCode } from "./error-codes";
 import type {
   AgentActivity,
   AgentConnection,
+  AgentPresence,
   AgentWire,
   NoteSnapshot,
 } from "$lib/agent-activity";
@@ -282,6 +283,9 @@ export const listAgentActivity = (limit = 200, offset = 0) =>
   call<AgentActivity[]>("list_agent_activity", { limit, offset });
 export const agentActivityBefore = (seq: number) =>
   call<NoteSnapshot | null>("agent_activity_before", { seq });
+// Every known agent connection, newest first, each with whether its process
+// is alive right now.
+export const listAgentSessions = () => call<AgentPresence[]>("list_agent_sessions");
 // The raw exchange behind a call: the JSON-RPC request and response as JSON
 // text, or null where none was kept.
 export const agentActivityWire = (seq: number) =>

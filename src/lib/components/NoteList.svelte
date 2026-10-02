@@ -201,6 +201,7 @@
       {/each}
     {:else if syntheticNotes}
       {#each syntheticNotes as note (note.id)}
+        {@const live = agentsSpace.stateOf(note.id)}
         <button
           class="note-row"
           data-note-id={note.id}
@@ -208,10 +209,12 @@
           onclick={() => library.selectVirtual(note)}
         >
           <div class="row-head">
-            <div class="row-title">{note.title}</div>
+            <div class="row-title">
+              {#if live}<span class="live-dot row-live" data-state={live} aria-label={live === "working" ? "Working" : "Connected"} role="img"></span>{/if}{note.title}
+            </div>
             <div class="row-date" title={formatExact(note.updatedAt)}>{formatDate(note.updatedAt)}</div>
           </div>
-          <div class="row-preview">{preview(note.body) || "Empty note"}</div>
+          <div class="row-preview" class:doing={live === "working"}>{preview(note.body) || "Empty note"}</div>
         </button>
       {:else}
         <div class="empty-state">
@@ -496,6 +499,13 @@
     margin-right: 3px;
     vertical-align: -1px;
     color: var(--accent-text);
+  }
+  .row-live {
+    margin-right: 6px;
+  }
+  /* What an agent is doing this moment, before it settles to the summary. */
+  .row-preview.doing {
+    color: var(--text);
   }
   /* Two lines of the note, then cut. */
   .row-preview {

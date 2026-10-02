@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
-import type { AgentSession } from "$lib/agent-activity";
+import type { AgentActivity, AgentPresence, AgentSession } from "$lib/agent-activity";
 import {
   AGENTS_SPACE_ID,
   agentNoteId,
   buildAgentNotes,
+  joinConversations,
   isAgentNoteId,
   isAgentsSpaceId,
   sessionOfNote,
@@ -50,11 +51,47 @@ describe("the Agents Space", () => {
   });
 
   it("draws one note per conversation, dated by its last call", () => {
-    const [note] = buildAgentNotes([session()]);
+    const [note] = buildAgentNotes(joinConversations([session()], []));
     expect(note.id).toBe(agentNoteId("s1"));
     expect(note.title).toBe("Claude Code");
     expect(note.body).toBe("3 changes · 5 reads · 1 failed");
     expect(note.updatedAt).toBe("2026-10-01T10:05:00.000Z");
     expect(note.createdAt).toBe("2026-10-01T10:00:00.000Z");
+  });
+
+  const presence = (over: Partial<AgentPresence> = {}): AgentPresence => ({
+    session: "s1",
+    client: "claude-code",
+    connectedAt: Date.UTC(2026, 9, 1, 9, 59),
+    disconnectedAt: null,
+    connected: true,
+    ...over,
+  });
+
+  it("puts connected agents first, the silent ones included", () => {
+    const convs = joinConversations(
+      [session({ session: "old", endedAt: Date.UTC(2026, 9, 1, 12, 0) }), session()],
+      [presence(), presence({ session: "quiet", client: "hermes" })],
+    );
+    expect(convs.map((c) => [c.session, c.connected])).toEqual([
+      ["s1", true],
+      ["quiet", true],
+      ["old", false],
+    ]);
+    // An ended connection that never asked for anything is not a conversation.
+    const none = joinConversations(
+      [],
+      [presence({ connected: false, disconnectedAt: 5 })],
+    );
+    expect(none).toEqual([]);
+  });
+
+  it("says what an agent is doing right now, then settles to the summary", () => {
+    const convs = joinConversations([session()], [presence(), presence({ session: "quiet" })]);
+    const doing = { tool: "get_note", status: "ok", titles: ["Roadmap"], noteCount: 1 } as AgentActivity;
+    const live = buildAgentNotes(convs, (s) => (s === "s1" ? doing : null));
+    expect(live[0].body).toBe("Reading “Roadmap”");
+    expect(live[1].body).toBe("Connected. Nothing asked yet.");
+    expect(buildAgentNotes(convs)[0].body).toBe("3 changes · 5 reads · 1 failed");
   });
 });

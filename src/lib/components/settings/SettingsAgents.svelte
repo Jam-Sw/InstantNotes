@@ -10,6 +10,7 @@
     clientLabel,
     codexCommand,
     describeActivity,
+    hermesConfig,
     kindLabel,
     mcpServersJson,
     timeAgo,
@@ -44,7 +45,7 @@
     off: "No toasts. The live marks on your notes and the Agents Space still show everything.",
   };
 
-  type Client = "claude" | "codex" | "json";
+  type Client = "claude" | "codex" | "hermes" | "json";
   let client = $state<Client>("claude");
   let now = $state(Date.now());
 
@@ -64,12 +65,14 @@
     if (!conn) return "";
     if (client === "claude") return claudeCodeCommand(conn);
     if (client === "codex") return codexCommand(conn);
+    if (client === "hermes") return hermesConfig(conn);
     return mcpServersJson(conn);
   }
 
   const SNIPPET_HINT: Record<Client, string> = {
     claude: "Run once in a terminal. Then ask Claude Code about your notes.",
     codex: "Run once in a terminal.",
+    hermes: "Add to ~/.hermes/config.yaml, then restart Hermes.",
     json: "Add to the app's MCP settings (Claude Desktop, Cursor, Zed, Windsurf).",
   };
 
@@ -86,7 +89,7 @@
 <div class="agents-pane">
   <h2>Agents</h2>
   <p class="section-hint">
-    Connect Claude Code, Codex, Cursor, or any agent that speaks the Model
+    Connect Claude Code, Codex, Hermes, Cursor, or any agent that speaks the Model
     Context Protocol. It works through the same search and the same rules you
     do. Whatever it reads or changes lights up in your library as it happens,
     and every change can be reverted.
@@ -113,6 +116,7 @@
       <div class="tabs" role="tablist" aria-label="Agent">
         <button role="tab" aria-selected={client === "claude"} onclick={() => (client = "claude")}>Claude Code</button>
         <button role="tab" aria-selected={client === "codex"} onclick={() => (client = "codex")}>Codex</button>
+        <button role="tab" aria-selected={client === "hermes"} onclick={() => (client = "hermes")}>Hermes</button>
         <button role="tab" aria-selected={client === "json"} onclick={() => (client = "json")}>Other apps</button>
       </div>
       <div class="connect-head">
@@ -151,8 +155,16 @@
         Open the full trace
       </button>
     </div>
+    <p class="connected-line">
+      <span class="live-dot" data-state={agents.connectedCount > 0 ? (agents.working ? "working" : "connected") : "off"}></span>
+      {#if agents.connectedCount === 0}
+        No agent is connected right now.
+      {:else}
+        {agents.connectedCount} connected: {agents.sessions.filter((s) => s.connected).map((s) => clientLabel(s.client)).join(", ")}
+      {/if}
+    </p>
     {#if recent.length === 0}
-      <p class="fine-print">No agent has connected yet.</p>
+      <p class="fine-print">No agent has asked for anything yet.</p>
     {:else}
       <ul class="activity" aria-label="Recent agent activity">
         {#each recent as entry (entry.seq)}
@@ -168,6 +180,14 @@
 </div>
 
 <style>
+  .connected-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 10px 0 0;
+    font-size: 12.5px;
+    color: var(--text-secondary);
+  }
   .agents-pane {
     max-width: 560px;
   }

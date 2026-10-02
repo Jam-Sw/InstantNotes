@@ -8,14 +8,20 @@
 //!   after any write of the app's own;
 //! - the new rows of the agent activity trace (`agent_activity`, core
 //!   `store/activity.rs`) go to the webview as `library:external-change`,
-//!   which draws them on the notes themselves and in the activity panel.
+//!   which draws them on the notes themselves and in the Agents Space;
+//! - who is connected goes to the webview as `agents:sessions` whenever it
+//!   changes, an agent that died without saying so included.
 //!
 //! An agent's read changes no note, but the server traces every call, and
 //! that row is what makes a read visible here too. The watcher's cursor is
 //! the newest `seq` it has announced: one indexed lookup per poll.
 
 use crate::*;
-use instantnotes_core::store::activity::{ActivityWire, AgentActivity, NoteSnapshot};
+use instantnotes_core::store::activity::{
+    session_alive, ActivityWire, AgentActivity, AgentSession, NoteSnapshot,
+};
+use instantnotes_core::Store;
+use std::path::Path;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -24,6 +30,50 @@ use std::time::Duration;
 const POLL: Duration = Duration::from_millis(400);
 /// Rows announced per poll at most; a burst past this is caught up next poll.
 const BATCH: i64 = 200;
+/// Polls between looks at who is connected: a file probe per open
+/// connection, so a little slower than the trace.
+const PRESENCE_EVERY: u32 = 5;
+/// Connections listed for the webview.
+const SESSIONS: i64 = 200;
+
+/// A connection as the webview shows it.
+#[derive(Serialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentSessionView {
+    #[serde(flatten)]
+    session: AgentSession,
+    /// The process is alive right now: it still holds its lock.
+    connected: bool,
+}
+
+/// Every known connection, newest first. A row still open whose process no
+/// longer holds its lock died without saying so; it is closed here, so the
+/// record is true from now on.
+fn sessions(store: &mut Store, db: &Path) -> Vec<AgentSessionView> {
+    let rows = store.list_agent_sessions(SESSIONS).unwrap_or_default();
+    rows.into_iter()
+        .map(|mut session| {
+            let connected =
+                session.disconnected_at.is_none() && session_alive(db, &session.session);
+            if !connected && session.disconnected_at.is_none() {
+                let _ = store.close_agent_session(&session.session);
+                session.disconnected_at = Some(
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_millis() as i64)
+                        .unwrap_or_default(),
+                );
+            }
+            AgentSessionView { session, connected }
+        })
+        .collect()
+}
+
+fn read_sessions(app: &AppHandle, db: &Path) -> Option<Vec<AgentSessionView>> {
+    let state = app.try_state::<AppState>()?;
+    let mut store = state.store.lock().ok()?;
+    Some(sessions(&mut store, db))
+}
 
 /// What Settings > Agents needs to print a working connect command.
 pub(crate) struct AgentBridge {
@@ -42,10 +92,26 @@ pub struct AgentConnection {
 /// Start the watcher; manage the returned bridge.
 pub(crate) fn start_agent_watcher(app: &AppHandle, db_path: PathBuf) -> AgentBridge {
     let handle = app.clone();
+    let db = db_path.clone();
     std::thread::spawn(move || {
         let mut last_version: Option<i64> = None;
         let mut last_seq: i64 = 0;
+        let mut last_sessions: Option<Vec<AgentSessionView>> = None;
+        let mut polls: u32 = 0;
         loop {
+            // Who is connected: looked at when another process wrote (a
+            // connect or a goodbye is a write) and every few polls besides,
+            // which is what catches an agent that died without a word.
+            let moved = read_state(&handle).map(|(v, _)| Some(v) != last_version);
+            if moved == Some(true) || polls.is_multiple_of(PRESENCE_EVERY) {
+                if let Some(now) = read_sessions(&handle, &db) {
+                    if last_sessions.as_ref() != Some(&now) {
+                        let _ = handle.emit(events::AGENT_SESSIONS, now.clone());
+                        last_sessions = Some(now);
+                    }
+                }
+            }
+            polls = polls.wrapping_add(1);
             if let Some((version, newest)) = read_state(&handle) {
                 match last_version {
                     // History from before launch is not news.
@@ -137,6 +203,17 @@ pub fn agent_activity_before(
     seq: i64,
 ) -> CmdResult<Option<NoteSnapshot>> {
     Ok(locked(&state)?.activity_before(seq)?)
+}
+
+/// Every known agent connection, newest first, each with whether its process
+/// is alive right now.
+#[tauri::command(async)]
+pub fn list_agent_sessions(
+    state: State<'_, AppState>,
+    bridge: State<'_, AgentBridge>,
+) -> CmdResult<Vec<AgentSessionView>> {
+    let mut store = locked(&state)?;
+    Ok(sessions(&mut store, &bridge.db_path))
 }
 
 /// The raw exchange behind a traced call: the JSON-RPC request and response,

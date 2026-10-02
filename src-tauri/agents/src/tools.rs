@@ -251,14 +251,26 @@ fn object(properties: Value, required: &[&str]) -> Value {
 }
 
 impl<'a> Tools<'a> {
-    pub(crate) fn new(store: &'a mut Store, attachments_dir: Option<PathBuf>) -> Self {
+    /// A connection begins: the session is on record from here, so the app
+    /// can say an agent is connected before it has asked for anything.
+    pub(crate) fn new(
+        store: &'a mut Store,
+        attachments_dir: Option<PathBuf>,
+        session: String,
+    ) -> Self {
+        let _ = store.open_agent_session(&session, "agent");
         Tools {
             store,
             attachments_dir,
             client: "agent".into(),
-            session: session_id(),
+            session,
             traced: None,
         }
+    }
+
+    /// The connection ended cleanly.
+    pub(crate) fn disconnect(&mut self) {
+        let _ = self.store.close_agent_session(&self.session);
     }
 
     pub(crate) fn store(&self) -> &Store {
@@ -268,6 +280,7 @@ impl<'a> Tools<'a> {
     pub(crate) fn set_client(&mut self, name: &str) {
         if !name.trim().is_empty() {
             self.client = name.trim().to_string();
+            let _ = self.store.name_agent_session(&self.session, &self.client);
         }
     }
 
@@ -668,7 +681,7 @@ fn unmark(s: &str) -> String {
 
 /// A session id without a uuid dependency: the process id and the start
 /// time, which no two concurrent servers on one machine share.
-fn session_id() -> String {
+pub(crate) fn session_id() -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis())

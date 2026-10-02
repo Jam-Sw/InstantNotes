@@ -37,3 +37,6 @@ pub const STICKY_CLOSE_REQUESTED: &str = "sticky:close-requested";
 /// payload is the new agent activity entries, oldest first. See
 /// `shell/agents.rs`.
 pub const LIBRARY_EXTERNAL_CHANGE: &str = "library:external-change";
+/// Which agents are connected changed; the payload is every known
+/// connection, newest first. See `shell/agents.rs`.
+pub const AGENT_SESSIONS: &str = "agents:sessions";

@@ -15,6 +15,7 @@
 
 use super::*;
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
 /// How many rows the trace keeps. Old rows are pruned on insert.
 pub const ACTIVITY_KEEP: i64 = 2000;
@@ -88,6 +89,62 @@ pub struct NoteSnapshot {
 pub struct ActivityWire {
     pub request: Option<String>,
     pub response: Option<String>,
+}
+
+/// One agent connection: an MCP server process, from the moment it started
+/// to the moment it ended.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentSession {
+    pub session: String,
+    pub client: String,
+    /// Epoch milliseconds.
+    pub connected_at: i64,
+    /// Set when the process ended, by itself on a clean exit or by the app
+    /// once it finds the process gone.
+    pub disconnected_at: Option<i64>,
+}
+
+/// How long an ended connection's row is kept.
+const SESSION_KEEP_MS: i64 = 30 * 24 * 60 * 60 * 1000;
+
+/// The file an agent process holds locked for as long as it lives, beside
+/// the library. The operating system lets go of the lock however the process
+/// ends, which is what makes "connected" true after a crash too.
+pub fn session_lock_path(db: &Path, session: &str) -> PathBuf {
+    db.with_file_name("agent-sessions")
+        .join(format!("{session}.lock"))
+}
+
+/// Take the session's lock, for the life of the returned file. `None` when
+/// the file cannot be made or locked; the session then reads as ended.
+pub fn hold_session_lock(db: &Path, session: &str) -> Option<std::fs::File> {
+    let path = session_lock_path(db, session);
+    std::fs::create_dir_all(path.parent()?).ok()?;
+    let file = std::fs::File::create(&path).ok()?;
+    file.try_lock().ok()?;
+    Some(file)
+}
+
+/// Whether the process behind a session still holds its lock. A lock this
+/// call can take belongs to no one: the process is gone, and its file is
+/// cleared away.
+pub fn session_alive(db: &Path, session: &str) -> bool {
+    let path = session_lock_path(db, session);
+    let Ok(file) = std::fs::File::open(&path) else {
+        return false;
+    };
+    match file.try_lock() {
+        Ok(()) => {
+            let _ = file.unlock();
+            drop(file);
+            let _ = std::fs::remove_file(&path);
+            false
+        }
+        Err(std::fs::TryLockError::WouldBlock) => true,
+        // Cannot tell: say what the row says.
+        Err(std::fs::TryLockError::Error(_)) => true,
+    }
 }
 
 /// A call to record. Everything the server knows once the tool returned.
@@ -474,9 +531,65 @@ impl Store {
         Ok(new_seq)
     }
 
-    /// Forget the trace. Notes are untouched.
+    /// Forget the trace, and the connections that have ended. Notes are
+    /// untouched.
     pub fn clear_activity(&mut self) -> Result<()> {
         self.conn.execute("DELETE FROM agent_activity", [])?;
+        self.conn.execute(
+            "DELETE FROM agent_sessions WHERE disconnected_at IS NOT NULL",
+            [],
+        )?;
         Ok(())
+    }
+
+    /// An agent process started. Also drops rows of connections long ended.
+    pub fn open_agent_session(&mut self, session: &str, client: &str) -> Result<()> {
+        let now = now_ms();
+        self.conn.execute(
+            "INSERT OR REPLACE INTO agent_sessions (session, client, connected_at, disconnected_at) \
+             VALUES (?1, ?2, ?3, NULL)",
+            params![session, client, now],
+        )?;
+        self.conn.execute(
+            "DELETE FROM agent_sessions WHERE disconnected_at < ?1",
+            params![now - SESSION_KEEP_MS],
+        )?;
+        Ok(())
+    }
+
+    /// The client said who it is.
+    pub fn name_agent_session(&mut self, session: &str, client: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE agent_sessions SET client = ?1 WHERE session = ?2 AND client <> ?1",
+            params![client, session],
+        )?;
+        Ok(())
+    }
+
+    /// The agent process ended. Keeps the first time it was said.
+    pub fn close_agent_session(&mut self, session: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE agent_sessions SET disconnected_at = ?1 \
+             WHERE session = ?2 AND disconnected_at IS NULL",
+            params![now_ms(), session],
+        )?;
+        Ok(())
+    }
+
+    /// Connections, newest first.
+    pub fn list_agent_sessions(&self, limit: i64) -> Result<Vec<AgentSession>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT session, client, connected_at, disconnected_at FROM agent_sessions \
+             ORDER BY connected_at DESC LIMIT ?1",
+        )?;
+        let rows = stmt.query_map(params![limit.clamp(1, 5000)], |r| {
+            Ok(AgentSession {
+                session: r.get(0)?,
+                client: r.get(1)?,
+                connected_at: r.get(2)?,
+                disconnected_at: r.get(3)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 }

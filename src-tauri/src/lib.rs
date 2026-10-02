@@ -501,6 +501,7 @@ pub fn run() {
             list_agent_activity,
             agent_activity_before,
             agent_activity_wire,
+            list_agent_sessions,
             revert_agent_activity,
             clear_agent_activity
         ])

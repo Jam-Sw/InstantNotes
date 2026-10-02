@@ -16,6 +16,7 @@ import {
   getAgentConnection,
   getSetting,
   listAgentActivity,
+  listAgentSessions,
   revertAgentActivity,
   setSetting,
 } from "$lib/api/client";
@@ -31,11 +32,13 @@ import {
   parseAccess,
   parseActivityLog,
   parseNotify,
+  parsePresence,
   type AgentAccess,
   type AgentActivity,
   type AgentConnection,
   type AgentKind,
   type AgentNotify,
+  type AgentPresence,
 } from "$lib/agent-activity";
 
 /** How long a touched note, Space, or tag stays lit after the last call. */
@@ -61,6 +64,8 @@ class AgentsStore {
   /** The latest search while it is fresh; the note list shows the query. */
   currentSearch = $state<AgentActivity | null>(null);
   connection = $state<AgentConnection | null>(null);
+  /** Every known connection, newest first, with whether each is alive now. */
+  sessions = $state<AgentPresence[]>([]);
   /** Whether the Agents Space is on screen: changes are then seen as they land. */
   watching = $state(false);
   /** Writes that arrived while the Agents Space was not on screen: the badge. */
@@ -72,6 +77,8 @@ class AgentsStore {
   #notes = $state(new Map<string, AgentMark>());
   #spaces = $state(new Set<string>());
   #tags = $state(new Set<string>());
+  // The call each conversation is in the middle of, while it is fresh.
+  #doing = $state(new Map<string, AgentActivity>());
   // When each mark lapses, so a later call extends it and an earlier timer
   // does not clear it early.
   #until = new Map<string, number>();
@@ -83,6 +90,10 @@ class AgentsStore {
     await listen<unknown>(EVENTS.LIBRARY_EXTERNAL_CHANGE, (e) => {
       this.play(parseActivityLog(e.payload));
     });
+    await listen<unknown>(EVENTS.AGENT_SESSIONS, (e) => {
+      this.sessions = parsePresence(e.payload);
+    });
+    void this.loadSessions();
     try {
       const [access, notify] = await Promise.all([
         getSetting<unknown>(AGENT_ACCESS_KEY),
@@ -105,6 +116,29 @@ class AgentsStore {
     } catch {
       // The Space shows what it has; the store is best-effort.
     }
+  }
+
+  async loadSessions(): Promise<void> {
+    try {
+      this.sessions = parsePresence(await listAgentSessions());
+    } catch {
+      // Best-effort: the row shows no one connected until the next event.
+    }
+  }
+
+  /** How many agents are connected right now. */
+  get connectedCount(): number {
+    return this.sessions.filter((s) => s.connected).length;
+  }
+
+  /** Whether any agent is in the middle of a call. */
+  get working(): boolean {
+    return this.#doing.size > 0;
+  }
+
+  /** The call a conversation is in the middle of, if any. */
+  doing(session: string): AgentActivity | null {
+    return this.#doing.get(session) ?? null;
   }
 
   /** Fetch the page after what is loaded. */
@@ -151,7 +185,13 @@ class AgentsStore {
     const notes = new Map(this.#notes);
     const spaces = new Set(this.#spaces);
     const tags = new Set(this.#tags);
+    const doing = new Map(this.#doing);
     for (const e of entries) {
+      // The app's own revert is not an agent at work.
+      if (e.client !== "instantnotes") {
+        doing.set(e.session, e);
+        this.#until.set(`d:${e.session}`, until);
+      }
       // A write holds over a read on the same note within the window.
       for (const id of e.noteIds) {
         if (e.kind === "write" || notes.get(id) !== "write") notes.set(id, e.kind);
@@ -174,6 +214,7 @@ class AgentsStore {
     this.#notes = notes;
     this.#spaces = spaces;
     this.#tags = tags;
+    this.#doing = doing;
     const latest = entries[entries.length - 1];
     this.current = latest;
     this.#until.set("current", until);
@@ -256,6 +297,7 @@ class AgentsStore {
       this.recent = [];
       this.hasMore = false;
       this.unseen = 0;
+      void this.loadSessions();
     } catch {
       toasts.show("Couldn't clear the agent history.");
     }
@@ -270,6 +312,8 @@ class AgentsStore {
     if (spaces.length !== this.#spaces.size) this.#spaces = new Set(spaces);
     const tags = [...this.#tags].filter((t) => !lapsed(`t:${t}`));
     if (tags.length !== this.#tags.size) this.#tags = new Set(tags);
+    const doing = [...this.#doing].filter(([s]) => !lapsed(`d:${s}`));
+    if (doing.length !== this.#doing.size) this.#doing = new Map(doing);
     if (this.current && lapsed("current")) this.current = null;
     if (this.currentSearch && lapsed("search")) this.currentSearch = null;
     for (const [key, at] of this.#until) if (at <= now) this.#until.delete(key);

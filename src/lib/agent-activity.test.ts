@@ -157,3 +157,20 @@ describe("the raw exchange", () => {
     expect(prettyWire("not json")).toBe("not json");
   });
 });
+
+describe("the Hermes connect snippet", () => {
+  it("is an mcp_servers entry that survives a path with spaces", async () => {
+    const { hermesConfig } = await import("./agent-activity");
+    const text = hermesConfig({
+      exe: "/Applications/InstantNotes.app/Contents/MacOS/instantnotes",
+      db: "/Users/me/Library/Application Support/com.instantnotes.app/instantnotes.db",
+      attachments: null,
+    });
+    expect(text.split("\n")).toEqual([
+      "mcp_servers:",
+      "  instantnotes:",
+      '    command: "/Applications/InstantNotes.app/Contents/MacOS/instantnotes"',
+      '    args: ["mcp","--db","/Users/me/Library/Application Support/com.instantnotes.app/instantnotes.db"]',
+    ]);
+  });
+});

@@ -5,7 +5,13 @@
 // synced. Pure, so it stays unit-testable without runes.
 
 import type { Note } from "$lib/api/types";
-import { clientLabel, type AgentSession } from "$lib/agent-activity";
+import {
+  clientLabel,
+  describeActivity,
+  type AgentActivity,
+  type AgentPresence,
+  type AgentSession,
+} from "$lib/agent-activity";
 
 /** Sentinel ids no real workspace or note can hold (ids are UUIDs). */
 export const AGENTS_SPACE_ID = "agents-space";
@@ -40,17 +46,75 @@ export function sessionSummary(s: AgentSession): string {
   return parts.join(" · ");
 }
 
-export function buildAgentNotes(sessions: AgentSession[]): Note[] {
-  return sessions.map((s) => ({
-    id: agentNoteId(s.session),
-    title: clientLabel(s.client),
-    // Only the list row ever shows this; opening the note renders the trace.
-    body: sessionSummary(s),
-    createdAt: new Date(s.startedAt).toISOString(),
-    updatedAt: new Date(s.endedAt).toISOString(),
-    isPinned: false,
-    isArchived: false,
-    isDeleted: false,
-    contentKind: "document" as const,
-  }));
+/** A conversation: what an agent did (the trace) joined with whether it is
+ *  still connected (its process). `connectedAt` is null for a conversation
+ *  traced before connections were kept. */
+export interface AgentConversation extends AgentSession {
+  connected: boolean;
+  connectedAt: number | null;
+  disconnectedAt: number | null;
+}
+
+/** Join the trace's sessions with the connections. A connected agent that
+ *  has asked for nothing yet still gets a conversation; an ended one that
+ *  never asked for anything does not. Connected first, then most recent. */
+export function joinConversations(
+  sessions: AgentSession[],
+  presence: AgentPresence[],
+): AgentConversation[] {
+  const known = new Map(presence.map((p) => [p.session, p]));
+  const out: AgentConversation[] = sessions.map((s) => {
+    const p = known.get(s.session);
+    return {
+      ...s,
+      connected: p?.connected ?? false,
+      connectedAt: p?.connectedAt ?? null,
+      disconnectedAt: p?.disconnectedAt ?? null,
+    };
+  });
+  const traced = new Set(sessions.map((s) => s.session));
+  for (const p of presence) {
+    if (!p.connected || traced.has(p.session)) continue;
+    out.push({
+      session: p.session,
+      client: p.client,
+      startedAt: p.connectedAt,
+      endedAt: p.connectedAt,
+      entries: [],
+      reads: 0,
+      writes: 0,
+      errors: 0,
+      connected: true,
+      connectedAt: p.connectedAt,
+      disconnectedAt: null,
+    });
+  }
+  return out.sort(
+    (a, b) => Number(b.connected) - Number(a.connected) || b.endedAt - a.endedAt,
+  );
+}
+
+/** One note per conversation. `doing` is the call a conversation is in the
+ *  middle of, if any: its row says that, and settles back to the summary. */
+export function buildAgentNotes(
+  conversations: AgentConversation[],
+  doing: (session: string) => AgentActivity | null = () => null,
+): Note[] {
+  return conversations.map((s) => {
+    const now = doing(s.session);
+    return {
+      id: agentNoteId(s.session),
+      title: clientLabel(s.client),
+      // Only the list row ever shows this; opening the note renders the trace.
+      body: now
+        ? describeActivity(now)
+        : sessionSummary(s) || (s.connected ? "Connected. Nothing asked yet." : ""),
+      createdAt: new Date(s.startedAt).toISOString(),
+      updatedAt: new Date(s.endedAt).toISOString(),
+      isPinned: false,
+      isArchived: false,
+      isDeleted: false,
+      contentKind: "document" as const,
+    };
+  });
 }

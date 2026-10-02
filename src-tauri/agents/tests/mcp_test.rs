@@ -752,3 +752,40 @@ fn a_titled_note_is_found_by_its_title_and_rewritten_without_a_read() {
         "{text}"
     );
 }
+
+#[test]
+fn a_connection_is_on_record_from_its_start_to_its_goodbye() {
+    let mut store = store_with("read");
+    session(&mut store, &[init(), call(1, "list_notes", json!({}))]);
+    let sessions = store.list_agent_sessions(10).unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].client, "claude-code", "named by the handshake");
+    assert!(
+        sessions[0].disconnected_at.is_some(),
+        "stdin closed: it said goodbye"
+    );
+    // The trace's rows carry the same session, so the two line up.
+    assert_eq!(trace(&store)[0].session, sessions[0].session);
+    // Clearing the history forgets ended connections with it.
+    store.clear_activity().unwrap();
+    assert!(store.list_agent_sessions(10).unwrap().is_empty());
+}
+
+#[test]
+fn a_held_lock_reads_as_alive_and_a_dropped_one_as_gone() {
+    use instantnotes_core::store::activity::{hold_session_lock, session_alive, session_lock_path};
+    let dir = std::env::temp_dir().join(format!("instantnotes-lock-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let db = dir.join("library.db");
+    assert!(!session_alive(&db, "s1"), "no lock file: not connected");
+    let held = hold_session_lock(&db, "s1").expect("the lock is free");
+    assert!(session_alive(&db, "s1"), "held: connected");
+    // However the process ends, the lock goes with it.
+    drop(held);
+    assert!(!session_alive(&db, "s1"));
+    assert!(
+        !session_lock_path(&db, "s1").exists(),
+        "and its file is cleared"
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}

@@ -13,7 +13,7 @@
 //! directly rather than pulling in an async SDK and its runtime.
 
 use crate::access::Access;
-use crate::tools::{Tools, NOTE_URI_PREFIX};
+use crate::tools::{session_id, Tools, NOTE_URI_PREFIX};
 use instantnotes_core::Store;
 use serde_json::{json, Map, Value};
 use std::io::{self, BufRead, Write};
@@ -73,14 +73,32 @@ reminders, or checklists the user did not ask for.";
 pub fn serve(
     store: &mut Store,
     attachments_dir: Option<PathBuf>,
+    input: impl BufRead,
+    output: impl Write,
+) -> io::Result<()> {
+    serve_as(store, attachments_dir, new_session(), input, output)
+}
+
+/// A name for this process's connection, for `serve_as`.
+pub fn new_session() -> String {
+    session_id()
+}
+
+/// `serve`, under a session id the caller already holds (the entry point
+/// takes the session's lock before the first message is read).
+pub fn serve_as(
+    store: &mut Store,
+    attachments_dir: Option<PathBuf>,
+    session: String,
     mut input: impl BufRead,
     mut output: impl Write,
 ) -> io::Result<()> {
-    let mut tools = Tools::new(store, attachments_dir);
+    let mut tools = Tools::new(store, attachments_dir, session);
     let mut line = Vec::new();
     loop {
         line.clear();
         if input.read_until(b'\n', &mut line)? == 0 {
+            tools.disconnect();
             return Ok(());
         }
         // A line that is not UTF-8 is one bad message, not a dead server.
