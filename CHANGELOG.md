@@ -10,11 +10,11 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.9.1] - 2026-10-02
 
 ### Added
-- Agent activity: a full trace of every call an agent makes, grouped by
-  conversation, in a panel off the sidebar (⌘⇧A, or "Show agent activity"
-  in the palette). Each row says who, what, which notes, how long it took,
-  and what it failed with. Every change an agent makes can be reverted from
-  there, and from the toast that announces it; a revert can itself be undone.
+- Agents: a full trace of every call an agent makes lives in an Agents Space
+  in the sidebar, one note per conversation (⌘⇧A, or "Show Agents" in the
+  palette). Each row says who, what, which notes, how long it took, and what
+  it failed with. Every change an agent makes can be reverted from there, and
+  from the toast that announces it; a revert can itself be undone.
 - Agents: an agent's search shows its words above your note list as it
   happens, and the notes it found light up with a dashed outline. Settings >
   Agents lets you choose which calls raise a toast (changes, everything, or
@@ -30,6 +30,17 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `/note <text>` saves a note.
 
 ### Changed
+- The library draws its own title bar on macOS: every pane has a header that
+  moves the window, and the note's actions are icons in two groups, what goes
+  into the text and what becomes of the note.
+- Notes read in a centred column of readable width, with the title on the page
+  and tags and Spaces in a row beneath it.
+- The sidebar, note list, and page step apart in surface, every list selects
+  the same way, and note rows show the date beside the title over a two-line
+  snippet. On macOS the sidebar is the system's translucent material in every
+  theme except Contrast.
+- Dependencies: React 19, Vite 8, Vitest 5, and the Tauri plugins and Rust
+  crates brought up to date.
 - Settings is now a preferences window: a grouped list of pages down the left
   with a filter (type, then Enter), the page on the right, and an Overview
   with library stats, what's new, and the state of theme and agent access.

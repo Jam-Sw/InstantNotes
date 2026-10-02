@@ -1,7 +1,7 @@
 // Agent access, the parts with no runes: the activity row the MCP server
 // writes (core store/activity.rs), how it reads in plain words, and the
 // commands that connect an agent. Shared by the agents store, the sidebar's
-// live line, the activity panel, and Settings > Agents.
+// live line, the Agents Space, and Settings > Agents.
 
 /** Settings keys owned by this surface. */
 export const AGENT_ACCESS_KEY = "agents.access";

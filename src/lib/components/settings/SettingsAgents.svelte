@@ -2,7 +2,7 @@
   // Settings > Agents: whether agents may connect, what they may do, how
   // you hear about it, how to connect one, and a glance at what they have
   // done. The live view of an agent at work is on the notes themselves
-  // (agents.svelte.ts); the full trace, with Revert, is the activity panel.
+  // (agents.svelte.ts); the full trace, with Revert, is the Agents Space.
   import { onMount } from "svelte";
   import { agents } from "$lib/stores/agents.svelte";
   import {
@@ -41,7 +41,7 @@
   const NOTIFY_SUB: Record<AgentNotify, string> = {
     writes: "A toast for every change an agent makes, with Revert on it. Reads stay quiet.",
     all: "A toast for every call, reads and searches included.",
-    off: "No toasts. The live marks on your notes and the activity panel still show everything.",
+    off: "No toasts. The live marks on your notes and the Agents Space still show everything.",
   };
 
   type Client = "claude" | "codex" | "json";
@@ -147,7 +147,7 @@
         <span class="stat-num" class:bad={errors > 0}>{errors}</span>
         <span class="stat-label">failed</span>
       </div>
-      <button class="card-btn open-trace" onclick={() => agents.openPanel()}>
+      <button class="card-btn open-trace" onclick={() => agents.show()}>
         Open the full trace
       </button>
     </div>

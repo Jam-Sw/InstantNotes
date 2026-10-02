@@ -19,7 +19,9 @@
   import SettingsView from "$lib/components/SettingsView.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import Toast from "$lib/components/Toast.svelte";
-  import AgentActivityPanel from "$lib/components/AgentActivityPanel.svelte";
+  import AgentNote from "$lib/components/AgentNote.svelte";
+  import { agentsSpace } from "$lib/stores/agents-space";
+  import { isAgentNoteId, isAgentsSpaceId } from "$lib/agents/space";
   import { library } from "$lib/stores/library.svelte";
   import { updater } from "$lib/stores/updater.svelte";
   import { editorPrefs } from "$lib/stores/editor.svelte";
@@ -57,6 +59,18 @@
     ) {
       library.selectWorkspace(null);
     }
+  });
+
+  // The agents store cannot reach the library (the library imports it), so
+  // the way to the Agents Space is handed to it from here.
+  agents.show = () => {
+    if (licenseSpace.locked) return;
+    settingsOpen = false;
+    agentsSpace.open();
+  };
+  // While the Agents Space is on screen its changes are seen as they land.
+  $effect(() => {
+    agents.setWatching(!settingsOpen && isAgentsSpaceId(library.activeWorkspaceId));
   });
 
   /** Take the welcome pill or a tray check into the update Space. */
@@ -183,10 +197,11 @@
       paletteOpen = !paletteOpen;
       return;
     }
-    // ⌘⇧A opens the agent trace from anywhere.
+    // ⌘⇧A goes to the Agents Space from anywhere, and back out of it.
     if (mod && e.shiftKey && (e.key === "a" || e.key === "A")) {
       e.preventDefault();
-      agents.togglePanel();
+      if (agents.watching) library.selectWorkspace(null);
+      else agents.show();
       return;
     }
     // ⌘\ toggles the sidebar from anywhere, including input fields and boards.
@@ -343,7 +358,8 @@
     {appVersion}
     onBack={() => (settingsOpen = false)}
     onShowSpace={(id) => {
-      library.selectWorkspace(id);
+      if (isAgentsSpaceId(id)) agentsSpace.open();
+      else library.selectWorkspace(id);
       settingsOpen = false;
     }}
   />
@@ -384,7 +400,7 @@
     {:else}
       <NoteList />
       <section class="editor-pane">
-        {#if !licenseSpace.locked && library.multiSelected.size <= 1 && library.selected && !isUpdateNoteId(library.selected.id)}
+        {#if !licenseSpace.locked && library.multiSelected.size <= 1 && library.selected && !isUpdateNoteId(library.selected.id) && !isAgentNoteId(library.selected.id)}
           <!-- The editor brings its own header, with the note's actions. -->
           <NoteEditor />
         {:else}
@@ -393,6 +409,8 @@
             <LicenseNote />
           {:else if library.multiSelected.size > 1}
             <BulkActions />
+          {:else if library.selected && isAgentNoteId(library.selected.id)}
+            <AgentNote />
           {:else if library.selected}
             <UpdateNote />
           {:else}
@@ -406,7 +424,6 @@
 
 <CommandPalette bind:open={paletteOpen} />
 <ConfirmDialog />
-<AgentActivityPanel />
 <Toast />
 
 <style>

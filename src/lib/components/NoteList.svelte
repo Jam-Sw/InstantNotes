@@ -11,6 +11,9 @@
   import { groupNotes } from "$lib/note-groups";
   import { updateSpace } from "$lib/stores/update-space";
   import { isUpdateSpaceId } from "$lib/update/space";
+  import { agentsSpace } from "$lib/stores/agents-space";
+  import { isAgentsSpaceId } from "$lib/agents/space";
+  import { isSyntheticSpaceId } from "$lib/synthetic";
   import { agreements } from "$lib/agreements.svelte";
   import { licenseSpace } from "$lib/stores/license-space.svelte";
 
@@ -32,6 +35,16 @@
   // the common case, in one click. The chevron (or a right-click anywhere on
   // the control) opens the list, which is the only visible place a whiteboard
   // can be started from.
+  // A synthetic Space (the update, the agent trace) has no rows in the store:
+  // its notes are derived, so they are rendered from where they come from.
+  const syntheticNotes = $derived(
+    isUpdateSpaceId(library.activeWorkspaceId)
+      ? updateSpace.notes
+      : isAgentsSpaceId(library.activeWorkspaceId)
+        ? agentsSpace.notes
+        : null,
+  );
+
   let newMenu = $state<{ x: number; y: number } | null>(null);
   let newControl = $state<HTMLDivElement>();
 
@@ -186,11 +199,8 @@
       {:else}
         <div class="empty-state">No notes match your search.</div>
       {/each}
-    {:else if isUpdateSpaceId(library.activeWorkspaceId)}
-      <!-- The update Space's two synthetic notes: the version jump and the
-           release notes. They have no rows in the store, so they are rendered
-           from the updater rather than listed. -->
-      {#each updateSpace.notes as note (note.id)}
+    {:else if syntheticNotes}
+      {#each syntheticNotes as note (note.id)}
         <button
           class="note-row"
           data-note-id={note.id}
@@ -203,6 +213,14 @@
           </div>
           <div class="row-preview">{preview(note.body) || "Empty note"}</div>
         </button>
+      {:else}
+        <div class="empty-state">
+          {#if agents.access === "off"}
+            Agent access is off. Nothing can connect until you turn it on in Settings.
+          {:else}
+            No agent has connected yet. Connect one from Settings › Agents.
+          {/if}
+        </div>
       {/each}
     {:else}
       {#snippet noteRow(note: (typeof library.notes)[number])}
@@ -213,7 +231,7 @@
           class:selected={library.isSelected(note.id)}
           onclick={(e) => rowClick(e, note.id)}
           oncontextmenu={(e) => {
-            if (note.isDeleted || isUpdateSpaceId(library.activeWorkspaceId)) return;
+            if (note.isDeleted || isSyntheticSpaceId(library.activeWorkspaceId)) return;
             e.preventDefault();
             rowMenu = { x: e.clientX, y: e.clientY, id: note.id };
           }}

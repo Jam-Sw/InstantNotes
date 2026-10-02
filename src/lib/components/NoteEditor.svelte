@@ -18,7 +18,7 @@
   import { formatDate, formatExact, wordCount } from "$lib/format";
   import type { FormatKind } from "$lib/markdown-format";
   import { NO_MARKS, type ActiveMarks } from "$lib/markdown-active";
-  import { isVirtualNoteId } from "$lib/update/space";
+  import { isSyntheticNoteId } from "$lib/synthetic";
 
   let tagInput = $state("");
   let workspaceInput = $state("");
@@ -32,7 +32,7 @@
   const isBoard = $derived(library.selected?.contentKind === "whiteboard");
   // A synthetic note (the update Space's release notes) is not user data: its
   // body can be typed in, but it has no tags, no Space, and no lifecycle.
-  const isVirtual = $derived(isVirtualNoteId(library.selected?.id));
+  const isVirtual = $derived(isSyntheticNoteId(library.selected?.id));
   // The board follows the app's light or dark look, including themes that
   // only come in one of the two.
   const boardTheme = $derived(effectiveVariant(theme.activeTheme, theme.resolvedVariant));

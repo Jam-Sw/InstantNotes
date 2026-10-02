@@ -11,6 +11,8 @@
   import { normalizeTagInput } from "$lib/tag-name";
   import { updateSpace } from "$lib/stores/update-space";
   import { UPDATE_SPACE_ID, UPDATE_SPACE_NAME } from "$lib/update/space";
+  import { agentsSpace } from "$lib/stores/agents-space";
+  import { AGENTS_SPACE_ID, AGENTS_SPACE_NAME } from "$lib/agents/space";
   import { LICENSE_SPACE_NAME, licenseSpace } from "$lib/stores/license-space.svelte";
   import type { TagWithCount, WorkspaceWithCount } from "$lib/api/types";
 
@@ -134,7 +136,7 @@
           class="agent-line"
           data-kind={act.status === "error" ? "error" : act.kind}
           title="An agent is working in your library. Click for the full trace."
-          onclick={() => agents.openPanel()}
+          onclick={() => agents.show()}
         >
           <span class="agent-dot" aria-hidden="true"></span>
           <span class="agent-text"
@@ -143,21 +145,6 @@
         </button>
       {/if}
     </div>
-    <!-- The trace. Present whenever agents may connect or ever have, so the
-         user always has one place to see and undo what they did. -->
-    {#if agents.access !== "off" || agents.recent.length > 0}
-      <button
-        class="nav-item agent-nav"
-        class:active={agents.panelOpen}
-        title="Everything agents have read or changed, with Revert"
-        onclick={() => agents.togglePanel()}
-      >
-        <span class="agent-nav-label">Agent activity</span>
-        {#if agents.unseen > 0}
-          <span class="badge" aria-label="{agents.unseen} new changes">{agents.unseen}</span>
-        {/if}
-      </button>
-    {/if}
     <!-- Open loops: capture-born notes never opened since. Hidden at zero
          (useful by default, invisible when there's nothing to do), but held
          visible while active so the row doesn't vanish mid burn-down. -->
@@ -205,6 +192,29 @@
         onMenu={() => {}}
       >
         {#snippet suffix()}<span class="update-star" aria-hidden="true">*</span>{/snippet}
+      </SidebarEntityRow>
+    {/if}
+    <!-- The agent trace: a Space with one note per agent conversation, drawn
+         like the update's and, like it, with no management gestures. -->
+    {#if agentsSpace.visible}
+      <SidebarEntityRow
+        name={AGENTS_SPACE_NAME}
+        count={agentsSpace.notes.length}
+        normalize={(s) => s.trim()}
+        noun="Space"
+        active={library.activeWorkspaceId === AGENTS_SPACE_ID}
+        editing={false}
+        readonly
+        onSelect={() =>
+          library.activeWorkspaceId === AGENTS_SPACE_ID
+            ? library.selectWorkspace(null)
+            : agentsSpace.open()}
+        onStartRename={() => {}}
+        onRename={async () => ({ ok: true as const })}
+        onDoneRename={() => {}}
+        onMenu={() => {}}
+      >
+        {#snippet suffix()}{#if agents.unseen > 0}<span class="badge" aria-label="{agents.unseen} new changes">{agents.unseen}</span>{/if}{/snippet}
       </SidebarEntityRow>
     {/if}
     {#each library.workspaces as ws (ws.id)}
@@ -370,17 +380,9 @@
   .agent-line[data-kind="error"] .agent-dot {
     background: var(--danger);
   }
-  .agent-nav {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .agent-nav-label {
-    flex: 1;
-    min-width: 0;
-  }
   .badge {
-    flex: none;
+    display: inline-block;
+    margin-left: 6px;
     min-width: 18px;
     padding: 0 5px;
     border-radius: 99px;

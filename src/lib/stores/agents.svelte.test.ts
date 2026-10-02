@@ -94,7 +94,7 @@ describe("agents presence", () => {
     expect(toasts.items[0].message).toBe("Claude Code: Editing “Plan”");
     expect(toasts.items[0].action?.label).toBe("Revert");
     expect(agents.unseen).toBe(1);
-    agents.openPanel();
+    agents.setWatching(true);
     expect(agents.unseen).toBe(0);
     expect(agents.revertableFor("n").map((e) => e.seq)).toEqual([write.seq]);
   });
@@ -133,9 +133,9 @@ describe("agents presence", () => {
     expect(agents.lastWriter("n")).toBe("instantnotes");
   });
 
-  it("folds a burst of changes into one toast that opens the panel", () => {
+  it("folds a burst of changes into one toast that opens the Agents Space", () => {
     toasts.items = [];
-    agents.closePanel();
+    agents.setWatching(false);
     agents.unseen = 0;
     const burst = [1, 2, 3, 4, 5].map((i) =>
       entry({ tool: "tag_note", kind: "write", noteIds: [`n${i}`], titles: ["Plan"], revertable: true }),
@@ -145,9 +145,10 @@ describe("agents presence", () => {
     expect(toasts.items[0].message).toBe("Claude Code made 5 changes.");
     expect(toasts.items[0].action?.label).toBe("Show");
     expect(agents.unseen).toBe(5);
+    agents.show = vi.fn();
     toasts.items[0].action!.run();
-    expect(agents.panelOpen).toBe(true);
-    agents.closePanel();
+    expect(agents.show).toHaveBeenCalledTimes(1);
+    agents.setWatching(false);
   });
 
   it("says so when a revert fails", async () => {

@@ -2,7 +2,7 @@
 // live presence, meaning which notes, Spaces, and tags an agent is reading,
 // searching, or changing right now. Presence is what lets the library show
 // it on the things themselves (a glow on the row, the open note, the Space)
-// instead of in a panel of its own; the trace is the panel, for when the
+// instead of in a window of its own; the trace is the Agents Space, for when the
 // user wants the full story and the power to undo a change.
 //
 // Fed by `library:external-change`, which the shell emits when another
@@ -40,7 +40,7 @@ import {
 
 /** How long a touched note, Space, or tag stays lit after the last call. */
 export const PRESENCE_MS = 4000;
-/** How much of the trace the panel holds in memory. */
+/** How much of the trace is held in memory. */
 const RECENT_KEEP = 500;
 /** How many rows one load fetches. */
 const PAGE = 200;
@@ -61,10 +61,13 @@ class AgentsStore {
   /** The latest search while it is fresh; the note list shows the query. */
   currentSearch = $state<AgentActivity | null>(null);
   connection = $state<AgentConnection | null>(null);
-  /** The activity panel. */
-  panelOpen = $state(false);
-  /** Writes that arrived since the panel was last open: the badge. */
+  /** Whether the Agents Space is on screen: changes are then seen as they land. */
+  watching = $state(false);
+  /** Writes that arrived while the Agents Space was not on screen: the badge. */
   unseen = $state(0);
+  /** Takes the user to the Agents Space. The library page sets it, since this
+   *  store cannot reach the library (the library imports it). */
+  show: () => void = () => {};
 
   #notes = $state(new Map<string, AgentMark>());
   #spaces = $state(new Set<string>());
@@ -100,7 +103,7 @@ class AgentsStore {
       this.recent = rows;
       this.hasMore = rows.length === PAGE;
     } catch {
-      // The panel shows what it has; the store is best-effort.
+      // The Space shows what it has; the store is best-effort.
     }
   }
 
@@ -136,18 +139,9 @@ class AgentsStore {
     void setSetting(AGENT_NOTIFY_KEY, notify);
   }
 
-  openPanel(): void {
-    this.panelOpen = true;
-    this.unseen = 0;
-  }
-
-  closePanel(): void {
-    this.panelOpen = false;
-  }
-
-  togglePanel(): void {
-    if (this.panelOpen) this.closePanel();
-    else this.openPanel();
+  setWatching(on: boolean): void {
+    this.watching = on;
+    if (on) this.unseen = 0;
   }
 
   /** Show new calls, oldest first, as they arrive. */
@@ -203,13 +197,13 @@ class AgentsStore {
   }
 
   /** Toasts for what just happened, as the notify setting asks. A write
-   *  offers Revert right there; the panel has the rest. A burst of changes
-   *  is one toast that opens the panel, not a stack that evicts itself. */
+   *  offers Revert right there; the Agents Space has the rest. A burst of changes
+   *  is one toast that opens the Space, not a stack that evicts itself. */
   #announce(entries: AgentActivity[]): void {
     // The app's own revert is already confirmed where it was asked for.
     const theirs = entries.filter((e) => e.client !== "instantnotes");
     const writes = theirs.filter((e) => e.kind === "write" && e.status === "ok");
-    if (!this.panelOpen) this.unseen += writes.length;
+    if (!this.watching) this.unseen += writes.length;
     if (this.notify === "off") return;
     const shown = this.notify === "writes" ? writes : theirs;
     if (shown.length > BURST) {
@@ -217,7 +211,7 @@ class AgentsStore {
       const n = writes.length;
       toasts.show(
         n > 0 ? `${who} made ${n} change${n === 1 ? "" : "s"}.` : `${who} made ${shown.length} calls.`,
-        { label: "Show", run: () => this.openPanel() },
+        { label: "Show", run: () => this.show() },
       );
       return;
     }

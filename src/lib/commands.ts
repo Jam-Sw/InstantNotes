@@ -12,7 +12,7 @@ import { confirmConvertToWhiteboard } from "$lib/whiteboard/convert";
 import { exportTheme, importTheme } from "$lib/themes/share";
 import { BODY_FONTS } from "$lib/themes/fonts";
 import { modKey, shiftKey } from "$lib/platform";
-import { isVirtualNoteId } from "$lib/update/space";
+import { isSyntheticNoteId } from "$lib/synthetic";
 import type { Command } from "$lib/command-filter";
 
 export type { Command } from "$lib/command-filter";
@@ -89,10 +89,10 @@ export function buildCommands(): Command[] {
     },
     {
       id: "view.agents",
-      title: "Show agent activity",
+      title: "Show Agents",
       group: "View",
       shortcut: `${modKey}${shiftKey}A`,
-      run: () => agents.openPanel(),
+      run: () => agents.show(),
     },
   ];
 
@@ -134,7 +134,7 @@ export function buildCommands(): Command[] {
         },
       },
     );
-    if (!n.isDeleted && !isVirtualNoteId(n.id)) {
+    if (!n.isDeleted && !isSyntheticNoteId(n.id)) {
       const out = library.isSticky(n.id);
       commands.push({
         id: "note.sticky",
