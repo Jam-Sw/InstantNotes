@@ -154,6 +154,7 @@ pub fn elapsed_ms(etime: &str) -> Option<i64> {
     Some((days * 86_400 + seconds) * 1000)
 }
 
+#[cfg(unix)]
 fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
