@@ -9,7 +9,9 @@ import { formatBytes } from "$lib/format";
 
 /** Sentinel ids no real workspace or note can hold (ids are UUIDs). */
 export const UPDATE_SPACE_ID = "update-space";
+/** @internal */
 export const UPDATE_NOTE_ID = "update-note";
+/** @internal */
 export const RELEASE_NOTES_NOTE_ID = "update-release-notes";
 
 export const UPDATE_SPACE_NAME = "Update";
@@ -27,6 +29,7 @@ export function isUpdateNoteId(id: string | null | undefined): boolean {
   return id === UPDATE_NOTE_ID;
 }
 
+/** @internal */
 export function isReleaseNotesNoteId(id: string | null | undefined): boolean {
   return id === RELEASE_NOTES_NOTE_ID;
 }
@@ -44,7 +47,10 @@ export function updateNoteTitle(
   return `update ${currentVersion} → ${version}`;
 }
 
-/** "What's new in 0.10.0" - the release notes, which are just a note. */
+/**
+ * "What's new in 0.10.0" - the release notes, which are just a note.
+ * @internal
+ */
 export function releaseNotesTitle(version: string): string {
   return `What's new in ${version}`;
 }

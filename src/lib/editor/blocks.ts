@@ -14,6 +14,7 @@ import { previewModeField } from "./kernel";
  * Given a line's text and its document-start offset, returns the range
  * occupied by the block marker (including trailing whitespace), or null if
  * the line does not start with one.
+ * @internal
  */
 export function blockMarkerRange(
   lineText: string,

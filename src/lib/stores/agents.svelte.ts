@@ -39,7 +39,10 @@ import {
   type AgentPresence,
 } from "$lib/agent-activity";
 
-/** How long a touched note, Space, or tag stays lit after the last call. */
+/**
+ * How long a touched note, Space, or tag stays lit after the last call.
+ * @internal
+ */
 export const PRESENCE_MS = 4000;
 const RECENT_KEEP = 500;
 const PAGE = 200;

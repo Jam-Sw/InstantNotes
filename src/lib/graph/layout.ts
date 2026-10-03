@@ -140,7 +140,10 @@ export function nodeRadius(n: Pick<GraphNode, "kind" | "degree">): number {
 type SimNode = GraphNode & SimulationNodeDatum;
 type SimLink = SimulationLinkDatum<SimNode> & { kind: EdgeKind };
 
-/** Ticks a layout runs to reach rest. */
+/**
+ * Ticks a layout runs to reach rest.
+ * @internal
+ */
 export const LAYOUT_TICKS = 300;
 
 export interface LayoutRun {

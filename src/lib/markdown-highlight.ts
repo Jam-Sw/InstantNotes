@@ -10,6 +10,7 @@ import { HighlightStyle } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 import { highlightTag } from "./markdown-extensions";
 
+/** @internal */
 export const markdownHighlightSpec = [
   // heading1..3 get distinct scale; deeper levels share the generic heading
   // weight (lezer tag hierarchy: headingN falls back to heading).

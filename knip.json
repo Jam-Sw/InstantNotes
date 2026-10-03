@@ -1,0 +1,5 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": ["scripts/*.mjs!"],
+  "ignore": ["src/lib/agreements.svelte.ts", "src/lib/AgreementGate.svelte"]
+}

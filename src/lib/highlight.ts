@@ -4,7 +4,9 @@
 // presence is unambiguous. This never touches HTML: callers render segments
 // as text, never {@html}, and use `hit` to style the matched ones.
 
+/** @internal */
 export const HIGHLIGHT_START = "\u0001";
+/** @internal */
 export const HIGHLIGHT_END = "\u0002";
 
 export interface HighlightSegment {

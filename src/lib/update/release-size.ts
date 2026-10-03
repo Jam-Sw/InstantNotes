@@ -20,7 +20,10 @@ function assetMatcher(userAgent: string): (name: string) => boolean {
   return (n) => n.endsWith(".AppImage");
 }
 
-/** The one updater artifact in a release, skipping its `.sig` sidecar. */
+/**
+ * The one updater artifact in a release, skipping its `.sig` sidecar.
+ * @internal
+ */
 export function selectAsset(
   assets: ReleaseAsset[],
   userAgent: string,
