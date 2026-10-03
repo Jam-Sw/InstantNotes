@@ -647,6 +647,7 @@ mod import;
 mod notes;
 mod settings;
 mod stats;
+mod suggest;
 mod tags;
 mod vault;
 mod workspaces;

@@ -153,10 +153,17 @@
     <button
       class="nav-item"
       class:active={library.graphMode}
-      title="Your notes, tags, and Spaces, and how they connect"
+      title={library.suggestionCount > 0
+        ? `Your notes, tags, and Spaces, and how they connect. ${library.suggestionCount} ${library.suggestionCount === 1 ? "note" : "notes"} could be filed.`
+        : "Your notes, tags, and Spaces, and how they connect"}
       onclick={() => library.selectGraph()}
     >
-      Graph
+      <span>Graph</span>
+      <!-- How many unfiled notes the graph can say a Space for. Hidden at
+           zero, like Revisit: a count that reaches nothing is closure. -->
+      {#if library.suggestionCount > 0}
+        <span class="nav-count">{library.suggestionCount}</span>
+      {/if}
     </button>
   </nav>
   <div class="tags-header section-label" bind:this={spacesHeader} tabindex="-1">Spaces</div>

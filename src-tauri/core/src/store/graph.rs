@@ -36,10 +36,10 @@ impl Store {
         })?;
         let links = self.query_rows(
             &format!(
-                "SELECT e.note_id, e.tag_id, 'tag' FROM note_tags e \
+                "SELECT e.note_id, e.tag_id, 'tag', e.source FROM note_tags e \
                    JOIN notes n ON n.id = e.note_id WHERE {LIVE} \
                  UNION ALL \
-                 SELECT e.note_id, e.workspace_id, 'space' FROM note_workspaces e \
+                 SELECT e.note_id, e.workspace_id, 'space', NULL FROM note_workspaces e \
                    JOIN notes n ON n.id = e.note_id WHERE {LIVE}"
             ),
             |r| {
@@ -47,6 +47,7 @@ impl Store {
                     note_id: r.get(0)?,
                     target_id: r.get(1)?,
                     kind: r.get(2)?,
+                    source: r.get(3)?,
                 })
             },
         )?;
@@ -58,7 +59,7 @@ impl Store {
         })
     }
 
-    fn query_rows<T>(
+    pub(super) fn query_rows<T>(
         &self,
         sql: &str,
         map: impl FnMut(&rusqlite::Row<'_>) -> rusqlite::Result<T>,

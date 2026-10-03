@@ -68,6 +68,7 @@ vi.mock("$lib/api/client", () => {
     destroyNotes: vi.fn(),
     listNotes: vi.fn(),
     searchNotes: vi.fn(),
+    spaceSuggestions: vi.fn().mockResolvedValue([]),
     listTags: vi.fn(),
     listWorkspaces: vi.fn(),
     getOrCreateWorkspace: vi.fn(),

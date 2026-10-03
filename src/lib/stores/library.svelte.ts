@@ -21,6 +21,7 @@ import {
   renameWorkspace,
   restoreNote,
   searchNotes,
+  spaceSuggestions,
   softDeleteNote,
   softDeleteNotes,
   restoreNotes,
@@ -87,6 +88,8 @@ class LibraryStore {
   /** The Graph view: the library drawn as notes, tags, and Spaces. */
   graphMode = $state(false);
   revisitCount = $state(0);
+  /** Unfiled notes the graph can say a Space for; the Graph row's count. */
+  suggestionCount = $state(0);
   searchText = $state("");
   notes = $state<Note[]>([]);
   searchResults = $state<SearchResult[] | null>(null);
@@ -149,6 +152,8 @@ class LibraryStore {
   // The revisit count rides the same 50ms window so a burst of change
   // events (bulk delete, undo) costs one count query, not one per event.
   #revisitCountDebounced = debounce(() => void this.#refreshRevisitCount(), 50);
+  // The suggestion count too: every library change can change the evidence.
+  #suggestionCountDebounced = debounce(() => void this.refreshSuggestionCount(), 50);
   #searchRefresh = debounce(() => void this.refresh(), SEARCH_DEBOUNCE_MS);
 
   /** Save status of the selected note, for the editor status bar. */
@@ -165,9 +170,16 @@ class LibraryStore {
       listen(EVENTS.NOTES_CHANGED, () => {
         this.#refreshDebounced();
         this.#revisitCountDebounced();
+        this.#suggestionCountDebounced();
       }),
-      listen(EVENTS.TAGS_CHANGED, () => void this.refreshTags()),
-      listen(EVENTS.WORKSPACES_CHANGED, () => void this.refreshWorkspaces()),
+      listen(EVENTS.TAGS_CHANGED, () => {
+        void this.refreshTags();
+        this.#suggestionCountDebounced();
+      }),
+      listen(EVENTS.WORKSPACES_CHANGED, () => {
+        void this.refreshWorkspaces();
+        this.#suggestionCountDebounced();
+      }),
       listen(EVENTS.STICKIES_CHANGED, () => void this.refreshStickies()),
       listen<unknown>(EVENTS.LIBRARY_EXTERNAL_CHANGE, (e) => {
         void this.#adoptExternal(parseActivityLog(e.payload));
@@ -178,6 +190,7 @@ class LibraryStore {
       this.refreshTags(),
       this.refreshWorkspaces(),
       this.#refreshRevisitCount(),
+      this.refreshSuggestionCount(),
       this.refreshStickies(),
     ]);
   }
@@ -411,6 +424,18 @@ class LibraryStore {
     try {
       const loops = await listNotes(this.#revisitFilter());
       this.revisitCount = loops.length;
+    } catch {
+      // Keep the stale count rather than surface an error for a hint.
+    }
+  }
+
+  /**
+   * Re-count the suggestions (API.md section 4). Quiet like the revisit
+   * count: it feeds a sidebar hint, and the next change event retries it.
+   */
+  async refreshSuggestionCount(): Promise<void> {
+    try {
+      this.suggestionCount = (await spaceSuggestions()).length;
     } catch {
       // Keep the stale count rather than surface an error for a hint.
     }

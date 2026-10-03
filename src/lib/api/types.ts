@@ -195,5 +195,30 @@ export interface LibraryGraph {
   notes: { id: string; title: string; contentKind: ContentKind; isPinned: boolean }[];
   tags: { id: string; name: string; color?: string | null }[];
   spaces: { id: string; name: string }[];
-  links: { noteId: string; targetId: string; kind: "tag" | "space" }[];
+  /** A tag link says how it got there: written in the text (`inline`) or
+   *  added to the note (`manual`). A Space link has no source. */
+  links: {
+    noteId: string;
+    targetId: string;
+    kind: "tag" | "space";
+    source?: "inline" | "manual" | null;
+  }[];
+}
+
+/** Where an unfiled note most likely belongs: one Space, how sure the model
+ *  is (0 to 1), and the evidence, strongest first (API.md section 4). */
+export interface SpaceSuggestion {
+  noteId: string;
+  noteTitle: string;
+  spaceId: string;
+  spaceName: string;
+  probability: number;
+  reasons: SuggestionReason[];
+}
+
+/** One reason behind a suggestion: a tag the note carries (label with its
+ *  `#`) or a word in its text. */
+export interface SuggestionReason {
+  label: string;
+  kind: "tag" | "word";
 }

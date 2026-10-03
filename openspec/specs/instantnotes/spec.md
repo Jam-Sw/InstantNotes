@@ -52,7 +52,7 @@ The app SHALL provide a library window for browsing, editing, tagging, archiving
 - **AND** selecting a tag filters the note list to matching notes
 
 ### Requirement: Graph View
-The app SHALL draw the library as a graph of notes, tags, and Spaces, linked by the tags and Spaces each note carries, derived from the notes at read time with nothing about the graph stored.
+The app SHALL draw the library as a graph of notes, tags, and Spaces, linked by the tags and Spaces each note carries, derived from the notes at read time with nothing about the graph stored. A tag edge SHALL show whether the tag was written in the note or added to it, by line pattern and not by color alone, and a legend SHALL name every edge kind.
 
 #### Scenario: See how notes connect
 - **WHEN** the user opens Graph
@@ -62,6 +62,32 @@ The app SHALL draw the library as a graph of notes, tags, and Spaces, linked by 
 #### Scenario: Go from the graph
 - **WHEN** the user chooses a note, a tag, or a Space on the graph
 - **THEN** the app opens that note, filters by that tag, or opens that Space
+
+#### Scenario: The lens
+- **WHEN** a note is open and the user opens Graph
+- **THEN** the view frames that note, its tags and Spaces, and the notes they gather
+- **AND** "Show all" fits the whole library until "Around this note" is chosen again
+
+### Requirement: Filing Suggestions
+The app SHALL say, in the Graph, which Space each live note in no Space most likely belongs to, with a probability and up to three reasons drawn from the note's tags and words, judged against the notes already filed, recounted on every read with nothing trained or stored. The app SHALL only suggest, never file on its own, and SHALL say nothing until two Spaces hold notes or when the evidence does not clearly favour one Space.
+
+#### Scenario: See where a note belongs
+- **WHEN** the Graph opens and some unfiled notes share tags or words with a Space's notes
+- **THEN** a list beside the graph names each such note, the Space, how sure the app is, and why
+- **AND** each is drawn as a dashed edge from the note to the Space, and the sidebar's Graph row counts them
+
+#### Scenario: Accept with one tap
+- **WHEN** the user chooses "Add to <Space>" on a suggestion
+- **THEN** the note joins that Space, the row goes, and a toast offers Undo, which takes the note out again
+
+#### Scenario: Not this one
+- **WHEN** the user chooses "Not this" on a suggestion
+- **THEN** the note is not changed, that Space is not suggested for it again on this device, and a toast offers Undo
+- **AND** the record survives renaming the note or the Space, and goes when either is destroyed
+
+#### Scenario: The model learns from filing
+- **WHEN** a note is added to a Space, from the graph, the editor, or an agent
+- **THEN** the next suggestions count it, with no other step
 
 ### Requirement: Workspaces
 The app SHALL let the user create named workspaces that collect notes and help organize them.

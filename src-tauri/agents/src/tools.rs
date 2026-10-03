@@ -173,6 +173,22 @@ const TOOLS: &[ToolDef] = &[
         schema: || object(json!({}), &[]),
     },
     ToolDef {
+        name: "suggest_space",
+        title: "Where a note belongs",
+        level: Access::Read,
+        destructive: false,
+        idempotent: true,
+        description: "Where the notes in no Space most likely belong, judged from the tags and \
+                      words they share with the notes already filed: one Space per note with a \
+                      probability and up to three reasons. The same model the user sees in the \
+                      app's Graph. Pass an id for one note, or nothing for every unfiled note, \
+                      newest first. A note is listed only when the evidence clearly favours a \
+                      Space, so an empty answer means the library does not say; a note already \
+                      in a Space is never listed. Nothing is filed by this call: use add_to_space \
+                      if the suggestion is right.",
+        schema: || object(json!({ "id": id_param(), "limit": limit_param() }), &[]),
+    },
+    ToolDef {
         name: "create_note",
         title: "Create a note",
         level: Access::Write,
@@ -443,6 +459,7 @@ impl<'a> Tools<'a> {
                     "name": w.workspace.name, "notes": w.note_count
                 })).collect::<Vec<_>>() }))
             }
+            "suggest_space" => self.suggest_space(parse(args)?),
             "create_note" => self.create_note(parse(args)?),
             "update_note" => self.update_note(parse(args)?),
             "append_to_note" => self.append_to_note(parse(args)?),
@@ -609,6 +626,26 @@ impl<'a> Tools<'a> {
             total,
             offset,
         ))
+    }
+
+    fn suggest_space(&mut self, a: SuggestArgs) -> ToolResult {
+        let limit = a.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT) as usize;
+        let all = self.store.space_suggestions().map_err(fail)?;
+        let picked: Vec<Value> = all
+            .iter()
+            .filter(|s| a.id.as_ref().is_none_or(|id| &s.note_id == id))
+            .take(limit)
+            .map(|s| {
+                json!({
+                    "id": s.note_id,
+                    "title": s.note_title,
+                    "space": s.space_name,
+                    "probability": (s.probability * 100.0).round() / 100.0,
+                    "reasons": s.reasons.iter().map(|r| r.label.clone()).collect::<Vec<_>>(),
+                })
+            })
+            .collect();
+        Ok(json!({ "suggestions": picked }))
     }
 
     fn create_note(&mut self, a: CreateArgs) -> ToolResult {
@@ -938,6 +975,13 @@ fn pretty(value: &Value) -> String {
 
 fn parse<T: DeserializeOwned>(args: Value) -> Result<T, String> {
     serde_json::from_value(args).map_err(|e| format!("invalid arguments: {e}"))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SuggestArgs {
+    id: Option<String>,
+    limit: Option<i64>,
 }
 
 #[derive(Deserialize)]

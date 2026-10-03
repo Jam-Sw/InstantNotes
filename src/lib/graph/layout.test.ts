@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { LAYOUT_TICKS, buildGraph, layoutGraph, neighbors, startLayout } from "./layout";
-import type { LibraryGraph } from "$lib/api/types";
+import type { LibraryGraph, SpaceSuggestion } from "$lib/api/types";
 
 const note = (id: string, title = id, extra = {}) => ({
   id,
@@ -19,12 +19,21 @@ function library(): LibraryGraph {
     ],
     spaces: [{ id: "s1", name: "Research" }],
     links: [
-      { noteId: "n1", targetId: "t1", kind: "tag" },
-      { noteId: "n2", targetId: "t1", kind: "tag" },
+      { noteId: "n1", targetId: "t1", kind: "tag", source: "inline" },
+      { noteId: "n2", targetId: "t1", kind: "tag", source: "manual" },
       { noteId: "n3", targetId: "s1", kind: "space" },
     ],
   };
 }
+
+const suggestion = (noteId: string, spaceId = "s1"): SpaceSuggestion => ({
+  noteId,
+  noteTitle: noteId,
+  spaceId,
+  spaceName: "Research",
+  probability: 0.8,
+  reasons: [{ label: "#ideas", kind: "tag" }],
+});
 
 describe("buildGraph", () => {
   it("draws notes, tags, and Spaces that are connected, and counts the rest", () => {
@@ -47,6 +56,37 @@ describe("buildGraph", () => {
     const byId = new Map(g.nodes.map((n) => [n.id, n]));
     expect(byId.get("t1")?.degree).toBe(2);
     expect(byId.get("s1")?.degree).toBe(1);
+  });
+
+  it("keeps how each tag got onto its note, for the edge style", () => {
+    const g = buildGraph(library());
+    const edge = (source: string) => g.edges.find((e) => e.source === source);
+    expect(edge("n1")).toMatchObject({ kind: "tag", tagSource: "inline" });
+    expect(edge("n2")).toMatchObject({ kind: "tag", tagSource: "manual" });
+    expect(edge("n3")).toMatchObject({ kind: "space" });
+    expect(edge("n3")?.tagSource).toBeUndefined();
+    // A link written before sources were sent reads as added.
+    const lib = library();
+    delete lib.links[0].source;
+    expect(buildGraph(lib).edges.find((e) => e.source === "n1")?.tagSource).toBe("manual");
+  });
+
+  it("draws a suggestion as its own edge, and the loose note it is for", () => {
+    const g = buildGraph(library(), [suggestion("lone")]);
+    expect(g.nodes.map((n) => n.id).sort()).toEqual(["lone", "n1", "n2", "n3", "s1", "t1"]);
+    expect(g.edges.find((e) => e.kind === "suggested")).toMatchObject({ source: "lone", target: "s1" });
+    const byId = new Map(g.nodes.map((n) => [n.id, n]));
+    expect(byId.get("lone")).toMatchObject({ suggested: true, degree: 0 });
+    // A Space is as big as what it holds; a suggestion does not grow it.
+    expect(byId.get("s1")?.degree).toBe(1);
+    expect(g.unconnectedNotes).toBe(0);
+    expect(g.populatedSpaces).toBe(1);
+  });
+
+  it("drops a suggestion for a note or Space that is not drawn", () => {
+    const g = buildGraph(library(), [suggestion("ghost"), suggestion("lone", "empty-space")]);
+    expect(g.edges.some((e) => e.kind === "suggested")).toBe(false);
+    expect(g.unconnectedNotes).toBe(1);
   });
 
   it("ignores a link to a note or target that is not in the graph", () => {
@@ -128,5 +168,13 @@ describe("neighbors", () => {
     const g = buildGraph(library());
     expect([...neighbors(g, "t1")].sort()).toEqual(["n1", "n2", "t1"]);
     expect([...neighbors(g, "n3")].sort()).toEqual(["n3", "s1"]);
+  });
+
+  it("at two hops is the lens: a note's hubs and the notes they gather", () => {
+    const g = buildGraph(library(), [suggestion("lone")]);
+    expect([...neighbors(g, "n1", 2)].sort()).toEqual(["n1", "n2", "t1"]);
+    // A suggested edge is a path too: the lens on n3 reaches the note
+    // suggested for its Space.
+    expect([...neighbors(g, "n3", 2)].sort()).toEqual(["lone", "n3", "s1"]);
   });
 });

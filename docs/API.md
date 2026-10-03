@@ -63,7 +63,9 @@ developer-facing description and is never shown to users verbatim.
 | `set_notes_flags` / `soft_delete_notes` / `restore_notes` / `destroy_notes` | The same for a multi-selection (`ids`), each in one transaction. `set_notes_flags` takes optional `isPinned` and `isArchived`; `destroy_notes` refuses without `confirm: true`. |
 | `list_notes` | List notes for a status/space/tag filter. Rows carry `contentKind` but not `surfaceData`. |
 | `search_notes` | Full-text search over title and body (section 7 of DATA_MODEL.md). |
-| `library_graph` | Live notes, every tag and Space, and one link per note-to-tag or note-to-Space membership, for the Graph view. Derived on every call; nothing about the graph is stored. Trashed and archived notes are left out. |
+| `library_graph` | Live notes, every tag and Space, and one link per note-to-tag or note-to-Space membership, for the Graph view. A tag link carries its `source` (`inline`, written in the text, or `manual`, added to the note); a Space link's is null. Derived on every call; nothing about the graph is stored. Trashed and archived notes are left out. |
+| `space_suggestions` | Where each live note in no Space most likely belongs (section 4.1): `noteId`, `noteTitle`, `spaceId`, `spaceName`, `probability` (0 to 1), and up to three `reasons` (`label`, `kind` = `tag` or `word`), newest note first. Empty until two Spaces hold notes. |
+| `dismiss_space_suggestion` / `restore_space_suggestion` | "Not this one" for a (`noteId`, `spaceId`) pair, and its undo. Device-local (DATA_MODEL.md section 8); an unknown note or Space is `NOT_FOUND` on dismiss. Neither emits a library event: nothing about a note changed. |
 
 `contentKind` is `document` or `whiteboard`. `update_note` rejects turning a
 whiteboard back into a document and `surfaceData` on a document, both with
@@ -75,6 +77,31 @@ applies only if the note's `updatedAt` still equals it, checked inside the
 write transaction; otherwise it fails with `CONFLICT` and changes nothing. The
 editor's document saves send the version they were based on, so a write from
 another process in between (an agent, section 15) is noticed, not overwritten.
+
+### 4.1 Filing suggestions
+
+The Graph says where the unfiled notes belong. The model is the library
+itself, recounted on every call (core `classify.rs`, `store/suggest.rs`):
+a Dirichlet-Multinomial naive Bayes over each note's tags and content words
+(DATA_MODEL.md section 2.3), with the Spaces that hold notes as the classes.
+A tag written inline in the text weighs twice one added to the note
+afterwards: writing `#pasta` says what a thought is about, filing says how it
+was sorted later. Each Space's likelihoods are smoothed with 0.5
+pseudo-counts per feature, so two notes make a Space; a note's evidence is
+averaged past twelve informative features, so a long note is not certain for
+being long; and a Space is suggested only when the posterior is at least 0.5
+and the evidence itself, not the Space's size through the prior, favours it.
+The reasons are the features with the highest weight of evidence for the
+Space against the rest. The numbers behind each of those choices are in
+`openspec/changes/feat-graph-suggestions/proposal.md` and reproduced by
+`core/tests/suggest_bench_test.rs`.
+
+Nothing is trained and nothing is stored: filing a note, from the graph, the
+editor, or an agent (section 15), is a membership, and the next read counts
+it. Trashed and archived notes neither teach nor get suggestions. A
+suggestion is for a note in no Space; a note already in one is never
+re-sorted. The policy is suggest-only: no call files a note on the model's
+word, and the frontend's one-tap accept is `add_note_to_workspace`.
 
 ## 5. Tags
 
@@ -388,6 +415,7 @@ not a note. Resources sit behind the same read gate as the read tools.
 | Tool | Access | Store call |
 | --- | --- | --- |
 | `search_notes`, `list_notes`, `get_note`, `get_notes`, `list_tags`, `list_spaces` | read | `search_notes_page`, `list_notes` and `count_notes`, `get_note(id, false)`, `list_tags`, `list_workspaces` |
+| `suggest_space` | read | `space_suggestions` (section 4.1), for one note (`id`) or every unfiled note (`limit`, default 50): each with its Space, a probability, and the reasons. The same model the user sees in the Graph; it files nothing, and says so, so an agent that agrees calls `add_to_space`. |
 | `create_note`, `update_note`, `append_to_note` | write | `create_note`, `update_note` with `expectedUpdatedAt` |
 | `tag_note`, `untag_note`, `add_to_space`, `remove_from_space` | write | the tag and workspace membership calls |
 | `trash_note`, `restore_note` | write | `soft_delete_note`, `restore_note` |

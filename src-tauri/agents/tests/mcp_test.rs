@@ -1026,3 +1026,62 @@ fn several_notes_are_read_in_one_call_and_a_list_says_what_is_left() {
         .unwrap();
     assert_eq!(read_row.note_count, 2);
 }
+
+#[test]
+fn suggest_space_answers_from_the_graphs_model_and_files_nothing() {
+    let mut store = store_with("read");
+    let mut file = |body: &str, space: &str| {
+        let n = store
+            .create_note(CreateNoteInput {
+                body: Some(body.into()),
+                ..Default::default()
+            })
+            .unwrap();
+        let ws = store.get_or_create_workspace(space).unwrap();
+        store.add_note_to_workspace(&n.id, &ws.id).unwrap();
+    };
+    file("Tomato ragu: simmer the sauce #pasta", "Recipes");
+    file("Carbonara needs guanciale #pasta", "Recipes");
+    file("Sprint review: velocity dropped #work", "Work");
+    file("Quarterly roadmap draft #work", "Work");
+    let unfiled = store
+        .create_note(CreateNoteInput {
+            body: Some("Lasagne for Sunday #pasta".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    let loose = store
+        .create_note(CreateNoteInput {
+            body: Some("Call the dentist".into()),
+            ..Default::default()
+        })
+        .unwrap();
+
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(1, "suggest_space", json!({})),
+            call(2, "suggest_space", json!({ "id": unfiled.id })),
+            call(3, "suggest_space", json!({ "id": loose.id })),
+        ],
+    );
+    let (is_error, _, all) = result_of(&replies[1]);
+    assert!(!is_error);
+    let list = all["suggestions"].as_array().unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0]["id"], unfiled.id);
+    assert_eq!(list[0]["space"], "Recipes");
+    assert!(list[0]["probability"].as_f64().unwrap() >= 0.5);
+    assert_eq!(list[0]["reasons"][0], "#pasta");
+    let (_, _, one) = result_of(&replies[2]);
+    assert_eq!(one["suggestions"].as_array().unwrap().len(), 1);
+    let (_, _, none) = result_of(&replies[3]);
+    assert_eq!(none["suggestions"], json!([]));
+
+    // A read: traced as one, and the note is still in no Space.
+    let rows = trace(&store);
+    assert_eq!(rows[0].tool, "suggest_space");
+    assert_eq!(rows[0].kind, "read");
+    assert!(store.workspaces_for_note(&unfiled.id).unwrap().is_empty());
+}

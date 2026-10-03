@@ -59,7 +59,8 @@ mod error;
 mod events;
 mod shell;
 use commands::{
-    feedback::*, import::*, notes::*, settings::*, stats::*, tags::*, vault::*, workspaces::*,
+    feedback::*, graph::*, import::*, notes::*, settings::*, stats::*, tags::*, vault::*,
+    workspaces::*,
 };
 use error::{CmdError, CmdResult};
 use shell::{
@@ -483,6 +484,9 @@ pub fn run() {
             allow_image_file,
             open_attachments_folder,
             library_graph,
+            space_suggestions,
+            dismiss_space_suggestion,
+            restore_space_suggestion,
             unused_attachments,
             remove_unused_attachments,
             library_stats,

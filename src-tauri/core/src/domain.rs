@@ -117,6 +117,228 @@ fn is_image_line(line: &str) -> bool {
     true
 }
 
+/// Words that carry no signal about what a note is about: function words,
+/// and the tokens Markdown and links leave behind. Lowercase, as
+/// `content_words` lowercases before looking here.
+const STOP_WORDS: &[&str] = &[
+    "the",
+    "and",
+    "for",
+    "are",
+    "but",
+    "not",
+    "you",
+    "all",
+    "any",
+    "can",
+    "had",
+    "her",
+    "was",
+    "one",
+    "our",
+    "out",
+    "has",
+    "his",
+    "how",
+    "its",
+    "may",
+    "new",
+    "now",
+    "old",
+    "see",
+    "two",
+    "way",
+    "who",
+    "did",
+    "get",
+    "let",
+    "put",
+    "say",
+    "she",
+    "too",
+    "use",
+    "with",
+    "that",
+    "this",
+    "from",
+    "they",
+    "will",
+    "have",
+    "what",
+    "when",
+    "your",
+    "which",
+    "their",
+    "there",
+    "would",
+    "about",
+    "could",
+    "other",
+    "these",
+    "those",
+    "then",
+    "than",
+    "them",
+    "some",
+    "such",
+    "into",
+    "over",
+    "also",
+    "just",
+    "like",
+    "more",
+    "most",
+    "only",
+    "very",
+    "much",
+    "many",
+    "been",
+    "being",
+    "were",
+    "where",
+    "while",
+    "should",
+    "because",
+    "after",
+    "before",
+    "here",
+    "does",
+    "done",
+    "each",
+    "even",
+    "ever",
+    "every",
+    "still",
+    "same",
+    "well",
+    "want",
+    "need",
+    "make",
+    "made",
+    "take",
+    "took",
+    "come",
+    "came",
+    "goes",
+    "going",
+    "gone",
+    "know",
+    "think",
+    "thing",
+    "things",
+    "something",
+    "anything",
+    "nothing",
+    "really",
+    "maybe",
+    "again",
+    "back",
+    "down",
+    "first",
+    "last",
+    "next",
+    "today",
+    "tomorrow",
+    "yesterday",
+    "week",
+    "time",
+    "day",
+    "days",
+    "note",
+    "notes",
+    "todo",
+    "http",
+    "https",
+    "www",
+    "com",
+    "org",
+    "net",
+    "html",
+    "png",
+    "jpg",
+    "jpeg",
+    "gif",
+    "webp",
+    "attachments",
+    "true",
+    "false",
+    "null",
+    "none",
+    "yes",
+    "doesn",
+    "don",
+    "isn",
+    "aren",
+    "wasn",
+    "didn",
+    "won",
+    "can't",
+    "cannot",
+    "i'm",
+    "it's",
+    "that's",
+    "we're",
+    "you're",
+    "they're",
+    "there's",
+    "he's",
+    "she's",
+    "let's",
+    "i've",
+    "we've",
+];
+
+/// The words a note's text is about, for the Graph's filing suggestions
+/// (API.md section 4): lowercase runs of letters and digits, three
+/// characters or longer, that are not all digits and not stop words, each
+/// listed once in order of first appearance. A `#tag` token is skipped: tags
+/// are their own channel, so a tag written inline is not also counted as a
+/// word.
+pub fn content_words(text: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut word = String::new();
+    let mut in_tag = false;
+    let mut prev_is_boundary = true;
+    let flush =
+        |word: &mut String, out: &mut Vec<String>, seen: &mut std::collections::HashSet<String>| {
+            if word.chars().count() >= 3
+                && !word.chars().all(|c| c.is_ascii_digit())
+                && !STOP_WORDS.contains(&word.as_str())
+                && seen.insert(word.clone())
+            {
+                out.push(word.clone());
+            }
+            word.clear();
+        };
+    for c in text.chars() {
+        if c == '#' && prev_is_boundary {
+            in_tag = true;
+            prev_is_boundary = false;
+            continue;
+        }
+        if c.is_alphanumeric() || c == '\'' {
+            if !in_tag {
+                word.extend(c.to_lowercase());
+            }
+            prev_is_boundary = false;
+            continue;
+        }
+        if c == '-' || c == '_' {
+            // Inside a tag these join the token; inside a word they split it.
+            if in_tag {
+                prev_is_boundary = false;
+                continue;
+            }
+        }
+        in_tag = false;
+        flush(&mut word, &mut out, &mut seen);
+        prev_is_boundary = c.is_whitespace();
+    }
+    flush(&mut word, &mut out, &mut seen);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -251,5 +473,40 @@ mod tests {
     fn empty_body_yields_untitled() {
         assert_eq!(derive_title(""), "Untitled");
         assert_eq!(derive_title("   \n  "), "Untitled");
+    }
+
+    #[test]
+    fn content_words_keep_what_a_note_is_about() {
+        assert_eq!(
+            content_words("Tomato ragu: simmer the sauce slowly #pasta"),
+            vec!["tomato", "ragu", "simmer", "sauce", "slowly"]
+        );
+    }
+
+    #[test]
+    fn content_words_skip_tags_short_tokens_numbers_and_stop_words() {
+        assert_eq!(
+            content_words("#my-tag_1 is 2026 ok, the ONE! It's 20 min"),
+            vec!["min"]
+        );
+        // A `#` inside a word is punctuation, not a tag; the rest of the word
+        // stays.
+        assert_eq!(content_words("C#minor a#b"), vec!["minor"]);
+    }
+
+    #[test]
+    fn content_words_are_lowercase_and_listed_once() {
+        assert_eq!(
+            content_words("Ragu RAGU ragu Risotto"),
+            vec!["ragu", "risotto"]
+        );
+    }
+
+    #[test]
+    fn content_words_leave_markdown_and_links_behind() {
+        assert_eq!(
+            content_words("![pic](attachments/abc123.png) see https://example.com/path"),
+            vec!["pic", "abc123", "example", "path"]
+        );
     }
 }

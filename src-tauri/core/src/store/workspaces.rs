@@ -118,6 +118,8 @@ impl Store {
         };
         self.conn
             .execute("DELETE FROM workspaces WHERE id = ?1", params![id])?;
+        // Suggestions dismissed for this Space have nothing left to refer to.
+        self.prune_space_dismissals()?;
         Ok(member_ids)
     }
 

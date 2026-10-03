@@ -22,6 +22,7 @@ import type {
   Note,
   NoteFilter,
   SearchResult,
+  SpaceSuggestion,
   StickyLevel,
   StickiesScan,
   Tag,
@@ -82,6 +83,16 @@ export const restoreNote = (id: string) => call<Note>("restore_note", { id });
 export const permanentlyDeleteNote = (id: string, confirm: boolean) =>
   call<void>("permanently_delete_note", { id, confirm });
 export const libraryGraph = () => call<LibraryGraph>("library_graph");
+// Where each live note in no Space most likely belongs, newest note first,
+// judged from the tags and words it shares with the notes already filed.
+// Nothing is trained: filing the note is what teaches it.
+export const spaceSuggestions = () => call<SpaceSuggestion[]>("space_suggestions");
+// "Not this one": the pair stays out of the suggestions from then on, and
+// its Undo brings it back.
+export const dismissSpaceSuggestion = (noteId: string, spaceId: string) =>
+  call<void>("dismiss_space_suggestion", { noteId, spaceId });
+export const restoreSpaceSuggestion = (noteId: string, spaceId: string) =>
+  call<void>("restore_space_suggestion", { noteId, spaceId });
 export const listNotes = (filter: NoteFilter = {}) =>
   call<Note[]>("list_notes", { filter });
 export const searchNotes = (text: string, limit = 50) =>
