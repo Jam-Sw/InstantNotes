@@ -1,104 +1,141 @@
-# Push a v* tag and GitHub builds every platform and assembles a draft release,
-# including the latest.json manifest the in-app updater polls. The three matrix
-# jobs upload into one draft; tauri-action merges each platform into latest.json,
-# so the draft must stay unpublished until all jobs finish. Publish after the
-# smoke test to ship.
-# Requires repo secrets: TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
+# Merging into main releases the version in package.json, unless that version
+# is already published. Every build runs on the self-hosted Linux build
+# machine: Linux in an Ubuntu 22.04 build root, Windows cross-compiled with
+# cargo-xwin, and macOS on the Mac builder over ssh. Each platform succeeds or fails on its own; the release publishes
+# with whatever built, and a platform that failed can be added later by
+# re-running its job (re-run publish afterwards to refresh latest.json).
+#
+# Runner requirements (labels self-hosted, Linux, X64): node, gh, rustup with
+# x86_64-pc-windows-msvc, cargo-xwin, makensis, `instantnotes-buildroot` (an
+# Ubuntu 22.04 root for the AppImage), and an ssh host `mac-builder`.
+# Repo secrets: TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
 name: Release
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  GH_TOKEN: ${{ github.token }}
+
 jobs:
-  release:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # macos-latest runners are arm64; macOS ships Apple Silicon only.
-          - platform: macos-latest
-          - platform: ubuntu-22.04
-          - platform: windows-latest
-    runs-on: ${{ matrix.platform }}
+  plan:
+    runs-on: [self-hosted, Linux, X64]
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      ship: ${{ steps.plan.outputs.ship }}
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-
-      # Must match rust-toolchain.toml; @stable would export RUSTUP_TOOLCHAIN and
-      # override the pin, building CI on a different compiler than local.
-      - uses: dtolnay/rust-toolchain@1.91.1
-
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-
-      - name: Install Tauri system dependencies (Linux)
-        if: matrix.platform == 'ubuntu-22.04'
+      - id: plan
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
-
-      - run: npm ci
-
-      # A tag push ships to real users, so run the same quality gate as build.yml
-      # before spending time on the signed bundle: a red release must never draft.
-      - run: npm run check
-
-      - run: npm test
-
-      - run: cargo test --workspace --manifest-path src-tauri/Cargo.toml
-
-      # Release notes = the CHANGELOG section for this tag. tauri-action writes
-      # this into both the GitHub release body and latest.json's "notes", so the
-      # in-app updater shows real "What's new" text, not install boilerplate.
-      - name: Extract release notes
-        id: notes
-        shell: bash
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          notes="$(awk -v v="$version" '
-            $0 ~ "^## \\[" v "\\]" {grab=1; next}
-            grab && /^## \[/ {exit}
-            grab {print}
-          ' CHANGELOG.md)"
-          if [ -z "$(printf '%s' "$notes" | tr -d '[:space:]')" ]; then
-            notes="Maintenance release. See the commit history for details."
+          version="$(node -p 'require("./package.json").version')"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          tauri="$(node -p 'require("./src-tauri/tauri.conf.json").version')"
+          cargo="$(sed -n 's/^version = "\(.*\)"/\1/p' src-tauri/Cargo.toml | head -1)"
+          if [ "$tauri" != "$version" ] || [ "$cargo" != "$version" ]; then
+            echo "::error::versions disagree: package.json $version, tauri.conf.json $tauri, Cargo.toml $cargo"
+            exit 1
           fi
-          {
-            echo "body<<__NOTES_EOF__"
-            printf '%s\n' "$notes"
-            echo ""
-            echo "---"
-            echo "First install on macOS: download the \`.dmg\`, open it, and drag InstantNotes to Applications. macOS blocks the first launch of this unnotarized build: run \`xattr -d com.apple.quarantine /Applications/InstantNotes.app\` or use System Settings > Privacy & Security > \"Open Anyway\"."
-            echo ""
-            echo "First install on Windows: download and run the \`-setup.exe\` installer. SmartScreen flags the unsigned build: click \"More info\", then \"Run anyway\"."
-            echo ""
-            echo "First install on Linux: download the \`.AppImage\`, make it executable (\`chmod +x\`), and run it."
-            echo ""
-            echo "Existing installs update in place from inside the app."
-            echo "__NOTES_EOF__"
-          } >> "$GITHUB_OUTPUT"
+          state="$(gh release view "v$version" --json isDraft --jq .isDraft 2>/dev/null || echo none)"
+          if [ "$state" = false ]; then
+            echo "v$version is already published; nothing to release."
+            echo "ship=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "ship=true" >> "$GITHUB_OUTPUT"
+          if [ "$state" = none ]; then
+            node .github/release-notes.mjs "$version" > notes.md
+            gh release create "v$version" --draft --target "$GITHUB_SHA" \
+              --title "InstantNotes v$version" --notes-file notes.md
+          fi
 
-      - uses: tauri-apps/tauri-action@v1
+  linux:
+    needs: plan
+    if: needs.plan.outputs.ship == 'true'
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 45
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v7
+      # Caches outside the workspace survive between runs, so builds stay warm.
+      - run: echo "INSTANTNOTES_BUILDCACHE=$HOME/.cache/instantnotes-build/linux" >> "$GITHUB_ENV"
+      - run: instantnotes-buildroot run . sh -c 'npm ci --no-audit --no-fund && npm run tauri -- build --bundles appimage'
+      - run: |
+          dir="$INSTANTNOTES_BUILDCACHE/target/release/bundle/appimage"
+          gh release upload "v$VERSION" --clobber \
+            "$dir/InstantNotes_${VERSION}_amd64.AppImage" \
+            "$dir/InstantNotes_${VERSION}_amd64.AppImage.sig"
+
+  windows:
+    needs: plan
+    if: needs.plan.outputs.ship == 'true'
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 45
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: echo "CARGO_TARGET_DIR=$HOME/.cache/instantnotes-build/windows/target" >> "$GITHUB_ENV"
+      - run: npm ci --no-audit --no-fund
+      - run: npm run tauri -- build --runner cargo-xwin --target x86_64-pc-windows-msvc --bundles nsis
+      - run: |
+          dir="$CARGO_TARGET_DIR/x86_64-pc-windows-msvc/release/bundle/nsis"
+          gh release upload "v$VERSION" --clobber \
+            "$dir/InstantNotes_${VERSION}_x64-setup.exe" \
+            "$dir/InstantNotes_${VERSION}_x64-setup.exe.sig"
+
+  macos:
+    needs: plan
+    if: needs.plan.outputs.ship == 'true'
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 45
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v7
+      # The Mac builds only while its owner runs instantnotes-builder there; it
+      # gets this commit's files and builds unsigned, and the bundle is signed
+      # here. Offline means this release ships without macOS.
+      - id: mac
+        run: |
+          if [ "$(ssh -o BatchMode=yes -o ConnectTimeout=10 mac-builder status 2>/dev/null)" != online ]; then
+            echo "::warning::Mac builder offline; v$VERSION ships without macOS"
+            exit 0
+          fi
+          out="$RUNNER_TEMP/macos"
+          mkdir -p "$out"
+          git archive "$GITHUB_SHA" | ssh -o BatchMode=yes mac-builder "build $VERSION" | tar -xf - -C "$out"
+          echo "out=$out" >> "$GITHUB_OUTPUT"
+      - if: steps.mac.outputs.out
+        run: |
+          npm ci --no-audit --no-fund
+          npx tauri signer sign "$OUT/InstantNotes_${VERSION}_aarch64.app.tar.gz"
+          gh release upload "v$VERSION" --clobber "$OUT"/InstantNotes_"$VERSION"_aarch64.*
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "InstantNotes ${{ github.ref_name }}"
-          # Draft while the matrix assembles: publishing early would expose a
-          # latest.json missing the platforms still building. Publishing the
-          # smoke-tested draft is the ship gate.
-          releaseDraft: true
-          uploadUpdaterJson: true
-          updaterJsonPreferNsis: true
-          releaseBody: ${{ steps.notes.outputs.body }}
+          OUT: ${{ steps.mac.outputs.out }}
+
+  publish:
+    needs: [plan, linux, windows, macos]
+    if: always() && needs.plan.outputs.ship == 'true'
+    runs-on: [self-hosted, Linux, X64]
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: node .github/release-manifest.mjs "$VERSION"
