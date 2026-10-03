@@ -1,7 +1,7 @@
-// The Graph view's model: which nodes and edges to draw, and where. Pure, so
-// the picture is the same on every visit: the force layout starts from
-// positions seeded by each node's id and draws its jitter from a seeded
-// generator, never Math.random.
+// The Graph view's model: which nodes and edges to draw, and where, in three
+// dimensions. Pure, so the picture is the same on every visit: the force
+// layout starts from positions seeded by each node's id and draws its jitter
+// from a seeded generator, never Math.random.
 
 import {
   forceCollide,
@@ -10,9 +10,10 @@ import {
   forceSimulation,
   forceX,
   forceY,
+  forceZ,
   type SimulationLinkDatum,
-  type SimulationNodeDatum,
-} from "d3-force";
+  type SimulationNodeDatum3D,
+} from "d3-force-3d";
 import type { LibraryGraph, SpaceSuggestion } from "$lib/api/types";
 
 type NodeKind = "note" | "tag" | "space";
@@ -32,6 +33,7 @@ export interface GraphNode {
   degree: number;
   x: number;
   y: number;
+  z: number;
 }
 
 /** What an edge is: a tag the note carries, a Space it is in, or a Space
@@ -104,11 +106,12 @@ export function buildGraph(lib: LibraryGraph, suggestions: SpaceSuggestion[] = [
       degree: own,
       x: 0,
       y: 0,
+      z: 0,
     });
   }
   for (const [id, t] of targets) {
     if (!degree.has(id)) continue;
-    nodes.push({ id, ...t, degree: degree.get(id) ?? 0, x: 0, y: 0 });
+    nodes.push({ id, ...t, degree: degree.get(id) ?? 0, x: 0, y: 0, z: 0 });
   }
   const unconnectedNotes = lib.notes.filter((n) => !degree.has(n.id) && !suggestedFor.has(n.id)).length;
   return { nodes, edges, unconnectedNotes, populatedSpaces };
@@ -137,8 +140,13 @@ export function nodeRadius(n: Pick<GraphNode, "kind" | "degree">): number {
   return n.kind === "note" ? 5 : 7 + Math.min(14, Math.sqrt(n.degree) * 3);
 }
 
-type SimNode = GraphNode & SimulationNodeDatum;
+type SimNode = GraphNode & SimulationNodeDatum3D;
 type SimLink = SimulationLinkDatum<SimNode> & { kind: EdgeKind };
+
+/** How far from the plane a new node starts, and how hard the layout pulls it
+ *  back: the graph settles as a slab about a third as deep as it is wide. */
+const DEPTH_SEED = 120;
+const DEPTH_PULL = 0.12;
 
 /**
  * Ticks a layout runs to reach rest.
@@ -163,22 +171,23 @@ export interface LayoutRun {
  */
 export function startLayout(
   graph: Graph,
-  previous?: Map<string, { x: number; y: number }>,
+  previous?: Map<string, { x: number; y: number; z: number }>,
 ): LayoutRun {
   const nodes: SimNode[] = graph.nodes.map((n) => {
     const known = previous?.get(n.id);
-    if (known) return { ...n, x: known.x, y: known.y };
+    if (known) return { ...n, x: known.x, y: known.y, z: known.z };
     const h = hash(n.id);
     const angle = ((h & 0xffff) / 0x10000) * 2 * Math.PI;
     const radius = 40 + ((h >>> 16) / 0x10000) * 260;
-    return { ...n, x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+    const depth = (hash(`${n.id}:z`) / 0x100000000 - 0.5) * 2 * DEPTH_SEED;
+    return { ...n, x: Math.cos(angle) * radius, y: Math.sin(angle) * radius, z: depth };
   });
   const links: SimLink[] = graph.edges.map((e) => ({
     source: e.source,
     target: e.target,
     kind: e.kind,
   }));
-  const sim = forceSimulation(nodes)
+  const sim = forceSimulation(nodes, 3)
     .randomSource(seeded(nodes.length))
     .force(
       "link",
@@ -187,10 +196,20 @@ export function startLayout(
         .distance((l) => (l.kind === "suggested" ? 80 : 46))
         .strength((l) => (l.kind === "suggested" ? 0.25 : 0.7)),
     )
-    .force("charge", forceManyBody<SimNode>().strength((d) => (d.kind === "note" ? -60 : -260)))
+    // theta 1.2 (d3's default is 0.9) trades a little Barnes-Hut accuracy for
+    // about a quarter of the layout time, which a third axis otherwise costs.
+    .force(
+      "charge",
+      forceManyBody<SimNode>()
+        .strength((d) => (d.kind === "note" ? -60 : -260))
+        .theta(1.2),
+    )
     .force("collide", forceCollide<SimNode>((d) => nodeRadius(d) + 3))
     .force("x", forceX<SimNode>(0).strength(0.04))
     .force("y", forceY<SimNode>(0).strength(0.04))
+    // Held flatter than wide: from the front the graph reads as it always
+    // has, and turning it shows what sits behind what.
+    .force("z", forceZ<SimNode>(0).strength(DEPTH_PULL))
     .stop();
   // A refresh of a laid-out library starts cool: the known nodes are already
   // at rest, and only the newcomers need to find their place.
@@ -207,7 +226,7 @@ export function startLayout(
     snapshot() {
       return {
         ...graph,
-        nodes: nodes.map(({ id, kind, label, color, pinned, board, suggested, degree, x, y }) => ({
+        nodes: nodes.map(({ id, kind, label, color, pinned, board, suggested, degree, x, y, z }) => ({
           id,
           kind,
           label,
@@ -218,6 +237,7 @@ export function startLayout(
           degree,
           x: x ?? 0,
           y: y ?? 0,
+          z: z ?? 0,
         })),
       };
     },

@@ -1,5 +1,14 @@
 {
-  "$schema": "https://unpkg.com/knip@5/schema.json",
-  "entry": ["scripts/*.mjs!"],
-  "ignore": ["src/lib/agreements.svelte.ts", "src/lib/AgreementGate.svelte"]
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "scripts/*.mjs!",
+    ".github/*.mjs!"
+  ],
+  "ignore": [
+    "src/lib/agreements.svelte.ts",
+    "src/lib/AgreementGate.svelte"
+  ],
+  "ignoreDependencies": [
+    "@types/d3-force"
+  ]
 }

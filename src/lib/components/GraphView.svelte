@@ -26,6 +26,8 @@
     type Graph,
     type GraphNode,
   } from "$lib/graph/layout";
+  import { FRONT, centroid, projector, turn, type Orbit } from "$lib/graph/projection";
+  import { nodeLabel, placeLabels } from "$lib/graph/labels";
 
   // Layout work per animation frame, so a large library settles over a few
   // frames instead of freezing the view while it does.
@@ -36,6 +38,8 @@
   const NOTE_LABEL_ZOOM = 1.3;
   // The lens: the open note, its tags and Spaces, and the notes they gather.
   const LENS_HOPS = 2;
+  // Pixels of drag an arrow key turns the graph by.
+  const KEY_TURN = 20;
   // Suggestions listed at once; the rest come a page at a time, so two
   // hundred of them read as a list, not a wall, and the canvas draws the
   // dashed edges of the rows on screen only.
@@ -49,13 +53,14 @@
   let width = $state(800);
   let height = $state(600);
   let view = $state({ x: 400, y: 300, k: 1 });
+  let orbit = $state<Orbit>(FRONT);
   // The lens frames the open note's neighborhood; "Show all" is the escape
   // and stays until the lens is chosen again.
   let lens = $state(true);
   // Until the user pans or zooms, the view keeps itself framed as the
   // layout settles; after that it stays where they put it.
   let userMoved = false;
-  let positions = new Map<string, { x: number; y: number }>();
+  let positions = new Map<string, { x: number; y: number; z: number }>();
   let frame: number | null = null;
   let host: HTMLDivElement;
   let lastLib: Awaited<ReturnType<typeof libraryGraph>> | null = null;
@@ -79,6 +84,38 @@
     if (!graph) return null;
     if (hovered) return neighbors(graph, hovered);
     return currentId && lens ? neighbors(graph, currentId, LENS_HOPS) : null;
+  });
+
+  // The layout is three-dimensional; what is drawn is it turned by the orbit
+  // and seen in perspective, around the center of what the view frames: the
+  // open note's lens, else the whole library.
+  const pivot = $derived.by(() => {
+    const nodes = graph?.nodes ?? [];
+    const around = graph && lens && currentId ? neighbors(graph, currentId, LENS_HOPS) : null;
+    return centroid(around ? nodes.filter((n) => around.has(n.id)) : nodes);
+  });
+  const projected = $derived.by(() => {
+    const project = projector(orbit, pivot);
+    return new Map((graph?.nodes ?? []).map((n) => [n.id, project(n)]));
+  });
+  // Back to front, so a nearer node paints over the ones behind it.
+  const painted = $derived(
+    [...(graph?.nodes ?? [])].sort((a, b) => projected.get(b.id)!.depth - projected.get(a.id)!.depth),
+  );
+  // The labels with room to show, and where: what the user is on first, then
+  // hubs by size, then the nearest notes; one that would cover another waits.
+  const labeled = $derived.by(() => {
+    const candidates = [];
+    for (const n of graph?.nodes ?? []) {
+      if (!showLabel(n)) continue;
+      const p = projected.get(n.id)!;
+      const focus =
+        n.id === currentId ? 4 : n.id === hovered ? 3 : lit?.has(n.id) ? 2 : 0;
+      const hub = n.kind === "note" ? 0 : 1e4 + n.degree * 10;
+      const r = nodeRadius(n) * p.scale;
+      candidates.push(nodeLabel(n.id, n.label, p.x, p.y, r, focus * 1e6 + hub - p.depth));
+    }
+    return placeLabels(candidates);
   });
 
   function showLabel(n: GraphNode): boolean {
@@ -123,7 +160,7 @@
       let rested = false;
       while (!rested && performance.now() - started < FRAME_BUDGET_MS) rested = run.step(4);
       graph = run.snapshot();
-      positions = new Map(graph.nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
+      positions = new Map(graph.nodes.map((n) => [n.id, { x: n.x, y: n.y, z: n.z }]));
       if (!userMoved) frameView();
       if (!rested) frame = raf(step);
     };
@@ -135,7 +172,9 @@
   function frameView() {
     if (!graph || graph.nodes.length === 0) return;
     const around = lens && currentId ? neighbors(graph, currentId, LENS_HOPS) : null;
-    const shownNodes = graph.nodes.filter((n) => !around || around.has(n.id));
+    const shownNodes = graph.nodes
+      .filter((n) => !around || around.has(n.id))
+      .map((n) => projected.get(n.id)!);
     const xs = shownNodes.map((n) => n.x);
     const ys = shownNodes.map((n) => n.y);
     const pad = 60;
@@ -222,19 +261,36 @@
 
   // ---- pan and zoom ----
 
-  let drag = $state<{ id: number; x: number; y: number } | null>(null);
+  // A drag pans; with the right button or Shift held, it turns the graph.
+  let drag = $state<{ id: number; x: number; y: number; turn: boolean } | null>(null);
 
   function onPointerDown(e: PointerEvent) {
-    if ((e.target as Element).closest(".node")) return;
-    drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    if ((e.target as Element).closest(".node") && e.button !== 2) return;
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, turn: e.button === 2 || e.shiftKey };
     (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
   }
 
   function onPointerMove(e: PointerEvent) {
     if (!drag || drag.id !== e.pointerId) return;
     userMoved = true;
-    view = { ...view, x: view.x + e.clientX - drag.x, y: view.y + e.clientY - drag.y };
+    const dx = e.clientX - drag.x;
+    const dy = e.clientY - drag.y;
+    if (drag.turn) orbit = turn(orbit, dx, dy);
+    else view = { ...view, x: view.x + dx, y: view.y + dy };
     drag = { ...drag, x: e.clientX, y: e.clientY };
+  }
+
+  function onHostKey(e: KeyboardEvent) {
+    const step = {
+      ArrowLeft: [-KEY_TURN, 0],
+      ArrowRight: [KEY_TURN, 0],
+      ArrowUp: [0, -KEY_TURN],
+      ArrowDown: [0, KEY_TURN],
+    }[e.key];
+    if (!step || e.altKey || e.ctrlKey || e.metaKey) return;
+    e.preventDefault();
+    userMoved = true;
+    orbit = turn(orbit, step[0], step[1]);
   }
 
   function onPointerUp() {
@@ -312,6 +368,8 @@
       onpointermove={onPointerMove}
       onpointerup={onPointerUp}
       onpointercancel={onPointerUp}
+      onkeydown={onHostKey}
+      oncontextmenu={(e) => e.preventDefault()}
     >
       {#if failed}
         <p class="graph-empty">The graph couldn't load. Your notes are fine; try again in a moment.</p>
@@ -324,8 +382,8 @@
         <svg {width} {height} role="group" aria-label="Notes, tags, and Spaces">
           <g transform="translate({view.x} {view.y}) scale({view.k})">
             {#each graph.edges as e, i (i)}
-              {@const a = byId.get(e.source)}
-              {@const b = byId.get(e.target)}
+              {@const a = projected.get(e.source)}
+              {@const b = projected.get(e.target)}
               {#if a && b}
                 <line
                   class="edge {e.kind} {e.tagSource ?? ''}"
@@ -338,14 +396,15 @@
                 />
               {/if}
             {/each}
-            {#each graph.nodes as n (n.id)}
-              {@const r = nodeRadius(n)}
+            {#each painted as n (n.id)}
+              {@const p = projected.get(n.id)!}
+              {@const r = nodeRadius(n) * p.scale}
               <g
                 class="node {n.kind}"
                 class:dim={lit && !lit.has(n.id)}
                 class:current={currentId === n.id}
                 class:suggested={n.suggested}
-                transform="translate({n.x} {n.y})"
+                transform="translate({p.x} {p.y})"
                 role="button"
                 tabindex="0"
                 aria-label={nodeName(n)}
@@ -361,10 +420,20 @@
                 {:else}
                   <circle {r} style:fill={n.kind === "tag" && n.color ? n.color : null} />
                 {/if}
-                {#if showLabel(n)}
-                  <text y={r + 12} class:hub={n.kind !== "note"}>{n.label}</text>
-                {/if}
               </g>
+            {/each}
+            <!-- Labels above every node, so a nearer node never covers a name
+                 that was given room. -->
+            {#each painted as n (n.id)}
+              {@const at = labeled.get(n.id)}
+              {#if at}
+                <text
+                  class:hub={n.kind !== "note"}
+                  class:dim={lit && !lit.has(n.id)}
+                  x={at.x}
+                  y={at.y}>{n.label}</text
+                >
+              {/if}
             {/each}
           </g>
         </svg>
@@ -587,6 +656,12 @@
   text.hub {
     fill: var(--text);
     font-weight: 600;
+  }
+  text {
+    transition: opacity 120ms ease;
+  }
+  text.dim {
+    opacity: 0.2;
   }
   .graph-empty {
     position: absolute;

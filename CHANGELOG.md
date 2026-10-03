@@ -9,6 +9,15 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.9.4]
 
+### Added
+- Graph: 3D layout (`d3-force-3d`, held to a slab by `forceZ`, Barnes-Hut
+  `theta` 1.2); right-drag, Shift+drag or arrow keys turn it about the framed
+  nodes, drawn in perspective back to front. Pan, zoom and lens unchanged.
+
+### Changed
+- Graph: labels never overlap: placed by priority (open note, hovered, lit,
+  hubs by degree, nearest) under or else over their node (`rbush`), above all nodes.
+
 ### Fixed
 - Updater: the installed-update note offers "Restart now" (`restart_app`: quit
   handshake, then `request_restart`); closing the window only hid to the tray,
