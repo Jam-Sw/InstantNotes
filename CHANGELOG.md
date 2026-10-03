@@ -14,6 +14,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `Permission denied (os error 13)`; `install_update` falls back to `pkexec` (#64).
 - Agents: connect snippets name `$APPIMAGE`, not the `/tmp/.mount_*` binary
   that broke MCP configs with `ENOENT` after a restart; re-copy the snippet.
+- Stickies (Linux, Windows): no bare File/Edit menubar above a sticky or the
+  capture panel; off macOS the app menu is set on the library window only.
 
 ### Upgrading from 0.9.0 or 0.9.1 on Linux
 - If this update fails with `Permission denied (os error 13)`, install it once
