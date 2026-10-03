@@ -86,10 +86,19 @@ fn read_package(package: &Path, colors: &HashMap<String, String>) -> Option<Stic
 /// UUID to `#rrggbb`, from the state file. Anything unreadable costs only
 /// the colors.
 fn read_colors(path: &Path) -> HashMap<String, String> {
-    let entries = match plist::Value::from_file(path) {
-        Ok(plist::Value::Array(entries)) => entries,
+    plist::Value::from_file(path)
+        .map(colors_from)
+        .unwrap_or_default()
+}
+
+/// UUID to `#rrggbb`, from the state file's contents: a list of stickies,
+/// each a dictionary with its `UUID` and a `StickyColor` of 0..1 channels.
+/// An entry without both is skipped.
+fn colors_from(value: plist::Value) -> HashMap<String, String> {
+    let entries = match value {
+        plist::Value::Array(entries) => entries,
         // A future wrapper around the list: take the longest list inside.
-        Ok(plist::Value::Dictionary(d)) => d
+        plist::Value::Dictionary(d) => d
             .into_iter()
             .filter_map(|(_, v)| v.into_array())
             .max_by_key(Vec::len)
@@ -118,4 +127,123 @@ fn read_colors(path: &Path) -> HashMap<String, String> {
             Some((id, hex))
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    //! The color table on plain values: no fixture file. `import_test.rs`
+    //! keeps reading the real `.SavedStickiesState` fixture.
+    use super::*;
+    use plist::{Dictionary, Value};
+
+    fn channels(r: Value, g: Value, b: Value) -> Value {
+        let mut color = Dictionary::new();
+        color.insert("Red".into(), r);
+        color.insert("Green".into(), g);
+        color.insert("Blue".into(), b);
+        Value::Dictionary(color)
+    }
+
+    fn sticky(uuid: &str, color: Value) -> Value {
+        let mut entry = Dictionary::new();
+        entry.insert("UUID".into(), Value::String(uuid.into()));
+        entry.insert("StickyColor".into(), color);
+        Value::Dictionary(entry)
+    }
+
+    #[test]
+    fn a_list_of_stickies_maps_each_uuid_to_its_paper() {
+        let colors = colors_from(Value::Array(vec![
+            sticky(
+                "abc",
+                channels(Value::Real(1.0), Value::Real(1.0), Value::Real(0.0)),
+            ),
+            sticky(
+                "DEF",
+                channels(Value::Real(0.0), Value::Real(0.0), Value::Real(1.0)),
+            ),
+        ]));
+        assert_eq!(colors.get("ABC").map(String::as_str), Some("#ffff00"));
+        assert_eq!(colors.get("DEF").map(String::as_str), Some("#0000ff"));
+        assert_eq!(colors.len(), 2);
+    }
+
+    #[test]
+    fn a_dictionary_wrapper_yields_its_longest_list() {
+        let mut wrapper = Dictionary::new();
+        wrapper.insert(
+            "other".into(),
+            Value::Array(vec![sticky(
+                "one",
+                channels(Value::Real(1.0), Value::Real(0.0), Value::Real(0.0)),
+            )]),
+        );
+        wrapper.insert(
+            "stickies".into(),
+            Value::Array(vec![
+                sticky(
+                    "two",
+                    channels(Value::Real(0.0), Value::Real(1.0), Value::Real(0.0)),
+                ),
+                sticky(
+                    "three",
+                    channels(Value::Real(0.0), Value::Real(0.0), Value::Real(1.0)),
+                ),
+            ]),
+        );
+        let colors = colors_from(Value::Dictionary(wrapper));
+        assert_eq!(colors.len(), 2);
+        assert!(colors.contains_key("TWO") && colors.contains_key("THREE"));
+        assert!(!colors.contains_key("ONE"));
+    }
+
+    #[test]
+    fn channels_round_to_hex_and_clamp_to_the_byte() {
+        let colors = colors_from(Value::Array(vec![
+            sticky(
+                "mid",
+                channels(Value::Real(0.5), Value::Real(0.251), Value::Real(0.998)),
+            ),
+            sticky(
+                "int",
+                channels(
+                    Value::Integer(1.into()),
+                    Value::Integer(0.into()),
+                    Value::Real(2.0),
+                ),
+            ),
+            sticky(
+                "neg",
+                channels(Value::Real(-1.0), Value::Real(0.0), Value::Real(0.0)),
+            ),
+        ]));
+        assert_eq!(colors["MID"], "#8040fe");
+        assert_eq!(colors["INT"], "#ff00ff");
+        assert_eq!(colors["NEG"], "#000000");
+    }
+
+    #[test]
+    fn a_malformed_entry_is_skipped_and_the_rest_kept() {
+        let mut no_color = Dictionary::new();
+        no_color.insert("UUID".into(), Value::String("lost".into()));
+        let mut no_channel = Dictionary::new();
+        no_channel.insert("Red".into(), Value::Real(1.0));
+        let colors = colors_from(Value::Array(vec![
+            Value::Dictionary(no_color),
+            sticky("partial", Value::Dictionary(no_channel)),
+            Value::String("not a sticky".into()),
+            sticky(
+                "kept",
+                channels(Value::Real(0.0), Value::Real(0.0), Value::Real(0.0)),
+            ),
+        ]));
+        assert_eq!(colors.len(), 1);
+        assert_eq!(colors["KEPT"], "#000000");
+    }
+
+    #[test]
+    fn anything_but_a_list_or_wrapper_has_no_colors() {
+        assert!(colors_from(Value::String("x".into())).is_empty());
+        assert!(colors_from(Value::Array(vec![])).is_empty());
+    }
 }

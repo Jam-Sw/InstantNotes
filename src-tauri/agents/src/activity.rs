@@ -103,53 +103,69 @@ impl Trace {
         client: &str,
         result: &Result<Value, String>,
     ) -> Option<i64> {
-        let (status, error, notes, after) = match result {
-            Ok(value) => {
-                let notes = touched_notes(value);
-                let after = value
-                    .get("updatedAt")
-                    .and_then(Value::as_str)
-                    .map(str::to_string);
-                ("ok", None, notes, after)
-            }
-            Err(message) => (
-                "error",
-                Some(message.chars().take(ERROR_CHARS).collect::<String>()),
-                // The note it was about, so the row still points somewhere.
-                self.scope
-                    .id
-                    .iter()
-                    .map(|id| (id.clone(), String::new()))
-                    .collect(),
-                None,
-            ),
-        };
-        // A failed write changed nothing: no snapshot to go back to.
-        let before = if status == "ok" { self.before } else { None };
+        let elapsed_ms = self.started.elapsed().as_millis() as i64;
         store
-            .record_activity(ActivityRecord {
-                session: session.to_string(),
-                client: client.to_string(),
-                tool: self.tool.to_string(),
-                kind: self.kind.as_str().to_string(),
-                status: status.to_string(),
-                error,
-                duration_ms: self.started.elapsed().as_millis() as i64,
-                note_ids: notes
-                    .iter()
-                    .take(NOTE_IDS)
-                    .map(|(id, _)| id.clone())
-                    .collect(),
-                note_count: notes.len() as i64,
-                titles: notes.iter().take(TITLES).map(|(_, t)| t.clone()).collect(),
-                space: self.scope.space,
-                tag: self.scope.tag,
-                query: self.scope.query,
-                after_updated_at: after,
-                before,
-                reverts: None,
-            })
+            .record_activity(record_for(self, session, client, result, elapsed_ms))
             .ok()
+    }
+}
+
+/// The row a finished call leaves, from the trace and the outcome alone:
+/// what was touched, how it ended, and, for a write that succeeded, the
+/// note as it was before. A failed write changed nothing, so it keeps no
+/// snapshot; a failed call still names the note it was about.
+fn record_for(
+    trace: Trace,
+    session: &str,
+    client: &str,
+    result: &Result<Value, String>,
+    elapsed_ms: i64,
+) -> ActivityRecord {
+    let (status, error, notes, after) = match result {
+        Ok(value) => {
+            let notes = touched_notes(value);
+            let after = value
+                .get("updatedAt")
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            ("ok", None, notes, after)
+        }
+        Err(message) => (
+            "error",
+            Some(message.chars().take(ERROR_CHARS).collect::<String>()),
+            // The note it was about, so the row still points somewhere.
+            trace
+                .scope
+                .id
+                .iter()
+                .map(|id| (id.clone(), String::new()))
+                .collect(),
+            None,
+        ),
+    };
+    // A failed write changed nothing: no snapshot to go back to.
+    let before = if status == "ok" { trace.before } else { None };
+    ActivityRecord {
+        session: session.to_string(),
+        client: client.to_string(),
+        tool: trace.tool.to_string(),
+        kind: trace.kind.as_str().to_string(),
+        status: status.to_string(),
+        error,
+        duration_ms: elapsed_ms,
+        note_ids: notes
+            .iter()
+            .take(NOTE_IDS)
+            .map(|(id, _)| id.clone())
+            .collect(),
+        note_count: notes.len() as i64,
+        titles: notes.iter().take(TITLES).map(|(_, t)| t.clone()).collect(),
+        space: trace.scope.space,
+        tag: trace.scope.tag,
+        query: trace.scope.query,
+        after_updated_at: after,
+        before,
+        reverts: None,
     }
 }
 
@@ -170,4 +186,115 @@ fn touched_notes(result: &Value) -> Vec<(String, String)> {
         .flatten()
         .filter_map(pair)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    //! The row's rules on plain values: no store. `mcp_test.rs` keeps
+    //! proving the same rows land in SQLite.
+    use super::*;
+    use serde_json::json;
+
+    fn snapshot(id: &str) -> NoteSnapshot {
+        NoteSnapshot {
+            id: id.into(),
+            title: "Before".into(),
+            title_is_auto: true,
+            body: "before".into(),
+            is_pinned: false,
+            is_archived: false,
+            is_deleted: false,
+            deleted_at: None,
+            updated_at: "2026-09-01T00:00:00.000000Z".into(),
+            tags: vec![],
+            spaces: vec![],
+        }
+    }
+
+    fn trace(tool: &'static str, kind: Kind, args: Value) -> Trace {
+        Trace::start(tool, kind, Scope::of(&args))
+    }
+
+    #[test]
+    fn an_ok_result_records_every_note_it_touched() {
+        let t = trace("list_notes", Kind::Read, json!({ "space": "Work" }));
+        let result = Ok(json!({
+            "notes": [
+                { "id": "n1", "title": "One" },
+                { "id": "n2", "title": "Two" }
+            ]
+        }));
+        let rec = record_for(t, "s1", "claude-code", &result, 12);
+        assert_eq!(rec.status, "ok");
+        assert_eq!(rec.error, None);
+        assert_eq!(rec.kind, "read");
+        assert_eq!(rec.tool, "list_notes");
+        assert_eq!(rec.session, "s1");
+        assert_eq!(rec.client, "claude-code");
+        assert_eq!(rec.duration_ms, 12);
+        assert_eq!(rec.note_ids, vec!["n1", "n2"]);
+        assert_eq!(rec.titles, vec!["One", "Two"]);
+        assert_eq!(rec.note_count, 2);
+        assert_eq!(rec.space.as_deref(), Some("Work"));
+        assert_eq!(rec.after_updated_at, None);
+        assert_eq!(rec.reverts, None);
+    }
+
+    #[test]
+    fn a_write_keeps_its_snapshot_and_the_note_s_new_updated_at() {
+        let mut t = trace("update_note", Kind::Write, json!({ "id": "n1" }));
+        t.before = Some(Some(snapshot("n1")));
+        let result =
+            Ok(json!({ "id": "n1", "title": "After", "updatedAt": "2026-09-02T00:00:00.000000Z" }));
+        let rec = record_for(t, "s1", "codex", &result, 3);
+        assert_eq!(rec.status, "ok");
+        assert_eq!(rec.note_ids, vec!["n1"]);
+        assert_eq!(rec.titles, vec!["After"]);
+        assert_eq!(
+            rec.after_updated_at.as_deref(),
+            Some("2026-09-02T00:00:00.000000Z")
+        );
+        assert_eq!(rec.before, Some(Some(snapshot("n1"))));
+    }
+
+    #[test]
+    fn an_error_names_the_note_the_call_was_about() {
+        let t = trace("get_note", Kind::Read, json!({ "id": "n9" }));
+        let result = Err("NOT_FOUND: note n9 not found".to_string());
+        let rec = record_for(t, "s1", "claude-code", &result, 1);
+        assert_eq!(rec.status, "error");
+        assert_eq!(rec.error.as_deref(), Some("NOT_FOUND: note n9 not found"));
+        assert_eq!(rec.note_ids, vec!["n9"]);
+        assert_eq!(rec.titles, vec![""]);
+        assert_eq!(rec.note_count, 1);
+        assert_eq!(rec.after_updated_at, None);
+    }
+
+    #[test]
+    fn a_failed_write_drops_its_snapshot() {
+        let mut t = trace("update_note", Kind::Write, json!({ "id": "n1" }));
+        t.before = Some(Some(snapshot("n1")));
+        let rec = record_for(t, "s1", "codex", &Err("CONFLICT: changed".into()), 2);
+        assert_eq!(rec.status, "error");
+        assert_eq!(rec.before, None);
+    }
+
+    #[test]
+    fn long_results_and_messages_are_cut_to_what_the_row_keeps() {
+        let notes: Vec<Value> = (0..60)
+            .map(|i| json!({ "id": format!("n{i}"), "title": format!("T{i}") }))
+            .collect();
+        let t = trace("search_notes", Kind::Search, json!({ "query": "x" }));
+        let rec = record_for(t, "s1", "claude-code", &Ok(json!({ "results": notes })), 5);
+        assert_eq!(rec.note_ids.len(), NOTE_IDS);
+        assert_eq!(rec.note_ids[0], "n0");
+        assert_eq!(rec.titles.len(), TITLES);
+        assert_eq!(rec.note_count, 60);
+        assert_eq!(rec.query.as_deref(), Some("x"));
+
+        let t = trace("get_note", Kind::Read, json!({ "id": "n1" }));
+        let long = "e".repeat(ERROR_CHARS + 50);
+        let rec = record_for(t, "s1", "claude-code", &Err(long), 1);
+        assert_eq!(rec.error.map(|e| e.chars().count()), Some(ERROR_CHARS));
+    }
 }
