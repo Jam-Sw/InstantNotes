@@ -223,13 +223,6 @@ fn row_to_activity(row: &rusqlite::Row<'_>) -> rusqlite::Result<AgentActivity> {
     })
 }
 
-fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or_default()
-}
-
 /// The note with its edges, inside the caller's connection. `Ok(None)` when
 /// there is no such note.
 fn snapshot(conn: &Connection, id: &str) -> Result<Option<NoteSnapshot>> {

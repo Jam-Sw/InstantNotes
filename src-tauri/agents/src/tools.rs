@@ -13,6 +13,7 @@ use crate::activity::{Kind, Scope, Trace};
 use crate::fail;
 use instantnotes_core::clients::{identify, parent_process, Client, ClientProcess};
 use instantnotes_core::domain::{normalize_tag_name, normalize_workspace_name};
+use instantnotes_core::store::now_ms;
 use instantnotes_core::types::NoteSearch;
 use instantnotes_core::types::{
     CreateNoteInput, Note, NoteFilter, UpdateNotePatch, CONTENT_KIND_WHITEBOARD,
@@ -951,11 +952,7 @@ fn env(key: &str) -> Option<String> {
 }
 
 pub(crate) fn session_id() -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or_default();
-    format!("{:x}-{:x}", std::process::id(), now)
+    format!("{:x}-{:x}", std::process::id(), now_ms())
 }
 
 fn pretty(value: &Value) -> String {

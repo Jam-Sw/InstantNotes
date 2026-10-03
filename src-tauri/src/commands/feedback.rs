@@ -35,10 +35,7 @@ pub fn submit_feedback(app: AppHandle, input: FeedbackInput) -> CmdResult<()> {
     if message.is_empty() {
         return Err(CmdError::validation("feedback message is empty"));
     }
-    let at = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0);
+    let at = instantnotes_core::store::now_ms() as u64;
     let entry = serde_json::json!({
         "at": at,
         "category": input.category,

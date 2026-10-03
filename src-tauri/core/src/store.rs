@@ -292,6 +292,15 @@ fn now_iso() -> String {
     iso(std::time::SystemTime::now())
 }
 
+/// Now as epoch milliseconds: the one clock every row and session stamp
+/// shares. Zero if the system clock sits before 1970.
+pub fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or_default()
+}
+
 /// The one timestamp format the store writes (and callers show), which also
 /// sorts as text.
 pub fn iso(t: std::time::SystemTime) -> String {

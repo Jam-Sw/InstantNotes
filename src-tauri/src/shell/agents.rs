@@ -21,6 +21,7 @@ use instantnotes_core::clients::{self, Client};
 use instantnotes_core::store::activity::{
     session_alive, ActivityWire, AgentActivity, AgentSession, ClientSession, NoteSnapshot,
 };
+use instantnotes_core::store::now_ms;
 use instantnotes_core::Store;
 use std::path::Path;
 use std::path::PathBuf;
@@ -58,12 +59,7 @@ fn sessions(store: &mut Store, db: &Path) -> Vec<AgentSessionView> {
                 session.disconnected_at.is_none() && session_alive(db, &session.session);
             if !connected && session.disconnected_at.is_none() {
                 let _ = store.close_agent_session(&session.session);
-                session.disconnected_at = Some(
-                    std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map(|d| d.as_millis() as i64)
-                        .unwrap_or_default(),
-                );
+                session.disconnected_at = Some(now_ms());
             }
             // A connected client may rename its session at any time; follow it,
             // and keep what was last seen for after it has gone.

@@ -25,6 +25,8 @@
 //! nothing here ever writes to them.
 
 use crate::store::activity::ClientSession;
+#[cfg(unix)]
+use crate::store::now_ms;
 use std::path::{Path, PathBuf};
 
 /// How a session was identified: told outright, or matched from the outside.
@@ -152,14 +154,6 @@ pub fn elapsed_ms(etime: &str) -> Option<i64> {
         seconds = seconds * 60 + part.parse::<i64>().ok()?;
     }
     Some((days * 86_400 + seconds) * 1000)
-}
-
-#[cfg(unix)]
-fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or_default()
 }
 
 fn home() -> Option<PathBuf> {
