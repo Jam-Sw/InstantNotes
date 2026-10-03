@@ -42,7 +42,7 @@ import type {
 import { debounce } from "$lib/debounce";
 import { ERROR_CODES } from "$lib/api/error-codes";
 import { EVENTS } from "$lib/api/events";
-import { friendlyError } from "$lib/errors";
+import { friendlyError, SAVE_CONFLICT_MESSAGE } from "$lib/errors";
 import { isSyntheticNoteId, isSyntheticSpaceId } from "$lib/synthetic";
 import {
   SaveQueue,
@@ -145,7 +145,7 @@ class LibraryStore {
       }
       this.error = null;
     },
-    onError: (e) => this.#fail(e),
+    onError: (e) => this.#fail(e, SAVE_CONFLICT_MESSAGE),
     onOverwrote: (id, theirs) => announceOverwrite(id, () => this.#restoreExternal(id, theirs)),
   });
 
@@ -1031,8 +1031,8 @@ class LibraryStore {
     }
   }
 
-  #fail(e: unknown): void {
-    this.error = friendlyError(e);
+  #fail(e: unknown, conflict?: string): void {
+    this.error = friendlyError(e, conflict);
   }
 }
 

@@ -279,7 +279,7 @@ class AgentsStore {
       });
       return true;
     } catch (e) {
-      toasts.show(`Couldn't revert. ${friendlyError(e)}`);
+      toasts.show(`Couldn't revert. ${friendlyError(e, "That change was already reverted.")}`);
       return false;
     }
   }

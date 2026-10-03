@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { ERROR_CODES, type ErrorCode } from "./api/error-codes";
 import { ApiError } from "./api/client";
-import { friendlyError, friendlyMessage, GENERIC_MESSAGE } from "./errors";
+import { friendlyError, friendlyMessage, GENERIC_MESSAGE, SAVE_CONFLICT_MESSAGE } from "./errors";
 
 describe("friendlyMessage", () => {
   test("maps known API error codes to friendly copy", () => {
@@ -49,5 +49,17 @@ describe("friendlyError", () => {
     expect(friendlyError(new Error("boom"))).toBe(GENERIC_MESSAGE);
     expect(friendlyError("a thrown string")).toBe(GENERIC_MESSAGE);
     expect(friendlyError(undefined)).toBe(GENERIC_MESSAGE);
+  });
+
+  test("a CONFLICT says what it meant where it was called", () => {
+    const lostRace = new ApiError("CONFLICT", "note x changed since 1");
+    expect(friendlyError(lostRace, SAVE_CONFLICT_MESSAGE)).toBe(SAVE_CONFLICT_MESSAGE);
+    expect(friendlyError(lostRace)).toBe(friendlyMessage("CONFLICT"));
+  });
+
+  test("the caller's conflict copy leaves every other code alone", () => {
+    const missing = new ApiError("NOT_FOUND", "note x not found");
+    expect(friendlyError(missing, SAVE_CONFLICT_MESSAGE)).toBe(friendlyMessage("NOT_FOUND"));
+    expect(friendlyError(new Error("boom"), SAVE_CONFLICT_MESSAGE)).toBe(GENERIC_MESSAGE);
   });
 });
