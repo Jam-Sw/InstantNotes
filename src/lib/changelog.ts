@@ -1,7 +1,6 @@
-// Pure parser for the bundled CHANGELOG.md, so the Settings dashboard can show
-// "what's new" for the installed version without a network call (the webview
-// CSP blocks external fetches). Kept free of the raw import so it stays
-// unit-testable; the component supplies the markdown via Vite's `?raw`.
+// Pure parser for the bundled CHANGELOG.md, so the Settings dashboard can
+// show "what's new" without a network call (the webview CSP blocks external
+// fetches). Kept free of the raw import so it stays unit-testable.
 //
 // Expected shape (Keep a Changelog):
 //   ## [0.8.0] - 2026-07-11
@@ -11,7 +10,7 @@
 //   ### Changed
 //   - ...
 
-export interface ChangelogSection {
+interface ChangelogSection {
   /** "Added", "Changed", "Fixed", etc. */
   heading: string;
   /** One entry per bullet, continuation lines folded in. */
@@ -40,7 +39,6 @@ export function parseChangelog(md: string, version: string): ChangelogRelease | 
   const lines = md.split(/\r?\n/);
   let i = 0;
 
-  // Find the target release heading.
   let release: ChangelogRelease | null = null;
   for (; i < lines.length; i++) {
     const m = lines[i].match(RELEASE_RE);
@@ -55,7 +53,6 @@ export function parseChangelog(md: string, version: string): ChangelogRelease | 
   let section: ChangelogSection | null = null;
   for (; i < lines.length; i++) {
     const line = lines[i];
-    // The next release heading ends this block.
     if (RELEASE_RE.test(line)) break;
 
     const sec = line.match(SECTION_RE);

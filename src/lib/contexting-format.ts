@@ -29,6 +29,7 @@ const IMAGE_RE = /!\[([^\]]*)\]\(([^)\s]+)\)/g;
  * Apply the image mode to a note body. `attachmentsDir` (absolute, no trailing
  * slash) is only needed for `absolute`; when it is missing, attachment
  * references are left as written rather than producing a broken path.
+ * @internal
  */
 export function applyImageMode(
   body: string,

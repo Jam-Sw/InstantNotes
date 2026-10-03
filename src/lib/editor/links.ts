@@ -63,6 +63,7 @@ export const linkPrefsField = StateField.define<LinkPrefsSnapshot>({
  * Restrict opening to schemes that are safe to hand to the OS opener. Bare
  * `www.` URLs (GFM autolinks carry no scheme) get https prepended so the
  * opener does not reject them.
+ * @internal
  */
 export function normalizeHref(raw: string): string | null {
   const url = raw.trim();

@@ -7,6 +7,33 @@ in-app updater, written for users. Newest first.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.3] - 2026-10-02
+
+### Added
+- Graph: the graph now says where your unfiled notes belong. Beside the
+  drawing, a list names each note in no Space, the Space it most likely
+  belongs to, how sure the app is, and why ("because #pasta, simmer, ragu").
+  One tap files it, with Undo; "Not this" keeps that Space from being
+  suggested for that note again, also with Undo. Nothing is trained and
+  nothing leaves your machine: the model is your library, recounted every
+  time, so filing a note is what teaches it. Suggestions start once two
+  Spaces hold notes, and the Graph row in the sidebar counts them.
+- Graph: a tag written in a note and a tag added to it draw as different
+  lines (solid and dotted), a suggested Space as a dashed one, and a legend
+  names each. When a note is open the graph frames that note, its tags and
+  Spaces, and the notes they gather; "Show all" is the way out.
+- Agents: a read-only `suggest_space` tool answers "where does this note
+  belong, and why" from the same model the Graph shows, so an agent that
+  files notes can use it instead of guessing. It never files anything.
+
+### Fixed
+- Notes: a long title wraps inside the reading column instead of being clipped
+  at its edge; the title is an auto-sized `<textarea>`, Enter still commits.
+- Updater (Windows): `install_update` runs the quit flush before the installer
+  hand-off's `process::exit`, so a debounced edit is no longer dropped.
+- Errors: a save that loses the version race 3 times, or a revert of a reverted
+  row, no longer says "That name is already in use"; `CONFLICT` copy is per caller.
+
 ## [0.9.2] - 2026-10-02
 
 ### Fixed

@@ -21,6 +21,7 @@ import {
   renameWorkspace,
   restoreNote,
   searchNotes,
+  spaceSuggestions,
   softDeleteNote,
   softDeleteNotes,
   restoreNotes,
@@ -32,7 +33,6 @@ import {
 } from "$lib/api/client";
 import type {
   Note,
-  NoteFilter,
   SearchResult,
   Tag,
   TagWithCount,
@@ -42,7 +42,7 @@ import type {
 import { debounce } from "$lib/debounce";
 import { ERROR_CODES } from "$lib/api/error-codes";
 import { EVENTS } from "$lib/api/events";
-import { friendlyMessage, GENERIC_MESSAGE } from "$lib/errors";
+import { friendlyError, SAVE_CONFLICT_MESSAGE } from "$lib/errors";
 import { isSyntheticNoteId, isSyntheticSpaceId } from "$lib/synthetic";
 import {
   SaveQueue,
@@ -50,43 +50,69 @@ import {
   type SaveState,
 } from "$lib/stores/library/save-queue.svelte";
 import { SelectionModel } from "$lib/stores/library/selection.svelte";
+import {
+  NavigationModel,
+  revisitFilter,
+  type StatusFilter,
+} from "$lib/stores/library/navigation.svelte";
 import { toasts } from "$lib/stores/toasts.svelte";
 import { announceOverwrite } from "$lib/stores/agents.svelte";
 import { mayHaveWritten, parseActivityLog, type AgentActivity } from "$lib/agent-activity";
 import { boardFromText } from "$lib/whiteboard/excalidraw";
 import { listen } from "@tauri-apps/api/event";
 
-export type { SaveState };
-
-// Archived and trash live behind a list filter in All Notes, not as
-// top-level sections (two-section library: All Notes and Workspaces).
-export type StatusFilter = "active" | "archived" | "trash";
+export type { StatusFilter } from "$lib/stores/library/navigation.svelte";
 
 // Debounce for search-text refreshes only, so a query runs per pause rather
 // than per keystroke; filter clicks and change events stay immediate.
 const SEARCH_DEBOUNCE_MS = 150;
 
-// A capture-born note that nobody has opened within this window is an open
-// loop worth resurfacing. Newer captures aren't nagged about: they're often
-// still in the user's head, and Revisit must never feel like a task manager.
-const REVISIT_AFTER_MS = 3 * 24 * 60 * 60 * 1000;
-
 class LibraryStore {
-  statusFilter = $state<StatusFilter>("active");
-  activeWorkspaceId = $state<string | null>(null);
-  activeTagId = $state<string | null>(null);
-  // Tag filter applied within the active workspace (the note list's chip
-  // row). Composes with activeWorkspaceId; the global activeTagId replaces
-  // the workspace instead.
-  scopedTagId = $state<string | null>(null);
+  #nav = new NavigationModel();
+
+  get statusFilter(): StatusFilter {
+    return this.#nav.statusFilter;
+  }
+  set statusFilter(value: StatusFilter) {
+    this.#nav.statusFilter = value;
+  }
+  get activeWorkspaceId(): string | null {
+    return this.#nav.activeWorkspaceId;
+  }
+  set activeWorkspaceId(value: string | null) {
+    this.#nav.activeWorkspaceId = value;
+  }
+  get activeTagId(): string | null {
+    return this.#nav.activeTagId;
+  }
+  set activeTagId(value: string | null) {
+    this.#nav.activeTagId = value;
+  }
+  get scopedTagId(): string | null {
+    return this.#nav.scopedTagId;
+  }
+  set scopedTagId(value: string | null) {
+    this.#nav.scopedTagId = value;
+  }
   // Tags carried by the active workspace's visible notes; drives the chips.
   workspaceTags = $state<TagWithCount[]>([]);
   // Revisit: capture-born notes never opened in the library. The count keeps
   // the sidebar entry honest (hidden at zero); the mode filters the list.
-  revisitMode = $state(false);
-  /** The Graph view: the library drawn as notes, tags, and Spaces. */
-  graphMode = $state(false);
+  get revisitMode(): boolean {
+    return this.#nav.revisitMode;
+  }
+  set revisitMode(value: boolean) {
+    this.#nav.revisitMode = value;
+  }
+  get graphMode(): boolean {
+    return this.#nav.graphMode;
+  }
+  set graphMode(value: boolean) {
+    this.#nav.graphMode = value;
+  }
   revisitCount = $state(0);
+  /** Unfiled notes the graph can say a Space for; the Graph row's count. */
+  suggestionCount = $state(0);
   searchText = $state("");
   notes = $state<Note[]>([]);
   searchResults = $state<SearchResult[] | null>(null);
@@ -102,16 +128,12 @@ class LibraryStore {
 
   // Ids checked for bulk actions (the open note's id on a plain click; grows
   // via cmd-click / shift-click). Size > 1 swaps the editor for the bulk panel.
-  // The set and its anchor/cursor live in a composed model; the store keeps the
-  // open-note state and the editor-sync orchestration.
   #selection = new SelectionModel(() => this.visibleIds);
   get multiSelected(): ReadonlySet<string> {
     return this.#selection.ids;
   }
 
-  // Edit persistence (debounce, retry, flush) lives in its own single-writer
-  // unit; the store composes one and delegates. A confirmed write updates the
-  // open note; a terminal failure surfaces an error.
+  // A confirmed write updates the open note; a terminal failure surfaces an error.
   #saveQueue = new SaveQueue({
     onPersisted: async (id, updated) => {
       if (this.selected?.id === id) {
@@ -123,7 +145,7 @@ class LibraryStore {
       }
       this.error = null;
     },
-    onError: (e) => this.#fail(e),
+    onError: (e) => this.#fail(e, SAVE_CONFLICT_MESSAGE),
     onOverwrote: (id, theirs) => announceOverwrite(id, () => this.#restoreExternal(id, theirs)),
   });
 
@@ -149,6 +171,8 @@ class LibraryStore {
   // The revisit count rides the same 50ms window so a burst of change
   // events (bulk delete, undo) costs one count query, not one per event.
   #revisitCountDebounced = debounce(() => void this.#refreshRevisitCount(), 50);
+  // The suggestion count too: every library change can change the evidence.
+  #suggestionCountDebounced = debounce(() => void this.refreshSuggestionCount(), 50);
   #searchRefresh = debounce(() => void this.refresh(), SEARCH_DEBOUNCE_MS);
 
   /** Save status of the selected note, for the editor status bar. */
@@ -165,9 +189,16 @@ class LibraryStore {
       listen(EVENTS.NOTES_CHANGED, () => {
         this.#refreshDebounced();
         this.#revisitCountDebounced();
+        this.#suggestionCountDebounced();
       }),
-      listen(EVENTS.TAGS_CHANGED, () => void this.refreshTags()),
-      listen(EVENTS.WORKSPACES_CHANGED, () => void this.refreshWorkspaces()),
+      listen(EVENTS.TAGS_CHANGED, () => {
+        void this.refreshTags();
+        this.#suggestionCountDebounced();
+      }),
+      listen(EVENTS.WORKSPACES_CHANGED, () => {
+        void this.refreshWorkspaces();
+        this.#suggestionCountDebounced();
+      }),
       listen(EVENTS.STICKIES_CHANGED, () => void this.refreshStickies()),
       listen<unknown>(EVENTS.LIBRARY_EXTERNAL_CHANGE, (e) => {
         void this.#adoptExternal(parseActivityLog(e.payload));
@@ -178,6 +209,7 @@ class LibraryStore {
       this.refreshTags(),
       this.refreshWorkspaces(),
       this.#refreshRevisitCount(),
+      this.refreshSuggestionCount(),
       this.refreshStickies(),
     ]);
   }
@@ -252,29 +284,6 @@ class LibraryStore {
     }
   }
 
-  #filter(): NoteFilter {
-    if (this.revisitMode) return this.#revisitFilter();
-    const f: NoteFilter = {};
-    if (this.statusFilter === "archived") f.isArchived = true;
-    if (this.statusFilter === "trash") f.isDeleted = true;
-    if (this.activeWorkspaceId) {
-      f.workspaceId = this.activeWorkspaceId;
-      if (this.scopedTagId) f.tagIds = [this.scopedTagId];
-    }
-    if (this.activeTagId) f.tagIds = [this.activeTagId];
-    return f;
-  }
-
-  // Oldest first: the longest-parked loop is the one to burn down first.
-  #revisitFilter(): NoteFilter {
-    return {
-      neverOpened: true,
-      createdBefore: new Date(Date.now() - REVISIT_AFTER_MS).toISOString(),
-      sortBy: "createdAt",
-      sortOrder: "asc",
-    };
-  }
-
   // Monotonic refresh token: queries answer out of order (search per pause,
   // list per filter click), so a response only lands while it is still the
   // newest request; a slow earlier reply can never clobber a later one.
@@ -299,7 +308,7 @@ class LibraryStore {
         if (token !== this.#refreshToken) return;
         this.searchResults = results;
       } else {
-        const notes = await listNotes(this.#filter());
+        const notes = await listNotes(this.#nav.filter());
         if (token !== this.#refreshToken) return;
         this.searchResults = null;
         this.notes = notes;
@@ -349,77 +358,71 @@ class LibraryStore {
   setStatusFilter(filter: StatusFilter): void {
     // Status (All / Archived / Trash) composes with the active space or tag,
     // so it clears revisit and search but keeps the space/tag scope.
-    this.statusFilter = filter;
-    this.revisitMode = false;
-    this.graphMode = false;
+    this.#nav.setStatus(filter);
     this.searchText = "";
     this.clearMultiSelect();
     void this.refresh();
   }
 
   /**
-   * Clear every primary filter dimension so a caller can set exactly one.
-   * The space, tag, and revisit views are mutually exclusive; each entry
-   * point resets the rest, drops any scoped tag, and clears search and the
-   * multi-selection before choosing its own dimension.
+   * What leaving a view clears beyond the navigation dimensions (the model
+   * resets those): the chip row, search, and the multi-selection.
    */
-  #resetForNavigation(): void {
-    this.activeWorkspaceId = null;
-    this.activeTagId = null;
-    this.scopedTagId = null;
+  #leaveView(): void {
     this.workspaceTags = [];
-    this.revisitMode = false;
-    this.graphMode = false;
-    this.statusFilter = "active";
     this.searchText = "";
     this.clearMultiSelect();
   }
 
-  /** Show the library as a graph. */
   selectGraph(): void {
-    this.#resetForNavigation();
-    this.graphMode = true;
+    this.#leaveView();
+    this.#nav.showGraph();
     void this.refresh();
   }
 
   /** Show All Notes (null) or one workspace's collected notes. */
   selectWorkspace(workspaceId: string | null): void {
-    this.#resetForNavigation();
-    this.activeWorkspaceId = workspaceId;
+    this.#leaveView();
+    this.#nav.showWorkspace(workspaceId);
     void this.refresh();
   }
 
   /** Show the open loops: capture-born notes never opened in the library. */
   selectRevisit(): void {
-    this.#resetForNavigation();
-    this.revisitMode = true;
+    this.#leaveView();
+    this.#nav.showRevisit();
     void this.refresh();
   }
 
   setTagFilter(tagId: string | null): void {
-    this.#resetForNavigation();
-    this.activeTagId = tagId;
+    this.#leaveView();
+    this.#nav.showTag(tagId);
     void this.refresh();
   }
 
   /**
-   * Re-count the open loops (never-opened captures old enough to matter).
-   * Cheap and quiet: a failed count only affects a sidebar hint, and the
-   * next change event retries it.
+   * Re-count the open loops. Quiet: a failed count only affects a sidebar
+   * hint, and the next change event retries it.
    */
   async #refreshRevisitCount(): Promise<void> {
     try {
-      const loops = await listNotes(this.#revisitFilter());
+      const loops = await listNotes(revisitFilter());
       this.revisitCount = loops.length;
     } catch {
-      // Keep the stale count rather than surface an error for a hint.
+    }
+  }
+
+  /** Re-count the suggestions (API.md section 4). Quiet like the revisit count. */
+  async refreshSuggestionCount(): Promise<void> {
+    try {
+      this.suggestionCount = (await spaceSuggestions()).length;
+    } catch {
     }
   }
 
   /** Toggle a chip: filter the active workspace's list by one of its tags. */
   toggleScopedTag(tagId: string): void {
-    if (!this.activeWorkspaceId) return;
-    this.scopedTagId = this.scopedTagId === tagId ? null : tagId;
+    if (!this.#nav.toggleScopedTag(tagId)) return;
     this.clearMultiSelect();
     void this.refresh();
   }
@@ -455,7 +458,6 @@ class LibraryStore {
 
   setSearch(text: string): void {
     this.searchText = text;
-    // Reset the multi-selection but keep the open note in the editor.
     const openId = this.selected?.id ?? null;
     this.#selection.reset(openId ? [openId] : [], openId);
     if (text.trim()) {
@@ -477,9 +479,8 @@ class LibraryStore {
   }
 
   /**
-   * Open one of the update Space's synthetic notes. It has no row in the store,
-   * so there is nothing to fetch and nothing to persist; the pending edit of
-   * the note being left is still flushed first, exactly as a real switch does.
+   * Open one of the update Space's synthetic notes: no row in the store, so
+   * nothing to fetch or persist. The note being left is still flushed first.
    */
   selectVirtual(note: Note): void {
     this.graphMode = false;
@@ -493,7 +494,6 @@ class LibraryStore {
   }
 
   async #open(id: string): Promise<void> {
-    // Flush any pending edit of the previous note before switching.
     this.#collectPending();
     this.#saveQueue.flushDebounce();
     try {
@@ -725,11 +725,7 @@ class LibraryStore {
     }
   }
 
-  /**
-   * Delete a workspace; its notes are kept. Immediate, with an Undo toast:
-   * the operation never destroys note data, so it earns the reversible-action
-   * treatment instead of a confirm dialog.
-   */
+  /** Delete a workspace; its notes are kept, so it takes an Undo toast, not a confirm dialog. */
   async removeWorkspace(id: string): Promise<void> {
     const ws = this.workspaces.find((w) => w.id === id);
     try {
@@ -753,10 +749,8 @@ class LibraryStore {
 
   /**
    * Undo for a workspace delete: recreate it by name and re-add every
-   * member. The ids come from the backend at delete time so archived and
-   * trashed members are restored too; a member destroyed in the meantime
-   * fails quietly into a plain toast rather than throwing back into the
-   * toast's action handler.
+   * member, archived and trashed ones included. A member destroyed in the
+   * meantime fails quietly into a plain toast.
    */
   async #undoWorkspaceDelete(name: string, memberIds: string[]): Promise<void> {
     try {
@@ -780,9 +774,8 @@ class LibraryStore {
   }
 
   /**
-   * Rename a workspace. Returns an inline-error shape rather than throwing
-   * so the row's edit state can show a duplicate-name rejection in place,
-   * mirroring the Sidebar's tag rename.
+   * Rename a workspace. Returns an inline-error shape rather than throwing,
+   * so the row can show a duplicate-name rejection in place.
    */
   async renameWorkspace(
     id: string,
@@ -797,11 +790,7 @@ class LibraryStore {
       }
       return { ok: true };
     } catch (e) {
-      const message =
-        e instanceof ApiError
-          ? friendlyMessage(e.code, e.message)
-          : GENERIC_MESSAGE;
-      return { ok: false, message };
+      return { ok: false, message: friendlyError(e) };
     }
   }
 
@@ -840,10 +829,9 @@ class LibraryStore {
   }
 
   /**
-   * A whiteboard save: the canvas and the text written on it, queued like a
-   * body edit (debounced, retried, flushed on switch and quit). Takes the id
-   * because a board hands over its last change while the library is already
-   * switching away from it.
+   * A whiteboard save: the canvas and its text, queued like a body edit.
+   * Takes the id because a board hands over its last change while the
+   * library is already switching away from it.
    */
   editBoard(id: string, edit: Required<QueuedEdit>): void {
     if (this.isSticky(id)) return;
@@ -855,9 +843,8 @@ class LibraryStore {
   }
 
   /**
-   * Turn the open note into a whiteboard, for good. Its text goes onto the
-   * board as a text block, so nothing written disappears; the confirm lives
-   * with the callers (whiteboard/convert.ts).
+   * Turn the open note into a whiteboard, for good: its text goes onto the
+   * board as a text block, so nothing written disappears.
    */
   async convertToWhiteboard(): Promise<void> {
     const note = this.selected;
@@ -910,8 +897,7 @@ class LibraryStore {
     if (!this.selected) return;
     const id = this.selected.id;
     if (!(await this.#popInAll([id]))) return;
-    // Trash is reversible and Undo promises fidelity: persist any pending
-    // edit first, so a restored note holds the user's last keystrokes.
+    // Persist pending edits first, as in bulkDelete: Undo promises fidelity.
     this.#collectPending();
     this.#saveQueue.cancelDebounce();
     await this.#saveQueue.flushIds([id]);
@@ -964,8 +950,7 @@ class LibraryStore {
 
   /**
    * Persist every queued edit now (note switch, window blur, export, quit).
-   * Resolves once the writes have settled; anything that still fails stays
-   * queued for the next flush.
+   * Anything that still fails stays queued for the next flush.
    */
   async flushPendingEdits(): Promise<void> {
     this.#collectPending();
@@ -974,8 +959,7 @@ class LibraryStore {
 
   /**
    * Undo for a soft delete: restore each id, then refresh. A note destroyed
-   * in the meantime (or otherwise gone) fails quietly into a plain toast
-   * instead of throwing back into the caller (the toast's action handler).
+   * in the meantime fails quietly into a plain toast, not a throw.
    */
   async #undoSoftDelete(ids: string[]): Promise<void> {
     const results = await Promise.allSettled(ids.map((id) => restoreNote(id)));
@@ -1033,8 +1017,6 @@ class LibraryStore {
       const updated = await updateNote(id, patch);
       this.#saveQueue.known(updated);
       if (this.selected?.id === id) {
-        // Keep local body if user kept typing past this save, and the local
-        // canvas, which the reply never carries.
         const { body, surfaceData } = this.selected;
         this.selected = {
           ...updated,
@@ -1049,11 +1031,8 @@ class LibraryStore {
     }
   }
 
-  #fail(e: unknown): void {
-    this.error =
-      e instanceof ApiError
-        ? friendlyMessage(e.code, e.message)
-        : GENERIC_MESSAGE;
+  #fail(e: unknown, conflict?: string): void {
+    this.error = friendlyError(e, conflict);
   }
 }
 

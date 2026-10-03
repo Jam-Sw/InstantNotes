@@ -5,6 +5,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, getNote, updateNote } from "$lib/api/client";
 import type { Note } from "$lib/api/types";
+import { SAVE_CONFLICT_MESSAGE } from "$lib/errors";
 import type { AgentActivity } from "$lib/agent-activity";
 import { agents } from "./agents.svelte";
 import { toasts } from "./toasts.svelte";
@@ -196,5 +197,15 @@ describe("StickyNote when an agent writes its note", () => {
       body: theirs,
       expectedUpdatedAt: "2026-01-01T00:06:00Z",
     });
+  });
+
+  it("says a save lost the race, not that a name is taken", async () => {
+    const sticky = await loaded();
+    sticky.editBody("milk, mine");
+    mockUpdateNote.mockRejectedValue(new ApiError("CONFLICT", "changed"));
+    mockGetNote.mockResolvedValue(mkNote({ body: "milk, theirs" }));
+
+    await sticky.flush();
+    expect(sticky.error).toBe(SAVE_CONFLICT_MESSAGE);
   });
 });

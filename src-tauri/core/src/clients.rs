@@ -1,8 +1,7 @@
 //! Which session of which client an agent connection belongs to.
 //!
-//! An MCP server is started by its client (Claude Code, Codex, Hermes) as a
-//! child process, and that is all the protocol guarantees: none of the three
-//! names its session in the handshake. What each one offers differs, so each
+//! An MCP server is started by its client as a child process, and none of
+//! Claude Code, Codex or Hermes names its session in the handshake, so each
 //! has an adapter here behind one question, "which session is this?":
 //!
 //! - Claude Code puts its session id and project folder in the server's
@@ -25,6 +24,8 @@
 //! nothing here ever writes to them.
 
 use crate::store::activity::ClientSession;
+#[cfg(unix)]
+use crate::store::now_ms;
 use std::path::{Path, PathBuf};
 
 /// How a session was identified: told outright, or matched from the outside.
@@ -34,7 +35,6 @@ pub const INFERRED: &str = "inferred";
 /// How far before a client process's own start one of its sessions may
 /// claim to have begun: clocks and the order of startup work are not exact.
 const START_SLACK_MS: i64 = 5_000;
-/// A session's name is shown to the user: keep it to a line.
 const NAME_CHARS: usize = 80;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -154,14 +154,6 @@ pub fn elapsed_ms(etime: &str) -> Option<i64> {
     Some((days * 86_400 + seconds) * 1000)
 }
 
-#[cfg(unix)]
-fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or_default()
-}
-
 fn home() -> Option<PathBuf> {
     std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
@@ -202,7 +194,6 @@ pub fn identify_in(
         client_pid: process.map(|p| p.pid),
         ..Default::default()
     };
-    // Told outright, by any client or a wrapper around one.
     let said_id = env("INSTANTNOTES_SESSION_ID");
     let said_name = env("INSTANTNOTES_SESSION_NAME").and_then(|n| clean(&n));
     if said_id.is_some() || said_name.is_some() {
@@ -244,9 +235,8 @@ pub fn identify_in(
     about
 }
 
-/// The session's name as it is now, for a connection already identified: a
-/// client may rename its session at any time. `None` when there is nothing
-/// newer to say.
+/// The session's name as it is now: a client may rename its session at any
+/// time. `None` when there is nothing newer to say.
 pub fn current(client: Client, pid: Option<i64>, session: Option<&str>) -> Option<Found> {
     current_in(&home()?, client, pid, session)
 }
@@ -277,7 +267,6 @@ pub fn current_in(
     }
 }
 
-/// Claude Code's own file for one running instance.
 fn claude_code(home: &Path, pid: i64) -> Option<Found> {
     let path = home
         .join(".claude")

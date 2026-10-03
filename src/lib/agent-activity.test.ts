@@ -6,7 +6,6 @@ import {
   clockTime,
   codexCommand,
   describeActivity,
-  errorCode,
   formatDuration,
   groupSessions,
   mcpServersJson,
@@ -71,8 +70,6 @@ describe("agent activity", () => {
     expect(
       describeActivity(entry({ tool: "update_note", status: "error", error: "NOT_FOUND: gone" })),
     ).toBe("Tried to edit a note, but it failed");
-    expect(errorCode(entry({ status: "error", error: "NOT_FOUND: gone" }))).toBe("NOT_FOUND");
-    expect(errorCode(entry({ status: "error", error: "invalid arguments" }))).toBeNull();
   });
 
   it("knows which rows can still be reverted", () => {

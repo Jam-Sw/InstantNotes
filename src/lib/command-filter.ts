@@ -47,7 +47,9 @@ export function recentCommands(all: Command[]): Command[] {
 }
 
 /** Subsequence fuzzy match. Returns a score (lower is better) or null if the
- *  query characters do not all appear, in order, in the title. */
+ *  query characters do not all appear, in order, in the title.
+ *  @internal
+ */
 export function fuzzyScore(title: string, query: string): number | null {
   if (!query) return 0;
   const t = title.toLowerCase();
@@ -73,7 +75,10 @@ export function childrenOf(commands: Command[], parent: string | null): Command[
   return commands.filter((c) => (c.parent ?? null) === parent);
 }
 
-/** Whether any command lists `id` as its parent, i.e. `id` acts as a folder. */
+/**
+ * Whether any command lists `id` as its parent, i.e. `id` acts as a folder.
+ * @internal
+ */
 export function hasChildren(commands: Command[], id: string): boolean {
   return commands.some((c) => c.parent === id);
 }

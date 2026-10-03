@@ -109,3 +109,27 @@ fn nodes_carry_what_the_graph_draws() {
     assert_eq!(g.notes[0].content_kind, CONTENT_KIND_WHITEBOARD);
     assert_eq!(g.tags[0].color.as_deref(), Some("#ff8800"));
 }
+
+#[test]
+fn a_tag_link_says_whether_it_was_written_or_added() {
+    let mut s = store();
+    let n = create(&mut s, "written #inline");
+    s.add_tag_to_note(&n.id, "added").unwrap();
+    let ws = s.get_or_create_workspace("Research").unwrap();
+    s.add_note_to_workspace(&n.id, &ws.id).unwrap();
+
+    let g = s.library_graph().unwrap();
+
+    let source = |kind: &str, target: &str| {
+        g.links
+            .iter()
+            .find(|l| l.kind == kind && l.target_id == target)
+            .unwrap()
+            .source
+            .clone()
+    };
+    let tag = |name: &str| g.tags.iter().find(|t| t.name == name).unwrap().id.clone();
+    assert_eq!(source("tag", &tag("inline")).as_deref(), Some("inline"));
+    assert_eq!(source("tag", &tag("added")).as_deref(), Some("manual"));
+    assert_eq!(source("space", &ws.id), None);
+}

@@ -59,7 +59,8 @@ mod error;
 mod events;
 mod shell;
 use commands::{
-    feedback::*, import::*, notes::*, settings::*, stats::*, tags::*, vault::*, workspaces::*,
+    feedback::*, graph::*, import::*, notes::*, settings::*, stats::*, tags::*, vault::*,
+    workspaces::*,
 };
 use error::{CmdError, CmdResult};
 use shell::{
@@ -86,7 +87,6 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
@@ -98,7 +98,6 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
-            // Store: single writer over SQLite at the platform data dir.
             let dir = app
                 .path()
                 .app_data_dir()
@@ -412,7 +411,6 @@ pub fn run() {
             if let Some(library) = app.get_webview_window("library") {
                 #[cfg(not(debug_assertions))]
                 {
-                    // Release: hide to tray -- the app lives in the menu bar.
                     let handle = library.clone();
                     library.on_window_event(move |event| {
                         if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -446,7 +444,6 @@ pub fn run() {
             update_note,
             soft_delete_note,
             restore_note,
-            permanently_delete_note,
             list_notes,
             search_notes,
             set_notes_flags,
@@ -483,6 +480,9 @@ pub fn run() {
             allow_image_file,
             open_attachments_folder,
             library_graph,
+            space_suggestions,
+            dismiss_space_suggestion,
+            restore_space_suggestion,
             unused_attachments,
             remove_unused_attachments,
             library_stats,
@@ -520,16 +520,7 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
-            if let tauri::RunEvent::ExitRequested { code, api, .. } = event {
-                // The updater's relaunch (request_restart) drives this exit
-                // with RESTART_EXIT_CODE and latches restart-on-exit inside
-                // Tauri. Preventing it would leave that latch set with no
-                // exit coming, stranding the freshly installed update, so
-                // the restart passes through untouched; updater.restart()
-                // flushes pending edits before it ever calls relaunch.
-                if code == Some(tauri::RESTART_EXIT_CODE) {
-                    return;
-                }
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
                 // Exit paths that bypass the menu and tray (macOS Dock quit):
                 // hold the exit, run the same flush handshake, and rely on
                 // the same dead-webview fallback.

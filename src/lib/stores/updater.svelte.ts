@@ -1,20 +1,17 @@
 // Self-update state (Svelte 5 runes). Checks GitHub Releases via the Tauri
-// updater plugin. Automatic checks stay silent unless an update exists (the
-// happy path is invisible); a manual check - from the tray "Check for
-// Updates…" - answers with a toast either way, so the user is never left
-// guessing.
+// updater plugin. Automatic checks stay silent unless an update exists; a
+// manual check - from the tray "Check for Updates…" - answers with a toast
+// either way.
 //
 // An available update is surfaced as a synthetic Space (see
-// `$lib/update/space.ts`), so this store is the single source for the versions,
-// the release notes, the install progress, and the best-effort download-size
-// delta. Nothing here writes to SQLite or the vault.
+// `$lib/update/space.ts`). Nothing here writes to SQLite or the vault.
 
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { installUpdate } from "$lib/api/client";
 import { toasts } from "$lib/stores/toasts.svelte";
 import { fetchUpdateSizeDelta } from "$lib/update/release-size";
 
-export type UpdateStatus =
+type UpdateStatus =
   | "idle"
   | "checking"
   | "available"
@@ -24,7 +21,7 @@ export type UpdateStatus =
   | "error";
 
 /** Whether the offered build's size against the running one is known yet. */
-export type DeltaState = "idle" | "loading" | "ready" | "unavailable";
+type DeltaState = "idle" | "loading" | "ready" | "unavailable";
 
 const RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 

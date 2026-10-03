@@ -304,6 +304,19 @@ document version on the device, as the gate's contract says. It follows the
 merge of `main` (PR #58) into `0.9.0-pre`, which brought the license itself.
 See `changes/feat-license-gate/`.
 
+## 13g. `feat-graph-suggestions` (BUILT, open until checked in the app)
+
+The Graph says where the unfiled notes belong, with a probability and the
+reasons, and one tap files the note. The model is the library recounted on
+every read (a naive Bayes over tags and words, chosen against three
+alternatives by a benchmark in `core/tests/suggest_bench_test.rs`); nothing
+is trained or stored but a dismissed suggestion, one key in the settings
+table, so the insertion rule places it like a settings page, in any slot.
+It is deliberately not unit 14: no embeddings, no model file, no new
+dependency, and unit 14 still owns those. Agents get the same answers through
+a read-only MCP tool; the policy is suggest-only everywhere. Built on
+`0.9.3-pre` on 2026-10-03. See `changes/feat-graph-suggestions/`.
+
 ## 14. Local AI
 
 Needs embedding storage, so it cannot precede unit 10. Embeddings are a

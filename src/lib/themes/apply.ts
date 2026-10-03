@@ -44,7 +44,10 @@ function tokensFor(theme: Theme, variant: Variant): TokenSet {
   return (v === "dark" ? theme.dark : theme.light) as TokenSet;
 }
 
-/** All CSS custom properties for a theme at a variant: colors, fonts, metrics. */
+/**
+ * All CSS custom properties for a theme at a variant: colors, fonts, metrics.
+ * @internal
+ */
 export function themeToVars(theme: Theme, variant: Variant): Record<string, string> {
   const tokens = tokensFor(theme, variant);
   const vars: Record<string, string> = {};

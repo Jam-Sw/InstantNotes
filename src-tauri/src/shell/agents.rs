@@ -1,8 +1,7 @@
 //! The app's side of agent access (`instantnotes-agents`). An agent writes
-//! through its own process and its own connection to the library, so the
-//! app learns of it the way SQLite reports it: `data_version` moves only
-//! when another connection commits. This thread watches it, and when it
-//! moves:
+//! through its own process and connection, so the app learns of it the way
+//! SQLite reports it: `data_version` moves only when another connection
+//! commits. This thread watches it, and when it moves:
 //!
 //! - the library re-queries, and the vault mirror flushes what changed, as
 //!   after any write of the app's own;
@@ -13,28 +12,27 @@
 //!   changes, an agent that died without saying so included.
 //!
 //! An agent's read changes no note, but the server traces every call, and
-//! that row is what makes a read visible here too. The watcher's cursor is
-//! the newest `seq` it has announced: one indexed lookup per poll.
+//! that row is what makes a read visible here too.
 
 use crate::*;
 use instantnotes_core::clients::{self, Client};
 use instantnotes_core::store::activity::{
     session_alive, ActivityWire, AgentActivity, AgentSession, ClientSession, NoteSnapshot,
 };
+use instantnotes_core::store::now_ms;
 use instantnotes_core::Store;
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::Duration;
 
-/// How often `data_version` is read: a lock and one pragma, well under a
-/// millisecond, and quick enough for a highlight to feel live.
+/// How often `data_version` is read: a lock and one pragma, cheap enough
+/// for a highlight to feel live.
 const POLL: Duration = Duration::from_millis(400);
 /// Rows announced per poll at most; a burst past this is caught up next poll.
 const BATCH: i64 = 200;
 /// Polls between looks at who is connected: a file probe per open
 /// connection, so a little slower than the trace.
 const PRESENCE_EVERY: u32 = 5;
-/// Connections listed for the webview.
 const SESSIONS: i64 = 200;
 
 /// A connection as the webview shows it.
@@ -48,8 +46,7 @@ pub struct AgentSessionView {
 }
 
 /// Every known connection, newest first. A row still open whose process no
-/// longer holds its lock died without saying so; it is closed here, so the
-/// record is true from now on.
+/// longer holds its lock died without saying so, and is closed here.
 fn sessions(store: &mut Store, db: &Path) -> Vec<AgentSessionView> {
     let rows = store.list_agent_sessions(SESSIONS).unwrap_or_default();
     rows.into_iter()
@@ -58,12 +55,7 @@ fn sessions(store: &mut Store, db: &Path) -> Vec<AgentSessionView> {
                 session.disconnected_at.is_none() && session_alive(db, &session.session);
             if !connected && session.disconnected_at.is_none() {
                 let _ = store.close_agent_session(&session.session);
-                session.disconnected_at = Some(
-                    std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map(|d| d.as_millis() as i64)
-                        .unwrap_or_default(),
-                );
+                session.disconnected_at = Some(now_ms());
             }
             // A connected client may rename its session at any time; follow it,
             // and keep what was last seen for after it has gone.
@@ -187,14 +179,12 @@ fn announce(app: &AppHandle, fresh: Vec<AgentActivity>) {
 }
 
 /// Whether a move of `data_version` changed the library itself, given the
-/// rows not yet announced. Reads and searches change no note, so nothing
-/// needs re-querying; a move with no new row at all is a write from
-/// elsewhere (a second copy of the app), and does.
+/// rows not yet announced. Reads and searches change no note; a move with
+/// no new row at all is a write from elsewhere (a second copy of the app).
 fn library_changed(fresh: &[AgentActivity]) -> bool {
     fresh.is_empty() || fresh.iter().any(|e| e.kind == "write" && e.status == "ok")
 }
 
-/// The executable and library an agent should be pointed at.
 #[tauri::command(async)]
 pub fn agent_connection(
     app: AppHandle,

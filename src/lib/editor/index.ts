@@ -81,29 +81,9 @@ export function editorKernel(opts: EditorKernelOpts): Extension {
   ];
 }
 
-// ---------------------------------------------------------------------------
 // Public surface for the rest of the app
-// ---------------------------------------------------------------------------
 
-export { previewModeField, setPreviewMode } from "./kernel";
-export {
-  setLinkPrefs,
-  linkPrefsField,
-  DEFAULT_LINK_PREFS,
-  normalizeHref,
-  linkAt,
-  linkMarkClass,
-} from "./links";
+export { setPreviewMode } from "./kernel";
+export { setLinkPrefs, DEFAULT_LINK_PREFS } from "./links";
 export type { LinkOpenWith, LinkUnderline, LinkPrefsSnapshot } from "./links";
-export {
-  setAttachmentsBase,
-  attachmentsBaseField,
-  attachmentSrc,
-  imageSrc,
-  localFilePath,
-  linkedImagePaths,
-  extForMime,
-  attachmentMarkdown,
-} from "./images";
-export { taskToggleChange, taskChecked } from "./tasks";
-export { blockMarkerRange } from "./blocks";
+export { setAttachmentsBase, linkedImagePaths } from "./images";

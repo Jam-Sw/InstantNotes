@@ -1,19 +1,17 @@
 // Undo-toast queue: reversible actions (soft delete) execute immediately and
 // offer a short window to undo, instead of blocking on a confirm dialog.
-// Timer/queue logic lives entirely in this class so toasts.svelte.test.ts can
-// drive it with fake timers without mounting the host component.
 
 const AUTO_DISMISS_MS = 5000;
 // How many toasts stack at once; a new one past the cap evicts the oldest
 // (FIFO) rather than growing the stack or queueing silently.
 const MAX_VISIBLE = 3;
 
-export interface ToastAction {
+interface ToastAction {
   label: string;
   run: () => void;
 }
 
-export interface ToastItem {
+interface ToastItem {
   readonly id: string;
   readonly message: string;
   readonly action?: ToastAction;

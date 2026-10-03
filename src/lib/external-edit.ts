@@ -15,7 +15,7 @@ import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
 /** How long inserted text stays highlighted. */
 const FLASH_MS = 2400;
 
-export interface TextChange {
+interface TextChange {
   from: number;
   to: number;
   insert: string;
@@ -24,6 +24,7 @@ export interface TextChange {
 /**
  * The one contiguous replacement that turns `before` into `after`: the
  * common prefix and suffix stay, the middle is replaced. Null when equal.
+ * @internal
  */
 export function minimalChange(before: string, after: string): TextChange | null {
   if (before === after) return null;
@@ -77,7 +78,10 @@ const flashTheme = EditorView.baseTheme({
 /** The editor extension that draws the flash. */
 export const externalEdit = [flashField, flashTheme];
 
-/** The transaction that brings `state` to `next`, or null if already there. */
+/**
+ * The transaction that brings `state` to `next`, or null if already there.
+ * @internal
+ */
 export function externalEditSpec(state: EditorState, next: string): TransactionSpec | null {
   const change = minimalChange(state.doc.toString(), next);
   if (!change) return null;

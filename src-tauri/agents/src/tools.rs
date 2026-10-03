@@ -1,5 +1,4 @@
-//! The tools an agent can call: what each one is, as `tools/list` describes
-//! it, and what it does.
+//! The tools an agent can call, as `tools/list` describes them.
 //!
 //! Every tool maps onto a public `Store` method, so an agent's write goes
 //! through the same rules as a keystroke in the app. The surface says
@@ -13,6 +12,7 @@ use crate::activity::{Kind, Scope, Trace};
 use crate::fail;
 use instantnotes_core::clients::{identify, parent_process, Client, ClientProcess};
 use instantnotes_core::domain::{normalize_tag_name, normalize_workspace_name};
+use instantnotes_core::store::now_ms;
 use instantnotes_core::types::NoteSearch;
 use instantnotes_core::types::{
     CreateNoteInput, Note, NoteFilter, UpdateNotePatch, CONTENT_KIND_WHITEBOARD,
@@ -23,25 +23,18 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::path::PathBuf;
 
-/// How many notes `resources/list` offers: the recent ones, as an index.
 const RESOURCE_LIST: i64 = 50;
-/// The URI scheme a note is read under.
 pub(crate) const NOTE_URI_PREFIX: &str = "instantnotes://notes/";
 
 const SNIPPET_CHARS: usize = 160;
 const DEFAULT_LIMIT: i64 = 50;
 const MAX_LIMIT: i64 = 200;
-/// Notes one get_notes call reads at most.
 const MAX_READ: usize = 50;
 /// Passages shown per search result; the rest are counted.
 const MAX_PASSAGES: usize = 3;
-/// A passage line longer than this is cut to a window around its match.
 const PASSAGE_LINE_CHARS: usize = 240;
 /// append_to_note re-reads and retries when the user saves in between.
 const APPEND_ATTEMPTS: usize = 3;
-/// A capture is an open loop once it has gone unopened this long. Matches
-/// `REVISIT_AFTER_MS` in src/lib/stores/library.svelte.ts.
-const REVISIT_AFTER_MS: i64 = 3 * 24 * 60 * 60 * 1000;
 
 type ToolResult = Result<Value, String>;
 
@@ -63,7 +56,6 @@ pub(crate) struct Tools<'a> {
 
 struct ToolDef {
     name: &'static str,
-    /// Shown to the user by clients that display tools.
     title: &'static str,
     level: Access,
     /// MCP `destructiveHint`, for writes: the tool can remove or replace
@@ -173,6 +165,22 @@ const TOOLS: &[ToolDef] = &[
         schema: || object(json!({}), &[]),
     },
     ToolDef {
+        name: "suggest_space",
+        title: "Where a note belongs",
+        level: Access::Read,
+        destructive: false,
+        idempotent: true,
+        description: "Where the notes in no Space most likely belong, judged from the tags and \
+                      words they share with the notes already filed: one Space per note with a \
+                      probability and up to three reasons. The same model the user sees in the \
+                      app's Graph. Pass an id for one note, or nothing for every unfiled note, \
+                      newest first. A note is listed only when the evidence clearly favours a \
+                      Space, so an empty answer means the library does not say; a note already \
+                      in a Space is never listed. Nothing is filed by this call: use add_to_space \
+                      if the suggestion is right.",
+        schema: || object(json!({ "id": id_param(), "limit": limit_param() }), &[]),
+    },
+    ToolDef {
         name: "create_note",
         title: "Create a note",
         level: Access::Write,
@@ -268,7 +276,6 @@ const TOOLS: &[ToolDef] = &[
     },
 ];
 
-// Parameter schemas several tools share.
 fn id_param() -> Value {
     json!({ "type": "string", "description": "A note id, as search_notes, list_notes, or get_note return it." })
 }
@@ -329,7 +336,6 @@ impl<'a> Tools<'a> {
         }
     }
 
-    /// The connection ended cleanly.
     pub(crate) fn disconnect(&mut self) {
         let _ = self.store.close_agent_session(&self.session);
     }
@@ -367,7 +373,6 @@ impl<'a> Tools<'a> {
                         "readOnlyHint": t.level == Access::Read,
                         "destructiveHint": t.destructive,
                         "idempotentHint": t.idempotent,
-                        // Only this library, never the wider world.
                         "openWorldHint": false,
                     },
                 })
@@ -413,9 +418,8 @@ impl<'a> Tools<'a> {
         }
     }
 
-    /// Keep the raw exchange with the call just traced: the message as the
-    /// agent sent it and the reply as it goes back. Best effort, like the
-    /// trace itself. A refused call left no row, so it keeps nothing.
+    /// Keep the raw exchange with the call just traced. A refused call left
+    /// no row, so it keeps nothing.
     pub(crate) fn record_wire(&mut self, request: &str, response: &str) {
         if let Some(seq) = self.traced.take() {
             let _ = self.store.set_activity_wire(seq, request, response);
@@ -443,6 +447,7 @@ impl<'a> Tools<'a> {
                     "name": w.workspace.name, "notes": w.note_count
                 })).collect::<Vec<_>>() }))
             }
+            "suggest_space" => self.suggest_space(parse(args)?),
             "create_note" => self.create_note(parse(args)?),
             "update_note" => self.update_note(parse(args)?),
             "append_to_note" => self.append_to_note(parse(args)?),
@@ -580,16 +585,8 @@ impl<'a> Tools<'a> {
             "pinned" => filter.is_pinned = Some(true),
             "archived" => filter.is_archived = Some(true),
             "trash" => filter.is_deleted = Some(true),
-            // The app's Revisit view, same filter (library.svelte.ts).
-            "revisit" => {
-                let cutoff = chrono::Utc::now() - chrono::Duration::milliseconds(REVISIT_AFTER_MS);
-                filter.never_opened = Some(true);
-                // Same form as stored timestamps, which compare as strings.
-                filter.created_before =
-                    Some(cutoff.to_rfc3339_opts(chrono::SecondsFormat::Micros, true));
-                filter.sort_by = Some("createdAt".into());
-                filter.sort_order = Some("asc".into());
-            }
+            // The app's Revisit view: one rule, expanded by the store.
+            "revisit" => filter.revisit = true,
             other => return Err(format!("unknown status: {other}")),
         }
         if let Some(space) = &a.space {
@@ -609,6 +606,26 @@ impl<'a> Tools<'a> {
             total,
             offset,
         ))
+    }
+
+    fn suggest_space(&mut self, a: SuggestArgs) -> ToolResult {
+        let limit = a.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT) as usize;
+        let all = self.store.space_suggestions().map_err(fail)?;
+        let picked: Vec<Value> = all
+            .iter()
+            .filter(|s| a.id.as_ref().is_none_or(|id| &s.note_id == id))
+            .take(limit)
+            .map(|s| {
+                json!({
+                    "id": s.note_id,
+                    "title": s.note_title,
+                    "space": s.space_name,
+                    "probability": (s.probability * 100.0).round() / 100.0,
+                    "reasons": s.reasons.iter().map(|r| r.label.clone()).collect::<Vec<_>>(),
+                })
+            })
+            .collect();
+        Ok(json!({ "suggestions": picked }))
     }
 
     fn create_note(&mut self, a: CreateArgs) -> ToolResult {
@@ -683,7 +700,6 @@ impl<'a> Tools<'a> {
         Err("CONFLICT: the note kept changing while appending; try again".into())
     }
 
-    /// Recent notes as MCP resources, for `resources/list`.
     pub(crate) fn resources(&self) -> Result<Vec<Value>, String> {
         let notes = self
             .store
@@ -706,7 +722,6 @@ impl<'a> Tools<'a> {
             .collect())
     }
 
-    /// One note as a resource's contents: its Markdown.
     pub(crate) fn resource(&mut self, uri: &str) -> Result<Value, String> {
         let id = uri
             .strip_prefix(NOTE_URI_PREFIX)
@@ -722,7 +737,6 @@ impl<'a> Tools<'a> {
         }))
     }
 
-    /// A note in full, as every read and write tool returns it.
     fn note_view(&mut self, id: &str) -> ToolResult {
         let note = self.store.get_note(id, false).map_err(fail)?;
         let tags = self.store.tags_for_note(id).map_err(fail)?;
@@ -806,9 +820,7 @@ fn clamp_limit(limit: Option<i64>) -> i64 {
     limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT)
 }
 
-/// Search marks matches with \u{1} and \u{2} for the app to highlight.
-/// A page of results with where it stands: how many there are in all, and
-/// whether, and from where, to ask for more.
+/// A page of results with where it stands, and where to ask for more.
 fn paged(mut page: Value, key: &str, total: i64, offset: i64) -> Value {
     let shown = page[key].as_array().map_or(0, Vec::len) as i64;
     let has_more = offset + shown < total;
@@ -821,8 +833,8 @@ fn paged(mut page: Value, key: &str, total: i64, offset: i64) -> Value {
     page
 }
 
-/// A date or timestamp an agent gave, as a bound the store can compare with
-/// its own timestamps (UTC ISO-8601, compared as text).
+/// A date or timestamp an agent gave, as a bound comparable as text with the
+/// store's UTC ISO-8601 timestamps.
 fn date_bound(raw: &str) -> Result<String, String> {
     let raw = raw.trim();
     let is_date = chrono::NaiveDate::parse_from_str(raw, "%Y-%m-%d").is_ok();
@@ -846,9 +858,8 @@ fn search_terms(query: &str) -> Vec<String> {
         .collect()
 }
 
-/// Where in a note the words are: up to `MAX_PASSAGES` passages, each the
-/// matching line with the line before and after it and its line number, and
-/// how many lines match in all. Passages never overlap.
+/// Up to `MAX_PASSAGES` non-overlapping passages (the matching line and one
+/// either side) and how many lines match in all.
 fn passages(body: &str, terms: &[String]) -> (Vec<Value>, usize) {
     let lines: Vec<&str> = body.lines().collect();
     let hits = |line: &str| {
@@ -879,7 +890,6 @@ fn passages(body: &str, terms: &[String]) -> (Vec<Value>, usize) {
     (found, matching)
 }
 
-/// A line cut to a readable window around its first match, when it is long.
 fn clip(line: &str, terms: &[String]) -> String {
     let chars: Vec<char> = line.chars().collect();
     if chars.len() <= PASSAGE_LINE_CHARS {
@@ -903,13 +913,11 @@ fn clip(line: &str, terms: &[String]) -> String {
     out
 }
 
+/// Search marks matches with \u{1} and \u{2} for the app to highlight.
 fn unmark(s: &str) -> String {
     s.replace(['\u{1}', '\u{2}'], "")
 }
 
-/// A session id without a uuid dependency: the process id and the start
-/// time, which no two concurrent servers on one machine share.
-/// The process that started this server, and which client it is.
 fn launcher() -> (Option<ClientProcess>, Option<Client>) {
     let process = parent_process();
     let client = process
@@ -924,12 +932,10 @@ fn env(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|v| !v.trim().is_empty())
 }
 
+/// A session id without a uuid dependency: the process id and the start
+/// time, which no two concurrent servers on one machine share.
 pub(crate) fn session_id() -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or_default();
-    format!("{:x}-{:x}", std::process::id(), now)
+    format!("{:x}-{:x}", std::process::id(), now_ms())
 }
 
 fn pretty(value: &Value) -> String {
@@ -938,6 +944,13 @@ fn pretty(value: &Value) -> String {
 
 fn parse<T: DeserializeOwned>(args: Value) -> Result<T, String> {
     serde_json::from_value(args).map_err(|e| format!("invalid arguments: {e}"))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SuggestArgs {
+    id: Option<String>,
+    limit: Option<i64>,
 }
 
 #[derive(Deserialize)]

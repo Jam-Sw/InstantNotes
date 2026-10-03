@@ -39,6 +39,7 @@ const ATTACHMENT_PREFIX = "attachments/";
  * Resolve a markdown image URL to something the webview can load, or null
  * when it can't be rendered. Only relative attachment paths resolve; the
  * `convert` parameter is Tauri's convertFileSrc, injected so this stays pure.
+ * @internal
  */
 export function attachmentSrc(
   url: string,
@@ -60,6 +61,7 @@ export function attachmentSrc(
  * local file (stored attachment, remote URL, or data URL). Used for the "link
  * the original file" image mode: an absolute POSIX path, a `file://` URL, or a
  * Windows drive path all resolve; everything else does not.
+ * @internal
  */
 export function localFilePath(url: string): string | null {
   const u = url.trim();
@@ -107,7 +109,10 @@ export function linkedImagePaths(body: string): string[] {
   return [...out];
 }
 
-/** File extension for a pasteable image MIME type, or null to skip the file. */
+/**
+ * File extension for a pasteable image MIME type, or null to skip the file.
+ * @internal
+ */
 export function extForMime(mime: string): string | null {
   switch (mime) {
     case "image/png":

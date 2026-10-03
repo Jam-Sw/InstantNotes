@@ -98,20 +98,15 @@ CREATE TABLE note_workspaces (
 );
 CREATE INDEX idx_note_workspaces_ws ON note_workspaces(workspace_id);
 "#,
-    // v3: drop the unused sync scaffolding. These columns were written but
-    // never read; a real sync feature will design its own schema when it lands.
+    // v3: drop the unused sync scaffolding (written, never read).
     r#"
 ALTER TABLE notes DROP COLUMN sync_state;
 ALTER TABLE notes DROP COLUMN version;
 ALTER TABLE notes DROP COLUMN last_synced_at;
 "#,
     // v4: note surface mode, document (markdown) or whiteboard (canvas
-    // host). Carried here byte-for-byte from feat/note-whiteboard, which
-    // shipped it in pre-release builds before being lifted off this branch:
-    // libraries those builds touched are already at v4 with these columns,
-    // so v4 must mean this everywhere. Nothing reads the columns until the
-    // whiteboard returns (SEQUENCE.md unit 12); that branch drops its own
-    // copy of this migration when it rebases.
+    // host). Pre-release builds shipped these columns, so libraries they
+    // touched are already at v4 with them: v4 must mean this everywhere.
     r#"
 ALTER TABLE notes ADD COLUMN content_kind TEXT NOT NULL DEFAULT 'document';
 ALTER TABLE notes ADD COLUMN surface_data TEXT;
@@ -284,12 +279,19 @@ const LIST_COLUMNS: &str = "id, title, body, created_at, updated_at, last_opened
 
 pub struct Store {
     conn: Connection,
-    /// The live vault mirror (stage 2), when one is configured.
     vault: Option<vault::VaultState>,
 }
 
 fn now_iso() -> String {
     iso(std::time::SystemTime::now())
+}
+
+/// The one clock every row and session stamp shares. Zero if the system clock sits before 1970.
+pub fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or_default()
 }
 
 /// The one timestamp format the store writes (and callers show), which also
@@ -340,7 +342,6 @@ fn row_to_workspace(row: &rusqlite::Row<'_>) -> rusqlite::Result<Workspace> {
 
 const WORKSPACE_COLUMNS: &str = "id, name, created_at, updated_at";
 
-/// Get-or-create a tag inside an existing transaction/connection.
 fn tag_get_or_create(conn: &Connection, raw_name: &str) -> Result<Tag> {
     let name = domain::normalize_tag_name(raw_name)
         .ok_or_else(|| AppError::Validation("tag name must not be empty".into()))?;
@@ -369,7 +370,6 @@ fn tag_get_or_create(conn: &Connection, raw_name: &str) -> Result<Tag> {
     })
 }
 
-/// Get-or-create a workspace inside an existing transaction/connection.
 fn workspace_get_or_create(conn: &Connection, raw_name: &str) -> Result<Workspace> {
     let name = domain::normalize_workspace_name(raw_name)
         .ok_or_else(|| AppError::Validation("workspace name must not be empty".into()))?;
@@ -397,7 +397,6 @@ fn workspace_get_or_create(conn: &Connection, raw_name: &str) -> Result<Workspac
     })
 }
 
-/// Attach a tag to a note (idempotent).
 fn attach_tag(conn: &Connection, note_id: &str, tag_id: &str, source: &str) -> Result<()> {
     conn.execute(
         "INSERT OR IGNORE INTO note_tags (note_id, tag_id, created_at, source) \
@@ -436,9 +435,7 @@ fn fts_match_expr_with(text: &str, any_term: bool) -> Option<String> {
 }
 
 impl Store {
-    /// Open (creating if needed) the database: WAL mode, a 5s busy timeout,
-    /// synchronous=NORMAL, foreign keys on, quick integrity check, migrations
-    /// applied.
+    /// Open (creating if needed) the database, applying migrations.
     pub fn open(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)
             .map_err(|e| AppError::Storage(format!("cannot open database: {e}")))?;
@@ -463,8 +460,6 @@ impl Store {
         // an OS crash or power loss can drop commits still sitting in the WAL.
         conn.pragma_update(None, "synchronous", "NORMAL")
             .map_err(|e| AppError::Storage(format!("cannot set synchronous mode: {e}")))?;
-        // Snapshot an existing library before it is migrated so a failed or
-        // buggy migration is always recoverable.
         Self::backup_before_migration(path, &conn)?;
         Self::init(conn)
     }
@@ -544,10 +539,9 @@ impl Store {
         Ok(())
     }
 
-    /// Copy an existing library aside before migrating it. Runs only for a file
-    /// that already carries a schema older than the current one (0 < v < len);
-    /// a brand-new file has nothing to lose and a current file is not migrated.
-    /// A backup failure fails the open rather than migrating without a net.
+    /// Copy an existing library aside before migrating it. Runs only for a
+    /// file that already carries an older schema (0 < v < len). A backup
+    /// failure fails the open rather than migrating without a net.
     fn backup_before_migration(path: &Path, conn: &Connection) -> Result<()> {
         let current: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         if current <= 0 || current >= MIGRATIONS.len() as i64 {
@@ -578,8 +572,7 @@ impl Store {
     }
 
     /// Rename a corrupt database and its WAL/SHM siblings to a free
-    /// ".corrupt-N" suffix so a fresh store can be created at the same path
-    /// without clobbering the salvaged file.
+    /// ".corrupt-N" suffix, without clobbering the salvaged file.
     fn move_corrupt_aside(path: &Path) -> Result<()> {
         let mut n = 1;
         let target = loop {
@@ -647,6 +640,7 @@ mod import;
 mod notes;
 mod settings;
 mod stats;
+mod suggest;
 mod tags;
 mod vault;
 mod workspaces;
@@ -656,9 +650,8 @@ mod pragma_tests {
     use super::Store;
     use tempfile::tempdir;
 
-    /// `open` must configure the on-disk database for safe concurrent access:
-    /// WAL journaling, a non-zero busy timeout (so a competing writer is waited
-    /// for rather than failing with SQLITE_BUSY), and synchronous=NORMAL.
+    /// An on-disk database must be WAL with a non-zero busy timeout, so a
+    /// competing writer is waited for rather than failing with SQLITE_BUSY.
     #[test]
     fn open_sets_concurrency_pragmas() {
         let dir = tempdir().unwrap();
@@ -701,15 +694,13 @@ mod migration_tests {
         cols
     }
 
-    /// A database written by a pre-0.8 build (schema v2) still carries the sync
-    /// columns. Opening it runs the v3 migration, which must drop them without
-    /// losing any note.
+    /// A v2 database still carries the sync columns; the v3 migration drops
+    /// them without losing a note.
     #[test]
     fn v3_drops_sync_columns_and_preserves_notes() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("legacy.db");
 
-        // Build a v2 database by hand, exactly as an older build left it.
         {
             let conn = Connection::open(&path).unwrap();
             conn.execute_batch(MIGRATIONS[0]).unwrap();
@@ -725,7 +716,6 @@ mod migration_tests {
             assert!(note_columns(&conn).contains(&"sync_state".to_string()));
         }
 
-        // Opening runs the pending v3 migration.
         let mut store = Store::open(&path).unwrap();
 
         let cols = note_columns(&store.conn);
@@ -733,7 +723,6 @@ mod migration_tests {
         assert!(!cols.contains(&"version".to_string()));
         assert!(!cols.contains(&"last_synced_at".to_string()));
 
-        // The note and its content survived the column drop.
         let note = store.get_note("n1", false).unwrap();
         assert_eq!(note.title, "Kept");
         assert_eq!(note.body, "the body");
@@ -741,9 +730,8 @@ mod migration_tests {
         assert!(all.iter().any(|n| n.id == "n1"));
     }
 
-    /// A library written by a pre-release build that carried the whiteboard
-    /// (schema v4: content_kind and surface_data) must open, not be refused
-    /// as too new, and gain the vault columns on top.
+    /// A pre-release library at v4 (content_kind, surface_data) must open,
+    /// not be refused as too new, and gain the vault columns.
     #[test]
     fn a_whiteboard_v4_library_migrates_to_the_vault_schema() {
         let dir = tempdir().unwrap();
@@ -825,9 +813,8 @@ mod migration_tests {
         );
     }
 
-    /// A 0.8/0.9-era library (schema v3) gains the vault mirror columns on
-    /// open. Existing notes survive and start clean: nothing is pending
-    /// until a vault is configured, which marks every note itself.
+    /// A v3 library gains the vault mirror columns on open; its notes
+    /// survive and start clean (nothing is pending until a vault is configured).
     #[test]
     fn v3_library_gains_vault_columns_and_preserves_notes() {
         let dir = tempdir().unwrap();

@@ -23,8 +23,6 @@ export const EVENTS = {
   AGENT_SESSIONS: "agents:sessions",
 } as const;
 
-export type AppEvent = (typeof EVENTS)[keyof typeof EVENTS];
-
 /** The three events that mean "the library changed, re-query it". Anything
  *  drawing the whole library (the store, the graph) listens to all three. */
 export const LIBRARY_CHANGED_EVENTS = [

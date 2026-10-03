@@ -47,6 +47,7 @@ export function formatEdit(doc: string, sel: Sel, kind: FormatKind): Edit {
  * Wrap the selection in `marker` (e.g. "**"), or unwrap it when it is already
  * wrapped - whether the markers are inside the selection or just outside it.
  * With an empty selection, insert an empty pair and place the cursor between.
+ * @internal
  */
 export function toggleWrap(doc: string, sel: Sel, marker: string): Edit {
   const { from, to } = sel;
@@ -79,6 +80,7 @@ export function toggleWrap(doc: string, sel: Sel, marker: string): Edit {
 /**
  * Add `prefix` (e.g. "- " or "> ") to every line touched by the selection, or
  * remove it when every touched line already has it.
+ * @internal
  */
 export function toggleLinePrefix(doc: string, sel: Sel, prefix: string): Edit {
   const blockStart = doc.lastIndexOf("\n", sel.from - 1) + 1;
@@ -100,6 +102,7 @@ export function toggleLinePrefix(doc: string, sel: Sel, prefix: string): Edit {
  * Turn the selection into a markdown link `[selection](url)` and select the
  * `url` placeholder so the user can type it. With no selection, insert a
  * `[text](url)` template and select `text`.
+ * @internal
  */
 export function insertLink(doc: string, sel: Sel): Edit {
   const { from, to } = sel;

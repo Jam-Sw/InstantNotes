@@ -19,6 +19,7 @@ const KEY_MAX_HEIGHT = "images.maxPreviewHeight";
 
 const MIN_HEIGHT = 120;
 const MAX_HEIGHT = 900;
+/** @internal */
 export const DEFAULT_MAX_HEIGHT = 420;
 
 class ImagePrefs {

@@ -1,12 +1,22 @@
 <script lang="ts">
-  // The Graph view (SEQUENCE.md unit 13): the library drawn as notes, tags,
-  // and Spaces, linked by what each note carries. Derived on every open and
-  // every change; nothing about it is stored, positions included.
+  // The Graph view (SEQUENCE.md units 13 and 13g): the library drawn as
+  // notes, tags, and Spaces, linked by what each note carries, and beside it
+  // where the unfiled notes belong. Derived on every open and every change;
+  // the only thing stored is a dismissed suggestion.
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
-  import { libraryGraph } from "$lib/api/client";
+  import {
+    addNoteToWorkspace,
+    dismissSpaceSuggestion,
+    libraryGraph,
+    removeNoteFromWorkspace,
+    restoreSpaceSuggestion,
+    spaceSuggestions,
+  } from "$lib/api/client";
+  import type { SpaceSuggestion } from "$lib/api/types";
   import { LIBRARY_CHANGED_EVENTS } from "$lib/api/events";
   import { library } from "$lib/stores/library.svelte";
+  import { toasts } from "$lib/stores/toasts.svelte";
   import { debounce } from "$lib/debounce";
   import {
     buildGraph,
@@ -24,19 +34,31 @@
   const ZOOM = { min: 0.2, max: 4 };
   // Note titles show from this zoom up; hubs are always labeled.
   const NOTE_LABEL_ZOOM = 1.3;
+  // The lens: the open note, its tags and Spaces, and the notes they gather.
+  const LENS_HOPS = 2;
+  // Suggestions listed at once; the rest come a page at a time, so two
+  // hundred of them read as a list, not a wall, and the canvas draws the
+  // dashed edges of the rows on screen only.
+  const PAGE = 25;
 
   let graph = $state<Graph | null>(null);
   let failed = $state(false);
+  let suggestions = $state<SpaceSuggestion[]>([]);
+  let pages = $state(1);
   let hovered = $state<string | null>(null);
   let width = $state(800);
   let height = $state(600);
   let view = $state({ x: 400, y: 300, k: 1 });
+  // The lens frames the open note's neighborhood; "Show all" is the escape
+  // and stays until the lens is chosen again.
+  let lens = $state(true);
   // Until the user pans or zooms, the view keeps itself framed as the
   // layout settles; after that it stays where they put it.
   let userMoved = false;
   let positions = new Map<string, { x: number; y: number }>();
   let frame: number | null = null;
   let host: HTMLDivElement;
+  let lastLib: Awaited<ReturnType<typeof libraryGraph>> | null = null;
 
   // Frames where the platform has them (a test DOM may not).
   const hasRaf = typeof requestAnimationFrame === "function";
@@ -44,30 +66,53 @@
     hasRaf ? requestAnimationFrame(f) : (setTimeout(f, 16) as unknown as number);
   const cancelRaf = (id: number) => (hasRaf ? cancelAnimationFrame(id) : clearTimeout(id));
 
+  const shown = $derived(suggestions.slice(0, pages * PAGE));
+  const more = $derived(suggestions.length - shown.length);
+  const suggestedSpace = $derived(new Map(shown.map((s) => [s.noteId, s.spaceName])));
   const byId = $derived(new Map((graph?.nodes ?? []).map((n) => [n.id, n])));
   const currentId = $derived(
     library.selected && byId.has(library.selected.id) ? library.selected.id : null,
   );
-  // The lit neighborhood: what the pointer or focus is on, else the open note.
+  // The lit neighborhood: what the pointer or focus is on, one link out;
+  // else the open note's lens.
   const lit = $derived.by(() => {
-    const focus = hovered ?? currentId;
-    return graph && focus ? neighbors(graph, focus) : null;
+    if (!graph) return null;
+    if (hovered) return neighbors(graph, hovered);
+    return currentId && lens ? neighbors(graph, currentId, LENS_HOPS) : null;
   });
 
   function showLabel(n: GraphNode): boolean {
     return n.kind !== "note" || view.k >= NOTE_LABEL_ZOOM || !!lit?.has(n.id);
   }
 
+  function nodeName(n: GraphNode): string {
+    const base = `${KIND_LABEL[n.kind]}: ${n.label}`;
+    const space = n.kind === "note" ? suggestedSpace.get(n.id) : undefined;
+    return space ? `${base}, suggested for ${space}` : base;
+  }
+
   async function load() {
     try {
-      const built = buildGraph(await libraryGraph());
+      // Suggestions are a help, not the graph: when they fail the graph
+      // still draws, with none.
+      const [lib, next] = await Promise.all([
+        libraryGraph(),
+        spaceSuggestions().catch(() => [] as SpaceSuggestion[]),
+      ]);
+      lastLib = lib;
+      suggestions = next;
       failed = false;
-      settle(built);
+      settle(buildGraph(lib, next.slice(0, pages * PAGE)));
     } catch {
       failed = true;
     }
   }
   const reload = debounce(() => void load(), 80);
+
+  /** Redraw from what is already loaded, after the list changed locally. */
+  function redraw() {
+    if (lastLib) settle(buildGraph(lastLib, shown));
+  }
 
   function settle(built: Graph) {
     if (frame !== null) cancelRaf(frame);
@@ -85,14 +130,14 @@
     step();
   }
 
-  /** Center the open note's neighborhood when it is on the graph, else fit
-   *  the whole library. */
-  function frameView(all = false) {
+  /** Center the open note's lens when it is on the graph and the lens is
+   *  on, else fit the whole library. */
+  function frameView() {
     if (!graph || graph.nodes.length === 0) return;
-    const around = !all && currentId ? neighbors(graph, currentId) : null;
-    const shown = graph.nodes.filter((n) => !around || around.has(n.id));
-    const xs = shown.map((n) => n.x);
-    const ys = shown.map((n) => n.y);
+    const around = lens && currentId ? neighbors(graph, currentId, LENS_HOPS) : null;
+    const shownNodes = graph.nodes.filter((n) => !around || around.has(n.id));
+    const xs = shownNodes.map((n) => n.x);
+    const ys = shownNodes.map((n) => n.y);
     const pad = 60;
     const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
     const k = Math.min(
@@ -107,9 +152,10 @@
     };
   }
 
-  function showAll() {
-    userMoved = true;
-    frameView(true);
+  function toggleLens() {
+    lens = !lens;
+    userMoved = false;
+    frameView();
   }
 
   function open(n: GraphNode) {
@@ -124,6 +170,55 @@
       open(n);
     }
   }
+
+  // ---- suggestions ----
+
+  function drop(s: SpaceSuggestion) {
+    suggestions = suggestions.filter((x) => !(x.noteId === s.noteId && x.spaceId === s.spaceId));
+  }
+
+  /** One tap: the note joins the Space. The membership is the data, and the
+   *  model learns from it on the next read; Undo takes it out again. */
+  async function accept(s: SpaceSuggestion) {
+    drop(s);
+    redraw();
+    try {
+      await addNoteToWorkspace(s.noteId, s.spaceId);
+      toasts.show(`Filed "${s.noteTitle}" in ${s.spaceName}`, {
+        label: "Undo",
+        run: () => void removeNoteFromWorkspace(s.noteId, s.spaceId).catch(() => reload()),
+      });
+    } catch {
+      toasts.show(`Couldn't file "${s.noteTitle}" in ${s.spaceName}.`);
+      reload();
+    }
+  }
+
+  /** "Not this one": the pair is remembered on this device and not shown
+   *  again; nothing about the note changes. Undo forgets the dismissal. */
+  async function dismiss(s: SpaceSuggestion) {
+    drop(s);
+    redraw();
+    try {
+      await dismissSpaceSuggestion(s.noteId, s.spaceId);
+      void library.refreshSuggestionCount();
+      toasts.show(`Won't suggest ${s.spaceName} for "${s.noteTitle}"`, {
+        label: "Undo",
+        run: () => void restoreSpaceSuggestion(s.noteId, s.spaceId).then(() => reload(), () => reload()),
+      });
+    } catch {
+      toasts.show(`Couldn't dismiss the suggestion for "${s.noteTitle}".`);
+      reload();
+    }
+  }
+
+  function showMore() {
+    pages += 1;
+    redraw();
+  }
+
+  const percent = (p: number) => `${Math.round(p * 100)}%`;
+  const because = (s: SpaceSuggestion) => s.reasons.map((r) => r.label).join(", ");
 
   // ---- pan and zoom ----
 
@@ -199,83 +294,156 @@
         {plural(counts.note, "note", "notes")} · {plural(counts.tag, "tag", "tags")} ·
         {plural(counts.space, "Space", "Spaces")}
       </span>
-      <button class="bar-btn" onclick={showAll}>Show all</button>
+      {#if currentId}
+        <button class="bar-btn" onclick={toggleLens}>
+          {lens ? "Show all" : "Around this note"}
+        </button>
+      {/if}
     {/if}
   </header>
 
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    class="graph-host"
-    class:panning={drag !== null}
-    bind:this={host}
-    onpointerdown={onPointerDown}
-    onpointermove={onPointerMove}
-    onpointerup={onPointerUp}
-    onpointercancel={onPointerUp}
-  >
-    {#if failed}
-      <p class="graph-empty">The graph couldn't load. Your notes are fine; try again in a moment.</p>
-    {:else if graph && graph.nodes.length === 0}
-      <p class="graph-empty">
-        Nothing to draw yet. Tag notes or add them to Spaces, and they appear here, linked by
-        what they share.
-      </p>
-    {:else if graph}
-      <svg {width} {height} role="group" aria-label="Notes, tags, and Spaces">
-        <g transform="translate({view.x} {view.y}) scale({view.k})">
-          {#each graph.edges as e, i (i)}
-            {@const a = byId.get(e.source)}
-            {@const b = byId.get(e.target)}
-            {#if a && b}
-              <line
-                class="edge"
-                class:lit={lit?.has(e.source) && lit?.has(e.target)}
-                class:dim={lit && !(lit.has(e.source) && lit.has(e.target))}
-                x1={a.x}
-                y1={a.y}
-                x2={b.x}
-                y2={b.y}
-              />
-            {/if}
-          {/each}
-          {#each graph.nodes as n (n.id)}
-            {@const r = nodeRadius(n)}
-            <g
-              class="node {n.kind}"
-              class:dim={lit && !lit.has(n.id)}
-              class:current={currentId === n.id}
-              transform="translate({n.x} {n.y})"
-              role="button"
-              tabindex="0"
-              aria-label="{KIND_LABEL[n.kind]}: {n.label}"
-              onclick={() => open(n)}
-              onkeydown={(e) => onNodeKey(e, n)}
-              onpointerenter={() => (hovered = n.id)}
+  <div class="graph-body">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="graph-host"
+      class:panning={drag !== null}
+      bind:this={host}
+      onpointerdown={onPointerDown}
+      onpointermove={onPointerMove}
+      onpointerup={onPointerUp}
+      onpointercancel={onPointerUp}
+    >
+      {#if failed}
+        <p class="graph-empty">The graph couldn't load. Your notes are fine; try again in a moment.</p>
+      {:else if graph && graph.nodes.length === 0}
+        <p class="graph-empty">
+          Nothing to draw yet. Tag notes or add them to Spaces, and they appear here, linked by
+          what they share.
+        </p>
+      {:else if graph}
+        <svg {width} {height} role="group" aria-label="Notes, tags, and Spaces">
+          <g transform="translate({view.x} {view.y}) scale({view.k})">
+            {#each graph.edges as e, i (i)}
+              {@const a = byId.get(e.source)}
+              {@const b = byId.get(e.target)}
+              {#if a && b}
+                <line
+                  class="edge {e.kind} {e.tagSource ?? ''}"
+                  class:lit={lit?.has(e.source) && lit?.has(e.target)}
+                  class:dim={lit && !(lit.has(e.source) && lit.has(e.target))}
+                  x1={a.x}
+                  y1={a.y}
+                  x2={b.x}
+                  y2={b.y}
+                />
+              {/if}
+            {/each}
+            {#each graph.nodes as n (n.id)}
+              {@const r = nodeRadius(n)}
+              <g
+                class="node {n.kind}"
+                class:dim={lit && !lit.has(n.id)}
+                class:current={currentId === n.id}
+                class:suggested={n.suggested}
+                transform="translate({n.x} {n.y})"
+                role="button"
+                tabindex="0"
+                aria-label={nodeName(n)}
+                onclick={() => open(n)}
+                onkeydown={(e) => onNodeKey(e, n)}
+                onpointerenter={() => (hovered = n.id)}
+                onpointerleave={() => (hovered = null)}
+                onfocus={() => (hovered = n.id)}
+                onblur={() => (hovered = null)}
+              >
+                {#if n.board}
+                  <rect x={-r} y={-r} width={r * 2} height={r * 2} rx="2" />
+                {:else}
+                  <circle {r} style:fill={n.kind === "tag" && n.color ? n.color : null} />
+                {/if}
+                {#if showLabel(n)}
+                  <text y={r + 12} class:hub={n.kind !== "note"}>{n.label}</text>
+                {/if}
+              </g>
+            {/each}
+          </g>
+        </svg>
+      {/if}
+    </div>
+
+    {#if shown.length > 0}
+      <!-- The suggestions, as a list beside the canvas: each row is one
+           dashed edge, and a row under the pointer or focus lights it. -->
+      <aside class="suggestions" aria-label="Filing suggestions">
+        <h3>
+          Where these belong
+          <span class="sug-count">{suggestions.length}</span>
+        </h3>
+        <ul>
+          {#each shown as s (s.noteId + s.spaceId)}
+            <li
+              class:lit={hovered === s.noteId}
+              onpointerenter={() => (hovered = s.noteId)}
               onpointerleave={() => (hovered = null)}
-              onfocus={() => (hovered = n.id)}
-              onblur={() => (hovered = null)}
+              onfocusin={() => (hovered = s.noteId)}
+              onfocusout={() => (hovered = null)}
             >
-              {#if n.board}
-                <rect x={-r} y={-r} width={r * 2} height={r * 2} rx="2" />
-              {:else}
-                <circle {r} style:fill={n.kind === "tag" && n.color ? n.color : null} />
+              <button class="sug-note" title="Open the note" onclick={() => void library.select(s.noteId)}>
+                {s.noteTitle || "Untitled"}
+              </button>
+              <p class="sug-verdict">
+                <span class="sug-space">{s.spaceName}</span>
+                <span class="sug-pct" title="How sure the suggestion is">{percent(s.probability)}</span>
+              </p>
+              {#if s.reasons.length > 0}
+                <p class="sug-why">because {because(s)}</p>
               {/if}
-              {#if showLabel(n)}
-                <text y={r + 12} class:hub={n.kind !== "note"}>{n.label}</text>
-              {/if}
-            </g>
+              <p class="sug-actions">
+                <button
+                  class="sug-accept"
+                  aria-label="Add “{s.noteTitle || 'Untitled'}” to {s.spaceName}"
+                  onclick={() => void accept(s)}
+                >
+                  Add to {s.spaceName}
+                </button>
+                <button
+                  class="sug-dismiss"
+                  aria-label="Don't suggest {s.spaceName} for “{s.noteTitle || 'Untitled'}”"
+                  onclick={() => void dismiss(s)}
+                >
+                  Not this
+                </button>
+              </p>
+            </li>
           {/each}
-        </g>
-      </svg>
+        </ul>
+        {#if more > 0}
+          <button class="sug-more" onclick={showMore}>
+            Show {Math.min(PAGE, more)} more
+          </button>
+        {/if}
+      </aside>
     {/if}
   </div>
 
-  {#if graph && graph.unconnectedNotes > 0}
-    <p class="graph-foot">
-      {plural(graph.unconnectedNotes, "note", "notes")} with no tags or Spaces
-      {graph.unconnectedNotes === 1 ? "isn't" : "aren't"} shown.
-      This feature is a W.I.P.
-    </p>
+  {#if graph && graph.nodes.length > 0}
+    <footer class="graph-foot">
+      <ul class="legend" aria-label="Legend">
+        <li><svg width="22" height="8" aria-hidden="true"><line class="edge tag inline" x1="1" y1="4" x2="21" y2="4" /></svg>tag written in the note</li>
+        <li><svg width="22" height="8" aria-hidden="true"><line class="edge tag manual" x1="1" y1="4" x2="21" y2="4" /></svg>tag added</li>
+        <li><svg width="22" height="8" aria-hidden="true"><line class="edge space" x1="1" y1="4" x2="21" y2="4" /></svg>Space</li>
+        <li><svg width="22" height="8" aria-hidden="true"><line class="edge suggested" x1="1" y1="4" x2="21" y2="4" /></svg>suggested Space</li>
+      </ul>
+      {#if graph.unconnectedNotes > 0}
+        <span class="foot-note">
+          {plural(graph.unconnectedNotes, "note", "notes")} with no tags or Spaces
+          {graph.unconnectedNotes === 1 ? "isn't" : "aren't"} shown.
+          {#if graph.populatedSpaces < 2}
+            Suggestions start once two Spaces hold notes.
+          {/if}
+        </span>
+      {/if}
+    </footer>
   {/if}
 </section>
 
@@ -314,13 +482,19 @@
   .bar-btn:hover {
     background: var(--bg-hover);
   }
+  .graph-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    border-top: 1px solid var(--border);
+  }
   .graph-host {
     position: relative;
     flex: 1;
+    min-width: 0;
     min-height: 0;
     overflow: hidden;
     cursor: grab;
-    border-top: 1px solid var(--border);
     touch-action: none;
   }
   .graph-host.panning {
@@ -329,13 +503,32 @@
   svg {
     display: block;
   }
+  /* Edges tell their kind by pattern and weight, never by color alone, so
+     the legend reads the same for every eye: a written tag is a thin solid
+     line, an added tag is dotted, a Space is a heavier solid line, and a
+     suggestion is dashed in the accent. */
   .edge {
     stroke: var(--border);
     stroke-width: 1;
     transition: opacity 120ms ease;
   }
+  .edge.tag.manual {
+    stroke-dasharray: 2 3;
+  }
+  .edge.space {
+    stroke-width: 1.6;
+  }
+  .edge.suggested {
+    stroke: var(--accent);
+    stroke-width: 1.4;
+    stroke-dasharray: 6 4;
+  }
   .edge.lit {
     stroke: var(--text-tertiary);
+  }
+  .edge.suggested.lit {
+    stroke: var(--accent);
+    stroke-width: 2;
   }
   .edge.dim {
     opacity: 0.25;
@@ -354,6 +547,14 @@
     stroke: var(--bg);
     stroke-width: 1.5;
   }
+  /* A note drawn for its suggestion alone is hollow and dashed: not yet
+     anyone's. */
+  .node.suggested circle,
+  .node.suggested rect {
+    fill: var(--bg);
+    stroke: var(--accent);
+    stroke-dasharray: 3 2;
+  }
   .node.tag circle {
     fill: var(--tag);
   }
@@ -367,6 +568,7 @@
   .node:focus-visible rect {
     stroke: var(--accent);
     stroke-width: 2.5;
+    stroke-dasharray: none;
   }
   .node.current circle,
   .node.current rect {
@@ -399,12 +601,157 @@
     line-height: 1.5;
     cursor: default;
   }
+
+  /* ---- the suggestion list ---- */
+  .suggestions {
+    flex: none;
+    width: 280px;
+    min-height: 0;
+    overflow-y: auto;
+    border-left: 1px solid var(--border);
+    padding: 10px 12px 12px;
+    font-size: 12.5px;
+  }
+  .suggestions h3 {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin: 0 0 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .sug-count {
+    color: var(--text-tertiary);
+    font-family: var(--font-meta);
+    font-weight: 500;
+  }
+  .suggestions ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .suggestions li {
+    padding: 8px 8px 9px;
+    margin: 0 -8px;
+    border-radius: var(--radius);
+  }
+  .suggestions li.lit {
+    background: var(--bg-hover);
+  }
+  .suggestions li + li {
+    border-top: 1px solid var(--border);
+    border-radius: 0 0 var(--radius) var(--radius);
+  }
+  .suggestions p {
+    margin: 0;
+  }
+  .sug-note {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 0;
+    color: var(--text);
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .sug-note:hover {
+    text-decoration: underline;
+  }
+  .sug-verdict {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    margin-top: 2px;
+  }
+  .sug-space::before {
+    content: "→ ";
+    color: var(--text-tertiary);
+  }
+  .sug-space {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .sug-pct {
+    color: var(--text-tertiary);
+    font-family: var(--font-meta);
+    font-size: 11px;
+  }
+  .sug-why {
+    margin-top: 2px;
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+  }
+  .sug-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 7px;
+  }
+  .sug-actions button {
+    padding: 3px 9px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 11.5px;
+    color: var(--text-secondary);
+  }
+  .sug-actions button:hover {
+    background: var(--bg-hover);
+  }
+  .sug-accept {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  .sug-more {
+    width: 100%;
+    margin-top: 8px;
+    padding: 5px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-secondary);
+    font-size: 11.5px;
+  }
+  .sug-more:hover {
+    background: var(--bg-hover);
+  }
+
+  /* ---- the footer: legend and what is left out ---- */
   .graph-foot {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    align-items: center;
     margin: 0;
     padding: 6px 16px;
     border-top: 1px solid var(--border);
     color: var(--text-tertiary);
     font-size: 11px;
     font-family: var(--font-meta);
+  }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .legend li {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .legend svg {
+    display: inline-block;
+  }
+  .legend .edge {
+    stroke: var(--text-tertiary);
+  }
+  .legend .edge.suggested {
+    stroke: var(--accent);
+  }
+  .foot-note {
+    margin-left: auto;
   }
 </style>

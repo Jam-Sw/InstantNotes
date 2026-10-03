@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { ERROR_CODES, type ErrorCode } from "./api/error-codes";
-import { friendlyMessage, GENERIC_MESSAGE } from "./errors";
+import { ApiError } from "./api/client";
+import { friendlyError, friendlyMessage, GENERIC_MESSAGE, SAVE_CONFLICT_MESSAGE } from "./errors";
 
 describe("friendlyMessage", () => {
   test("maps known API error codes to friendly copy", () => {
@@ -21,9 +22,9 @@ describe("friendlyMessage", () => {
     }
   });
 
-  // A code outside the registry can only arrive from a backend this build does
-  // not match; the type stops it at the client boundary (client.ts's
-  // asApiError), so here it is only the last-resort behaviour that matters.
+  // A code outside the registry can only arrive from a mismatched backend; the
+  // type stops it at the client boundary (asApiError), so only the
+  // last-resort behaviour matters here.
   test("a code from outside the registry falls back", () => {
     const unknown = "WEIRD_CODE" as ErrorCode;
     expect(friendlyMessage(unknown, "backend said no")).toBe("backend said no");
@@ -34,5 +35,31 @@ describe("friendlyMessage", () => {
     for (const code of [...(Object.keys(ERROR_CODES) as ErrorCode[]), "WEIRD_CODE" as ErrorCode]) {
       expect(friendlyMessage(code)).not.toContain(code);
     }
+  });
+});
+
+describe("friendlyError", () => {
+  test("an ApiError gets the copy for its code", () => {
+    expect(friendlyError(new ApiError("NOT_FOUND", "note x not found"))).toBe(
+      friendlyMessage("NOT_FOUND"),
+    );
+  });
+
+  test("anything else gets the generic line", () => {
+    expect(friendlyError(new Error("boom"))).toBe(GENERIC_MESSAGE);
+    expect(friendlyError("a thrown string")).toBe(GENERIC_MESSAGE);
+    expect(friendlyError(undefined)).toBe(GENERIC_MESSAGE);
+  });
+
+  test("a CONFLICT says what it meant where it was called", () => {
+    const lostRace = new ApiError("CONFLICT", "note x changed since 1");
+    expect(friendlyError(lostRace, SAVE_CONFLICT_MESSAGE)).toBe(SAVE_CONFLICT_MESSAGE);
+    expect(friendlyError(lostRace)).toBe(friendlyMessage("CONFLICT"));
+  });
+
+  test("the caller's conflict copy leaves every other code alone", () => {
+    const missing = new ApiError("NOT_FOUND", "note x not found");
+    expect(friendlyError(missing, SAVE_CONFLICT_MESSAGE)).toBe(friendlyMessage("NOT_FOUND"));
+    expect(friendlyError(new Error("boom"), SAVE_CONFLICT_MESSAGE)).toBe(GENERIC_MESSAGE);
   });
 });

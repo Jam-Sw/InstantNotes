@@ -7,6 +7,7 @@
 use crate::*;
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 /// Labels of the windows whose flush the current quit still waits for.
 static AWAITING: std::sync::LazyLock<Mutex<HashSet<String>>> =
@@ -63,6 +64,33 @@ pub(crate) fn request_quit(app: &AppHandle) {
     });
 }
 
+/// The handshake's flush without its exit, for an exit the app does not drive:
+/// on Windows the updater starts the installer and ends the process with
+/// `std::process::exit`, past ExitRequested. QUIT_READY is held so the windows'
+/// quit_app answers do not exit first; `release_quit` lets it go if the
+/// process is still here afterwards.
+pub(crate) fn flush_before_exit(app: &AppHandle) {
+    QUIT_READY.store(true, Ordering::Release);
+    if let Ok(mut awaiting) = AWAITING.lock() {
+        *awaiting = answering_windows(app);
+    }
+    let _ = app.emit(events::APP_QUIT_REQUESTED, ());
+    wait_for_answers(&AWAITING, Duration::from_millis(QUIT_FLUSH_GRACE_MS));
+    flush_vault_now(app, Some(QUIT_VAULT_CHUNKS));
+}
+
+/// Block until every awaited window has answered, or `grace` runs out.
+fn wait_for_answers(awaiting: &Mutex<HashSet<String>>, grace: Duration) {
+    let deadline = Instant::now() + grace;
+    while Instant::now() < deadline && awaiting.lock().map(|a| !a.is_empty()).unwrap_or(false) {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+pub(crate) fn release_quit() {
+    QUIT_READY.store(false, Ordering::Release);
+}
+
 /// A window's leg of the handshake: it has flushed its pending edits. The
 /// app exits when the last window it waits for has answered.
 #[tauri::command]
@@ -83,8 +111,10 @@ pub fn get_shortcut_failure(state: State<'_, ShortcutStatus>) -> Option<String> 
 
 #[cfg(test)]
 mod tests {
-    use super::record_answer;
+    use super::{record_answer, wait_for_answers};
     use std::collections::HashSet;
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
 
     #[test]
     fn quit_waits_for_every_window_that_holds_edits() {
@@ -96,5 +126,28 @@ mod tests {
         // A repeat answer from the same window does not count twice.
         assert!(!record_answer(&mut awaiting, "library"));
         assert!(record_answer(&mut awaiting, "sticky-a"));
+    }
+
+    #[test]
+    fn a_hand_off_waits_for_the_last_answer_and_no_longer() {
+        let awaiting = Arc::new(Mutex::new(HashSet::from(["library".to_string()])));
+        let answering = Arc::clone(&awaiting);
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(50));
+            answering.lock().unwrap().clear();
+        });
+        let start = Instant::now();
+        wait_for_answers(&awaiting, Duration::from_secs(5));
+        assert!(start.elapsed() < Duration::from_secs(2));
+        assert!(awaiting.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_hand_off_stops_waiting_on_a_window_that_never_answers() {
+        let awaiting = Mutex::new(HashSet::from(["sticky-a".to_string()]));
+        let start = Instant::now();
+        wait_for_answers(&awaiting, Duration::from_millis(100));
+        assert!(start.elapsed() >= Duration::from_millis(100));
+        assert!(!awaiting.lock().unwrap().is_empty());
     }
 }

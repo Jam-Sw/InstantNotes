@@ -1,9 +1,8 @@
 // Agents (Svelte 5 runes): the access level, the trace of agent calls, and
-// live presence, meaning which notes, Spaces, and tags an agent is reading,
-// searching, or changing right now. Presence is what lets the library show
-// it on the things themselves (a glow on the row, the open note, the Space)
-// instead of in a window of its own; the trace is the Agents Space, for when the
-// user wants the full story and the power to undo a change.
+// live presence: which notes, Spaces, and tags an agent is reading,
+// searching, or changing right now, shown on the things themselves (a glow
+// on the row, the open note, the Space). The trace is the Agents Space, for
+// the full story and the power to undo a change.
 //
 // Fed by `library:external-change`, which the shell emits when another
 // process writes to the library (src-tauri/src/shell/agents.rs) and when the
@@ -11,7 +10,6 @@
 
 import { listen } from "@tauri-apps/api/event";
 import {
-  ApiError,
   clearAgentActivity,
   getAgentConnection,
   getSetting,
@@ -21,7 +19,7 @@ import {
   setSetting,
 } from "$lib/api/client";
 import { EVENTS } from "$lib/api/events";
-import { friendlyMessage, GENERIC_MESSAGE } from "$lib/errors";
+import { friendlyError } from "$lib/errors";
 import { toasts } from "$lib/stores/toasts.svelte";
 import {
   AGENT_ACCESS_KEY,
@@ -41,16 +39,17 @@ import {
   type AgentPresence,
 } from "$lib/agent-activity";
 
-/** How long a touched note, Space, or tag stays lit after the last call. */
+/**
+ * How long a touched note, Space, or tag stays lit after the last call.
+ * @internal
+ */
 export const PRESENCE_MS = 4000;
-/** How much of the trace is held in memory. */
 const RECENT_KEEP = 500;
-/** How many rows one load fetches. */
 const PAGE = 200;
 /** More calls than this in one batch are announced as one toast. */
 const BURST = 3;
 
-export type AgentMark = AgentKind;
+type AgentMark = AgentKind;
 
 class AgentsStore {
   access = $state<AgentAccess>("off");
@@ -107,7 +106,6 @@ class AgentsStore {
     await this.loadRecent();
   }
 
-  /** (Re)load the newest page of the trace. */
   async loadRecent(): Promise<void> {
     try {
       const rows = parseActivityLog(await listAgentActivity(PAGE, 0));
@@ -126,12 +124,10 @@ class AgentsStore {
     }
   }
 
-  /** How many agents are connected right now. */
   get connectedCount(): number {
     return this.sessions.filter((s) => s.connected).length;
   }
 
-  /** Whether any agent is in the middle of a call. */
   get working(): boolean {
     return this.#doing.size > 0;
   }
@@ -141,7 +137,6 @@ class AgentsStore {
     return this.#doing.get(session) ?? null;
   }
 
-  /** Fetch the page after what is loaded. */
   async loadMore(): Promise<void> {
     if (!this.hasMore) return;
     try {
@@ -284,9 +279,7 @@ class AgentsStore {
       });
       return true;
     } catch (e) {
-      const message =
-        e instanceof ApiError ? friendlyMessage(e.code, e.message) : GENERIC_MESSAGE;
-      toasts.show(`Couldn't revert. ${message}`);
+      toasts.show(`Couldn't revert. ${friendlyError(e, "That change was already reverted.")}`);
       return false;
     }
   }

@@ -5,7 +5,7 @@ import type { ErrorCode } from "./error-codes";
 import type { FeedbackCategory } from "$lib/feedback";
 
 /** A Markdown document, or a whiteboard whose text is kept in `body`. */
-export type ContentKind = "document" | "whiteboard";
+type ContentKind = "document" | "whiteboard";
 
 export interface Note {
   id: string;
@@ -81,6 +81,9 @@ export interface NoteFilter {
   neverOpened?: boolean;
   /** Only notes created strictly before this ISO-8601 timestamp. */
   createdBefore?: string;
+  /** The Revisit view: never-opened captures older than the revisit window,
+   *  oldest first. The store holds the rule and expands it. */
+  revisit?: boolean;
   sortBy?: "updatedAt" | "createdAt" | "lastOpenedAt" | "title";
   sortOrder?: "asc" | "desc";
   limit?: number;
@@ -93,11 +96,6 @@ export interface SearchResult {
   excerpt: string;
   score: number;
   updatedAt: string;
-}
-
-export interface AppErrorPayload {
-  code: ErrorCode;
-  message: string;
 }
 
 /** Reveal-to-input-ready timing for the capture panel (no note content). */
@@ -195,5 +193,30 @@ export interface LibraryGraph {
   notes: { id: string; title: string; contentKind: ContentKind; isPinned: boolean }[];
   tags: { id: string; name: string; color?: string | null }[];
   spaces: { id: string; name: string }[];
-  links: { noteId: string; targetId: string; kind: "tag" | "space" }[];
+  /** A tag link says how it got there: written in the text (`inline`) or
+   *  added to the note (`manual`). A Space link has no source. */
+  links: {
+    noteId: string;
+    targetId: string;
+    kind: "tag" | "space";
+    source?: "inline" | "manual" | null;
+  }[];
+}
+
+/** Where an unfiled note most likely belongs: one Space, how sure the model
+ *  is (0 to 1), and the evidence, strongest first (API.md section 4). */
+export interface SpaceSuggestion {
+  noteId: string;
+  noteTitle: string;
+  spaceId: string;
+  spaceName: string;
+  probability: number;
+  reasons: SuggestionReason[];
+}
+
+/** One reason behind a suggestion: a tag the note carries (label with its
+ *  `#`) or a word in its text. */
+interface SuggestionReason {
+  label: string;
+  kind: "tag" | "word";
 }

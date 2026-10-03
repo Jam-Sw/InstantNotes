@@ -28,6 +28,17 @@ Inline `#tag` tokens are extracted from body text when a `#` sits at the start
 or after whitespace and is followed by alphanumeric / `-` / `_` characters;
 extracted tags are normalized and deduped in order of first appearance.
 
+### 2.3 Content words
+
+`content_words` reduces a note's title and body to the words the Graph's
+filing suggestions reason over (API.md section 4.1): lowercase runs of
+letters and digits, three characters or longer, not all digits, not on a
+short stop list of function words and the tokens Markdown and links leave
+behind (`https`, `png`, `attachments`), each listed once in order of first
+appearance. A `#tag` token is skipped: tags are their own channel, so a tag
+written inline is not also counted as a word. Nothing is stored; the words
+are recomputed from the text on every read.
+
 ## 3. Notes
 
 `notes` table (primary key `seq`, a stable integer alias used as the FTS
@@ -110,6 +121,14 @@ logical pixels (`x`/`y` null means centered; `level` is `float`, `normal`, or
 `desktop`; while `collapsed`, `height` keeps the expanded height). It
 is window state, not note data: it never reaches the vault, and losing it only
 means stickies reopen in the library.
+
+`graph.dismissed` holds the filing suggestions the user turned down
+(API.md section 4.1): a map from note id to the Space ids that note should
+not be suggested for. Ids, not names, so a rename of either changes nothing.
+Every write to it drops the entries of notes and Spaces that no longer
+exist, and deleting a Space prunes it at once; a malformed value reads as
+nothing dismissed. It is device-local UI state like `stickies`: never in the
+vault, and losing it only means a dismissed suggestion can show again.
 
 It also holds one record per import source, `import.<source>`: an object
 mapping each imported item's id in the app it came from to the note it

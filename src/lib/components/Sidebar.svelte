@@ -2,8 +2,8 @@
   import { library } from "$lib/stores/library.svelte";
   import { agents } from "$lib/stores/agents.svelte";
   import { agentName } from "$lib/agent-activity";
-  import { ApiError, deleteTag, updateTag } from "$lib/api/client";
-  import { friendlyMessage, GENERIC_MESSAGE } from "$lib/errors";
+  import { deleteTag, updateTag } from "$lib/api/client";
+  import { friendlyError } from "$lib/errors";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
   import SidebarEntityRow from "$lib/components/SidebarEntityRow.svelte";
@@ -61,8 +61,7 @@
       await Promise.all([library.refreshTags(), library.refresh()]);
       return { ok: true };
     } catch (e) {
-      const message =
-        e instanceof ApiError ? friendlyMessage(e.code, e.message) : GENERIC_MESSAGE;
+      const message = friendlyError(e);
       return { ok: false, message };
     }
   }
@@ -89,8 +88,7 @@
     } catch (e) {
       // The refresh below re-syncs the list, but the user completed a
       // two-step confirm; a failure must say so rather than vanish.
-      const message =
-        e instanceof ApiError ? friendlyMessage(e.code, e.message) : GENERIC_MESSAGE;
+      const message = friendlyError(e);
       toasts.show(`Couldn't delete #${tag.name}. ${message}`);
     }
     await Promise.all([library.refreshTags(), library.refresh()]);
@@ -153,10 +151,17 @@
     <button
       class="nav-item"
       class:active={library.graphMode}
-      title="Your notes, tags, and Spaces, and how they connect"
+      title={library.suggestionCount > 0
+        ? `Your notes, tags, and Spaces, and how they connect. ${library.suggestionCount} ${library.suggestionCount === 1 ? "note" : "notes"} could be filed.`
+        : "Your notes, tags, and Spaces, and how they connect"}
       onclick={() => library.selectGraph()}
     >
-      Graph
+      <span>Graph</span>
+      <!-- How many unfiled notes the graph can say a Space for. Hidden at
+           zero, like Revisit: a count that reaches nothing is closure. -->
+      {#if library.suggestionCount > 0}
+        <span class="nav-count">{library.suggestionCount}</span>
+      {/if}
     </button>
   </nav>
   <div class="tags-header section-label" bind:this={spacesHeader} tabindex="-1">Spaces</div>

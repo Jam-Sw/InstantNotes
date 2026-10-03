@@ -1,7 +1,6 @@
 // Agent access, the parts with no runes: the activity row the MCP server
 // writes (core store/activity.rs), how it reads in plain words, and the
-// commands that connect an agent. Shared by the agents store, the sidebar's
-// live line, the Agents Space, and Settings > Agents.
+// commands that connect an agent.
 
 /** Settings keys owned by this surface. */
 export const AGENT_ACCESS_KEY = "agents.access";
@@ -246,12 +245,6 @@ export function kindLabel(e: AgentActivity): string {
   return e.kind;
 }
 
-/** The error's stable code, if the message starts with one ("NOT_FOUND:"). */
-export function errorCode(e: AgentActivity): string | null {
-  const m = /^([A-Z_]+):/.exec(e.error ?? "");
-  return m ? m[1] : null;
-}
-
 /** "just now", "4 min ago", "2 h ago", "3 d ago". */
 export function timeAgo(at: number, now: number): string {
   const s = Math.max(0, Math.round((now - at) / 1000));
@@ -276,7 +269,6 @@ export function clockTime(at: number): string {
   return `${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`;
 }
 
-/** One conversation's calls, for the trace to group under a header. */
 /** The raw exchange behind a call, from `agent_activity_wire`: the JSON-RPC
  *  message the agent sent and the one it got back, each as JSON text. Null
  *  where none was kept (an older row, or the app's own revert). */
@@ -295,6 +287,7 @@ export function prettyWire(raw: string): string {
   }
 }
 
+/** One conversation's calls, for the trace to group under a header. */
 export interface AgentSession {
   session: string;
   client: string;
