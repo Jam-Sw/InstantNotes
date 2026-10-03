@@ -520,14 +520,7 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
-            if let tauri::RunEvent::ExitRequested { code, api, .. } = event {
-                // The updater plugin's own relaunch drives this exit with
-                // RESTART_EXIT_CODE and latches restart-on-exit inside Tauri.
-                // Preventing it would leave that latch set with no exit
-                // coming, stranding the freshly installed update.
-                if code == Some(tauri::RESTART_EXIT_CODE) {
-                    return;
-                }
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
                 // Exit paths that bypass the menu and tray (macOS Dock quit):
                 // hold the exit, run the same flush handshake, and rely on
                 // the same dead-webview fallback.

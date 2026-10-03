@@ -57,7 +57,19 @@ pub async fn install_update(
         .await
         .map_err(|e| CmdError::storage(e.to_string()))?;
 
-    match update.install(&bytes) {
+    // Windows: install() hands off to the installer and exits the process
+    // itself, so pending edits are saved first.
+    if cfg!(windows) {
+        let app = webview.app_handle().clone();
+        tauri::async_runtime::spawn_blocking(move || flush_before_exit(&app))
+            .await
+            .map_err(|e| CmdError::storage(e.to_string()))?;
+    }
+    let installed = update.install(&bytes);
+    if cfg!(windows) {
+        release_quit();
+    }
+    match installed {
         Ok(()) => Ok(()),
         #[cfg(target_os = "linux")]
         Err(tauri_plugin_updater::Error::Io(e))
