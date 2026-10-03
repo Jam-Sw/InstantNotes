@@ -7,7 +7,7 @@ in-app updater, written for users. Newest first.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.9.4]
 
 ### Fixed
 - Updater: the installed-update note offers "Restart now" (`restart_app`: quit

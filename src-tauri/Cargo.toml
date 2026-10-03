@@ -5,7 +5,7 @@ resolver = "2"
 [package]
 license = "PolyForm-Strict-1.0.0"
 name = "instantnotes"
-version = "0.9.3"
+version = "0.9.4"
 description = "InstantNotes — instant capture, organized knowledge"
 edition = "2021"
 
