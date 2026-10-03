@@ -49,7 +49,7 @@ const PAGE = 200;
 /** More calls than this in one batch are announced as one toast. */
 const BURST = 3;
 
-export type AgentMark = AgentKind;
+type AgentMark = AgentKind;
 
 class AgentsStore {
   access = $state<AgentAccess>("off");

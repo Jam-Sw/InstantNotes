@@ -17,7 +17,7 @@ export interface AgreementDocument {
   text: string;
 }
 
-export interface AgreementCopy {
+interface AgreementCopy {
   heading: string;
   lead: string;
   agree: string;
@@ -26,7 +26,7 @@ export interface AgreementCopy {
 }
 
 /** Document id to the version agreed to. */
-export type Accepted = Record<string, string>;
+type Accepted = Record<string, string>;
 
 type Versioned = Pick<AgreementDocument, 'id' | 'version'>;
 

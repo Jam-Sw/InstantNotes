@@ -25,5 +25,3 @@ export const BUILTIN_THEMES: Theme[] = [
 
 /** The theme applied on first run and when a persisted id is missing. */
 export const DEFAULT_THEME_ID = manuscript.id;
-
-export { manuscript, graphite, terminal, paperDark, twilight, fjord, ember, contrast };

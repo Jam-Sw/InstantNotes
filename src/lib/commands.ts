@@ -17,18 +17,16 @@ import type { Command } from "$lib/command-filter";
 
 export type { Command } from "$lib/command-filter";
 export {
-  fuzzyScore,
   filterCommands,
   recentCommands,
   recordRecent,
   childrenOf,
-  hasChildren,
   findCommand,
   resolveActivation,
 } from "$lib/command-filter";
 
 /** One leaf per curated body font, parented to the "font.body" folder command. */
-export function buildBodyFontCommands(): Command[] {
+function buildBodyFontCommands(): Command[] {
   const reset: Command = {
     id: "font.body.default",
     title: "Use theme default",
@@ -51,7 +49,7 @@ export function buildBodyFontCommands(): Command[] {
 }
 
 /** One leaf per installed theme, parented to the "themes" folder command. */
-export function buildThemeCommands(): Command[] {
+function buildThemeCommands(): Command[] {
   return theme.allThemes.map((t) => ({
     id: `theme.set.${t.id}`,
     title: t.name,

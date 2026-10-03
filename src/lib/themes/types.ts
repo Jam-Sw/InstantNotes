@@ -82,7 +82,7 @@ export type Variant = "light" | "dark";
 /** Whether a font slot resolves to the theme's UI font or its mono font. */
 export type FontSlot = "ui" | "mono";
 
-export interface ThemeFonts {
+interface ThemeFonts {
   /** The sans/UI font stack (CSS font-family list). */
   ui: string;
   /** The monospace font stack (CSS font-family list). */
@@ -93,7 +93,7 @@ export interface ThemeFonts {
   meta: FontSlot;
 }
 
-export interface ThemeMetrics {
+interface ThemeMetrics {
   /** Corner radius as a CSS length, e.g. "8px". */
   radius: string;
   /** Explicit large-element radius (modals, dialogs). Defaults to radius + 4px. */

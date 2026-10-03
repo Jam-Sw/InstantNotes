@@ -14,7 +14,7 @@ import { installUpdate } from "$lib/api/client";
 import { toasts } from "$lib/stores/toasts.svelte";
 import { fetchUpdateSizeDelta } from "$lib/update/release-size";
 
-export type UpdateStatus =
+type UpdateStatus =
   | "idle"
   | "checking"
   | "available"
@@ -24,7 +24,7 @@ export type UpdateStatus =
   | "error";
 
 /** Whether the offered build's size against the running one is known yet. */
-export type DeltaState = "idle" | "loading" | "ready" | "unavailable";
+type DeltaState = "idle" | "loading" | "ready" | "unavailable";
 
 const RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 

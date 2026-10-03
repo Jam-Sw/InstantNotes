@@ -1,5 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { LAYOUT_TICKS, buildGraph, layoutGraph, neighbors, startLayout } from "./layout";
+import { LAYOUT_TICKS, buildGraph, neighbors, startLayout, type Graph } from "./layout";
+
+/** A layout run to rest in one go (`ticks: 0` gives the starting positions):
+ *  what the view does frame by frame, done at once for the assertions. */
+function layoutGraph(
+  graph: Graph,
+  options: { previous?: Map<string, { x: number; y: number }>; ticks?: number } = {},
+): Graph {
+  const run = startLayout(graph, options.previous);
+  run.step(options.ticks ?? LAYOUT_TICKS);
+  return run.snapshot();
+}
 import type { LibraryGraph, SpaceSuggestion } from "$lib/api/types";
 
 const note = (id: string, title = id, extra = {}) => ({

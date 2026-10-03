@@ -15,7 +15,7 @@ import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
 /** How long inserted text stays highlighted. */
 const FLASH_MS = 2400;
 
-export interface TextChange {
+interface TextChange {
   from: number;
   to: number;
   insert: string;

@@ -8,13 +8,13 @@
 
 const REPO = "Jam-Sw/InstantNotes";
 
-export interface ReleaseAsset {
+interface ReleaseAsset {
   name: string;
   size: number;
 }
 
 /** The updater artifact for this platform, by the names tauri-action uploads. */
-export function assetMatcher(userAgent: string): (name: string) => boolean {
+function assetMatcher(userAgent: string): (name: string) => boolean {
   if (/mac|darwin/i.test(userAgent)) return (n) => n.endsWith(".app.tar.gz");
   if (/win/i.test(userAgent)) return (n) => n.endsWith("-setup.exe");
   return (n) => n.endsWith(".AppImage");

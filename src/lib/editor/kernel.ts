@@ -50,7 +50,7 @@ export interface KernelConfig {
   rescanOn?: readonly StateField<any>[];
 }
 
-export class PreviewKernel {
+class PreviewKernel {
   table: ConstructTable;
   decorations: DecorationSet = Decoration.none;
   atomic: RangeSet<Decoration> = RangeSet.empty;

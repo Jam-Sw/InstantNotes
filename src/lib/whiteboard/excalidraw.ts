@@ -6,7 +6,7 @@ import { emptyBoard, serializeBoard, type BoardElement } from "./document";
 /** Where the build serves Excalidraw's fonts (scripts/copy-excalidraw-fonts.mjs).
  *  Without it Excalidraw fetches them from a CDN, which the app's content
  *  security policy blocks: InstantNotes makes no network requests. */
-export const EXCALIDRAW_ASSET_PATH = "/excalidraw/";
+const EXCALIDRAW_ASSET_PATH = "/excalidraw/";
 
 export function loadExcalidraw() {
   const w = window as Window & { EXCALIDRAW_ASSET_PATH?: string };

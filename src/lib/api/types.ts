@@ -5,7 +5,7 @@ import type { ErrorCode } from "./error-codes";
 import type { FeedbackCategory } from "$lib/feedback";
 
 /** A Markdown document, or a whiteboard whose text is kept in `body`. */
-export type ContentKind = "document" | "whiteboard";
+type ContentKind = "document" | "whiteboard";
 
 export interface Note {
   id: string;
@@ -96,11 +96,6 @@ export interface SearchResult {
   excerpt: string;
   score: number;
   updatedAt: string;
-}
-
-export interface AppErrorPayload {
-  code: ErrorCode;
-  message: string;
 }
 
 /** Reveal-to-input-ready timing for the capture panel (no note content). */
@@ -221,7 +216,7 @@ export interface SpaceSuggestion {
 
 /** One reason behind a suggestion: a tag the note carries (label with its
  *  `#`) or a word in its text. */
-export interface SuggestionReason {
+interface SuggestionReason {
   label: string;
   kind: "tag" | "word";
 }

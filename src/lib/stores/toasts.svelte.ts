@@ -8,12 +8,12 @@ const AUTO_DISMISS_MS = 5000;
 // (FIFO) rather than growing the stack or queueing silently.
 const MAX_VISIBLE = 3;
 
-export interface ToastAction {
+interface ToastAction {
   label: string;
   run: () => void;
 }
 
-export interface ToastItem {
+interface ToastItem {
   readonly id: string;
   readonly message: string;
   readonly action?: ToastAction;

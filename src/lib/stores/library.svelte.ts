@@ -61,7 +61,6 @@ import { mayHaveWritten, parseActivityLog, type AgentActivity } from "$lib/agent
 import { boardFromText } from "$lib/whiteboard/excalidraw";
 import { listen } from "@tauri-apps/api/event";
 
-export type { SaveState };
 export type { StatusFilter } from "$lib/stores/library/navigation.svelte";
 
 // Debounce for search-text refreshes only, so a query runs per pause rather

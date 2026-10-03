@@ -15,7 +15,7 @@ import {
 } from "d3-force";
 import type { LibraryGraph, SpaceSuggestion } from "$lib/api/types";
 
-export type NodeKind = "note" | "tag" | "space";
+type NodeKind = "note" | "tag" | "space";
 
 export interface GraphNode {
   id: string;
@@ -36,9 +36,9 @@ export interface GraphNode {
 
 /** What an edge is: a tag the note carries, a Space it is in, or a Space
  *  the model suggests for it. A tag edge also says how the tag got there. */
-export type EdgeKind = "tag" | "space" | "suggested";
+type EdgeKind = "tag" | "space" | "suggested";
 
-export interface GraphEdge {
+interface GraphEdge {
   source: string;
   target: string;
   kind: EdgeKind;
@@ -220,16 +220,6 @@ export function startLayout(
       };
     },
   };
-}
-
-/** A layout run to rest in one go (`ticks: 0` gives the starting positions). */
-export function layoutGraph(
-  graph: Graph,
-  options: { previous?: Map<string, { x: number; y: number }>; ticks?: number } = {},
-): Graph {
-  const run = startLayout(graph, options.previous);
-  run.step(options.ticks ?? LAYOUT_TICKS);
-  return run.snapshot();
 }
 
 /**

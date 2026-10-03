@@ -2,7 +2,7 @@
 // window.confirm in the app. One host (ConfirmDialog.svelte) is mounted once
 // in +page.svelte; call sites just `await confirmDialog.ask(...)`.
 
-export interface ConfirmOptions {
+interface ConfirmOptions {
   title: string;
   body?: string;
   confirmLabel?: string;
@@ -10,7 +10,7 @@ export interface ConfirmOptions {
   tone?: "danger" | "neutral";
 }
 
-export interface ConfirmRequest {
+interface ConfirmRequest {
   title: string;
   body: string;
   confirmLabel: string;

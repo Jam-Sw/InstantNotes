@@ -5,7 +5,7 @@
 // Stored in note.surfaceData:
 //   { "v": 1, "engine": "excalidraw", "data": { elements, appState, files } }
 
-export const EXCALIDRAW_ENGINE = "excalidraw";
+const EXCALIDRAW_ENGINE = "excalidraw";
 
 /** The fields of an Excalidraw element this module reads. */
 export interface BoardElement {

@@ -16,7 +16,7 @@ export interface SelRange {
  * immediately after **bold** still counts, because typing there is exactly
  * when the eye needs the markup on screen.
  */
-export function touches(
+function touches(
   from: number,
   to: number,
   selFrom: number,

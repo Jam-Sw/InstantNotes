@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { effectiveVariant, themeToVars } from "./apply";
-import { manuscript, terminal } from "./builtin";
+import { manuscript } from "./builtin/manuscript";
+import { terminal } from "./builtin/terminal";
 import type { Theme } from "./types";
 
 describe("effectiveVariant", () => {

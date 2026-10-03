@@ -7,9 +7,9 @@ import { getSetting, setSetting } from "$lib/api/client";
 const KEY_WIDTH = "sidebar.width";
 const KEY_COLLAPSED = "sidebar.collapsed";
 
-export const SIDEBAR_MIN = 150;
-export const SIDEBAR_MAX = 420;
-export const SIDEBAR_DEFAULT = 190;
+const SIDEBAR_MIN = 150;
+const SIDEBAR_MAX = 420;
+const SIDEBAR_DEFAULT = 190;
 
 class SidebarState {
   width = $state(SIDEBAR_DEFAULT);

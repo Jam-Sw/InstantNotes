@@ -11,7 +11,7 @@
 //   ### Changed
 //   - ...
 
-export interface ChangelogSection {
+interface ChangelogSection {
   /** "Added", "Changed", "Fixed", etc. */
   heading: string;
   /** One entry per bullet, continuation lines folded in. */
