@@ -200,8 +200,7 @@ pub fn agent_connection(
     app: AppHandle,
     bridge: State<'_, AgentBridge>,
 ) -> CmdResult<AgentConnection> {
-    let exe = std::env::current_exe()
-        .map_err(|e| CmdError::storage(format!("cannot locate the app: {e}")))?;
+    let exe = agent_exe(app.env().appimage.map(std::path::PathBuf::from))?;
     Ok(AgentConnection {
         exe: exe.to_string_lossy().into_owned(),
         db: bridge.db_path.to_string_lossy().into_owned(),
@@ -209,6 +208,18 @@ pub fn agent_connection(
             .ok()
             .map(|d| d.to_string_lossy().into_owned()),
     })
+}
+
+/// The program an agent should run. Inside an AppImage, `current_exe()` is the
+/// binary in the AppImage's FUSE mount (`/tmp/.mount_*`), which is gone once
+/// the app quits; a snippet naming it fails on the next restart. The AppImage
+/// file itself stays put and runs `mcp` the same way.
+fn agent_exe(appimage: Option<std::path::PathBuf>) -> CmdResult<std::path::PathBuf> {
+    match appimage {
+        Some(path) => Ok(path),
+        None => std::env::current_exe()
+            .map_err(|e| CmdError::storage(format!("cannot locate the app: {e}"))),
+    }
 }
 
 /// The trace, newest first.
@@ -283,7 +294,7 @@ pub fn clear_agent_activity(state: State<'_, AppState>) -> CmdResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::library_changed;
+    use super::{agent_exe, library_changed};
     use instantnotes_core::store::activity::AgentActivity;
 
     fn entry(seq: i64, kind: &str, status: &str) -> AgentActivity {
@@ -337,5 +348,12 @@ mod tests {
             library_changed(&[]),
             "a second copy of the app wrote; re-query"
         );
+    }
+
+    #[test]
+    fn an_appimage_is_named_by_its_file_not_its_mount() {
+        let appimage = std::path::PathBuf::from("/home/u/Applications/InstantNotes.AppImage");
+        assert_eq!(agent_exe(Some(appimage.clone())).unwrap(), appimage);
+        assert_eq!(agent_exe(None).unwrap(), std::env::current_exe().unwrap());
     }
 }

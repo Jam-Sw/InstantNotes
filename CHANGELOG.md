@@ -16,6 +16,9 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   0.9.0 and 0.9.1 cannot do this themselves: if this update fails with that
   error, install it once by hand, and later updates ask for the password:
   `sudo install -m 755 ~/Downloads/InstantNotes_<version>_amd64.AppImage "$(readlink -f "$(command -v instantnotes)")"`
+- Linux: Settings > Agents connect snippets name the AppImage file instead of
+  its `/tmp/.mount_*` binary, which vanished on quit and left the agent's MCP
+  server failing with `ENOENT`. Re-copy a snippet to fix an existing config.
 
 ## [0.9.1] - 2026-10-02
 
