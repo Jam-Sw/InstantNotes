@@ -200,7 +200,11 @@ pub fn agent_connection(
     app: AppHandle,
     bridge: State<'_, AgentBridge>,
 ) -> CmdResult<AgentConnection> {
-    let exe = agent_exe(app.env().appimage.map(std::path::PathBuf::from))?;
+    #[cfg(target_os = "linux")]
+    let appimage = app.env().appimage.map(std::path::PathBuf::from);
+    #[cfg(not(target_os = "linux"))]
+    let appimage = None;
+    let exe = agent_exe(appimage)?;
     Ok(AgentConnection {
         exe: exe.to_string_lossy().into_owned(),
         db: bridge.db_path.to_string_lossy().into_owned(),
