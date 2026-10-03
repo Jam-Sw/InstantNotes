@@ -59,7 +59,6 @@ developer-facing description and is never shown to users verbatim.
 | `update_note` | Patch title/body/flags, `contentKind`, and `surfaceData`; an empty patch is a no-op. The reply omits `surfaceData`: the caller already holds the canvas it saved. |
 | `soft_delete_note` | Move a note to trash (`is_deleted = 1`). |
 | `restore_note` | Restore a trashed note. |
-| `permanently_delete_note` | Destroy a note and its rows for good. |
 | `set_notes_flags` / `soft_delete_notes` / `restore_notes` / `destroy_notes` | The same for a multi-selection (`ids`), each in one transaction. `set_notes_flags` takes optional `isPinned` and `isArchived`; `destroy_notes` refuses without `confirm: true`. |
 | `list_notes` | List notes for a status/space/tag filter. Rows carry `contentKind` but not `surfaceData`. |
 | `search_notes` | Full-text search over title and body (section 7 of DATA_MODEL.md). |
@@ -164,10 +163,11 @@ rejected extension; `allow_image_file` additionally requires the file to exist.
 Cancelling the file picker never calls either command — the frontend checks the
 dialog result before invoking.
 
-Cleanup. `permanently_delete_note` and `destroy_notes` also remove the copied
-images only the destroyed notes referenced. An image stays while anything
-references it as `attachments/<name>`: any note in any state (the Trash and the
-Archive included), a whiteboard's canvas, or the capture draft. The match
+Cleanup. `destroy_notes` (the one permanent delete, for one note or many)
+also removes the copied images only the destroyed notes referenced. An image
+stays while anything references it as `attachments/<name>`: any note in any
+state (the Trash and the Archive included), a whiteboard's canvas, or the
+capture draft. The match
 ignores case. The store stays locked from the reference check to the removal,
 so no save can start using an image mid-cleanup, and a cleanup failure never
 fails the delete. The unused-images commands cover what older versions left

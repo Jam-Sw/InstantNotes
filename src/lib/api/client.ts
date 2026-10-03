@@ -80,8 +80,6 @@ export const updateNote = (id: string, patch: UpdateNotePatch) =>
 export const softDeleteNote = (id: string) =>
   call<Note>("soft_delete_note", { id });
 export const restoreNote = (id: string) => call<Note>("restore_note", { id });
-export const permanentlyDeleteNote = (id: string, confirm: boolean) =>
-  call<void>("permanently_delete_note", { id, confirm });
 export const libraryGraph = () => call<LibraryGraph>("library_graph");
 // Where each live note in no Space most likely belongs, newest note first,
 // judged from the tags and words it shares with the notes already filed.

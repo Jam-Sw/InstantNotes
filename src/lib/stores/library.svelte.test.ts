@@ -24,7 +24,6 @@ import {
   listWorkspaces,
   listStickies,
   listWorkspaceTags,
-  permanentlyDeleteNote,
   popInNote,
   popOutNote,
   renameWorkspace,
@@ -64,7 +63,6 @@ vi.mock("$lib/api/client", () => {
     restoreNote: vi.fn(),
     restoreNotes: vi.fn(),
     setNotesFlags: vi.fn(),
-    permanentlyDeleteNote: vi.fn(),
     destroyNotes: vi.fn(),
     listNotes: vi.fn(),
     searchNotes: vi.fn(),
@@ -108,7 +106,6 @@ const mockListTags = vi.mocked(listTags);
 const mockListWorkspaces = vi.mocked(listWorkspaces);
 const mockTagsForNote = vi.mocked(tagsForNote);
 const mockWorkspacesForNote = vi.mocked(workspacesForNote);
-const mockPermanentlyDeleteNote = vi.mocked(permanentlyDeleteNote);
 const mockDestroyNotes = vi.mocked(destroyNotes);
 const mockSoftDeleteNote = vi.mocked(softDeleteNote);
 const mockSoftDeleteNotes = vi.mocked(softDeleteNotes);
@@ -186,7 +183,6 @@ beforeEach(() => {
   mockListWorkspaces.mockReset().mockResolvedValue([]);
   mockTagsForNote.mockReset().mockResolvedValue([]);
   mockWorkspacesForNote.mockReset().mockResolvedValue([]);
-  mockPermanentlyDeleteNote.mockReset();
   mockDestroyNotes.mockReset();
   mockDestroyNotes.mockResolvedValue(undefined);
   mockSoftDeleteNote.mockReset();

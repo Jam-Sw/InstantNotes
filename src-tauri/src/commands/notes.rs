@@ -50,21 +50,6 @@ pub fn restore_note(state: State<'_, AppState>, app: AppHandle, id: String) -> C
 }
 
 #[tauri::command(async)]
-pub fn permanently_delete_note(
-    state: State<'_, AppState>,
-    app: AppHandle,
-    id: String,
-    confirm: bool,
-) -> CmdResult<()> {
-    destroy_with_attachments(&state, &app, std::slice::from_ref(&id), |store| {
-        store.permanently_delete_note(&id, confirm)
-    })?;
-    emit_notes_changed(&app);
-    emit_tags_changed(&app);
-    Ok(())
-}
-
-#[tauri::command(async)]
 pub fn list_notes(state: State<'_, AppState>, filter: Option<NoteFilter>) -> CmdResult<Vec<Note>> {
     Ok(locked(&state)?.list_notes(filter.unwrap_or_default())?)
 }

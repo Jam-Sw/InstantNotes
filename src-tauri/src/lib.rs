@@ -447,7 +447,6 @@ pub fn run() {
             update_note,
             soft_delete_note,
             restore_note,
-            permanently_delete_note,
             list_notes,
             search_notes,
             set_notes_flags,

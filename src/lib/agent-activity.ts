@@ -246,12 +246,6 @@ export function kindLabel(e: AgentActivity): string {
   return e.kind;
 }
 
-/** The error's stable code, if the message starts with one ("NOT_FOUND:"). */
-export function errorCode(e: AgentActivity): string | null {
-  const m = /^([A-Z_]+):/.exec(e.error ?? "");
-  return m ? m[1] : null;
-}
-
 /** "just now", "4 min ago", "2 h ago", "3 d ago". */
 export function timeAgo(at: number, now: number): string {
   const s = Math.max(0, Math.round((now - at) / 1000));
