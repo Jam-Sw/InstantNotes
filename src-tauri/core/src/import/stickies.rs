@@ -44,7 +44,7 @@ pub fn read_folder(dir: &Path) -> io::Result<Vec<Sticky>> {
     let mut stickies: Vec<Sticky> = fs::read_dir(dir)?
         .filter_map(|entry| read_package(&entry.ok()?.path(), &colors))
         .collect();
-    stickies.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    stickies.sort_by_key(|s| std::cmp::Reverse(s.updated_at));
     Ok(stickies)
 }
 
