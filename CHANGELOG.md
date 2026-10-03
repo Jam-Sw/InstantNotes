@@ -29,6 +29,10 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 - Notes: a long title wraps inside the reading column instead of being clipped
   at its edge; the title is an auto-sized `<textarea>`, Enter still commits.
+- Updater (Windows): `install_update` runs the quit flush before the installer
+  hand-off's `process::exit`, so a debounced edit is no longer dropped.
+- Errors: a save that loses the version race 3 times, or a revert of a reverted
+  row, no longer says "That name is already in use"; `CONFLICT` copy is per caller.
 
 ## [0.9.2] - 2026-10-02
 

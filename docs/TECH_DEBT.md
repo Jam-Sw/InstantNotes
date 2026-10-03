@@ -10,7 +10,9 @@ the Rust workspace is warning-free; every registered IPC command has a
 `client.ts` wrapper with a caller outside the tests, and no wrapper names a
 command that is not registered; clippy, fmt, svelte-check, and both test
 suites clean. S1, S2, and the `commands.ts` and `theme.svelte.ts` half of
-T1 left this file in that pass.
+T1 left this file in that pass, and A2 in the follow-up. `knip --production`
+is clean too: exports only their own tests call are tagged `@internal`, and
+`knip.json` leaves out the installer kit's copied agreement files.
 
 ## Dependencies
 
@@ -56,12 +58,3 @@ inherits, so it is expected to work, but nothing has run it there. CI builds
 Windows and does not start the MCP mode.
 Slot: before Windows leaves preview; one CI step that pipes
 `server/discover` into the built binary settles it.
-
-**A2. A save that loses the version race three times shows "That name is
-already in use."** `CONFLICT` is one code for two meanings (a duplicate name,
-a stale version), and `src/lib/errors.ts` maps it to the first. The editor
-already retries and then keeps the user's text with "Restore theirs", so
-this copy only appears in the rare third loss.
-Fix: copy chosen by the calling context, not a second error code (API.md §14
-keeps the code set closed).
-Slot: with the next change to `errors.ts`.
