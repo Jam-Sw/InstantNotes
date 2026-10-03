@@ -1,6 +1,5 @@
-// The command set the palette is built from, per selection state. The stores
-// are stand-ins: what matters here is which commands exist, what they say,
-// and which store method each one runs.
+// The command set the palette is built from, per selection state; the
+// stores are stand-ins.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Note } from "$lib/api/types";
@@ -111,7 +110,6 @@ describe("buildCommands with no note open", () => {
       expect(got).toContain(id);
     }
     for (const id of NOTE_COMMANDS) expect(got).not.toContain(id);
-    // Every id is unique, so the palette's recents and keys cannot collide.
     expect(new Set(got).size).toBe(got.length);
   });
 
@@ -129,8 +127,6 @@ describe("buildCommands with no note open", () => {
       "theme.set.manuscript",
       "theme.set.terminal",
     ]);
-    // The light/dark toggle is the emphasised mode switch at the top of
-    // the folder, with the icon for what is showing now.
     const toggle = find(commands, "theme.toggle");
     expect(toggle.emphasis).toBe(true);
     expect(toggle.icon?.()).toBe("☾");

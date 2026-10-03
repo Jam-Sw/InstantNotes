@@ -4,9 +4,8 @@
 //!
 //! Rows are written by the MCP process (`instantnotes-agents`) and read by
 //! the app, which also writes the one row kind of its own: a revert. The
-//! trace lives in its own table rather than a settings blob so appending is
-//! one INSERT, history is not capped at a handful of entries, and the app's
-//! watcher can tell what is new from `seq` alone.
+//! trace has its own table rather than a settings blob so appending is one
+//! INSERT and the app's watcher can tell what is new from `seq` alone.
 //!
 //! Revert is symmetric: it records itself as an activity row carrying a
 //! snapshot of the note as it was before the revert, so a revert can be
@@ -48,8 +47,7 @@ pub struct AgentActivity {
     pub space: Option<String>,
     pub tag: Option<String>,
     pub query: Option<String>,
-    /// The note's `updated_at` after this write, so the app can tell whether
-    /// it has been edited since.
+    /// The note's `updated_at` after this write, to tell whether it was edited since.
     pub after_updated_at: Option<String>,
     /// Whether a snapshot exists to revert to (or the note was created and
     /// can be trashed).
@@ -60,9 +58,8 @@ pub struct AgentActivity {
     pub reverts: Option<i64>,
 }
 
-/// What a write is about to replace: the note as it is, with its edges, so
-/// `revert` can restore exactly this. `None` for a note that does not exist
-/// yet (a create).
+/// What a write is about to replace, with its edges, so `revert` can restore
+/// exactly this. `None` for a note that does not exist yet (a create).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteSnapshot {
@@ -91,8 +88,7 @@ pub struct ActivityWire {
     pub response: Option<String>,
 }
 
-/// One agent connection: an MCP server process, from the moment it started
-/// to the moment it ended.
+/// One agent connection: an MCP server process, from start to end.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentSession {
@@ -100,14 +96,12 @@ pub struct AgentSession {
     pub client: String,
     /// Epoch milliseconds.
     pub connected_at: i64,
-    /// Set when the process ended, by itself on a clean exit or by the app
-    /// once it finds the process gone.
+    /// Set when the process ended, by itself or once the app finds it gone.
     pub disconnected_at: Option<i64>,
     /// The name the client gives this session of its own ("bob", after
     /// Claude Code's `/rename bob`), when it has one.
     pub label: Option<String>,
-    /// The client's own id for the session, to trace a change back to the
-    /// exact conversation that made it.
+    /// The client's own id for the session.
     pub client_session: Option<String>,
     /// Where the client is running.
     pub cwd: Option<String>,
@@ -409,8 +403,7 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
-    /// Attach the raw exchange to a row already recorded: the request as it
-    /// came in and the response as it went out.
+    /// Attach the raw exchange to a row already recorded.
     pub fn set_activity_wire(&mut self, seq: i64, request: &str, response: &str) -> Result<()> {
         self.conn.execute(
             "UPDATE agent_activity SET request = ?1, response = ?2 WHERE seq = ?3",
@@ -446,8 +439,7 @@ impl Store {
         )?)
     }
 
-    /// The snapshot a write row carries, for a preview of what a revert
-    /// would restore.
+    /// The snapshot a write row carries, to preview what a revert restores.
     pub fn activity_before(&self, seq: i64) -> Result<Option<NoteSnapshot>> {
         let raw: Option<Option<String>> = self
             .conn
@@ -469,8 +461,7 @@ impl Store {
 
     /// Undo a write: put the note back as the row's snapshot has it, or, for a
     /// create, move the new note to the Trash. Records the revert as its own
-    /// row (client `instantnotes`, tool `revert`) with the state it replaced,
-    /// so it can be reverted in turn. Returns that row's `seq`.
+    /// row so it can be reverted in turn. Returns that row's `seq`.
     pub fn revert_activity(&mut self, seq: i64) -> Result<i64> {
         let (before, reverted_at, note_ids): (Option<String>, Option<i64>, String) = self
             .conn
@@ -506,7 +497,6 @@ impl Store {
             .ok_or_else(|| AppError::NotFound(format!("note {id} no longer exists")))?;
         match &snap {
             Some(s) => restore(&tx, s)?,
-            // A created note: nothing to go back to, so it goes to the Trash.
             None => {
                 let now = now_iso();
                 tx.execute(

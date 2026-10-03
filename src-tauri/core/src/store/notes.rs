@@ -2,7 +2,6 @@
 
 use super::*;
 
-/// A note about to be written by `insert_note`.
 pub(super) struct NewNote<'a> {
     pub body: &'a str,
     /// Set explicitly; otherwise derived from the body.
@@ -12,9 +11,8 @@ pub(super) struct NewNote<'a> {
     pub last_opened_at: Option<&'a str>,
 }
 
-/// The one place a note row is inserted, inside the caller's transaction:
-/// its title (explicit, or derived from the body) and its inline `#tags`.
-/// Returns the new note's id.
+/// The one place a note row is inserted, inside the caller's transaction,
+/// with its inline `#tags`. Returns the new note's id.
 pub(super) fn insert_note(conn: &Connection, note: NewNote<'_>) -> Result<String> {
     let explicit_title = note
         .title
@@ -43,10 +41,8 @@ pub(super) fn insert_note(conn: &Connection, note: NewNote<'_>) -> Result<String
     Ok(id)
 }
 
-/// What `update_note` will write, decided from values alone.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct UpdatePlan {
-    /// The note's content kind after the update.
     pub kind: String,
     /// A new title, or `None` to keep the column as it is.
     pub title: Option<String>,
@@ -54,10 +50,8 @@ pub(super) struct UpdatePlan {
     pub title_is_auto: Option<bool>,
 }
 
-/// The rules of an update, apart from the rows: whether the patch changes
-/// anything (`Ok(None)` when not), which content kind results and whether
-/// that transition and a canvas are allowed, and what becomes of the title.
-/// Validation errors here are the ones the caller sees.
+/// The rules of an update, apart from the rows. `Ok(None)` when the patch
+/// changes nothing; validation errors are the ones the caller sees.
 pub(super) fn plan_update(
     existing: &Note,
     title_is_auto: bool,
@@ -73,8 +67,6 @@ pub(super) fn plan_update(
         return Ok(None);
     }
 
-    // Converting to a whiteboard is one-way, and only a whiteboard has a
-    // canvas to hold.
     let kind = match patch.content_kind.as_deref() {
         None => existing.content_kind.as_str(),
         Some(k @ (CONTENT_KIND_DOCUMENT | CONTENT_KIND_WHITEBOARD)) => k,
@@ -96,7 +88,6 @@ pub(super) fn plan_update(
         ));
     }
 
-    // An explicit title pins the title; an auto title follows body edits.
     let explicit_title = patch
         .title
         .as_deref()
@@ -119,14 +110,13 @@ pub(super) fn plan_update(
     }))
 }
 
-/// How old a capture must be before the Revisit view lists it. Newer
-/// captures are often still in the user's head; Revisit must never feel
-/// like a task manager.
+/// How old a capture must be before Revisit lists it: newer ones are often
+/// still in the user's head.
 pub const REVISIT_AFTER_MS: i64 = 3 * 24 * 60 * 60 * 1000;
 
-/// The Revisit view: capture-born notes nobody has opened, older than
-/// `REVISIT_AFTER_MS`, oldest first. A filter asking for `revisit` becomes
-/// those conditions here, so the app and the MCP tool share one rule.
+/// A filter asking for `revisit` becomes never-opened, capture-born notes
+/// older than `REVISIT_AFTER_MS`, oldest first: one rule for the app and
+/// the MCP tool.
 pub(super) fn expand_revisit(mut filter: NoteFilter, now: chrono::DateTime<Utc>) -> NoteFilter {
     if filter.revisit {
         let cutoff = now - chrono::Duration::milliseconds(REVISIT_AFTER_MS);
@@ -162,10 +152,8 @@ impl Store {
         self.fetch_note(&id)
     }
 
-    /// Whether the note's title is still auto-derived from its body rather
-    /// than set explicitly. Not on `Note` itself: IPC callers never need
-    /// it; the vault serializer does (design.md §3.2: frontmatter omits
-    /// `title` exactly when this is true).
+    /// Whether the title is still auto-derived from its body. Not on `Note`:
+    /// IPC callers never need it; the vault serializer does (design.md §3.2).
     pub fn title_is_auto(&self, id: &str) -> Result<bool> {
         self.conn
             .query_row(
@@ -359,9 +347,8 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
-    /// How many notes a filter matches in all, whatever its limit and offset:
-    /// what lets a caller paging through `list_notes` know how far there is
-    /// to go.
+    /// How many notes a filter matches in all, whatever its limit and offset,
+    /// so a pager knows how far there is to go.
     pub fn count_notes(&self, filter: &NoteFilter) -> Result<i64> {
         let filter = expand_revisit(filter.clone(), Utc::now());
         let (conditions, args) = note_conditions(&filter);
@@ -376,10 +363,9 @@ impl Store {
         )?)
     }
 
-    /// Full-text search for a caller that reads many results and needs to
-    /// know where it stands: filtered by Space, tag, archive state, and when
-    /// a note last changed; paged, with the total; and with each note's body,
-    /// so the caller can cut its own passages. Never returns trashed notes.
+    /// Full-text search for a caller that needs to know where it stands:
+    /// filtered, paged, with the total and each note's body so the caller can
+    /// cut its own passages. Never returns trashed notes.
     pub fn search_notes_page(&self, q: &NoteSearch) -> Result<NoteSearchPage> {
         let Some(match_expr) = fts_match_expr_with(&q.text, q.any_term) else {
             return Ok(NoteSearchPage::default());
@@ -533,13 +519,11 @@ impl Store {
         };
         let limit = limit.clamp(1, 500);
         let mut stmt = self.conn.prepare(
-            // 16 tokens, not the FTS5 default 15 or the prior 12: the list
-            // row is single-line and CSS-truncated regardless, so a wider
-            // window costs nothing visually and gives multi-word queries
-            // enough room for more than one matched term to land together.
+            // 16 tokens: the list row is single-line and CSS-truncated
+            // regardless, so a wider window costs nothing visually and gives
+            // multi-word queries room for more than one term.
             // highlight() (not snippet()) for the title: titles are short, so
-            // the full column with markers is what the row renders anyway. A
-            // query matching only the title still shows why the note hit.
+            // the whole column is what the row renders anyway.
             "SELECT n.id, highlight(notes_fts, 0, '\u{1}', '\u{2}'), \
                     snippet(notes_fts, 1, '\u{1}', '\u{2}', '…', 16), \
                     bm25(notes_fts), n.updated_at \
@@ -549,7 +533,6 @@ impl Store {
              ORDER BY lower(n.title) = lower(?3) DESC, bm25(notes_fts) \
              LIMIT ?2",
         )?;
-        // A query that is a note's exact title finds that note first.
         let rows = stmt.query_map(params![match_expr, limit, text.trim()], |row| {
             Ok(SearchResult {
                 note_id: row.get(0)?,
@@ -663,9 +646,7 @@ impl Store {
 
 #[cfg(test)]
 mod tests {
-    //! The update rules on plain values: no store, no connection. The
-    //! integration tests (`core/tests/store_test.rs`, `whiteboard_test.rs`)
-    //! keep proving the same rules end to end through SQLite.
+    //! The update rules on plain values: no store, no connection.
     use super::*;
 
     fn note(kind: &str) -> Note {

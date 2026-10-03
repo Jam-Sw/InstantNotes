@@ -1,14 +1,11 @@
-// Save queue, race token, and quit-flush tests for the library store. These
-// behaviors shipped untested (July 2026 frontend audit) and each test below
-// is built to fail if the guarded behavior regresses.
+// Save queue, race token, and quit-flush tests for the library store. Each
+// test is built to fail if the guarded behavior regresses.
 //
-// $lib/api/client and @tauri-apps/api/event are mocked; timers are fake
-// throughout so debounce/retry timing is deterministic. Because `library` is
-// a module-level singleton, every test loads a fresh copy of the module via
-// vi.resetModules() + dynamic import so state never bleeds between tests.
-// (vi.mock's factory itself is not re-run by resetModules, so the imported
-// mock functions below keep stable identity across the whole file; only the
-// store's own module -- and therefore its state -- is fresh per test.)
+// $lib/api/client and @tauri-apps/api/event are mocked and timers are fake,
+// so debounce/retry timing is deterministic. `library` is a module-level
+// singleton, so every test loads a fresh copy via vi.resetModules() + dynamic
+// import; vi.mock's factory is not re-run, so the mock functions keep stable
+// identity across the file.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -316,14 +313,9 @@ describe("flushPendingEdits", () => {
   });
 
   it("fixed: a flush of one dirty note performs exactly one write attempt, and no timer survives once it resolves", async () => {
-    // flushPendingEdits used to call #saveBody.flush(), which ran the
-    // retry-enabled callback (canRetry=true) and scheduled a hidden 2s
-    // setTimeout retry on failure, *in addition to* flushPendingEdits' own
-    // explicit no-retry re-attempt -- two immediate writes plus a stray
-    // third write after the flush had already resolved. flushPendingEdits
-    // now cancels the debounce outright and performs its own single
-    // no-retry persist, so a failing flush writes exactly once and leaves
-    // no retry timer behind.
+    // flushPendingEdits cancels the debounce outright and performs its own
+    // single no-retry persist, so a failing flush writes exactly once and
+    // leaves no retry timer behind.
     const library = await load();
     await selectNote(library, "n1");
 
@@ -334,8 +326,7 @@ describe("flushPendingEdits", () => {
     expect(mockUpdateNote).toHaveBeenCalledTimes(1);
     expect(library.saveState).toBe("failed");
 
-    // No retry timer was scheduled by the no-retry flush path, so nothing
-    // fires after the old 2s retry window elapses.
+    // No retry timer was scheduled, so nothing fires after the retry window.
     await vi.advanceTimersByTimeAsync(2000);
     expect(mockUpdateNote).toHaveBeenCalledTimes(1);
   });
@@ -385,10 +376,8 @@ describe("destroy paths drop queued edits (regression: fixed 2026-07-08)", () =>
   });
 
   it("control: without a destroy, the same queued edit does reach updateNote", async () => {
-    // Sanity check for the three tests above: proves the fake-timer harness
-    // really does drive the debounce through to a write when nothing
-    // intervenes, so "updateNote not called" above is a meaningful signal
-    // and not an artifact of timers never firing.
+    // Sanity check for the tests above: the fake-timer harness does drive the
+    // debounce through to a write when nothing intervenes.
     const library = await load();
     await selectNote(library, "n1");
     mockUpdateNote.mockResolvedValue(mkNote("n1", { body: "kept" }));

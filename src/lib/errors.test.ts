@@ -22,9 +22,9 @@ describe("friendlyMessage", () => {
     }
   });
 
-  // A code outside the registry can only arrive from a backend this build does
-  // not match; the type stops it at the client boundary (client.ts's
-  // asApiError), so here it is only the last-resort behaviour that matters.
+  // A code outside the registry can only arrive from a mismatched backend; the
+  // type stops it at the client boundary (asApiError), so only the
+  // last-resort behaviour matters here.
   test("a code from outside the registry falls back", () => {
     const unknown = "WEIRD_CODE" as ErrorCode;
     expect(friendlyMessage(unknown, "backend said no")).toBe("backend said no");

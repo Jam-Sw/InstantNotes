@@ -58,9 +58,8 @@ export interface Graph {
 
 /**
  * The drawable graph: every note, tag, and Space with at least one link,
- * plus a dashed edge for each suggestion whose note and Space are drawn.
- * A note with nothing but a suggestion is drawn for it; the caller passes
- * only the suggestions it shows, so the canvas matches the panel.
+ * plus a dashed edge for each suggestion whose note and Space are drawn. The
+ * caller passes only the suggestions it shows, so the canvas matches the panel.
  */
 export function buildGraph(lib: LibraryGraph, suggestions: SpaceSuggestion[] = []): Graph {
   const notes = new Map(lib.notes.map((n) => [n.id, n]));

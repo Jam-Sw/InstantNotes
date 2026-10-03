@@ -81,9 +81,7 @@ export function editorKernel(opts: EditorKernelOpts): Extension {
   ];
 }
 
-// ---------------------------------------------------------------------------
 // Public surface for the rest of the app
-// ---------------------------------------------------------------------------
 
 export { setPreviewMode } from "./kernel";
 export { setLinkPrefs, DEFAULT_LINK_PREFS } from "./links";

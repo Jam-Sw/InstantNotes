@@ -26,10 +26,8 @@ export const TOKEN_KEYS = [
 export type TokenKey = (typeof TOKEN_KEYS)[number];
 
 /** Tokens a theme may set but need not: each has a fallback derived from the
- *  required set (see `apply.ts`), so every theme written before they existed
- *  keeps rendering unchanged. `success` and `warning` are the two states the
- *  app reports besides `danger` (a vault in sync, an agent's change); the
- *  rest tune surfaces that used to borrow neighbouring tokens. */
+ *  required set (see `apply.ts`). `success` and `warning` are the two states
+ *  the app reports besides `danger` (a vault in sync, an agent's change). */
 export const OPTIONAL_TOKEN_KEYS = ["success", "warning", "selection", "codeBg", "focus"] as const;
 
 export type OptionalTokenKey = (typeof OPTIONAL_TOKEN_KEYS)[number];

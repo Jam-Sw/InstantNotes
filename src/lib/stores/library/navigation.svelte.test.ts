@@ -146,8 +146,6 @@ describe("NavigationModel", () => {
     it("revisit: the flag the store expands into the open-loop query", () => {
       const nav = new NavigationModel();
       nav.showRevisit();
-      // Only the flag crosses IPC; the rule (never opened, older than the
-      // window, oldest first) lives in core, whose own tests pin it.
       expect(nav.filter()).toEqual({ revisit: true });
       expect(revisitFilter()).toEqual({ revisit: true });
     });

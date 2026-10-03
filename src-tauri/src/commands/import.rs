@@ -33,7 +33,6 @@ pub struct StickiesScan {
 #[serde(rename_all = "camelCase")]
 pub struct StickyPreview {
     id: String,
-    /// The title the note will get.
     title: String,
     /// The start of the note's Markdown.
     text: String,
@@ -187,7 +186,6 @@ fn copy_image(attachments: &Path, package: &Path, name: &str) -> Option<String> 
     store_image(attachments, &bytes).ok()
 }
 
-/// One ordinary path component: no separators, no `.` or `..`, no root.
 /// Looser on purpose than the attachments folder's own name rule
 /// (`instantnotes_core::attachments`): a Stickies image is called whatever
 /// the user pasted ("Pasted Graphic 2.tiff"), and is renamed on the way in.
@@ -203,7 +201,6 @@ fn is_one_component(name: &str) -> bool {
 mod tests {
     use super::*;
 
-    /// A fresh folder under the system temp dir, removed on drop.
     struct Scratch(PathBuf);
     impl Scratch {
         fn new() -> Self {

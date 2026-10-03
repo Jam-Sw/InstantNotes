@@ -22,9 +22,7 @@ import {
 import { ConstructScanner, type ConstructTable } from "./scanner";
 import type { ConstructSpec, TextSpec } from "./types";
 
-// ---------------------------------------------------------------------------
 // Mode state
-// ---------------------------------------------------------------------------
 
 export const setPreviewMode = StateEffect.define<boolean>();
 
@@ -38,9 +36,7 @@ export const previewModeField = StateField.define<boolean>({
   },
 });
 
-// ---------------------------------------------------------------------------
 // Kernel plugin
-// ---------------------------------------------------------------------------
 
 export interface KernelConfig {
   specs: readonly ConstructSpec[];

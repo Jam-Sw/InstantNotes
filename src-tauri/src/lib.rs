@@ -98,7 +98,6 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
-            // Store: single writer over SQLite at the platform data dir.
             let dir = app
                 .path()
                 .app_data_dir()
@@ -412,7 +411,6 @@ pub fn run() {
             if let Some(library) = app.get_webview_window("library") {
                 #[cfg(not(debug_assertions))]
                 {
-                    // Release: hide to tray -- the app lives in the menu bar.
                     let handle = library.clone();
                     library.on_window_event(move |event| {
                         if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -523,12 +521,10 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app, event| {
             if let tauri::RunEvent::ExitRequested { code, api, .. } = event {
-                // The updater plugin's own relaunch (request_restart, after
-                // an installer it had to hand off to) drives this exit with
-                // RESTART_EXIT_CODE and latches restart-on-exit inside
-                // Tauri. Preventing it would leave that latch set with no
-                // exit coming, stranding the freshly installed update, so
-                // the restart passes through untouched.
+                // The updater plugin's own relaunch drives this exit with
+                // RESTART_EXIT_CODE and latches restart-on-exit inside Tauri.
+                // Preventing it would leave that latch set with no exit
+                // coming, stranding the freshly installed update.
                 if code == Some(tauri::RESTART_EXIT_CODE) {
                     return;
                 }

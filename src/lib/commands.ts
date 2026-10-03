@@ -1,7 +1,7 @@
 // Command registry for the ⌘K palette. Commands are built fresh each time the
 // palette opens so the theme list and selection-dependent labels are current.
-// The run() callbacks delegate to existing stores so the palette holds no logic
-// of its own. Pure filtering/ranking lives in command-filter.ts.
+// The run() callbacks delegate to existing stores so the palette holds no
+// logic of its own.
 
 import { library } from "$lib/stores/library.svelte";
 import { sidebar } from "$lib/stores/sidebar.svelte";

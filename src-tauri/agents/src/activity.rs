@@ -1,12 +1,10 @@
-//! The trace of agent calls, kept in the library's `agent_activity` table
-//! (core `store/activity.rs`) where the app reads it to show, on the notes
-//! themselves and in its Agents Space, what an agent looked at or changed.
-//! Writing it is also what tells the app anything happened: a read changes
-//! no note, but this row moves SQLite's `data_version`.
+//! The trace of agent calls, kept in the `agent_activity` table (core
+//! `store/activity.rs`). Writing it is also what tells the app anything
+//! happened: a read changes no note, but this row moves SQLite's
+//! `data_version`.
 //!
 //! A write's row carries the note as it was just before, so the app can
-//! revert it. Failed calls are recorded too (`status: "error"`): a user who
-//! sees an agent fumbling can tell what it tried.
+//! revert it. Failed calls are recorded too (`status: "error"`).
 
 use instantnotes_core::store::activity::{ActivityRecord, NoteSnapshot};
 use instantnotes_core::Store;
@@ -19,7 +17,6 @@ const TITLES: usize = 3;
 /// Error text kept in the trace. Enough to read, never a whole note.
 const ERROR_CHARS: usize = 200;
 
-/// What kind of thing a call is, for the app's eye.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Kind {
     Read,
@@ -37,12 +34,10 @@ impl Kind {
     }
 }
 
-/// Where a call looked, from its arguments.
 pub(crate) struct Scope {
     space: Option<String>,
     tag: Option<String>,
     query: Option<String>,
-    /// The note the call names, when it names one.
     pub(crate) id: Option<String>,
 }
 
@@ -58,8 +53,6 @@ impl Scope {
     }
 }
 
-/// One call being traced: started when the tool is dispatched, finished
-/// with its outcome.
 pub(crate) struct Trace {
     started: Instant,
     tool: &'static str,
@@ -80,9 +73,8 @@ impl Trace {
         }
     }
 
-    /// Take the snapshot a write will be reverted to. Best effort: a write
-    /// is never refused because its trace could not be prepared, it just
-    /// becomes non-revertable.
+    /// Best effort: a write is never refused because its trace could not be
+    /// prepared, it just becomes non-revertable.
     pub(crate) fn snapshot(&mut self, store: &Store) {
         if self.kind != Kind::Write {
             return;
@@ -94,8 +86,8 @@ impl Trace {
         };
     }
 
-    /// Record the outcome; returns the row's `seq`. Best effort: an agent's
-    /// call never fails because its trace could not be written.
+    /// Returns the row's `seq`. Best effort: an agent's call never fails
+    /// because its trace could not be written.
     pub(crate) fn finish(
         self,
         store: &mut Store,
@@ -110,10 +102,8 @@ impl Trace {
     }
 }
 
-/// The row a finished call leaves, from the trace and the outcome alone:
-/// what was touched, how it ended, and, for a write that succeeded, the
-/// note as it was before. A failed write changed nothing, so it keeps no
-/// snapshot; a failed call still names the note it was about.
+/// A failed write changed nothing, so it keeps no snapshot; a failed call
+/// still names the note it was about.
 fn record_for(
     trace: Trace,
     session: &str,
@@ -133,7 +123,6 @@ fn record_for(
         Err(message) => (
             "error",
             Some(message.chars().take(ERROR_CHARS).collect::<String>()),
-            // The note it was about, so the row still points somewhere.
             trace
                 .scope
                 .id
@@ -143,7 +132,6 @@ fn record_for(
             None,
         ),
     };
-    // A failed write changed nothing: no snapshot to go back to.
     let before = if status == "ok" { trace.before } else { None };
     ActivityRecord {
         session: session.to_string(),
@@ -169,8 +157,7 @@ fn record_for(
     }
 }
 
-/// The notes a result is about, as (id, title): the note itself, or every
-/// note in a list or search result.
+/// The notes a result is about: the note itself, or every one in a list.
 fn touched_notes(result: &Value) -> Vec<(String, String)> {
     let pair = |v: &Value| {
         let id = v.get("id").and_then(Value::as_str)?;
@@ -190,8 +177,7 @@ fn touched_notes(result: &Value) -> Vec<(String, String)> {
 
 #[cfg(test)]
 mod tests {
-    //! The row's rules on plain values: no store. `mcp_test.rs` keeps
-    //! proving the same rows land in SQLite.
+    //! The row's rules on plain values: no store.
     use super::*;
     use serde_json::json;
 

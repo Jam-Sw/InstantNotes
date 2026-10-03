@@ -1,7 +1,5 @@
 // The theme store: what it reads back from settings (and what it refuses),
-// how auto resolves against the system appearance, and custom themes. The
-// API client is mocked the way library.svelte.test.ts mocks it; the DOM is
-// jsdom's, which is enough for applyTheme to write its variables.
+// how auto resolves against the system appearance, and custom themes.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getSetting, setSetting, setWindowTheme, setWindowVibrancy } from "$lib/api/client";
@@ -155,7 +153,6 @@ describe("resolvedVariant", () => {
     expect(mockSetSetting).toHaveBeenCalledWith("theme.mode", "dark");
     theme.setMode("light");
     expect(theme.resolvedVariant).toBe("light");
-    // A system change no longer moves a pinned mode.
     onSystemChange?.({ matches: true });
     expect(theme.resolvedVariant).toBe("light");
   });

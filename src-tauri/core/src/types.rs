@@ -104,9 +104,7 @@ pub struct UpdateNotePatch {
     /// A whiteboard's canvas; rejected on a document.
     pub surface_data: Option<String>,
     /// Optimistic concurrency: when set, the update applies only if the
-    /// note's `updated_at` still equals it, and fails with `Conflict`
-    /// otherwise. Lets a writer that read the note refuse to overwrite a
-    /// change it has not seen.
+    /// note's `updated_at` still equals it, and fails with `Conflict` otherwise.
     pub expected_updated_at: Option<String>,
 }
 
@@ -124,9 +122,8 @@ pub struct NoteFilter {
     pub never_opened: Option<bool>,
     /// Only notes created strictly before this ISO-8601 timestamp.
     pub created_before: Option<String>,
-    /// The Revisit view: never-opened captures older than the revisit
-    /// window, oldest first. Expanded by the store into `never_opened`,
-    /// `created_before`, and the sort, so the rule lives in one place.
+    /// The Revisit view: never-opened captures older than the revisit window,
+    /// oldest first. Expanded by the store.
     pub revisit: bool,
     /// Only notes last changed at or after / strictly before this ISO-8601
     /// timestamp or bare date.

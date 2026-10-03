@@ -83,17 +83,15 @@ fn read_package(package: &Path, colors: &HashMap<String, String>) -> Option<Stic
     })
 }
 
-/// UUID to `#rrggbb`, from the state file. Anything unreadable costs only
-/// the colors.
+/// Anything unreadable costs only the colors.
 fn read_colors(path: &Path) -> HashMap<String, String> {
     plist::Value::from_file(path)
         .map(colors_from)
         .unwrap_or_default()
 }
 
-/// UUID to `#rrggbb`, from the state file's contents: a list of stickies,
-/// each a dictionary with its `UUID` and a `StickyColor` of 0..1 channels.
-/// An entry without both is skipped.
+/// UUID to `#rrggbb`, from a list of dictionaries with a `UUID` and a
+/// `StickyColor` of 0..1 channels; an entry without both is skipped.
 fn colors_from(value: plist::Value) -> HashMap<String, String> {
     let entries = match value {
         plist::Value::Array(entries) => entries,
@@ -131,8 +129,7 @@ fn colors_from(value: plist::Value) -> HashMap<String, String> {
 
 #[cfg(test)]
 mod tests {
-    //! The color table on plain values: no fixture file. `import_test.rs`
-    //! keeps reading the real `.SavedStickiesState` fixture.
+    //! The color table on plain values: no fixture file.
     use super::*;
     use plist::{Dictionary, Value};
 

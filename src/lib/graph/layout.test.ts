@@ -1,8 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { LAYOUT_TICKS, buildGraph, neighbors, startLayout, type Graph } from "./layout";
 
-/** A layout run to rest in one go (`ticks: 0` gives the starting positions):
- *  what the view does frame by frame, done at once for the assertions. */
+/** A layout run to rest in one go (`ticks: 0` gives the starting positions). */
 function layoutGraph(
   graph: Graph,
   options: { previous?: Map<string, { x: number; y: number }>; ticks?: number } = {},

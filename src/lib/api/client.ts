@@ -1,4 +1,4 @@
-// The only caller of Tauri `invoke` in the app (staff-engineer convention).
+// The only caller of Tauri `invoke` in the app.
 // Every command is a typed wrapper; errors become ApiError with API.md codes.
 
 import { Channel, invoke } from "@tauri-apps/api/core";
@@ -81,8 +81,7 @@ export const softDeleteNote = (id: string) =>
   call<Note>("soft_delete_note", { id });
 export const restoreNote = (id: string) => call<Note>("restore_note", { id });
 export const libraryGraph = () => call<LibraryGraph>("library_graph");
-// Where each live note in no Space most likely belongs, newest note first,
-// judged from the tags and words it shares with the notes already filed.
+// Where each live note in no Space most likely belongs, newest first.
 // Nothing is trained: filing the note is what teaches it.
 export const spaceSuggestions = () => call<SpaceSuggestion[]>("space_suggestions");
 // "Not this one": the pair stays out of the suggestions from then on, and
@@ -126,13 +125,10 @@ export const tagsForNote = (noteId: string) =>
   call<Tag[]>("tags_for_note", { noteId });
 
 // ---- workspaces (the UI calls these "Spaces") ----
-// GLOSSARY / naming boundary: the product term is "Space" everywhere the user
-// sees it (sidebar, copy, component names); the command strings, storage
-// tables, and these wrapper names keep "workspace". This file is the single
-// place the two vocabularies meet, by decision: renaming the storage internals
-// is churn with no user value (see openspec/project.md and
-// docs/superpowers/specs/2026-07-10-spaces-design.md). One concept, two names,
-// documented here so no layer has to guess which it is in.
+// The product term is "Space" everywhere the user sees it; the command
+// strings, storage tables, and these wrapper names keep "workspace". This
+// file is where the two vocabularies meet (see
+// docs/superpowers/specs/2026-07-10-spaces-design.md).
 export const listWorkspaces = () =>
   call<WorkspaceWithCount[]>("list_workspaces");
 export const getOrCreateWorkspace = (name: string) =>
@@ -256,10 +252,9 @@ export const removeUnusedAttachments = () =>
   call<AttachmentCleanup>("remove_unused_attachments");
 
 // ---- vault export ----
-// Stage 1 of the portable vault (openspec/changes/feat-portable-vault-sync):
-// a one-way, read-only snapshot. SQLite stays authoritative; nothing reads
-// this folder back yet. The destination is chosen by a native folder-picker
-// dialog in JS, same trust boundary as exportNoteFile.
+// A one-way, read-only snapshot. SQLite stays authoritative. The destination
+// is chosen by a native folder-picker dialog in JS, same trust boundary as
+// exportNoteFile.
 export const exportVault = (dest: string) => call<void>("export_vault", { dest });
 
 // ---- live vault mirror ----

@@ -1,7 +1,5 @@
 // The one reveal predicate. No other module may compare a selection to a
-// construct span; if a module needs the comparison, it imports this. The
-// previous architecture had three private copies of this logic and every
-// "typing lands in invisible markup" bug was two of them disagreeing.
+// construct span; if a module needs the comparison, it imports this.
 
 import type { RevealMode } from "./types";
 
