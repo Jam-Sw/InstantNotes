@@ -30,6 +30,10 @@ serde_json = "1"
 uuid = { version = "1", features = ["v4"] }
 tauri-plugin-dialog = "2"
 
+# Stages a downloaded AppImage for the elevated install (shell/update.rs).
+[target."cfg(target_os = \"linux\")".dependencies]
+tempfile = "3"
+
 # Native macOS window materials (Liquid Glass / vibrancy). macOS-only; the app
 # ships for Apple Silicon, but the cfg keeps non-macOS builds honest.
 [target."cfg(target_os = \"macos\")".dependencies]

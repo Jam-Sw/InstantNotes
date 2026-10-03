@@ -1,7 +1,8 @@
 // The only caller of Tauri `invoke` in the app (staff-engineer convention).
 // Every command is a typed wrapper; errors become ApiError with API.md codes.
 
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
+import type { DownloadEvent } from "@tauri-apps/plugin-updater";
 import { ERROR_CODES, isErrorCode, type ErrorCode } from "./error-codes";
 import type {
   AgentActivity,
@@ -163,6 +164,19 @@ export const deleteSetting = (key: string) =>
 export const hideCapture = () => call<void>("hide_capture");
 export const openLibrary = () => call<void>("open_library");
 export const openUrl = (url: string) => call<void>("open_url", { url });
+
+// ---- updates ----
+// Download, verify, and install the update a plugin `check()` returned (its
+// resource id). Stands in for `Update.downloadAndInstall` so an AppImage in a
+// root-owned folder can be installed through the system password prompt.
+export const installUpdate = (
+  rid: number,
+  onEvent: (event: DownloadEvent) => void,
+) => {
+  const channel = new Channel<DownloadEvent>();
+  channel.onmessage = onEvent;
+  return call<void>("install_update", { rid, onEvent: channel });
+};
 // Apply (or clear, with null) a native macOS vibrancy material on the library
 // window. A no-op off macOS; the material string is one of theme MATERIAL_KEYS.
 export const setWindowVibrancy = (material: string | null) =>

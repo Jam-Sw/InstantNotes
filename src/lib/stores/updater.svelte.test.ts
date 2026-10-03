@@ -1,12 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { fetchUpdateSizeDelta } from "$lib/update/release-size";
+import { installUpdate } from "$lib/api/client";
 
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: vi.fn() }));
 vi.mock("$lib/update/release-size", () => ({ fetchUpdateSizeDelta: vi.fn() }));
+vi.mock("$lib/api/client", () => ({ installUpdate: vi.fn() }));
 
 const mockCheck = vi.mocked(check);
 const mockDelta = vi.mocked(fetchUpdateSizeDelta);
+const mockInstall = vi.mocked(installUpdate);
 
 function mkUpdate(overrides: Partial<Update> = {}): Update {
   return {
@@ -14,7 +17,7 @@ function mkUpdate(overrides: Partial<Update> = {}): Update {
     currentVersion: "0.9.0",
     body: "### Added\n- Something new",
     date: "2026-09-24T00:00:00.000Z",
-    downloadAndInstall: vi.fn(async () => {}),
+    rid: 7,
     ...overrides,
   } as unknown as Update;
 }
@@ -34,6 +37,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   mockCheck.mockReset();
   mockDelta.mockReset().mockResolvedValue(null);
+  mockInstall.mockReset().mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -121,31 +125,26 @@ describe("an offered update", () => {
   });
 
   it("reports progress while installing and lands on ready", async () => {
-    const update = mkUpdate({
-      downloadAndInstall: vi.fn(async (onEvent) => {
-        onEvent({ event: "Started", data: { contentLength: 100 } });
-        onEvent({ event: "Progress", data: { chunkLength: 25 } });
-        onEvent({ event: "Progress", data: { chunkLength: 25 } });
-      }),
+    mockInstall.mockImplementation(async (_rid, onEvent) => {
+      onEvent({ event: "Started", data: { contentLength: 100 } });
+      onEvent({ event: "Progress", data: { chunkLength: 25 } });
+      onEvent({ event: "Progress", data: { chunkLength: 25 } });
     });
-    mockCheck.mockResolvedValue(update);
+    mockCheck.mockResolvedValue(mkUpdate());
     const updater = await load();
     await updater.checkNow();
 
     await updater.downloadAndInstall();
 
+    expect(mockInstall).toHaveBeenCalledWith(7, expect.any(Function));
     expect(updater.progress).toBe(0.5);
     expect(updater.status).toBe("ready");
     expect(updater.pendingUpdate).toBe(true);
   });
 
   it("keeps the Space up when the install fails, so Try again is reachable", async () => {
-    const update = mkUpdate({
-      downloadAndInstall: vi.fn(async () => {
-        throw new Error("network");
-      }),
-    });
-    mockCheck.mockResolvedValue(update);
+    mockInstall.mockRejectedValue(new Error("network"));
+    mockCheck.mockResolvedValue(mkUpdate());
     const updater = await load();
     await updater.checkNow();
 
