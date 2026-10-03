@@ -10,6 +10,7 @@
 // delta. Nothing here writes to SQLite or the vault.
 
 import { check, type Update } from "@tauri-apps/plugin-updater";
+import { installUpdate } from "$lib/api/client";
 import { toasts } from "$lib/stores/toasts.svelte";
 import { fetchUpdateSizeDelta } from "$lib/update/release-size";
 
@@ -132,7 +133,7 @@ class UpdaterStore {
     let total: number | null = null;
     let received = 0;
     try {
-      await update.downloadAndInstall((event) => {
+      await installUpdate(update.rid, (event) => {
         switch (event.event) {
           case "Started":
             total = event.data.contentLength ?? null;

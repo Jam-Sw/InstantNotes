@@ -7,6 +7,16 @@ in-app updater, written for users. Newest first.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- Linux: an update to an AppImage in a root-owned folder (`/opt`, a pacman
+  repack) no longer fails with `Permission denied (os error 13)`; it asks for
+  the password through the system's polkit dialog (`pkexec`) and installs.
+  0.9.0 and 0.9.1 cannot do this themselves: if this update fails with that
+  error, install it once by hand, and later updates ask for the password:
+  `sudo install -m 755 ~/Downloads/InstantNotes_<version>_amd64.AppImage "$(readlink -f "$(command -v instantnotes)")"`
+
 ## [0.9.1] - 2026-10-02
 
 ### Added

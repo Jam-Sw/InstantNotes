@@ -62,7 +62,9 @@ use commands::{
     feedback::*, import::*, notes::*, settings::*, stats::*, tags::*, vault::*, workspaces::*,
 };
 use error::{CmdError, CmdResult};
-use shell::{agents::*, capture::*, files::*, mirror::*, quit::*, stickies::*, windows::*};
+use shell::{
+    agents::*, capture::*, files::*, mirror::*, quit::*, stickies::*, update::*, windows::*,
+};
 
 // ---- app shell ----
 
@@ -485,6 +487,7 @@ pub fn run() {
             submit_feedback,
             open_feedback_log,
             open_url,
+            install_update,
             quit_app,
             capture_input_ready,
             get_capture_latency,
