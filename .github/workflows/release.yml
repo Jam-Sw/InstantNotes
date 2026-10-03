@@ -6,8 +6,10 @@
 # re-running its job (re-run publish afterwards to refresh latest.json).
 #
 # Runner requirements (labels self-hosted, Linux, X64): node, gh, rustup with
-# x86_64-pc-windows-msvc, cargo-xwin, makensis, `instantnotes-buildroot` (an
-# Ubuntu 22.04 root for the AppImage), and an ssh host `mac-builder`.
+# x86_64-pc-windows-msvc, cargo-xwin, cargo-sweep, makensis,
+# `instantnotes-buildroot` (an Ubuntu 22.04 root for the AppImage),
+# `instantnotes-prune` (keeps the build caches within budget), and an ssh host
+# `mac-builder`.
 # Repo secrets: TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
 name: Release
 
@@ -139,3 +141,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: node .github/release-manifest.mjs "$VERSION"
+      # Hold the build caches to their budgets, whatever this release did.
+      - if: always()
+        run: instantnotes-prune
