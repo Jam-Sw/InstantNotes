@@ -81,6 +81,9 @@ export interface NoteFilter {
   neverOpened?: boolean;
   /** Only notes created strictly before this ISO-8601 timestamp. */
   createdBefore?: string;
+  /** The Revisit view: never-opened captures older than the revisit window,
+   *  oldest first. The store holds the rule and expands it. */
+  revisit?: boolean;
   sortBy?: "updatedAt" | "createdAt" | "lastOpenedAt" | "title";
   sortOrder?: "asc" | "desc";
   limit?: number;

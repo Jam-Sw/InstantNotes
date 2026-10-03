@@ -39,9 +39,6 @@ const MAX_PASSAGES: usize = 3;
 const PASSAGE_LINE_CHARS: usize = 240;
 /// append_to_note re-reads and retries when the user saves in between.
 const APPEND_ATTEMPTS: usize = 3;
-/// A capture is an open loop once it has gone unopened this long. Matches
-/// `REVISIT_AFTER_MS` in src/lib/stores/library.svelte.ts.
-const REVISIT_AFTER_MS: i64 = 3 * 24 * 60 * 60 * 1000;
 
 type ToolResult = Result<Value, String>;
 
@@ -597,16 +594,8 @@ impl<'a> Tools<'a> {
             "pinned" => filter.is_pinned = Some(true),
             "archived" => filter.is_archived = Some(true),
             "trash" => filter.is_deleted = Some(true),
-            // The app's Revisit view, same filter (library.svelte.ts).
-            "revisit" => {
-                let cutoff = chrono::Utc::now() - chrono::Duration::milliseconds(REVISIT_AFTER_MS);
-                filter.never_opened = Some(true);
-                // Same form as stored timestamps, which compare as strings.
-                filter.created_before =
-                    Some(cutoff.to_rfc3339_opts(chrono::SecondsFormat::Micros, true));
-                filter.sort_by = Some("createdAt".into());
-                filter.sort_order = Some("asc".into());
-            }
+            // The app's Revisit view: one rule, expanded by the store.
+            "revisit" => filter.revisit = true,
             other => return Err(format!("unknown status: {other}")),
         }
         if let Some(space) = &a.space {

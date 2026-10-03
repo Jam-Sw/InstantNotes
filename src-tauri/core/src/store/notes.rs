@@ -43,6 +43,102 @@ pub(super) fn insert_note(conn: &Connection, note: NewNote<'_>) -> Result<String
     Ok(id)
 }
 
+/// What `update_note` will write, decided from values alone.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct UpdatePlan {
+    /// The note's content kind after the update.
+    pub kind: String,
+    /// A new title, or `None` to keep the column as it is.
+    pub title: Option<String>,
+    /// A new `title_is_auto`, or `None` to keep the column as it is.
+    pub title_is_auto: Option<bool>,
+}
+
+/// The rules of an update, apart from the rows: whether the patch changes
+/// anything (`Ok(None)` when not), which content kind results and whether
+/// that transition and a canvas are allowed, and what becomes of the title.
+/// Validation errors here are the ones the caller sees.
+pub(super) fn plan_update(
+    existing: &Note,
+    title_is_auto: bool,
+    patch: &UpdateNotePatch,
+) -> Result<Option<UpdatePlan>> {
+    if patch.title.is_none()
+        && patch.body.is_none()
+        && patch.is_pinned.is_none()
+        && patch.is_archived.is_none()
+        && patch.content_kind.is_none()
+        && patch.surface_data.is_none()
+    {
+        return Ok(None);
+    }
+
+    // Converting to a whiteboard is one-way, and only a whiteboard has a
+    // canvas to hold.
+    let kind = match patch.content_kind.as_deref() {
+        None => existing.content_kind.as_str(),
+        Some(k @ (CONTENT_KIND_DOCUMENT | CONTENT_KIND_WHITEBOARD)) => k,
+        Some(other) => {
+            return Err(AppError::Validation(format!(
+                "content kind must be {CONTENT_KIND_DOCUMENT} or {CONTENT_KIND_WHITEBOARD}, got {other}"
+            )))
+        }
+    };
+    if existing.content_kind == CONTENT_KIND_WHITEBOARD && kind != CONTENT_KIND_WHITEBOARD {
+        return Err(AppError::Validation(
+            "a whiteboard cannot be turned back into a document".into(),
+        ));
+    }
+    let is_board = kind == CONTENT_KIND_WHITEBOARD;
+    if patch.surface_data.is_some() && !is_board {
+        return Err(AppError::Validation(
+            "only a whiteboard can hold a canvas".into(),
+        ));
+    }
+
+    // An explicit title pins the title; an auto title follows body edits.
+    let explicit_title = patch
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty());
+    // A whiteboard's body is the text on its canvas, rewritten by every
+    // save, so its title stops following the body the moment it converts.
+    let (title, new_title_is_auto) = match (explicit_title, &patch.body) {
+        (Some(t), _) => (Some(t.to_string()), Some(false)),
+        (None, Some(body)) if title_is_auto && !is_board => {
+            (Some(domain::derive_title(body)), None)
+        }
+        (None, _) if title_is_auto && is_board => (None, Some(false)),
+        _ => (None, None),
+    };
+    Ok(Some(UpdatePlan {
+        kind: kind.to_string(),
+        title,
+        title_is_auto: new_title_is_auto,
+    }))
+}
+
+/// How old a capture must be before the Revisit view lists it. Newer
+/// captures are often still in the user's head; Revisit must never feel
+/// like a task manager.
+pub const REVISIT_AFTER_MS: i64 = 3 * 24 * 60 * 60 * 1000;
+
+/// The Revisit view: capture-born notes nobody has opened, older than
+/// `REVISIT_AFTER_MS`, oldest first. A filter asking for `revisit` becomes
+/// those conditions here, so the app and the MCP tool share one rule.
+pub(super) fn expand_revisit(mut filter: NoteFilter, now: chrono::DateTime<Utc>) -> NoteFilter {
+    if filter.revisit {
+        let cutoff = now - chrono::Duration::milliseconds(REVISIT_AFTER_MS);
+        filter.never_opened = Some(true);
+        // Same form as stored timestamps, which compare as strings.
+        filter.created_before = Some(cutoff.to_rfc3339_opts(SecondsFormat::Micros, true));
+        filter.sort_by = Some("createdAt".into());
+        filter.sort_order = Some("asc".into());
+    }
+    filter
+}
+
 impl Store {
     pub fn create_note(&mut self, input: CreateNoteInput) -> Result<Note> {
         let body = input.body.unwrap_or_default();
@@ -96,40 +192,6 @@ impl Store {
     pub fn update_note(&mut self, id: &str, patch: UpdateNotePatch) -> Result<Note> {
         // Ensure existence first for a clean NOT_FOUND.
         let existing = self.fetch_note(id)?;
-        // An empty patch is a no-op: skip the UPDATE so updated_at is not
-        // bumped and recency-sorted lists keep their order.
-        if patch.title.is_none()
-            && patch.body.is_none()
-            && patch.is_pinned.is_none()
-            && patch.is_archived.is_none()
-            && patch.content_kind.is_none()
-            && patch.surface_data.is_none()
-        {
-            return Ok(existing);
-        }
-
-        // Converting to a whiteboard is one-way, and only a whiteboard has a
-        // canvas to hold.
-        let kind = match patch.content_kind.as_deref() {
-            None => existing.content_kind.as_str(),
-            Some(k @ (CONTENT_KIND_DOCUMENT | CONTENT_KIND_WHITEBOARD)) => k,
-            Some(other) => {
-                return Err(AppError::Validation(format!(
-                    "content kind must be {CONTENT_KIND_DOCUMENT} or {CONTENT_KIND_WHITEBOARD}, got {other}"
-                )))
-            }
-        };
-        if existing.content_kind == CONTENT_KIND_WHITEBOARD && kind != CONTENT_KIND_WHITEBOARD {
-            return Err(AppError::Validation(
-                "a whiteboard cannot be turned back into a document".into(),
-            ));
-        }
-        let is_board = kind == CONTENT_KIND_WHITEBOARD;
-        if patch.surface_data.is_some() && !is_board {
-            return Err(AppError::Validation(
-                "only a whiteboard can hold a canvas".into(),
-            ));
-        }
         let title_is_auto: bool = self
             .conn
             .query_row(
@@ -138,22 +200,16 @@ impl Store {
                 |r| r.get::<_, i64>(0),
             )
             .map(|v| v != 0)?;
-
-        // An explicit title pins the title; an auto title follows body edits.
-        let explicit_title = patch
-            .title
-            .map(|t| t.trim().to_string())
-            .filter(|t| !t.is_empty());
-        // A whiteboard's body is the text on its canvas, rewritten by every
-        // save, so its title stops following the body the moment it converts.
-        let (new_title, new_title_is_auto) = match (&explicit_title, &patch.body) {
-            (Some(t), _) => (Some(t.clone()), Some(false)),
-            (None, Some(body)) if title_is_auto && !is_board => {
-                (Some(domain::derive_title(body)), None)
-            }
-            (None, _) if title_is_auto && is_board => (None, Some(false)),
-            _ => (None, None),
+        // An empty patch is a no-op: skip the UPDATE so updated_at is not
+        // bumped and recency-sorted lists keep their order.
+        let Some(plan) = plan_update(&existing, title_is_auto, &patch)? else {
+            return Ok(existing);
         };
+        let UpdatePlan {
+            kind,
+            title: new_title,
+            title_is_auto: new_title_is_auto,
+        } = plan;
 
         let now = now_iso();
         let tx = self.conn.transaction()?;
@@ -267,6 +323,7 @@ impl Store {
     /// Default filter excludes archived and deleted notes; sorts by
     /// updatedAt desc.
     pub fn list_notes(&self, filter: NoteFilter) -> Result<Vec<Note>> {
+        let filter = expand_revisit(filter, Utc::now());
         let (conditions, args) = note_conditions(&filter);
         let deleted = filter.is_deleted.unwrap_or(false);
 
@@ -306,7 +363,8 @@ impl Store {
     /// what lets a caller paging through `list_notes` know how far there is
     /// to go.
     pub fn count_notes(&self, filter: &NoteFilter) -> Result<i64> {
-        let (conditions, args) = note_conditions(filter);
+        let filter = expand_revisit(filter.clone(), Utc::now());
+        let (conditions, args) = note_conditions(&filter);
         let sql = format!(
             "SELECT COUNT(*) FROM notes WHERE {}",
             conditions.join(" AND ")
@@ -600,5 +658,211 @@ impl Store {
             ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
         self.conn.execute(&sql, rusqlite::params_from_iter(args))?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! The update rules on plain values: no store, no connection. The
+    //! integration tests (`core/tests/store_test.rs`, `whiteboard_test.rs`)
+    //! keep proving the same rules end to end through SQLite.
+    use super::*;
+
+    fn note(kind: &str) -> Note {
+        Note {
+            id: "n1".into(),
+            title: "Roadmap".into(),
+            body: "Roadmap\nfirst line".into(),
+            created_at: "2026-09-01T00:00:00.000000Z".into(),
+            updated_at: "2026-09-01T00:00:00.000000Z".into(),
+            last_opened_at: None,
+            is_pinned: false,
+            is_archived: false,
+            is_deleted: false,
+            deleted_at: None,
+            content_kind: kind.into(),
+            surface_data: None,
+        }
+    }
+
+    fn body(text: &str) -> UpdateNotePatch {
+        UpdateNotePatch {
+            body: Some(text.into()),
+            ..Default::default()
+        }
+    }
+
+    fn validation(r: Result<Option<UpdatePlan>>) -> String {
+        match r {
+            Err(AppError::Validation(m)) => m,
+            other => panic!("expected a validation error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn an_empty_patch_is_a_no_op() {
+        let plan = plan_update(
+            &note(CONTENT_KIND_DOCUMENT),
+            true,
+            &UpdateNotePatch::default(),
+        );
+        assert_eq!(plan.unwrap(), None);
+    }
+
+    #[test]
+    fn a_flag_alone_keeps_the_title_and_kind() {
+        let patch = UpdateNotePatch {
+            is_pinned: Some(true),
+            ..Default::default()
+        };
+        let plan = plan_update(&note(CONTENT_KIND_DOCUMENT), true, &patch).unwrap();
+        assert_eq!(
+            plan,
+            Some(UpdatePlan {
+                kind: CONTENT_KIND_DOCUMENT.into(),
+                title: None,
+                title_is_auto: None,
+            })
+        );
+    }
+
+    #[test]
+    fn an_auto_title_follows_the_body_of_a_document() {
+        let plan = plan_update(&note(CONTENT_KIND_DOCUMENT), true, &body("Groceries\nmilk"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(plan.title.as_deref(), Some("Groceries"));
+        assert_eq!(plan.title_is_auto, None);
+    }
+
+    #[test]
+    fn a_pinned_title_ignores_the_body() {
+        let plan = plan_update(
+            &note(CONTENT_KIND_DOCUMENT),
+            false,
+            &body("Groceries\nmilk"),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(plan.title, None);
+        assert_eq!(plan.title_is_auto, None);
+    }
+
+    #[test]
+    fn an_explicit_title_pins_itself_trimmed() {
+        let patch = UpdateNotePatch {
+            title: Some("  Manual Title ".into()),
+            body: Some("other words".into()),
+            ..Default::default()
+        };
+        let plan = plan_update(&note(CONTENT_KIND_DOCUMENT), true, &patch)
+            .unwrap()
+            .unwrap();
+        assert_eq!(plan.title.as_deref(), Some("Manual Title"));
+        assert_eq!(plan.title_is_auto, Some(false));
+    }
+
+    #[test]
+    fn a_blank_explicit_title_counts_as_none() {
+        let patch = UpdateNotePatch {
+            title: Some("   ".into()),
+            body: Some("Groceries\nmilk".into()),
+            ..Default::default()
+        };
+        let plan = plan_update(&note(CONTENT_KIND_DOCUMENT), true, &patch)
+            .unwrap()
+            .unwrap();
+        assert_eq!(plan.title.as_deref(), Some("Groceries"));
+        assert_eq!(plan.title_is_auto, None);
+    }
+
+    #[test]
+    fn a_whiteboard_body_save_pins_its_auto_title() {
+        let plan = plan_update(&note(CONTENT_KIND_WHITEBOARD), true, &body("moved text"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(plan.kind, CONTENT_KIND_WHITEBOARD);
+        assert_eq!(plan.title, None);
+        assert_eq!(plan.title_is_auto, Some(false));
+    }
+
+    #[test]
+    fn converting_to_a_whiteboard_freezes_an_auto_title() {
+        let patch = UpdateNotePatch {
+            content_kind: Some(CONTENT_KIND_WHITEBOARD.into()),
+            surface_data: Some("{}".into()),
+            ..Default::default()
+        };
+        let plan = plan_update(&note(CONTENT_KIND_DOCUMENT), true, &patch)
+            .unwrap()
+            .unwrap();
+        assert_eq!(plan.kind, CONTENT_KIND_WHITEBOARD);
+        assert_eq!(plan.title, None);
+        assert_eq!(plan.title_is_auto, Some(false));
+    }
+
+    #[test]
+    fn a_whiteboard_cannot_become_a_document() {
+        let patch = UpdateNotePatch {
+            content_kind: Some(CONTENT_KIND_DOCUMENT.into()),
+            ..Default::default()
+        };
+        let message = validation(plan_update(&note(CONTENT_KIND_WHITEBOARD), false, &patch));
+        assert!(message.contains("cannot be turned back"), "{message}");
+    }
+
+    #[test]
+    fn a_document_cannot_hold_a_canvas() {
+        let patch = UpdateNotePatch {
+            surface_data: Some("{}".into()),
+            ..Default::default()
+        };
+        let message = validation(plan_update(&note(CONTENT_KIND_DOCUMENT), true, &patch));
+        assert!(message.contains("only a whiteboard"), "{message}");
+    }
+
+    #[test]
+    fn an_unknown_kind_is_rejected_by_name() {
+        let patch = UpdateNotePatch {
+            content_kind: Some("spreadsheet".into()),
+            ..Default::default()
+        };
+        let message = validation(plan_update(&note(CONTENT_KIND_DOCUMENT), true, &patch));
+        assert!(message.contains("spreadsheet"), "{message}");
+    }
+
+    #[test]
+    fn a_revisit_filter_expands_to_the_open_loop_conditions() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-09-10T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let filter = expand_revisit(
+            NoteFilter {
+                revisit: true,
+                ..Default::default()
+            },
+            now,
+        );
+        assert_eq!(filter.never_opened, Some(true));
+        assert_eq!(
+            filter.created_before.as_deref(),
+            Some("2026-09-07T12:00:00.000000Z")
+        );
+        assert_eq!(filter.sort_by.as_deref(), Some("createdAt"));
+        assert_eq!(filter.sort_order.as_deref(), Some("asc"));
+    }
+
+    #[test]
+    fn a_plain_filter_is_left_alone() {
+        let filter = expand_revisit(
+            NoteFilter {
+                is_archived: Some(true),
+                ..Default::default()
+            },
+            Utc::now(),
+        );
+        assert_eq!(filter.never_opened, None);
+        assert_eq!(filter.created_before, None);
+        assert_eq!(filter.is_archived, Some(true));
     }
 }

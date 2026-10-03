@@ -124,6 +124,10 @@ pub struct NoteFilter {
     pub never_opened: Option<bool>,
     /// Only notes created strictly before this ISO-8601 timestamp.
     pub created_before: Option<String>,
+    /// The Revisit view: never-opened captures older than the revisit
+    /// window, oldest first. Expanded by the store into `never_opened`,
+    /// `created_before`, and the sort, so the rule lives in one place.
+    pub revisit: bool,
     /// Only notes last changed at or after / strictly before this ISO-8601
     /// timestamp or bare date.
     pub updated_after: Option<String>,

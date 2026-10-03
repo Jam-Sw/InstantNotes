@@ -67,11 +67,6 @@ export type StatusFilter = "active" | "archived" | "trash";
 // than per keystroke; filter clicks and change events stay immediate.
 const SEARCH_DEBOUNCE_MS = 150;
 
-// A capture-born note that nobody has opened within this window is an open
-// loop worth resurfacing. Newer captures aren't nagged about: they're often
-// still in the user's head, and Revisit must never feel like a task manager.
-const REVISIT_AFTER_MS = 3 * 24 * 60 * 60 * 1000;
-
 class LibraryStore {
   statusFilter = $state<StatusFilter>("active");
   activeWorkspaceId = $state<string | null>(null);
@@ -278,14 +273,11 @@ class LibraryStore {
     return f;
   }
 
-  // Oldest first: the longest-parked loop is the one to burn down first.
+  // The open loops: capture-born notes nobody has opened, old enough to
+  // resurface, oldest first. The store owns the rule (and the window) and
+  // expands the flag, so the MCP tool's Revisit is the same list.
   #revisitFilter(): NoteFilter {
-    return {
-      neverOpened: true,
-      createdBefore: new Date(Date.now() - REVISIT_AFTER_MS).toISOString(),
-      sortBy: "createdAt",
-      sortOrder: "asc",
-    };
+    return { revisit: true };
   }
 
   // Monotonic refresh token: queries answer out of order (search per pause,

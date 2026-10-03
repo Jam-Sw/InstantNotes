@@ -788,13 +788,10 @@ describe("revisit mode (open-loop resurfacing)", () => {
     const library = await load();
     library.selectRevisit();
     await vi.advanceTimersByTimeAsync(0);
+    // The rule itself (never opened, older than the window, oldest first)
+    // lives in the store, which expands this flag; core's own tests pin it.
     const filter = mockListNotes.mock.lastCall?.[0];
-    expect(filter).toMatchObject({
-      neverOpened: true,
-      sortBy: "createdAt",
-      sortOrder: "asc",
-    });
-    expect(typeof filter?.createdBefore).toBe("string");
+    expect(filter).toEqual({ revisit: true });
   });
 
   it("keeps the count in lockstep, and opening a note burns it down live", async () => {
