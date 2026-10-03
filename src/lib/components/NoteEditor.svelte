@@ -19,6 +19,7 @@
   import type { FormatKind } from "$lib/markdown-format";
   import { NO_MARKS, type ActiveMarks } from "$lib/markdown-active";
   import { isSyntheticNoteId } from "$lib/synthetic";
+  import { autosize, singleLine } from "$lib/title-field";
 
   let tagInput = $state("");
   let workspaceInput = $state("");
@@ -198,13 +199,27 @@
     style="--editor-zoom: {editorPrefs.zoom}; --image-max-height: {imagePrefs.maxPreviewHeight}px"
   >
   <div class="doc-head">
-    <input
+    <!-- A textarea, so a long title wraps in the column instead of being
+         clipped. Still one line of text: Enter commits, breaks become spaces. -->
+    <textarea
       class="title-input"
+      rows="1"
       value={library.selected.title}
       readonly={isVirtual}
+      use:autosize={[library.selected.title, editorPrefs.zoom]}
+      oninput={(e) => {
+        const flat = singleLine(e.currentTarget.value);
+        if (flat !== e.currentTarget.value) e.currentTarget.value = flat;
+      }}
+      onkeydown={(e) => {
+        if (e.key === "Enter" && !e.isComposing) {
+          e.preventDefault();
+          library.editTitle(e.currentTarget.value);
+        }
+      }}
       onchange={(e) => library.editTitle(e.currentTarget.value)}
       aria-label="Note title"
-    />
+    ></textarea>
   {#if !isVirtual}
   <div class="tag-bar">
     {#each library.selectedTags as tag (tag.id)}
@@ -365,6 +380,8 @@
   .doc.wide .doc-head {
     max-width: none;
   }
+  /* Wraps within the column; the textarea is sized to its lines by
+     `autosize`, so it never scrolls or shows a resize grip. */
   .title-input {
     display: block;
     width: 100%;
@@ -376,6 +393,9 @@
     border: none;
     outline: none;
     background: transparent;
+    resize: none;
+    overflow: hidden;
+    overflow-wrap: anywhere;
   }
   .action {
     padding: 4px 10px;

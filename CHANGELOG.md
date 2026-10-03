@@ -7,6 +7,12 @@ in-app updater, written for users. Newest first.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- Notes: a long title wraps inside the reading column instead of being clipped
+  at its edge; the title is an auto-sized `<textarea>`, Enter still commits.
+
 ## [0.9.2] - 2026-10-02
 
 ### Fixed
