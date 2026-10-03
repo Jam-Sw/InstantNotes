@@ -498,6 +498,7 @@ pub fn run() {
             open_url,
             install_update,
             quit_app,
+            restart_app,
             capture_input_ready,
             get_capture_latency,
             get_shortcut_failure,

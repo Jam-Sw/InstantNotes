@@ -184,7 +184,7 @@ a copy at export time regardless of storage mode; see
 
 `hide_capture`, `open_library`, `set_window_vibrancy`, `set_window_theme`,
 `export_theme_file`, `import_theme_file`, `export_note_file`, `open_url`,
-`quit_app`. These drive native windows, theme file I/O, and external links; they
+`quit_app`, `restart_app`. These drive native windows, theme file I/O, and external links; they
 carry no note data beyond what the user explicitly exports. `export_note_file`
 writes `.md`, `.txt`, or `.excalidraw` (a whiteboard's canvas).
 `get_shortcut_failure` returns why the global capture shortcut could not be
@@ -227,7 +227,9 @@ attached is centered.
 
 Quitting waits for every window that holds edits: the library and each sticky
 flush on `app:quit-requested` and answer with `quit_app`, and the app exits on
-the last answer (or after the 800ms fallback).
+the last answer (or after the 800ms fallback). `restart_app` runs the same
+handshake and starts the app again instead of exiting, so an installed update
+applies.
 
 ## 10. Capture
 

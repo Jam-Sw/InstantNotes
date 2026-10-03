@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { fetchUpdateSizeDelta } from "$lib/update/release-size";
-import { installUpdate } from "$lib/api/client";
+import { installUpdate, restartApp } from "$lib/api/client";
 
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: vi.fn() }));
 vi.mock("$lib/update/release-size", () => ({ fetchUpdateSizeDelta: vi.fn() }));
-vi.mock("$lib/api/client", () => ({ installUpdate: vi.fn() }));
+vi.mock("$lib/api/client", () => ({ installUpdate: vi.fn(), restartApp: vi.fn() }));
 
 const mockCheck = vi.mocked(check);
 const mockDelta = vi.mocked(fetchUpdateSizeDelta);
@@ -171,5 +171,13 @@ describe("acknowledge", () => {
 
     await updater.checkNow();
     expect(updater.pendingUpdate).toBe(false);
+  });
+});
+
+describe("restart", () => {
+  it("asks the app to restart into the installed version", async () => {
+    const updater = await load();
+    await updater.restart();
+    expect(vi.mocked(restartApp)).toHaveBeenCalledTimes(1);
   });
 });

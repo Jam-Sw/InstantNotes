@@ -32,9 +32,16 @@ fn record_answer(awaiting: &mut HashSet<String>, label: &str) -> bool {
 fn finish_quit(app: &AppHandle) {
     if !QUIT_READY.swap(true, Ordering::AcqRel) {
         flush_vault_now(app, Some(QUIT_VAULT_CHUNKS));
-        app.exit(0);
+        if RESTART.load(Ordering::Acquire) {
+            app.request_restart();
+        } else {
+            app.exit(0);
+        }
     }
 }
+
+/// Set when the quit in progress should start the app again.
+static RESTART: AtomicBool = AtomicBool::new(false);
 
 /// True once the frontend flushed and called quit_app, or once the fallback
 /// gave up waiting. ExitRequested lets the exit proceed only when this is set,
@@ -89,6 +96,16 @@ fn wait_for_answers(awaiting: &Mutex<HashSet<String>>, grace: Duration) {
 
 pub(crate) fn release_quit() {
     QUIT_READY.store(false, Ordering::Release);
+}
+
+/// Quit through the handshake and start again, which is how an installed update
+/// takes effect: closing the window only hides the app to the tray, and the
+/// running process keeps the old version. The restart runs the AppImage path
+/// on Linux, so it starts the swapped-in file.
+#[tauri::command]
+pub fn restart_app(app: AppHandle) {
+    RESTART.store(true, Ordering::Release);
+    request_quit(&app);
 }
 
 /// A window's leg of the handshake: it has flushed its pending edits. The

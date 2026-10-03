@@ -7,7 +7,7 @@
 // `$lib/update/space.ts`). Nothing here writes to SQLite or the vault.
 
 import { check, type Update } from "@tauri-apps/plugin-updater";
-import { installUpdate } from "$lib/api/client";
+import { installUpdate, restartApp } from "$lib/api/client";
 import { toasts } from "$lib/stores/toasts.svelte";
 import { fetchUpdateSizeDelta } from "$lib/update/release-size";
 
@@ -44,7 +44,7 @@ class UpdaterStore {
 
   #update: Update | null = null;
   #timer: ReturnType<typeof setInterval> | null = null;
-  // A version the user answered with "Ok": kept off the sidebar for the rest
+  // A version the user answered with "Later": kept off the sidebar for the rest
   // of this run. The update is installable until the app relaunches, so without
   // this the next check would surface the same notification again.
   #acknowledgedVersion: string | null = null;
@@ -148,8 +148,14 @@ class UpdaterStore {
     }
   }
 
+  /** Start the installed version now. Closing the window only hides the app
+   *  to the tray, so the old version keeps running until a real restart. */
+  async restart() {
+    await restartApp();
+  }
+
   /**
-   * The user answered the notification's "Ok". The update is installed and
+   * The user answered the notification's "Later". The update is installed and
    * applies on the next launch; take the Space down now rather than leaving it
    * up as a done screen.
    */

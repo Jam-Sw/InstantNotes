@@ -284,6 +284,8 @@ export const openFeedbackLog = () => call<void>("open_feedback_log");
 // ---- app lifecycle ----
 // Answer to "app:quit-requested": pending edits are flushed, exit for real now.
 export const quitApp = () => call<void>("quit_app");
+// Quit through the same handshake, then start again: an installed update applies.
+export const restartApp = () => call<void>("restart_app");
 // Label of the capture shortcut when startup registration failed, else null.
 // A command rather than an event alone: the failure happens before the library
 // webview has listeners attached, so an event would be lost.

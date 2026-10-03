@@ -2,7 +2,7 @@
   // The update note: the one special page in the update Space, where the
   // install lives. It shows the version jump and the size delta above a single
   // Update button (the old dialog's primary button, not a new one), then turns
-  // into a progress bar and finally an "Ok" that answers the notification.
+  // into a progress bar and finally "Restart now" or "Later".
   // Nothing here is persisted; the note vanishes with the Space.
   import { updater } from "$lib/stores/updater.svelte";
   import { sizeDeltaLine, updateNoteTitle } from "$lib/update/space";
@@ -42,10 +42,13 @@
       </p>
     {:else if updater.status === "ready"}
       <p class="muted">
-        InstantNotes v{updater.version} is installed. It applies the next time
-        you open the app.
+        InstantNotes v{updater.version} is installed. Restart to use it; closing
+        the window keeps the current version running in the tray.
       </p>
-      <button class="btn primary" onclick={() => updater.acknowledge()}>Ok</button>
+      <div class="actions">
+        <button class="btn primary" onclick={() => updater.restart()}>Restart now</button>
+        <button class="btn" onclick={() => updater.acknowledge()}>Later</button>
+      </div>
     {:else if updater.status === "error"}
       <p class="error">{updater.error ?? "The update could not be installed."}</p>
       <button class="btn primary" onclick={() => updater.downloadAndInstall()}>
@@ -128,6 +131,10 @@
     background: var(--accent);
     border-radius: 99px;
     transition: width 0.2s ease;
+  }
+  .actions {
+    display: flex;
+    gap: 8px;
   }
   /* The old update dialog's primary button, kept as the one Update button. */
   .btn {
