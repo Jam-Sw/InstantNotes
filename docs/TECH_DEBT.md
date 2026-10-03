@@ -4,10 +4,13 @@ What an audit found and deliberately did not change, with the reason and
 where each item goes in `openspec/SEQUENCE.md`. An item leaves this file
 when a unit fixes it; nothing here is a TODO in the code.
 
-Last audit: 2026-09-30, on `feat/agent-access` (off `0.9.0-pre` at
-`917dbd3`). Clean at that point: no TS/Svelte import cycles, no Rust
-`pub fn` referenced nowhere, every IPC command both registered and called,
-no TODO/FIXME markers, clippy and svelte-check clean.
+Last audit: 2026-10-03, on `0.9.3-pre`. Clean at that point: knip reports
+no unused file, export, or dependency; a `-W dead-code -W unused` build of
+the Rust workspace is warning-free; every registered IPC command has a
+`client.ts` wrapper with a caller outside the tests, and no wrapper names a
+command that is not registered; clippy, fmt, svelte-check, and both test
+suites clean. S1, S2, and the `commands.ts` and `theme.svelte.ts` half of
+T1 left this file in that pass.
 
 ## Dependencies
 
@@ -35,32 +38,14 @@ excalidraw's peer range), jsdom 29 to 30.
 Slot: with D1; the majors each need their own changelog read, Vite and
 Vitest together.
 
-## Structure
-
-**S1. `src/lib/stores/library.svelte.ts` is the largest file (995 lines, 19
-commits).** It already hands saving to `stores/library/save-queue.svelte.ts`.
-Next extractions, in order of independence: navigation (space, tag, revisit,
-graph, status filters and `#resetForNavigation`), then multi-selection. Its
-behavior is covered by `library.svelte.test.ts` and
-`library.agents.svelte.test.ts`, so the split can be proven, not hoped.
-Why not now: the sticky-notes unit is editing this file.
-Slot: the first unit after sticky notes and agent access both land.
-
-**S2. Constants exported but used only in their own file.**
-`SIDEBAR_MIN`/`MAX`/`DEFAULT` (`stores/sidebar.svelte.ts`),
-`EXCALIDRAW_ENGINE` (`whiteboard/document.ts`), `EXCALIDRAW_ASSET_PATH`
-(`whiteboard/excalidraw.ts`), `buildBodyFontCommands`/`buildThemeCommands`
-(`commands.ts`), `assetMatcher` (`update/release-size.ts`). Live code, only
-wider than it needs to be. Drop the `export` when the file is next touched.
-
 ## Tests
 
-**T1. High-churn frontend files with no test of their own**, by commits:
-`commands.ts` (10), `components/Sidebar.svelte` (9),
-`components/NoteEditor.svelte` (8), `components/CommandPalette.svelte` (6,
-522 lines), `stores/theme.svelte.ts` (5). Rule: the next change to one of
-these adds its test in the same unit. `commands.ts` and `theme.svelte.ts`
-are plain modules and cheap to cover first.
+**T1. High-churn frontend components with no test of their own**, by
+commits: `components/Sidebar.svelte` (9), `components/NoteEditor.svelte`
+(8), `components/CommandPalette.svelte` (6, 522 lines). Rule: the next
+change to one of these adds its test in the same unit. (`commands.ts` and
+`stores/theme.svelte.ts`, the plain modules this item also named, now have
+`commands.test.ts` and `theme.svelte.test.ts`.)
 
 ## Agents
 
