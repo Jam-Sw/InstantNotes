@@ -33,7 +33,6 @@ import {
 } from "$lib/api/client";
 import type {
   Note,
-  NoteFilter,
   SearchResult,
   Tag,
   TagWithCount,
@@ -51,6 +50,11 @@ import {
   type SaveState,
 } from "$lib/stores/library/save-queue.svelte";
 import { SelectionModel } from "$lib/stores/library/selection.svelte";
+import {
+  NavigationModel,
+  revisitFilter,
+  type StatusFilter,
+} from "$lib/stores/library/navigation.svelte";
 import { toasts } from "$lib/stores/toasts.svelte";
 import { announceOverwrite } from "$lib/stores/agents.svelte";
 import { mayHaveWritten, parseActivityLog, type AgentActivity } from "$lib/agent-activity";
@@ -58,30 +62,62 @@ import { boardFromText } from "$lib/whiteboard/excalidraw";
 import { listen } from "@tauri-apps/api/event";
 
 export type { SaveState };
-
-// Archived and trash live behind a list filter in All Notes, not as
-// top-level sections (two-section library: All Notes and Workspaces).
-export type StatusFilter = "active" | "archived" | "trash";
+export type { StatusFilter } from "$lib/stores/library/navigation.svelte";
 
 // Debounce for search-text refreshes only, so a query runs per pause rather
 // than per keystroke; filter clicks and change events stay immediate.
 const SEARCH_DEBOUNCE_MS = 150;
 
 class LibraryStore {
-  statusFilter = $state<StatusFilter>("active");
-  activeWorkspaceId = $state<string | null>(null);
-  activeTagId = $state<string | null>(null);
+  // Navigation (the space / tag / revisit / graph views, the status filter,
+  // and the scoped chip) lives in a composed model; these accessors keep the
+  // store's public surface unchanged.
+  #nav = new NavigationModel();
+
+  get statusFilter(): StatusFilter {
+    return this.#nav.statusFilter;
+  }
+  set statusFilter(value: StatusFilter) {
+    this.#nav.statusFilter = value;
+  }
+  get activeWorkspaceId(): string | null {
+    return this.#nav.activeWorkspaceId;
+  }
+  set activeWorkspaceId(value: string | null) {
+    this.#nav.activeWorkspaceId = value;
+  }
+  get activeTagId(): string | null {
+    return this.#nav.activeTagId;
+  }
+  set activeTagId(value: string | null) {
+    this.#nav.activeTagId = value;
+  }
   // Tag filter applied within the active workspace (the note list's chip
   // row). Composes with activeWorkspaceId; the global activeTagId replaces
   // the workspace instead.
-  scopedTagId = $state<string | null>(null);
+  get scopedTagId(): string | null {
+    return this.#nav.scopedTagId;
+  }
+  set scopedTagId(value: string | null) {
+    this.#nav.scopedTagId = value;
+  }
   // Tags carried by the active workspace's visible notes; drives the chips.
   workspaceTags = $state<TagWithCount[]>([]);
   // Revisit: capture-born notes never opened in the library. The count keeps
   // the sidebar entry honest (hidden at zero); the mode filters the list.
-  revisitMode = $state(false);
+  get revisitMode(): boolean {
+    return this.#nav.revisitMode;
+  }
+  set revisitMode(value: boolean) {
+    this.#nav.revisitMode = value;
+  }
   /** The Graph view: the library drawn as notes, tags, and Spaces. */
-  graphMode = $state(false);
+  get graphMode(): boolean {
+    return this.#nav.graphMode;
+  }
+  set graphMode(value: boolean) {
+    this.#nav.graphMode = value;
+  }
   revisitCount = $state(0);
   /** Unfiled notes the graph can say a Space for; the Graph row's count. */
   suggestionCount = $state(0);
@@ -260,26 +296,6 @@ class LibraryStore {
     }
   }
 
-  #filter(): NoteFilter {
-    if (this.revisitMode) return this.#revisitFilter();
-    const f: NoteFilter = {};
-    if (this.statusFilter === "archived") f.isArchived = true;
-    if (this.statusFilter === "trash") f.isDeleted = true;
-    if (this.activeWorkspaceId) {
-      f.workspaceId = this.activeWorkspaceId;
-      if (this.scopedTagId) f.tagIds = [this.scopedTagId];
-    }
-    if (this.activeTagId) f.tagIds = [this.activeTagId];
-    return f;
-  }
-
-  // The open loops: capture-born notes nobody has opened, old enough to
-  // resurface, oldest first. The store owns the rule (and the window) and
-  // expands the flag, so the MCP tool's Revisit is the same list.
-  #revisitFilter(): NoteFilter {
-    return { revisit: true };
-  }
-
   // Monotonic refresh token: queries answer out of order (search per pause,
   // list per filter click), so a response only lands while it is still the
   // newest request; a slow earlier reply can never clobber a later one.
@@ -304,7 +320,7 @@ class LibraryStore {
         if (token !== this.#refreshToken) return;
         this.searchResults = results;
       } else {
-        const notes = await listNotes(this.#filter());
+        const notes = await listNotes(this.#nav.filter());
         if (token !== this.#refreshToken) return;
         this.searchResults = null;
         this.notes = notes;
@@ -354,56 +370,48 @@ class LibraryStore {
   setStatusFilter(filter: StatusFilter): void {
     // Status (All / Archived / Trash) composes with the active space or tag,
     // so it clears revisit and search but keeps the space/tag scope.
-    this.statusFilter = filter;
-    this.revisitMode = false;
-    this.graphMode = false;
+    this.#nav.setStatus(filter);
     this.searchText = "";
     this.clearMultiSelect();
     void this.refresh();
   }
 
   /**
-   * Clear every primary filter dimension so a caller can set exactly one.
-   * The space, tag, and revisit views are mutually exclusive; each entry
-   * point resets the rest, drops any scoped tag, and clears search and the
-   * multi-selection before choosing its own dimension.
+   * What leaving a view clears beyond the navigation dimensions themselves
+   * (the model resets those): the chip row, search, and the
+   * multi-selection. Each entry point calls this before choosing its own
+   * dimension.
    */
-  #resetForNavigation(): void {
-    this.activeWorkspaceId = null;
-    this.activeTagId = null;
-    this.scopedTagId = null;
+  #leaveView(): void {
     this.workspaceTags = [];
-    this.revisitMode = false;
-    this.graphMode = false;
-    this.statusFilter = "active";
     this.searchText = "";
     this.clearMultiSelect();
   }
 
   /** Show the library as a graph. */
   selectGraph(): void {
-    this.#resetForNavigation();
-    this.graphMode = true;
+    this.#leaveView();
+    this.#nav.showGraph();
     void this.refresh();
   }
 
   /** Show All Notes (null) or one workspace's collected notes. */
   selectWorkspace(workspaceId: string | null): void {
-    this.#resetForNavigation();
-    this.activeWorkspaceId = workspaceId;
+    this.#leaveView();
+    this.#nav.showWorkspace(workspaceId);
     void this.refresh();
   }
 
   /** Show the open loops: capture-born notes never opened in the library. */
   selectRevisit(): void {
-    this.#resetForNavigation();
-    this.revisitMode = true;
+    this.#leaveView();
+    this.#nav.showRevisit();
     void this.refresh();
   }
 
   setTagFilter(tagId: string | null): void {
-    this.#resetForNavigation();
-    this.activeTagId = tagId;
+    this.#leaveView();
+    this.#nav.showTag(tagId);
     void this.refresh();
   }
 
@@ -414,7 +422,7 @@ class LibraryStore {
    */
   async #refreshRevisitCount(): Promise<void> {
     try {
-      const loops = await listNotes(this.#revisitFilter());
+      const loops = await listNotes(revisitFilter());
       this.revisitCount = loops.length;
     } catch {
       // Keep the stale count rather than surface an error for a hint.
@@ -435,8 +443,7 @@ class LibraryStore {
 
   /** Toggle a chip: filter the active workspace's list by one of its tags. */
   toggleScopedTag(tagId: string): void {
-    if (!this.activeWorkspaceId) return;
-    this.scopedTagId = this.scopedTagId === tagId ? null : tagId;
+    if (!this.#nav.toggleScopedTag(tagId)) return;
     this.clearMultiSelect();
     void this.refresh();
   }
