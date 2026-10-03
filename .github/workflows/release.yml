@@ -120,7 +120,7 @@ jobs:
           fi
           out="$RUNNER_TEMP/macos"
           mkdir -p "$out"
-          git archive "$GITHUB_SHA" | ssh -o BatchMode=yes mac-builder "build $VERSION" | tar -xf - -C "$out"
+          git archive "$GITHUB_SHA" | ssh -o BatchMode=yes mac-builder "build $VERSION" | tar -xf - --exclude='._*' -C "$out"
           echo "out=$out" >> "$GITHUB_OUTPUT"
       - if: steps.mac.outputs.out
         run: |
