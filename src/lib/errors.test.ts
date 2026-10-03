@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { ERROR_CODES, type ErrorCode } from "./api/error-codes";
-import { friendlyMessage, GENERIC_MESSAGE } from "./errors";
+import { ApiError } from "./api/client";
+import { friendlyError, friendlyMessage, GENERIC_MESSAGE } from "./errors";
 
 describe("friendlyMessage", () => {
   test("maps known API error codes to friendly copy", () => {
@@ -34,5 +35,19 @@ describe("friendlyMessage", () => {
     for (const code of [...(Object.keys(ERROR_CODES) as ErrorCode[]), "WEIRD_CODE" as ErrorCode]) {
       expect(friendlyMessage(code)).not.toContain(code);
     }
+  });
+});
+
+describe("friendlyError", () => {
+  test("an ApiError gets the copy for its code", () => {
+    expect(friendlyError(new ApiError("NOT_FOUND", "note x not found"))).toBe(
+      friendlyMessage("NOT_FOUND"),
+    );
+  });
+
+  test("anything else gets the generic line", () => {
+    expect(friendlyError(new Error("boom"))).toBe(GENERIC_MESSAGE);
+    expect(friendlyError("a thrown string")).toBe(GENERIC_MESSAGE);
+    expect(friendlyError(undefined)).toBe(GENERIC_MESSAGE);
   });
 });

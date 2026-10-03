@@ -11,7 +11,7 @@
 import { ApiError, getNote } from "$lib/api/client";
 import type { Note } from "$lib/api/types";
 import { ERROR_CODES } from "$lib/api/error-codes";
-import { friendlyMessage, GENERIC_MESSAGE } from "$lib/errors";
+import { friendlyError } from "$lib/errors";
 import { mayHaveWritten, type AgentActivity } from "$lib/agent-activity";
 import { announceOverwrite } from "$lib/stores/agents.svelte";
 import {
@@ -128,6 +128,6 @@ export class StickyNote {
   }
 
   #fail(e: unknown): void {
-    this.error = e instanceof ApiError ? friendlyMessage(e.code, e.message) : GENERIC_MESSAGE;
+    this.error = friendlyError(e);
   }
 }

@@ -11,7 +11,6 @@
 
 import { listen } from "@tauri-apps/api/event";
 import {
-  ApiError,
   clearAgentActivity,
   getAgentConnection,
   getSetting,
@@ -21,7 +20,7 @@ import {
   setSetting,
 } from "$lib/api/client";
 import { EVENTS } from "$lib/api/events";
-import { friendlyMessage, GENERIC_MESSAGE } from "$lib/errors";
+import { friendlyError } from "$lib/errors";
 import { toasts } from "$lib/stores/toasts.svelte";
 import {
   AGENT_ACCESS_KEY,
@@ -284,9 +283,7 @@ class AgentsStore {
       });
       return true;
     } catch (e) {
-      const message =
-        e instanceof ApiError ? friendlyMessage(e.code, e.message) : GENERIC_MESSAGE;
-      toasts.show(`Couldn't revert. ${message}`);
+      toasts.show(`Couldn't revert. ${friendlyError(e)}`);
       return false;
     }
   }

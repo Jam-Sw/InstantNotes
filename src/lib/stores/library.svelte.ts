@@ -43,7 +43,7 @@ import type {
 import { debounce } from "$lib/debounce";
 import { ERROR_CODES } from "$lib/api/error-codes";
 import { EVENTS } from "$lib/api/events";
-import { friendlyMessage, GENERIC_MESSAGE } from "$lib/errors";
+import { friendlyError } from "$lib/errors";
 import { isSyntheticNoteId, isSyntheticSpaceId } from "$lib/synthetic";
 import {
   SaveQueue,
@@ -814,11 +814,7 @@ class LibraryStore {
       }
       return { ok: true };
     } catch (e) {
-      const message =
-        e instanceof ApiError
-          ? friendlyMessage(e.code, e.message)
-          : GENERIC_MESSAGE;
-      return { ok: false, message };
+      return { ok: false, message: friendlyError(e) };
     }
   }
 
@@ -1067,10 +1063,7 @@ class LibraryStore {
   }
 
   #fail(e: unknown): void {
-    this.error =
-      e instanceof ApiError
-        ? friendlyMessage(e.code, e.message)
-        : GENERIC_MESSAGE;
+    this.error = friendlyError(e);
   }
 }
 

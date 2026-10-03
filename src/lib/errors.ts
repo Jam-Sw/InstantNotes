@@ -1,3 +1,4 @@
+import { ApiError } from "$lib/api/client";
 import type { ErrorCode } from "$lib/api/error-codes";
 
 /** Single place mapping error codes (API.md §14) to user-facing copy. The
@@ -16,4 +17,10 @@ export const GENERIC_MESSAGE = "Something went wrong. Please try again.";
 
 export function friendlyMessage(code: ErrorCode, fallback?: string): string {
   return MESSAGES[code] ?? fallback ?? GENERIC_MESSAGE;
+}
+
+/** What to tell the user about anything a store call threw: the copy for an
+ *  `ApiError`'s code, and the generic line for everything else. */
+export function friendlyError(e: unknown): string {
+  return e instanceof ApiError ? friendlyMessage(e.code, e.message) : GENERIC_MESSAGE;
 }
