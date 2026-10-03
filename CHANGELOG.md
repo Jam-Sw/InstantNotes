@@ -7,14 +7,19 @@ in-app updater, written for users. Newest first.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.9.2] - 2026-10-02
 
 ### Fixed
-- Linux: an update to an AppImage in a root-owned folder (`/opt`, a pacman
-  repack) no longer fails with `Permission denied (os error 13)`; it asks for
-  the password through the system's polkit dialog (`pkexec`) and installs.
-  0.9.0 and 0.9.1 cannot do this themselves: if this update fails with that
-  error, install it once by hand, and later updates ask for the password:
+- Updater (Linux): an AppImage in a root-owned dir no longer fails with
+  `Permission denied (os error 13)`; `install_update` falls back to `pkexec` (#64).
+- Agents: connect snippets name `$APPIMAGE`, not the `/tmp/.mount_*` binary
+  that broke MCP configs with `ENOENT` after a restart; re-copy the snippet.
+- Stickies (Linux, Windows): no bare File/Edit menubar above a sticky or the
+  capture panel; off macOS the app menu is set on the library window only.
+
+### Upgrading from 0.9.0 or 0.9.1 on Linux
+- If this update fails with `Permission denied (os error 13)`, install it once
+  by hand; later updates prompt for the password:
   `sudo install -m 755 ~/Downloads/InstantNotes_<version>_amd64.AppImage "$(readlink -f "$(command -v instantnotes)")"`
 
 ## [0.9.1] - 2026-10-02

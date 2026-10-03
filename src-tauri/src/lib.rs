@@ -249,7 +249,16 @@ pub fn run() {
             let app_menu = MenuBuilder::new(app)
                 .items(&[&file_submenu, &edit_submenu])
                 .build()?;
+            // Off macOS a menu is a bar inside a window, and an app-wide one
+            // lands on every window, stickies and the capture panel included:
+            // a bare File/Edit row over a frameless, transparent window. Only
+            // the library has a frame to hang it in; it is never rebuilt.
+            #[cfg(target_os = "macos")]
             app.set_menu(app_menu)?;
+            #[cfg(not(target_os = "macos"))]
+            if let Some(library) = app.get_webview_window("library") {
+                library.set_menu(app_menu)?;
+            }
             app.on_menu_event(|app, event| match event.id().as_ref() {
                 "settings" => {
                     show_library_window(app);
