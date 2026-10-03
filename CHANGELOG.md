@@ -7,7 +7,7 @@ in-app updater, written for users. Newest first.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.9.2] - 2026-10-02
 
 ### Fixed
 - Updater (Linux): an AppImage in a root-owned dir no longer fails with
