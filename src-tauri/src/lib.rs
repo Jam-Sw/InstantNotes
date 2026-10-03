@@ -87,7 +87,6 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
@@ -524,12 +523,12 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app, event| {
             if let tauri::RunEvent::ExitRequested { code, api, .. } = event {
-                // The updater's relaunch (request_restart) drives this exit
-                // with RESTART_EXIT_CODE and latches restart-on-exit inside
+                // The updater plugin's own relaunch (request_restart, after
+                // an installer it had to hand off to) drives this exit with
+                // RESTART_EXIT_CODE and latches restart-on-exit inside
                 // Tauri. Preventing it would leave that latch set with no
                 // exit coming, stranding the freshly installed update, so
-                // the restart passes through untouched; updater.restart()
-                // flushes pending edits before it ever calls relaunch.
+                // the restart passes through untouched.
                 if code == Some(tauri::RESTART_EXIT_CODE) {
                     return;
                 }
