@@ -208,9 +208,11 @@ The sticky store follows the same rule for a popped-out sheet.
 
 ## 7. Where it sits
 
-It changes note shape (a new kind) but adds no column and no migration, and
-the vault serializer already handles a surface sidecar. It takes the next
-slot after the open 13x units, as `13h`.
+It changes note shape (a new kind) but adds no column, and the vault
+serializer already handles a surface sidecar. It takes the next slot after
+the open 13x units, as `13h`. (Building it found one migration after all,
+v12: the hard-delete trigger names the sidecar's extension, and a sheet's is
+`.csv`. No column, no data rewrite.)
 
 ## 8. Review findings (2026-10-04)
 

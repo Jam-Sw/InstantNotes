@@ -1,7 +1,9 @@
 # Tasks: Sheet Notes
 
-A third note kind on the existing columns; no migration. The vault gains a
-`.csv` sidecar beside the whiteboard's `.excalidraw`. See `SEQUENCE.md` §13h.
+A third note kind on the existing columns; one trigger migration (v12, no
+column) so a destroyed sheet's `.csv` is tombstoned. The vault gains a `.csv`
+sidecar beside the whiteboard's `.excalidraw`. Built on `0.9.4-pre` on
+2026-10-04. See `SEQUENCE.md` §13h.
 
 ## Decide first
 
@@ -36,47 +38,57 @@ are folded into design.md §8 and the Build list.
 
 ## Build
 
-- [ ] Core: `CONTENT_KIND_SHEET`; `update_note` accepts it, lets sheets hold
+- [x] Core: `CONTENT_KIND_SHEET`; `update_note` accepts it, lets sheets hold
       `surfaceData`, allows `document` -> `sheet` one way (how "New sheet"
       creates one, as `newWhiteboard` does), refuses converting a sheet,
       validates the envelope and the three limits
-- [ ] Core: `core/src/sheet.rs`: parse the envelope, GFM table (`body`), CSV
+- [x] Core: `core/src/sheet.rs`: parse the envelope, GFM table (`body`), CSV
       (sidecar, export), `append_rows`; `update_note` derives a sheet's body
       from its `surfaceData` and ignores a body sent with it
-- [ ] Core: create path yields the default 3 x 20 grid and a frozen title
-- [ ] Vault: generalise the whiteboard's canvas sidecar to a surface sidecar
+- [x] Core: create path yields the default 3 x 20 grid and a frozen title
+- [x] Vault: generalise the whiteboard's canvas sidecar to a surface sidecar
       (`board.rs` -> `surface.rs`: extension by kind, `canvas_rel`,
       `note_rel_of_canvas`, `board_claims` take the kind); `kind: sheet`
       frontmatter; `.csv` through write, rename, trash, delete, tombstones;
       `board_sha` documented as the surface file hash
-- [ ] Export Note writes `.csv` for a sheet; vault export writes the sidecar
-- [ ] `src/lib/sheet/`: `model.ts`, `selection.ts`, `keys.ts`, `tsv.ts`
-- [ ] `SheetGrid.svelte`: rendering, both modes, mouse selection, column
+- [x] Export Note writes `.csv` for a sheet; vault export writes the sidecar
+- [x] `src/lib/sheet/`: `model.ts`, `selection.ts`, `keys.ts`, `tsv.ts`
+- [x] `SheetGrid.svelte`: rendering, both modes, mouse selection, column
       resize, header context menus, TSV clipboard, undo/redo, row windowing past
-      200 rows, theme tokens only, limit toast
-- [ ] Save path: `{ surfaceData }` through `SaveQueue`; flush on switch,
+      200 rows, theme tokens only, limit toast. Two mechanics differ from the
+      design's wording, to the same effect: copy, cut, and paste are taken as
+      clipboard events on the focused element (so the Edit menu reaches the
+      grid too) rather than as ⌘C/X/V keydowns, and undo keeps snapshots of
+      the grid (each edit shares the rows it did not touch) rather than
+      inverses
+- [x] Save path: `{ surfaceData }` through `SaveQueue`; flush on switch,
       pop-out, trash, quit; `#adoptExternal` and the sticky store take an
       agent's rows into an open sheet (design.md §6)
-- [ ] Library window keys: `[data-sheet]` counts as a typing target in
+- [x] Library window keys: `[data-sheet]` counts as a typing target in
       `+page.svelte`, not as a board target, so app shortcuts keep working
-- [ ] `NoteEditor` and the sticky route mount `SheetGrid` for a sheet;
+- [x] `NoteEditor` and the sticky route mount `SheetGrid` for a sheet;
       `NoteList` shows a sheet icon and "Empty sheet"
-- [ ] Entry points: palette "New sheet", File > New Sheet, note list menu
-- [ ] Agents: refuse body writes to a sheet; `append_sheet_rows`; `get_note`
+- [x] Entry points: palette "New sheet", File > New Sheet, note list menu
+- [x] Agents: refuse body writes to a sheet; `append_sheet_rows`; `get_note`
       on a sheet carries `sheet: { rows, cols }`
-- [ ] Docs: `DATA_MODEL.md` §3.2 and §10, `API.md`, changelog, spec
-      requirement, `SEQUENCE.md` §13h
+- [x] Core: migration v12 recreates the hard-delete trigger so a sheet's
+      `.csv` is tombstoned under its own extension (found while building: the
+      v6 trigger hardcodes `.excalidraw`). No column
+- [x] Docs: `DATA_MODEL.md` §3.2, §9, §10, §11, `API.md` §4, §9, §15,
+      changelog, spec requirement, `SEQUENCE.md` §13h
 
 ## Verify
 
-- [ ] `cargo test --workspace` (validation, the three limits, body derived
+- [x] `cargo test --workspace` (validation, the three limits, body derived
       from the grid, GFM and CSV escaping, vault sidecar round trip, agent
-      refusal, append padding and refusal, append fills trailing empty rows)
-- [ ] `npm test` (model ops and their inverses, movement, keys table, TSV
-      paste, shortcut pass-through against the command registry and the
-      window handler's global keys, save on switch, agent rows adopted into an
-      open grid)
-- [ ] `npm run check`
+      refusal, append padding and refusal, append fills trailing empty rows,
+      revert of an append restores the grid, migration v12); `cargo clippy
+      -D warnings` and `cargo fmt --check` as CI runs them
+- [x] `npm test` (model ops, movement, keys table, TSV paste, shortcut
+      pass-through against the command registry and the window handler's
+      global keys, the grid's save path and key contract, save on switch,
+      agent rows adopted into an open grid and merged on a conflicting save)
+- [x] `npm run check`
 - [ ] In the app: log twenty rows by keyboard alone in a popped-out sheet
       beside another app; paste a range from Google Sheets; quit mid-edit and
       relaunch; check the vault `.md` and `.csv`

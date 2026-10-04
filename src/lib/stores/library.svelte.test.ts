@@ -962,6 +962,76 @@ describe("whiteboards", () => {
   });
 });
 
+describe("sheets", () => {
+  const grid = (rows: string[][]) =>
+    JSON.stringify({ v: 1, engine: "grid", data: { cols: rows[0].map(() => ({ w: 120 })), rows } });
+  const GRID = grid([["Date", "ms"], ["d1", "1"], ["", ""]]);
+  const TABLE = "| Date | ms |\n| --- | --- |\n| d1 | 1 |";
+
+  it("queues a grid save like a body edit, with the version it was based on, and shows the store's table", async () => {
+    const library = await load();
+    await selectNote(library, "s1", { contentKind: "sheet", surfaceData: GRID, body: TABLE });
+    const next = grid([["Date", "ms"], ["d1", "1"], ["d2", "2"]]);
+    mockUpdateNote.mockResolvedValue(
+      mkNote("s1", { contentKind: "sheet", body: `${TABLE}\n| d2 | 2 |`, updatedAt: "2026-01-01T00:01:00Z" }),
+    );
+
+    library.editSheet("s1", next);
+    expect(library.saveState).toBe("saving");
+    expect(library.selected?.surfaceData).toBe(next);
+    // The body is the store's to derive; until it answers, the old one stands.
+    expect(library.selected?.body).toBe(TABLE);
+
+    await vi.advanceTimersByTimeAsync(400);
+    expect(mockUpdateNote).toHaveBeenCalledWith("s1", {
+      surfaceData: next,
+      expectedUpdatedAt: "2026-01-01T00:00:00Z",
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.saveState).toBe("saved");
+    expect(library.selected?.body).toBe(`${TABLE}\n| d2 | 2 |`);
+    // The reply leaves the grid out; the open note keeps its own copy.
+    expect(library.selected?.surfaceData).toBe(next);
+  });
+
+  it("quit and a note switch collect the cell still being typed in", async () => {
+    const library = await load();
+    await selectNote(library, "s1", { contentKind: "sheet", surfaceData: GRID });
+    mockUpdateNote.mockResolvedValue(mkNote("s1", { contentKind: "sheet" }));
+    const off = library.onBeforeFlush(() => library.editSheet("s1", "typed"));
+
+    await library.flushPendingEdits();
+    expect(mockUpdateNote).toHaveBeenCalledWith("s1", {
+      surfaceData: "typed",
+      expectedUpdatedAt: "2026-01-01T00:00:00Z",
+    });
+    off();
+  });
+
+  it("New sheet creates a note and makes it a sheet; the store supplies the grid", async () => {
+    const library = await load();
+    mockCreateNote.mockResolvedValue(mkNote("new1"));
+    mockGetNote.mockResolvedValue(mkNote("new1"));
+    mockUpdateNote.mockResolvedValue(mkNote("new1", { contentKind: "sheet", title: "Untitled sheet" }));
+
+    await library.newSheet();
+
+    expect(mockCreateNote).toHaveBeenCalled();
+    expect(mockUpdateNote).toHaveBeenCalledWith("new1", { contentKind: "sheet" });
+    expect(library.selected?.contentKind).toBe("sheet");
+    expect(library.selected?.title).toBe("Untitled sheet");
+  });
+
+  it("New sheet never converts the open note when creating the new one fails", async () => {
+    const library = await load();
+    await selectNote(library, "n1", { body: "my writing" });
+    mockCreateNote.mockRejectedValue(new Error("disk full"));
+    await library.newSheet();
+    expect(mockUpdateNote).not.toHaveBeenCalled();
+    expect(library.selected?.contentKind).toBe("document");
+  });
+});
+
 describe("graph view", () => {
   it("is its own place: entering it leaves every other view", async () => {
     const library = await load();

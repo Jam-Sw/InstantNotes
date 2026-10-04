@@ -267,6 +267,23 @@ ALTER TABLE agent_sessions ADD COLUMN client_pid INTEGER;
     r#"
 ALTER TABLE agent_sessions ADD COLUMN matched TEXT;
 "#,
+    // v12: sheets in the vault. A sheet's surface file is a `.csv` beside
+    // its note file (vault/surface.rs), tracked by the same `board_sha` as
+    // a whiteboard's canvas. The hard-delete trigger now queues the sidecar
+    // under the extension its kind writes, instead of `.excalidraw` always.
+    r#"
+DROP TRIGGER notes_vault_ad;
+CREATE TRIGGER notes_vault_ad AFTER DELETE ON notes
+  WHEN old.vault_path IS NOT NULL BEGIN
+  INSERT OR REPLACE INTO vault_tombstones (vault_path, file_sha)
+    VALUES (old.vault_path, old.file_sha);
+  INSERT OR REPLACE INTO vault_tombstones (vault_path, file_sha)
+    SELECT substr(old.vault_path, 1, length(old.vault_path) - 3)
+             || CASE old.content_kind WHEN 'sheet' THEN '.csv' ELSE '.excalidraw' END,
+           old.board_sha
+    WHERE old.board_sha IS NOT NULL;
+END;
+"#,
 ];
 
 const NOTE_COLUMNS: &str = "id, title, body, created_at, updated_at, last_opened_at, \
@@ -809,6 +826,51 @@ mod migration_tests {
             vec![
                 ("B.excalidraw".to_string(), "b".to_string()),
                 ("B.md".to_string(), "a".to_string()),
+            ]
+        );
+    }
+
+    /// A library at v11 (before sheets) learns to tombstone a sheet's `.csv`
+    /// under its own extension; a whiteboard's canvas is queued as before.
+    #[test]
+    fn v12_tombstones_a_sheet_csv_beside_a_board_canvas() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("v11.db");
+        {
+            let conn = Connection::open(&path).unwrap();
+            for sql in &MIGRATIONS[..11] {
+                conn.execute_batch(sql).unwrap();
+            }
+            conn.pragma_update(None, "user_version", 11i64).unwrap();
+        }
+
+        let store = Store::open(&path).unwrap();
+        store
+            .conn
+            .execute_batch(
+                "INSERT INTO notes (id, title, body, created_at, updated_at, content_kind, \
+                 vault_path, file_sha, board_sha) VALUES \
+                 ('b1', 'B', '', 't', 't', 'whiteboard', 'B.md', 'a', 'b'), \
+                 ('s1', 'S', '', 't', 't', 'sheet', 'S.md', 'c', 'd');
+                 DELETE FROM notes WHERE id IN ('b1', 's1');",
+            )
+            .unwrap();
+        let mut stmt = store
+            .conn
+            .prepare("SELECT vault_path, file_sha FROM vault_tombstones ORDER BY vault_path")
+            .unwrap();
+        let rows: Vec<(String, String)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        assert_eq!(
+            rows,
+            vec![
+                ("B.excalidraw".to_string(), "b".to_string()),
+                ("B.md".to_string(), "a".to_string()),
+                ("S.csv".to_string(), "d".to_string()),
+                ("S.md".to_string(), "c".to_string()),
             ]
         );
     }

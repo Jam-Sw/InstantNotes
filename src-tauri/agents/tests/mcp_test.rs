@@ -120,6 +120,7 @@ fn tools_list_describes_every_tool_with_a_schema() {
         "create_note",
         "update_note",
         "append_to_note",
+        "append_sheet_rows",
     ] {
         assert!(names.contains(&expected), "missing {expected}");
     }
@@ -1084,4 +1085,192 @@ fn suggest_space_answers_from_the_graphs_model_and_files_nothing() {
     assert_eq!(rows[0].tool, "suggest_space");
     assert_eq!(rows[0].kind, "read");
     assert!(store.workspaces_for_note(&unfiled.id).unwrap().is_empty());
+}
+
+// ---- sheets ----
+
+/// A new sheet, as the app creates one: an empty note made a sheet, which
+/// gives it the default 3 x 20 grid.
+fn new_sheet(store: &mut Store) -> instantnotes_core::types::Note {
+    let note = store.create_note(CreateNoteInput::default()).unwrap();
+    store
+        .update_note(
+            &note.id,
+            instantnotes_core::types::UpdateNotePatch {
+                content_kind: Some("sheet".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+}
+
+fn grid_rows(store: &mut Store, id: &str) -> Vec<Vec<String>> {
+    let note = store.get_note(id, false).unwrap();
+    instantnotes_core::sheet::Sheet::parse(note.surface_data.as_deref().unwrap())
+        .unwrap()
+        .rows
+}
+
+#[test]
+fn sheet_rows_land_after_the_data_and_the_body_follows() {
+    let mut store = store_with("write");
+    let sheet = new_sheet(&mut store);
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(1, "get_note", json!({ "id": sheet.id })),
+            call(
+                2,
+                "append_sheet_rows",
+                json!({ "id": sheet.id, "rows": [["Date", "Build", "ms"], ["2026-10-04", "a1f3"]] }),
+            ),
+            call(
+                3,
+                "append_sheet_rows",
+                json!({ "id": sheet.id, "rows": [["2026-10-05", "b2c4", "398"]] }),
+            ),
+        ],
+    );
+    let (_, _, before) = result_of(&replies[1]);
+    assert_eq!(before["kind"], "sheet");
+    assert_eq!(before["sheet"], json!({ "cols": 3, "rows": 0 }));
+
+    let (is_error, text, first) = result_of(&replies[2]);
+    assert!(!is_error, "{text}");
+    assert_eq!(first["appended"], json!({ "firstRow": 1, "count": 2 }));
+    assert_eq!(first["sheet"], json!({ "cols": 3, "rows": 2 }));
+    assert_eq!(
+        first["body"],
+        "| Date | Build | ms |\n| --- | --- | --- |\n| 2026-10-04 | a1f3 |  |"
+    );
+
+    let (_, _, second) = result_of(&replies[3]);
+    assert_eq!(second["appended"], json!({ "firstRow": 3, "count": 1 }));
+    let rows = grid_rows(&mut store, &sheet.id);
+    // The default grid's empty rows were reused, not appended after.
+    assert_eq!(rows.len(), 20);
+    assert_eq!(rows[2], vec!["2026-10-05", "b2c4", "398"]);
+    assert_eq!(rows[1], vec!["2026-10-04", "a1f3", ""]);
+}
+
+#[test]
+fn sheet_rows_are_refused_when_wider_than_the_sheet_or_not_a_sheet() {
+    let mut store = store_with("write");
+    let sheet = new_sheet(&mut store);
+    let doc = store
+        .create_note(CreateNoteInput {
+            body: Some("Plain".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(
+                1,
+                "append_sheet_rows",
+                json!({ "id": sheet.id, "rows": [["a", "b", "c", "d"]] }),
+            ),
+            call(
+                2,
+                "append_sheet_rows",
+                json!({ "id": doc.id, "rows": [["a"]] }),
+            ),
+            call(
+                3,
+                "append_sheet_rows",
+                json!({ "id": sheet.id, "rows": [] }),
+            ),
+        ],
+    );
+    let (is_error, text, _) = result_of(&replies[1]);
+    assert!(is_error);
+    assert!(
+        text.contains("4 cells") && text.contains("3 columns"),
+        "{text}"
+    );
+    let (is_error, text, _) = result_of(&replies[2]);
+    assert!(is_error);
+    assert!(text.contains("not a sheet"), "{text}");
+    let (is_error, text, _) = result_of(&replies[3]);
+    assert!(is_error);
+    assert!(text.contains("at least one row"), "{text}");
+    assert_eq!(grid_rows(&mut store, &sheet.id).len(), 20);
+    // Refused writes leave an error row and no snapshot.
+    assert!(trace(&store)
+        .iter()
+        .all(|e| e.status == "error" && !e.revertable));
+}
+
+#[test]
+fn a_sheet_body_is_refused_but_its_table_is_read() {
+    let mut store = store_with("write");
+    let sheet = new_sheet(&mut store);
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(1, "append_to_note", json!({ "id": sheet.id, "text": "x" })),
+            call(
+                2,
+                "update_note",
+                json!({ "id": sheet.id, "expectedUpdatedAt": sheet.updated_at, "body": "x" }),
+            ),
+            call(
+                3,
+                "update_note",
+                json!({ "id": sheet.id, "expectedUpdatedAt": sheet.updated_at, "title": "Timings" }),
+            ),
+        ],
+    );
+    for reply in &replies[1..3] {
+        let (is_error, text, _) = result_of(reply);
+        assert!(is_error);
+        assert!(
+            text.contains("sheet") && text.contains("append_sheet_rows"),
+            "{text}"
+        );
+    }
+    let (is_error, text, renamed) = result_of(&replies[3]);
+    assert!(!is_error, "{text}");
+    assert_eq!(renamed["title"], "Timings");
+}
+
+#[test]
+fn reverting_a_sheet_append_restores_the_grid_with_the_body() {
+    let mut store = store_with("write");
+    let sheet = new_sheet(&mut store);
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(
+                1,
+                "append_sheet_rows",
+                json!({ "id": sheet.id, "rows": [["h1", "h2"]] }),
+            ),
+            call(
+                2,
+                "append_sheet_rows",
+                json!({ "id": sheet.id, "rows": [["1", "2"]] }),
+            ),
+        ],
+    );
+    assert!(replies[1..].iter().all(|r| !result_of(r).0));
+    let log = trace(&store);
+    let second = &log[0];
+    assert_eq!(second.tool, "append_sheet_rows");
+    assert!(second.revertable);
+    let before = store.activity_before(second.seq).unwrap().unwrap();
+    assert!(
+        before.surface_data.is_some(),
+        "a sheet's snapshot carries its grid"
+    );
+
+    store.revert_activity(second.seq).unwrap();
+    let note = store.get_note(&sheet.id, false).unwrap();
+    assert_eq!(note.body, "| h1 | h2 |\n| --- | --- |");
+    assert_eq!(grid_rows(&mut store, &sheet.id)[1], vec!["", "", ""]);
 }

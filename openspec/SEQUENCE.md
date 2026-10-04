@@ -317,7 +317,7 @@ dependency, and unit 14 still owns those. Agents get the same answers through
 a read-only MCP tool; the policy is suggest-only everywhere. Built on
 `0.9.3-pre` on 2026-10-03. See `changes/feat-graph-suggestions/`.
 
-## 13h. `feat-note-sheet` (REVIEWED, approved for build)
+## 13h. `feat-note-sheet` (BUILT, open until checked in the app)
 
 A third note kind, `sheet`: a keyboard-first cell grid written in-house as
 Svelte DOM, with no third-party grid, for logging beside another editor. It
@@ -328,9 +328,13 @@ migration (`content_kind` is validated in code, and the sidecar hash reuses
 `display` function a headless engine can take over later. Proposed on
 `0.9.4-pre` on 2026-10-03; reviewed and its four open questions decided on
 2026-10-04 (ship `append_sheet_rows`; 52 x 5,000 plus a 10,000-character cell
-cap; Enter edits; the body is derived in Rust from the grid). It starts once
-13c to 13g are checked in the app and archived, or an exception is recorded
-here, per the working rule. See `changes/feat-note-sheet/`.
+cap; Enter edits; the body is derived in Rust from the grid). Built on
+`0.9.4-pre` on 2026-10-04 with its tests green, by the owner's decision while
+13c to 13g stay open until checked in the app: the recorded exception to the
+one-unit rule, as 13d and 13e were. One correction to the proposal: the
+hard-delete trigger needed a migration (v12, no column) so a destroyed
+sheet's `.csv` is tombstoned under its own extension. It stays open until the
+in-app checks in `changes/feat-note-sheet/tasks.md` pass, then archives.
 
 ## 14. Local AI
 

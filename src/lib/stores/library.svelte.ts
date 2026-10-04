@@ -59,6 +59,7 @@ import { toasts } from "$lib/stores/toasts.svelte";
 import { announceOverwrite } from "$lib/stores/agents.svelte";
 import { mayHaveWritten, parseActivityLog, type AgentActivity } from "$lib/agent-activity";
 import { boardFromText } from "$lib/whiteboard/excalidraw";
+import { appendRows, parseSheet, serializeSheet } from "$lib/sheet/model";
 import { listen } from "@tauri-apps/api/event";
 
 export type { StatusFilter } from "$lib/stores/library/navigation.svelte";
@@ -137,16 +138,22 @@ class LibraryStore {
   #saveQueue = new SaveQueue({
     onPersisted: async (id, updated) => {
       if (this.selected?.id === id) {
-        // Keep the local body and canvas: the user may have kept editing
-        // past this save, and the reply never carries the canvas.
-        const { body, surfaceData } = this.selected;
-        this.selected = { ...updated, body, surfaceData };
+        // Keep the local body and surface: the user may have kept editing
+        // past this save, and the reply never carries the surface. A sheet's
+        // body is the store's to derive, so the reply's is the one to show.
+        const { body, surfaceData, contentKind } = this.selected;
+        this.selected = {
+          ...updated,
+          body: contentKind === "sheet" ? updated.body : body,
+          surfaceData,
+        };
         this.selectedTags = await tagsForNote(id);
       }
       this.error = null;
     },
     onError: (e) => this.#fail(e, SAVE_CONFLICT_MESSAGE),
     onOverwrote: (id, theirs) => announceOverwrite(id, () => this.#restoreExternal(id, theirs)),
+    onMerged: (id, added) => this.#takeAppendedRows(id, added),
   });
 
   // Editors that hold an edit not yet handed to the queue (a whiteboard
@@ -843,6 +850,29 @@ class LibraryStore {
   }
 
   /**
+   * A sheet save: the grid, queued like a body edit; the store derives the
+   * note's table from it. Takes the id because a grid hands over its last
+   * edit while the library is already switching away from it.
+   */
+  editSheet(id: string, surfaceData: string): void {
+    if (this.isSticky(id)) return;
+    if (this.selected?.id === id) this.selected.surfaceData = surfaceData;
+    this.#saveQueue.queue(id, { surfaceData });
+  }
+
+  /**
+   * Rows another writer (an agent) appended, met by a save of this window's
+   * grid, which went out carrying them. They go onto the grid shown here, and
+   * a newer edit still waiting is replaced so it carries them too.
+   */
+  #takeAppendedRows(id: string, added: string[][]): void {
+    if (this.selected?.id !== id || added.length === 0) return;
+    const surfaceData = serializeSheet(appendRows(parseSheet(this.selected.surfaceData), added));
+    this.selected.surfaceData = surfaceData;
+    if (this.#saveQueue.peek(id) !== undefined) this.#saveQueue.queue(id, { surfaceData });
+  }
+
+  /**
    * Turn the open note into a whiteboard, for good: its text goes onto the
    * board as a text block, so nothing written disappears.
    */
@@ -866,6 +896,24 @@ class LibraryStore {
   async newWhiteboard(): Promise<void> {
     const id = await this.newNote();
     if (id && this.selected?.id === id) await this.convertToWhiteboard();
+  }
+
+  /** A new note, opened as an empty sheet: the store gives it the default
+   *  grid and its name. Converts only the note it just created. */
+  async newSheet(): Promise<void> {
+    const id = await this.newNote();
+    if (id && this.selected?.id === id) await this.#convertToSheet();
+  }
+
+  /** Make the open note a sheet, for good. Only the empty note "New sheet"
+   *  just made comes through here; a Markdown table is not turned into one. */
+  async #convertToSheet(): Promise<void> {
+    const note = this.selected;
+    if (!note || note.isDeleted || note.contentKind !== "document") return;
+    if (this.isSticky(note.id)) return;
+    await this.flushPendingEdits();
+    if (this.selected?.id !== note.id) return;
+    await this.#applyUpdate(note.id, { contentKind: "sheet" });
   }
 
   editTitle(title: string): void {
@@ -985,6 +1033,7 @@ class LibraryStore {
     const open = this.selected;
     if (!open || isSyntheticNoteId(open.id) || open.contentKind === "whiteboard") return;
     if (!mayHaveWritten(entries, open.id)) return;
+    if (open.contentKind === "sheet") return this.#adoptExternalSheet(open.id);
     const shown = open.body;
     // The user may have typed, or moved on, while this was read.
     const fresh = await this.#saveQueue.readExternal(
@@ -996,6 +1045,23 @@ class LibraryStore {
     [this.selectedTags, this.selectedWorkspaces] = await Promise.all([
       tagsForNote(open.id),
       workspacesForNote(open.id),
+    ]);
+  }
+
+  /**
+   * An agent appended rows to the open sheet. With nothing unsaved the grid
+   * takes the agent's version whole; with unsaved cells it takes the rows
+   * the agent added, and the save that was waiting carries them too (see
+   * SaveQueue.readExternalSheet). Nothing is "offered back": an agent can
+   * only append, so the two writers never touch the same cell.
+   */
+  async #adoptExternalSheet(id: string): Promise<void> {
+    const taken = await this.#saveQueue.readExternalSheet(id, () => this.selected?.id === id);
+    if (!taken || this.selected?.id !== id) return;
+    this.selected = { ...taken.note, surfaceData: taken.surfaceData };
+    [this.selectedTags, this.selectedWorkspaces] = await Promise.all([
+      tagsForNote(id),
+      workspacesForNote(id),
     ]);
   }
 
@@ -1020,7 +1086,8 @@ class LibraryStore {
         const { body, surfaceData } = this.selected;
         this.selected = {
           ...updated,
-          body: patch.body ?? body,
+          // A sheet's body is the store's: the reply carries the table.
+          body: updated.contentKind === "sheet" ? updated.body : (patch.body ?? body),
           surfaceData: patch.surfaceData ?? surfaceData,
         };
         this.selectedTags = await tagsForNote(id);

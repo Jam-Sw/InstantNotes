@@ -49,10 +49,10 @@ content rowid; `id` is the public UUID):
 | `seq` | Integer primary key; FTS `content_rowid`. |
 | `id` | Public UUID, unique. |
 | `title`, `title_is_auto` | Title and whether it was auto-derived (section 6). |
-| `body` | Markdown body. For a whiteboard, the text on the board (section 3.1). |
+| `body` | Markdown body. For a whiteboard, the text on the board (section 3.1); for a sheet, its grid as a Markdown table (section 3.2). |
 | `created_at`, `updated_at`, `last_opened_at` | Lifecycle timestamps. |
 | `is_pinned`, `is_archived`, `is_deleted`, `deleted_at` | Status flags. |
-| `content_kind`, `surface_data` | `document` (default) or `whiteboard`, and a whiteboard's canvas (section 3.1). |
+| `content_kind`, `surface_data` | `document` (default), `whiteboard`, or `sheet`, and the whiteboard's canvas or the sheet's grid (sections 3.1 and 3.2). |
 | `vault_path`, `file_sha`, `vault_dirty`, `board_sha` | The live vault mirror (section 10). |
 
 Indexes cover `updated_at`, `created_at`, the status-flag triple, pending
@@ -75,9 +75,35 @@ shows. Because the body moves with the drawing, converting freezes an auto
 title (`title_is_auto = 0`).
 
 `update_note` enforces the rest: converting is one-way (a whiteboard never
-becomes a document again), and only a whiteboard holds `surface_data`. List
-rows leave `surface_data` out, since a board can hold pasted images; opening
-the note brings it.
+becomes a document again), and only a whiteboard or a sheet holds
+`surface_data`. List rows leave `surface_data` out, since a board can hold
+pasted images; opening the note brings it.
+
+### 3.2 Sheets
+
+A note can also be a sheet: a cell grid that stays a note. Its grid is
+`surface_data`, a versioned envelope read and written by core `sheet.rs`,
+the one place on the Rust side that knows the shape:
+
+```json
+{ "v": 1, "engine": "grid", "data": { "cols": [{ "w": 120 }], "rows": [["Date"], ["2026-10-03"]] } }
+```
+
+`rows` is dense (every row holds `cols.length` strings), each cell its raw
+input; `cols` holds only the view's column widths. Strings only: typed values
+are what a formula engine would produce, and none ships. The limits are 52
+columns (A to AZ), 5,000 rows, and 10,000 characters per cell, enforced by
+`update_note`'s validation, so no writer can exceed them.
+
+Its `body` is the grid as a GitHub-flavored Markdown table (row 1 the header,
+trailing empty rows and columns trimmed, pipes and newlines escaped),
+**derived by the store** from `surface_data` on every save; a body sent with
+a sheet is ignored. One serializer means the app's grid and an agent's
+`append_sheet_rows` produce the same body, so search, inline `#tags`, list
+previews, and the vault's Markdown file see what the sheet holds. A sheet's
+title is frozen on creation (`title_is_auto = 0`), "Untitled sheet" when the
+note had no words of its own. A note that becomes a sheet without a grid gets
+the default one, 3 columns by 20 rows; a sheet never becomes another kind.
 
 ## 4. Tags
 
@@ -155,6 +181,7 @@ public so tests can build fixtures at a historical schema version.
 | v9 | `agent_sessions`: one row per agent connection, for a truthful connected status (section 11). |
 | v10 | `agent_sessions.label`, `client_session`, `cwd`, `client_pid`: which instance of the client a connection is (section 11). |
 | v11 | `agent_sessions.matched`: whether that session was stated by the client or inferred (section 11). |
+| v12 | The hard-delete trigger queues a sheet's `.csv` under its own extension, beside a whiteboard's `.excalidraw` (section 10). No column: sheets live on the v4 and v6 columns. |
 
 v4 exists because pre-release builds that carried the whiteboard already
 migrated some libraries to it before the whiteboard was lifted off the 0.9.0
@@ -176,19 +203,25 @@ authoritative: the folder is written, never read back.
   vault folder (`trash/` for deleted notes).
 - `file_sha`: sha256 of the bytes last written there.
 - `vault_dirty`: 1 while the file is behind the database.
-- `board_sha`: for a whiteboard, sha256 of its canvas file as last written.
+- `board_sha`: for a whiteboard or a sheet, sha256 of its surface file as
+  last written.
 
-A whiteboard's note file carries `kind: whiteboard` in its frontmatter, and
-its canvas is a standard `.excalidraw` file beside it with the same name
-(`Plan.md`, `Plan.excalidraw`), openable in Excalidraw. The canvas file
-follows its note through renames, the trash, and deletes, under the same
-ownership rules as the note file.
+A surface note has a second file beside its note file with the same name
+(`vault/surface.rs`): a whiteboard's note file carries `kind: whiteboard` and
+its canvas is a standard `.excalidraw` file (`Plan.md`, `Plan.excalidraw`),
+openable in Excalidraw; a sheet's note file carries `kind: sheet` and the
+Markdown table, and its grid is a `.csv` beside it (`Timings.md`,
+`Timings.csv`; RFC 4180, CRLF, UTF-8 without a BOM, trailing empty rows
+trimmed), openable in any spreadsheet. Column widths stay in the database.
+The surface file follows its note through renames, the trash, and deletes,
+under the same ownership rules as the note file; the check compares a canvas
+as JSON and a CSV as written.
 
 Triggers set `vault_dirty` in the same transaction as the write that changed
 the note's file contents: the note's own columns (not `last_opened_at`,
 which is device-local), its tag and Space edges (including the cascades from
 deleting a tag or a Space), and a rename of a tag or Space it carries. A
-permanent delete queues the file, and a whiteboard's canvas file, in
+permanent delete queues the file, and a surface note's second file, in
 `vault_tombstones` (`vault_path`, `file_sha`). The flush writes pending notes, removes tombstoned files that
 still hold the bytes it wrote, and clears the flags. A crash between the
 commit and the file write leaves the flag set, and the next launch catches

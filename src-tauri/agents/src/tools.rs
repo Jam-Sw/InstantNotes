@@ -5,17 +5,20 @@
 //! "space" (the product term); the core underneath says "workspace".
 //!
 //! Deliberately absent, at every access level: permanent delete, settings,
-//! the vault, and whiteboard canvases.
+//! the vault, and whiteboard canvases. A sheet's grid is reached one way:
+//! `append_sheet_rows` adds rows and nothing else, which is what keeps an
+//! agent's write mergeable with the user's unsaved cells in the app.
 
 use crate::access::Access;
 use crate::activity::{Kind, Scope, Trace};
 use crate::fail;
 use instantnotes_core::clients::{identify, parent_process, Client, ClientProcess};
 use instantnotes_core::domain::{normalize_tag_name, normalize_workspace_name};
+use instantnotes_core::sheet::Sheet;
 use instantnotes_core::store::now_ms;
 use instantnotes_core::types::NoteSearch;
 use instantnotes_core::types::{
-    CreateNoteInput, Note, NoteFilter, UpdateNotePatch, CONTENT_KIND_WHITEBOARD,
+    CreateNoteInput, Note, NoteFilter, UpdateNotePatch, CONTENT_KIND_SHEET, CONTENT_KIND_WHITEBOARD,
 };
 use instantnotes_core::{AppError, Store};
 use serde::de::DeserializeOwned;
@@ -219,6 +222,23 @@ const TOOLS: &[ToolDef] = &[
             "id": id_param(),
             "text": { "type": "string", "description": "Markdown." }
         }), &["id", "text"]),
+    },
+    ToolDef {
+        name: "append_sheet_rows",
+        title: "Add rows to a sheet",
+        level: Access::Write,
+        destructive: false,
+        idempotent: false,
+        description: "Add rows to the bottom of a sheet note (kind \"sheet\"), after its last row holding data. Each row is a list of cell strings in column order; a short row is padded, a row wider than the sheet is refused. get_note's `sheet` says how many columns it has.",
+        schema: || object(json!({
+            "id": id_param(),
+            "rows": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "array", "items": { "type": "string" } },
+                "description": "Rows to add, each a list of cells left to right."
+            }
+        }), &["id", "rows"]),
     },
     ToolDef {
         name: "tag_note",
@@ -451,6 +471,7 @@ impl<'a> Tools<'a> {
             "create_note" => self.create_note(parse(args)?),
             "update_note" => self.update_note(parse(args)?),
             "append_to_note" => self.append_to_note(parse(args)?),
+            "append_sheet_rows" => self.append_sheet_rows(parse(args)?),
             "tag_note" => {
                 let a: TagArgs = parse(args)?;
                 self.store.add_tag_to_note(&a.id, &a.tag).map_err(fail)?;
@@ -652,7 +673,7 @@ impl<'a> Tools<'a> {
         }
         let current = self.store.get_note(&a.id, false).map_err(fail)?;
         if a.body.is_some() {
-            refuse_whiteboard(&current)?;
+            refuse_derived_body(&current)?;
         }
         let patch = UpdateNotePatch {
             title: a.title,
@@ -684,7 +705,7 @@ impl<'a> Tools<'a> {
     fn append_to_note(&mut self, a: AppendArgs) -> ToolResult {
         for _ in 0..APPEND_ATTEMPTS {
             let current = self.store.get_note(&a.id, false).map_err(fail)?;
-            refuse_whiteboard(&current)?;
+            refuse_derived_body(&current)?;
             let body = appended(&current.body, &a.text);
             let patch = UpdateNotePatch {
                 body: Some(body),
@@ -698,6 +719,41 @@ impl<'a> Tools<'a> {
             }
         }
         Err("CONFLICT: the note kept changing while appending; try again".into())
+    }
+
+    /// Rows go after the sheet's last row holding data; the store derives
+    /// the Markdown body from the grid, as it does for the app's own saves.
+    /// Read, append, write with the version check, and retry when the user
+    /// saved in between, like `append_to_note`.
+    fn append_sheet_rows(&mut self, a: SheetRowsArgs) -> ToolResult {
+        for _ in 0..APPEND_ATTEMPTS {
+            let current = self.store.get_note(&a.id, false).map_err(fail)?;
+            if current.content_kind != CONTENT_KIND_SHEET {
+                return Err(format!(
+                    "this note is a {}, not a sheet; append_to_note adds text to it",
+                    current.content_kind
+                ));
+            }
+            let mut sheet = Sheet::parse(current.surface_data.as_deref().unwrap_or_default())
+                .map_err(|e| format!("this sheet's grid cannot be read: {e}"))?;
+            let first = sheet.append_rows(a.rows.clone())?;
+            let patch = UpdateNotePatch {
+                surface_data: Some(sheet.serialize()),
+                expected_updated_at: Some(current.updated_at),
+                ..Default::default()
+            };
+            match self.store.update_note(&a.id, patch) {
+                Ok(_) => {
+                    let mut view = self.note_view(&a.id)?;
+                    // Spreadsheet numbering, as the app shows it.
+                    view["appended"] = json!({ "firstRow": first + 1, "count": a.rows.len() });
+                    return Ok(view);
+                }
+                Err(AppError::Conflict(_)) => continue,
+                Err(e) => return Err(fail(e)),
+            }
+        }
+        Err("CONFLICT: the sheet kept changing while appending; try again".into())
     }
 
     pub(crate) fn resources(&self) -> Result<Vec<Value>, String> {
@@ -759,6 +815,12 @@ impl<'a> Tools<'a> {
         if let Some(dir) = &self.attachments_dir {
             view["attachmentsDir"] = json!(dir);
         }
+        // A sheet's shape, so an agent knows the width before it appends.
+        if note.content_kind == CONTENT_KIND_SHEET {
+            if let Ok(sheet) = Sheet::parse(note.surface_data.as_deref().unwrap_or_default()) {
+                view["sheet"] = json!({ "cols": sheet.cols.len(), "rows": sheet.filled_rows() });
+            }
+        }
         Ok(view)
     }
 
@@ -797,13 +859,20 @@ fn summary(note: &Note) -> Value {
     })
 }
 
-/// A whiteboard's body is the text on its canvas, rewritten by every canvas
-/// save, so writing it would be silently undone.
-fn refuse_whiteboard(note: &Note) -> Result<(), String> {
-    if note.content_kind == CONTENT_KIND_WHITEBOARD {
-        return Err("this note is a whiteboard; its text can only be edited in the app".into());
+/// A whiteboard's body is the text on its canvas and a sheet's is its grid
+/// as a table, each rewritten by every save of the surface, so writing the
+/// body would be silently undone.
+fn refuse_derived_body(note: &Note) -> Result<(), String> {
+    match note.content_kind.as_str() {
+        CONTENT_KIND_WHITEBOARD => {
+            Err("this note is a whiteboard; its text can only be edited in the app".into())
+        }
+        CONTENT_KIND_SHEET => Err(
+            "this note is a sheet; its body is its grid. Use append_sheet_rows to add rows; cells are edited in the app"
+                .into(),
+        ),
+        _ => Ok(()),
     }
-    Ok(())
 }
 
 fn appended(body: &str, text: &str) -> String {
@@ -1017,6 +1086,13 @@ struct UpdateArgs {
 struct AppendArgs {
     id: String,
     text: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SheetRowsArgs {
+    id: String,
+    rows: Vec<Vec<String>>,
 }
 
 #[derive(Deserialize)]

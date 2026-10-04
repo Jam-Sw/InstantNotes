@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatExact, formatBytes, preview, wordCount } from "./format";
+import { formatExact, formatBytes, preview, sheetPreview, wordCount } from "./format";
 
 describe("preview", () => {
   it("collapses whitespace and trims", () => {
@@ -10,6 +10,21 @@ describe("preview", () => {
   });
   it("is empty for blank input", () => {
     expect(preview("   \n\t ")).toBe("");
+  });
+});
+
+describe("sheetPreview", () => {
+  it("lists the cells in reading order without the table's pipes and rule", () => {
+    expect(sheetPreview("| Date | ms |\n| --- | --- |\n| 2026-10-03 | 412 |")).toBe(
+      "Date · ms · 2026-10-03 · 412",
+    );
+  });
+  it("unescapes pipes, flattens line breaks, skips empty cells, and caps the length", () => {
+    expect(sheetPreview("| a\\|b |  | one<br>two |\n| --- | --- | --- |")).toBe("a|b · one two");
+    expect(sheetPreview(`| ${"x".repeat(200)} |\n| --- |`)).toHaveLength(90);
+  });
+  it("is empty for an empty sheet", () => {
+    expect(sheetPreview("")).toBe("");
   });
 });
 

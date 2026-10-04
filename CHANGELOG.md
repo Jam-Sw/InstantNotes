@@ -10,6 +10,17 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.9.4]
 
 ### Added
+- Sheet notes: a third kind of note, a cell grid that stays a note. New sheet
+  from the palette, the ＋ menu, or File > New Sheet. It works like Sheets or
+  Excel: type into a cell, Tab across, Enter down (a new row appears at the
+  bottom), copy and paste ranges to and from Google Sheets, Excel, and
+  Numbers, undo and redo, resize columns, insert and delete rows and columns
+  from the header menus. A sheet is listed, tagged, filed, searched, popped
+  out as a sticky, and exported like any note; its cells are its text, so
+  `#tags` typed into cells tag the note. In the vault it is a Markdown table
+  with a `.csv` beside it; Export Note writes the `.csv`. Agents get
+  `append_sheet_rows` to log rows into a sheet, and rows an agent adds appear
+  in the open grid without a reload, beside anything still being typed.
 - Graph: 3D layout (`d3-force-3d`, held to a slab by `forceZ`, Barnes-Hut
   `theta` 1.2); right-drag, Shift+drag or arrow keys turn it about the framed
   nodes, drawn in perspective back to front. Pan, zoom and lens unchanged.

@@ -10,6 +10,7 @@ export const EVENTS = {
   SETTINGS_OPEN: "settings:open",
   MENU_NEW_NOTE: "menu:new-note",
   MENU_NEW_WHITEBOARD: "menu:new-whiteboard",
+  MENU_NEW_SHEET: "menu:new-sheet",
   MENU_EXPORT_NOTE: "menu:export-note",
   UPDATER_CHECK: "updater:check",
   SHORTCUT_FAILED: "shortcut:failed",

@@ -55,9 +55,11 @@ fight InstantNotes for the keyboard, the theme, or the window.
 - Core: `CONTENT_KIND_SHEET` in `types.rs`; `update_note` validation in
   `store/notes.rs` (sheets hold `surfaceData`, a sheet never converts to
   another kind); vault mirror writes the `.csv` sidecar in `store/vault.rs`.
-  **No migration**: `content_kind` is validated in code, not by a CHECK, and the
-  sidecar's hash reuses `board_sha`, which `DATA_MODEL.md` will describe as the
-  hash of the note's surface file rather than of a canvas only.
+  **No column**: `content_kind` is validated in code, not by a CHECK, and the
+  sidecar's hash reuses `board_sha`, which `DATA_MODEL.md` describes as the
+  hash of the note's surface file rather than of a canvas only. One trigger
+  migration (v12) was needed after all: the v6 hard-delete trigger tombstones
+  the sidecar as `.excalidraw` by name, and a sheet's is `.csv`.
 - Core: `core/src/sheet.rs` (new): envelope validation, the Markdown table,
   CSV, and row append, shared by the store, the vault, and the agent tool.
 - Agents: `src-tauri/agents/src/tools.rs` refuses body edits to a sheet as it

@@ -1,8 +1,9 @@
 // The library's edit-save queue: debounced writes, one quiet retry, and
 // flush-on-switch/blur/quit, kept as a single-writer unit apart from the rest
-// of the store. A queued edit is a document's body, or a whiteboard's canvas
-// with the text on it; either way the newest edit per note replaces the last. It owns every "is this note persisted" decision; the store
-// composes one instance and delegates.
+// of the store. A queued edit is a document's body, a whiteboard's canvas
+// with the text on it, or a sheet's grid; either way the newest edit per note
+// replaces the last. It owns every "is this note persisted" decision; the
+// store composes one instance and delegates.
 //
 // The only outward coupling is the open note: a confirmed write updates it, and
 // a terminal failure surfaces an error. Both arrive via injected callbacks so
@@ -18,9 +19,11 @@ import {
 import { ApiError, getNote, updateNote } from "$lib/api/client";
 import { ERROR_CODES } from "$lib/api/error-codes";
 import type { Note, UpdateNotePatch } from "$lib/api/types";
+import { mergeAppended, parseSheet, serializeSheet } from "$lib/sheet/model";
 
 /** What the queue persists for a note: `{ body }` for a document,
- *  `{ surfaceData, body }` for a whiteboard. */
+ *  `{ surfaceData, body }` for a whiteboard, `{ surfaceData }` for a sheet,
+ *  whose body the store derives. */
 export type QueuedEdit = Pick<UpdateNotePatch, "body" | "surfaceData">;
 
 /** Selected-note save status for the editor status bar. */
@@ -41,10 +44,22 @@ export interface SaveQueueDeps {
   /** A save replaced a body someone else (an agent) wrote after this window
    *  last saw the note. `theirs` is that body, for the user to restore. */
   onOverwrote?: (id: string, theirs: string) => void;
+  /** A sheet save met rows someone else (an agent) appended since this window
+   *  last saw the note, and went out carrying them. `added` is those rows,
+   *  for the window to show in its grid. */
+  onMerged?: (id: string, added: string[][]) => void;
 }
 
-/** The last version of a note this window loaded or wrote. */
-type DiskVersion = Pick<Note, "updatedAt" | "body">;
+/** The last version of a note this window loaded or wrote. A sheet's grid
+ *  is kept too: it is the base an agent's appended rows are told apart from. */
+type DiskVersion = Pick<Note, "updatedAt" | "body" | "contentKind"> & {
+  surfaceData?: string | null;
+};
+
+/** What a note looks like to `known`: a loaded note, or a save's reply. */
+type Seen = Pick<Note, "id" | "updatedAt" | "body" | "contentKind"> & {
+  surfaceData?: string | null;
+};
 
 export class SaveQueue {
   // Edits not yet confirmed persisted, by note id. An entry is only removed by
@@ -81,11 +96,17 @@ export class SaveQueue {
 
   /** Record the version of a note just loaded from disk. Only moves forward,
    *  so a slow read can never rewind past a save that already landed. */
-  known(note: Pick<Note, "id" | "updatedAt" | "body">): void {
+  known(note: Seen): void {
     const current = this.#disk.get(note.id);
     // Timestamps are UTC ISO-8601, so string order is time order.
     if (current && current.updatedAt >= note.updatedAt) return;
-    this.#disk.set(note.id, { updatedAt: note.updatedAt, body: note.body });
+    this.#disk.set(note.id, {
+      updatedAt: note.updatedAt,
+      body: note.body,
+      contentKind: note.contentKind,
+      // A save's reply carries no surface; the one last seen still stands.
+      surfaceData: note.surfaceData ?? current?.surfaceData,
+    });
   }
 
   /**
@@ -105,6 +126,40 @@ export class SaveQueue {
     if (!stillShown() || this.peek(id) !== undefined) return null;
     this.known(fresh);
     return fresh;
+  }
+
+  /**
+   * A sheet another process (an agent) just wrote. Taken in whole when
+   * nothing is unsaved here; with unsaved cells, the rows it appended are
+   * put onto the grid being edited and the queued save is replaced so it
+   * carries them too. `surfaceData` is what the grid should now show. Null
+   * when the user moved on, the read failed, or there was nothing to take.
+   */
+  async readExternalSheet(
+    id: string,
+    stillShown: () => boolean,
+  ): Promise<{ note: Note; surfaceData: string } | null> {
+    let fresh: Note;
+    try {
+      fresh = await getNote(id, false);
+    } catch {
+      return null;
+    }
+    if (!stillShown() || !fresh.surfaceData) return null;
+    const pending = this.peek(id);
+    const base = this.#disk.get(id);
+    // The next save is based on the agent's version, so it is no conflict.
+    this.known(fresh);
+    if (pending?.surfaceData === undefined) return { note: fresh, surfaceData: fresh.surfaceData };
+    const { sheet, added } = mergeAppended(
+      parseSheet(base?.surfaceData),
+      parseSheet(pending.surfaceData),
+      parseSheet(fresh.surfaceData),
+    );
+    if (added.length === 0) return null;
+    const surfaceData = serializeSheet(sheet);
+    this.queue(id, { surfaceData });
+    return { note: fresh, surfaceData };
   }
 
   /** Save status of one note id, for the editor status bar. */
@@ -167,30 +222,47 @@ export class SaveQueue {
   }
 
   /**
-   * Write one edit. A document edit is conditional on the version it was
-   * based on; when another process wrote in between, the user's edit still
-   * wins (it is what they are looking at), but only after the other body is
-   * read, so the user is told and can restore it. A whiteboard canvas and a
-   * note never loaded in this window are written as before.
+   * Write one edit. A document or sheet edit is conditional on the version
+   * it was based on. When another process wrote a document in between, the
+   * user's edit still wins (it is what they are looking at), but only after
+   * the other body is read, so the user is told and can restore it. A sheet
+   * instead takes the rows the other writer appended, since an agent can do
+   * nothing else to a sheet, and the save goes out carrying them: nothing is
+   * lost on either side. A whiteboard canvas and a note never loaded in this
+   * window are written as before.
    */
-  async #write(id: string, edit: QueuedEdit): Promise<Note> {
+  async #write(id: string, edit: QueuedEdit): Promise<{ updated: Note; merged?: string[][] }> {
     const base = this.#disk.get(id);
-    if (!base || edit.surfaceData !== undefined) return updateNote(id, edit);
+    if (!base || base.contentKind === "whiteboard") return { updated: await updateNote(id, edit) };
     let expected = base.updatedAt;
-    let theirs: string | null = null;
+    let theirs: Note | null = null;
+    let carrying = edit;
+    let merged: string[][] | undefined;
     for (let attempt = 1; ; attempt++) {
       try {
-        const updated = await updateNote(id, { ...edit, expectedUpdatedAt: expected });
+        const updated = await updateNote(id, { ...carrying, expectedUpdatedAt: expected });
         // A newer updatedAt with the same body is a pin, a rename, a tag:
         // nothing of theirs was replaced, so nothing to say.
-        if (theirs !== null && theirs !== base.body) this.#deps.onOverwrote?.(id, theirs);
-        return updated;
+        if (theirs && !merged && base.contentKind === "document" && theirs.body !== base.body) {
+          this.#deps.onOverwrote?.(id, theirs.body);
+        }
+        return { updated, merged };
       } catch (e) {
         const conflict = e instanceof ApiError && e.code === ERROR_CODES.CONFLICT;
         if (!conflict || attempt >= CONFLICT_ATTEMPTS) throw e;
-        const disk = await getNote(id, false);
-        expected = disk.updatedAt;
-        theirs = disk.body;
+        theirs = await getNote(id, false);
+        expected = theirs.updatedAt;
+        if (base.contentKind === "sheet" && carrying.surfaceData !== undefined && theirs.surfaceData) {
+          const { sheet, added } = mergeAppended(
+            parseSheet(base.surfaceData),
+            parseSheet(carrying.surfaceData),
+            parseSheet(theirs.surfaceData),
+          );
+          if (added.length > 0) {
+            carrying = { surfaceData: serializeSheet(sheet) };
+            merged = [...(merged ?? []), ...added];
+          }
+        }
       }
     }
   }
@@ -200,8 +272,9 @@ export class SaveQueue {
     // flush, supersedes an outstanding scheduled retry for the same id.
     this.#clearRetryTimer(id);
     try {
-      const updated = await this.#write(id, edit);
-      this.known(updated);
+      const { updated, merged } = await this.#write(id, edit);
+      // The reply carries no surface; what was just written is on disk.
+      this.known(edit.surfaceData !== undefined ? { ...updated, surfaceData: edit.surfaceData } : updated);
       // Confirmed on disk. Clear the queue entry unless a newer edit superseded
       // the one this write carried.
       if (this.#unsaved.get(id) === edit) {
@@ -210,6 +283,7 @@ export class SaveQueue {
       if (this.#failed.has(id)) {
         this.#failed = withoutSetEntries(this.#failed, [id]);
       }
+      if (merged) this.#deps.onMerged?.(id, merged);
       await this.#deps.onPersisted(id, updated);
     } catch (e) {
       if (canRetry) {

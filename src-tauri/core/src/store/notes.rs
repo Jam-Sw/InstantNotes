@@ -1,6 +1,7 @@
 //! Note CRUD, listing, and full-text search.
 
 use super::*;
+use crate::sheet::{self, Sheet};
 
 pub(super) struct NewNote<'a> {
     pub body: &'a str,
@@ -48,6 +49,11 @@ pub(super) struct UpdatePlan {
     pub title: Option<String>,
     /// A new `title_is_auto`, or `None` to keep the column as it is.
     pub title_is_auto: Option<bool>,
+    /// The body to write, or `None` to keep it. The patch's for a document
+    /// or a whiteboard; derived from the grid for a sheet.
+    pub body: Option<String>,
+    /// The surface to write, or `None` to keep it.
+    pub surface_data: Option<String>,
 }
 
 /// The rules of an update, apart from the rows. `Ok(None)` when the patch
@@ -69,44 +75,78 @@ pub(super) fn plan_update(
 
     let kind = match patch.content_kind.as_deref() {
         None => existing.content_kind.as_str(),
-        Some(k @ (CONTENT_KIND_DOCUMENT | CONTENT_KIND_WHITEBOARD)) => k,
+        Some(k @ (CONTENT_KIND_DOCUMENT | CONTENT_KIND_WHITEBOARD | CONTENT_KIND_SHEET)) => k,
         Some(other) => {
             return Err(AppError::Validation(format!(
-                "content kind must be {CONTENT_KIND_DOCUMENT} or {CONTENT_KIND_WHITEBOARD}, got {other}"
+                "content kind must be {CONTENT_KIND_DOCUMENT}, {CONTENT_KIND_WHITEBOARD}, or {CONTENT_KIND_SHEET}, got {other}"
             )))
         }
     };
-    if existing.content_kind == CONTENT_KIND_WHITEBOARD && kind != CONTENT_KIND_WHITEBOARD {
+    // Converting is one-way, and only a document converts.
+    if has_surface(&existing.content_kind) && kind != existing.content_kind {
+        let back = if kind == CONTENT_KIND_DOCUMENT {
+            " back"
+        } else {
+            ""
+        };
+        return Err(AppError::Validation(format!(
+            "a {} cannot be turned{back} into a {kind}",
+            existing.content_kind
+        )));
+    }
+    let is_surface = has_surface(kind);
+    if patch.surface_data.is_some() && !is_surface {
         return Err(AppError::Validation(
-            "a whiteboard cannot be turned back into a document".into(),
+            "only a whiteboard or a sheet holds surface data".into(),
         ));
     }
-    let is_board = kind == CONTENT_KIND_WHITEBOARD;
-    if patch.surface_data.is_some() && !is_board {
-        return Err(AppError::Validation(
-            "only a whiteboard can hold a canvas".into(),
-        ));
-    }
+
+    // A sheet's body is its grid as a Markdown table, derived here so every
+    // writer produces the same one; a body sent with a sheet is ignored. A
+    // note that converts without a grid gets the default one.
+    let (body, surface_data) = if kind == CONTENT_KIND_SHEET {
+        match &patch.surface_data {
+            Some(raw) => {
+                let grid = Sheet::parse(raw).map_err(AppError::Validation)?;
+                (Some(grid.markdown()), Some(raw.clone()))
+            }
+            None if existing.content_kind != CONTENT_KIND_SHEET => {
+                let grid = Sheet::new_default();
+                (Some(grid.markdown()), Some(grid.serialize()))
+            }
+            None => (None, None),
+        }
+    } else {
+        (patch.body.clone(), patch.surface_data.clone())
+    };
 
     let explicit_title = patch
         .title
         .as_deref()
         .map(str::trim)
         .filter(|t| !t.is_empty());
-    // A whiteboard's body is the text on its canvas, rewritten by every
-    // save, so its title stops following the body the moment it converts.
-    let (title, new_title_is_auto) = match (explicit_title, &patch.body) {
+    // A surface note's body is derived (the text on a canvas, a sheet's
+    // grid) and rewritten by every save, so its title stops following the
+    // body the moment it converts. A sheet born from an empty note takes a
+    // name of its own rather than "Untitled".
+    let becomes_sheet = kind == CONTENT_KIND_SHEET && existing.content_kind != CONTENT_KIND_SHEET;
+    let (title, new_title_is_auto) = match (explicit_title, &body) {
         (Some(t), _) => (Some(t.to_string()), Some(false)),
-        (None, Some(body)) if title_is_auto && !is_board => {
+        (None, Some(body)) if title_is_auto && !is_surface => {
             (Some(domain::derive_title(body)), None)
         }
-        (None, _) if title_is_auto && is_board => (None, Some(false)),
+        (None, _) if title_is_auto && becomes_sheet && existing.body.trim().is_empty() => {
+            (Some(sheet::DEFAULT_TITLE.to_string()), Some(false))
+        }
+        (None, _) if title_is_auto && is_surface => (None, Some(false)),
         _ => (None, None),
     };
     Ok(Some(UpdatePlan {
         kind: kind.to_string(),
         title,
         title_is_auto: new_title_is_auto,
+        body,
+        surface_data,
     }))
 }
 
@@ -197,6 +237,8 @@ impl Store {
             kind,
             title: new_title,
             title_is_auto: new_title_is_auto,
+            body: new_body,
+            surface_data: new_surface,
         } = plan;
 
         let now = now_iso();
@@ -229,16 +271,16 @@ impl Store {
             params![
                 new_title,
                 new_title_is_auto.map(i64::from),
-                patch.body.as_deref(),
+                new_body.as_deref(),
                 patch.is_pinned.map(i64::from),
                 patch.is_archived.map(i64::from),
                 kind,
-                patch.surface_data.as_deref(),
+                new_surface.as_deref(),
                 now,
                 id
             ],
         )?;
-        if let Some(body) = &patch.body {
+        if let Some(body) = &new_body {
             // Reconcile inline tags with the new body: attach the tags it now
             // mentions, then detach any inline-sourced edge whose #token is
             // gone so removing a tag chip is not undone by the next save.
@@ -703,6 +745,8 @@ mod tests {
                 kind: CONTENT_KIND_DOCUMENT.into(),
                 title: None,
                 title_is_auto: None,
+                body: None,
+                surface_data: None,
             })
         );
     }
@@ -810,6 +854,87 @@ mod tests {
         };
         let message = validation(plan_update(&note(CONTENT_KIND_DOCUMENT), true, &patch));
         assert!(message.contains("spreadsheet"), "{message}");
+    }
+
+    const GRID: &str = r#"{"v":1,"engine":"grid","data":{"cols":[{"w":120},{"w":120}],"rows":[["Date","ms"],["2026-10-03","412"]]}}"#;
+
+    #[test]
+    fn an_empty_note_becomes_a_sheet_with_the_default_grid_and_name() {
+        let mut empty = note(CONTENT_KIND_DOCUMENT);
+        empty.body = String::new();
+        let patch = UpdateNotePatch {
+            content_kind: Some(CONTENT_KIND_SHEET.into()),
+            ..Default::default()
+        };
+        let plan = plan_update(&empty, true, &patch).unwrap().unwrap();
+        assert_eq!(plan.kind, CONTENT_KIND_SHEET);
+        assert_eq!(plan.title.as_deref(), Some(sheet::DEFAULT_TITLE));
+        assert_eq!(plan.title_is_auto, Some(false));
+        assert_eq!(plan.body.as_deref(), Some(""));
+        let grid = Sheet::parse(plan.surface_data.as_deref().unwrap()).unwrap();
+        assert_eq!(grid, Sheet::new_default());
+    }
+
+    #[test]
+    fn a_note_with_words_keeps_its_title_when_it_becomes_a_sheet() {
+        let patch = UpdateNotePatch {
+            content_kind: Some(CONTENT_KIND_SHEET.into()),
+            surface_data: Some(GRID.into()),
+            ..Default::default()
+        };
+        let plan = plan_update(&note(CONTENT_KIND_DOCUMENT), true, &patch)
+            .unwrap()
+            .unwrap();
+        assert_eq!(plan.title, None);
+        assert_eq!(plan.title_is_auto, Some(false));
+        assert_eq!(
+            plan.body.as_deref(),
+            Some("| Date | ms |\n| --- | --- |\n| 2026-10-03 | 412 |")
+        );
+        assert_eq!(plan.surface_data.as_deref(), Some(GRID));
+    }
+
+    #[test]
+    fn a_sheet_save_derives_its_body_and_ignores_the_one_sent() {
+        let patch = UpdateNotePatch {
+            body: Some("someone else's words".into()),
+            surface_data: Some(GRID.into()),
+            ..Default::default()
+        };
+        let plan = plan_update(&note(CONTENT_KIND_SHEET), false, &patch)
+            .unwrap()
+            .unwrap();
+        assert!(plan.body.as_deref().unwrap().starts_with("| Date | ms |"));
+        // A body alone changes nothing on a sheet.
+        let plan = plan_update(&note(CONTENT_KIND_SHEET), false, &body("words"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(plan.body, None);
+        assert_eq!(plan.surface_data, None);
+    }
+
+    #[test]
+    fn a_bad_grid_is_a_validation_error() {
+        let patch = UpdateNotePatch {
+            surface_data: Some(
+                r#"{"v":1,"engine":"grid","data":{"cols":[{"w":1}],"rows":[["a","b"]]}}"#.into(),
+            ),
+            ..Default::default()
+        };
+        let message = validation(plan_update(&note(CONTENT_KIND_SHEET), false, &patch));
+        assert!(message.contains("row 1 has 2 cells"), "{message}");
+    }
+
+    #[test]
+    fn a_sheet_cannot_become_a_whiteboard_or_a_document() {
+        for kind in [CONTENT_KIND_WHITEBOARD, CONTENT_KIND_DOCUMENT] {
+            let patch = UpdateNotePatch {
+                content_kind: Some(kind.into()),
+                ..Default::default()
+            };
+            let message = validation(plan_update(&note(CONTENT_KIND_SHEET), false, &patch));
+            assert!(message.contains("a sheet cannot be turned"), "{message}");
+        }
     }
 
     #[test]

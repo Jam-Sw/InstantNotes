@@ -13,9 +13,10 @@ pub const TAGS_CHANGED: &str = "tags:changed";
 pub const WORKSPACES_CHANGED: &str = "workspaces:changed";
 /// Open the Settings window (app menu).
 pub const SETTINGS_OPEN: &str = "settings:open";
-/// File menu: new note, new whiteboard, export the open note.
+/// File menu: new note, new whiteboard, new sheet, export the open note.
 pub const MENU_NEW_NOTE: &str = "menu:new-note";
 pub const MENU_NEW_WHITEBOARD: &str = "menu:new-whiteboard";
+pub const MENU_NEW_SHEET: &str = "menu:new-sheet";
 pub const MENU_EXPORT_NOTE: &str = "menu:export-note";
 /// Check for an update now (app menu).
 pub const UPDATER_CHECK: &str = "updater:check";

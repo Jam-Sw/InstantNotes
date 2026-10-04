@@ -153,6 +153,35 @@ The app SHALL let a note be a whiteboard, a freeform canvas that stays a note: l
 - **WHEN** a vault folder is set and a board is saved
 - **THEN** the vault holds the note file and a standard `.excalidraw` file beside it with the same name
 
+### Requirement: Sheet Notes
+The app SHALL let a note be a sheet, a cell grid that stays a note: listed, tagged, filed in Spaces, trashed, popped out, and searched like any other.
+
+#### Scenario: Log a row without leaving the keyboard
+- **WHEN** the user types into the last row of a sheet, presses Tab between cells, and presses Enter
+- **THEN** each value lands in the next cell to the right
+- **AND** a new empty row appears, with the selection in the column where the Tab run started
+
+#### Scenario: Search a sheet
+- **WHEN** the user searches for a value typed into a cell
+- **THEN** the sheet appears in the results
+
+#### Scenario: App shortcuts still work
+- **WHEN** a cell is selected or being edited and the user presses an app shortcut such as the command palette or pop-out
+- **THEN** the app shortcut runs, and the grid does not swallow it
+
+#### Scenario: Never lose the last cell
+- **WHEN** the user types into a cell and immediately switches notes, pops the sheet out, trashes it, or quits
+- **THEN** the typed value is saved
+
+#### Scenario: An agent logs rows
+- **WHEN** an agent calls `append_sheet_rows` on a sheet that is open in the app
+- **THEN** the rows appear at the bottom of the grid without a reload, beside any cells still being typed
+- **AND** `update_note` and `append_to_note` on the same sheet are refused
+
+#### Scenario: A sheet in the vault
+- **WHEN** a vault folder is set and a sheet is saved
+- **THEN** the vault holds the note file, whose body is a Markdown table, and a `.csv` file beside it with the same name
+
 ### Requirement: Privacy By Default
 The app SHALL avoid writing note content to logs or diagnostics.
 

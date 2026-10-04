@@ -11,6 +11,7 @@ const stores = vi.hoisted(() => ({
     isSticky: vi.fn((_id: string) => false),
     newNote: vi.fn(),
     newWhiteboard: vi.fn(),
+    newSheet: vi.fn(),
     selectGraph: vi.fn(),
     togglePinned: vi.fn(),
     toggleArchived: vi.fn(),
@@ -106,7 +107,7 @@ describe("buildCommands with no note open", () => {
   it("offers the global commands and none of the note ones", () => {
     const commands = buildCommands();
     const got = ids(commands);
-    for (const id of ["note.new", "note.newWhiteboard", "view.graph", "view.sidebar", "view.agents"]) {
+    for (const id of ["note.new", "note.newWhiteboard", "note.newSheet", "view.graph", "view.sidebar", "view.agents"]) {
       expect(got).toContain(id);
     }
     for (const id of NOTE_COMMANDS) expect(got).not.toContain(id);
@@ -159,6 +160,7 @@ describe("buildCommands with no note open", () => {
     const commands = buildCommands();
     void find(commands, "note.new").run();
     void find(commands, "note.newWhiteboard").run();
+    void find(commands, "note.newSheet").run();
     void find(commands, "view.graph").run();
     void find(commands, "view.sidebar").run();
     void find(commands, "view.agents").run();
@@ -168,6 +170,7 @@ describe("buildCommands with no note open", () => {
     void find(commands, "theme.export").run();
     expect(stores.library.newNote).toHaveBeenCalledOnce();
     expect(stores.library.newWhiteboard).toHaveBeenCalledOnce();
+    expect(stores.library.newSheet).toHaveBeenCalledOnce();
     expect(stores.library.selectGraph).toHaveBeenCalledOnce();
     expect(stores.sidebar.toggle).toHaveBeenCalledOnce();
     expect(stores.agents.show).toHaveBeenCalledOnce();

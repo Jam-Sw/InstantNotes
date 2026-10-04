@@ -19,6 +19,7 @@ import {
   type QueuedEdit,
   type SaveState,
 } from "$lib/stores/library/save-queue.svelte";
+import { appendRows, parseSheet, serializeSheet } from "$lib/sheet/model";
 
 export class StickyNote {
   note = $state<Note | null>(null);
@@ -29,10 +30,15 @@ export class StickyNote {
   #queue = new SaveQueue({
     onPersisted: (id, updated) => {
       if (this.note?.id !== id) return;
-      // Keep the local body and canvas: typing may have continued past this
-      // save, and the reply never carries the canvas.
-      const { body, surfaceData } = this.note;
-      this.note = { ...updated, body, surfaceData };
+      // Keep the local body and surface: typing may have continued past this
+      // save, and the reply never carries the surface. A sheet's body is the
+      // store's to derive, so the reply's is the one to show.
+      const { body, surfaceData, contentKind } = this.note;
+      this.note = {
+        ...updated,
+        body: contentKind === "sheet" ? updated.body : body,
+        surfaceData,
+      };
       this.error = null;
     },
     onError: (e) => this.#fail(e, SAVE_CONFLICT_MESSAGE),
@@ -40,6 +46,14 @@ export class StickyNote {
       announceOverwrite(id, () => {
         if (this.note?.id === id) this.editBody(theirs);
       }),
+    onMerged: (id, added) => {
+      // Rows an agent appended, met by this window's save: onto the grid,
+      // and into any newer edit still waiting (see the library's version).
+      if (this.note?.id !== id || added.length === 0) return;
+      const surfaceData = serializeSheet(appendRows(parseSheet(this.note.surfaceData), added));
+      this.note.surfaceData = surfaceData;
+      if (this.#queue.peek(id) !== undefined) this.#queue.queue(id, { surfaceData });
+    },
   });
 
   // A whiteboard batches canvas changes before handing them over; it
@@ -80,6 +94,13 @@ export class StickyNote {
     this.#queue.queue(id, edit);
   }
 
+  /** A sheet save: the grid; the store derives the note's table from it. */
+  editSheet(id: string, surfaceData: string): void {
+    if (this.note?.id !== id || this.gone) return;
+    this.note.surfaceData = surfaceData;
+    this.#queue.queue(id, { surfaceData });
+  }
+
   /** Persist everything now. True when nothing is left unsaved, which is
    *  the only answer that lets the window close. */
   async flush(): Promise<boolean> {
@@ -113,6 +134,18 @@ export class StickyNote {
     const open = this.note;
     if (!open || this.gone || open.contentKind === "whiteboard") return;
     if (!mayHaveWritten(entries, open.id)) return;
+    if (open.contentKind === "sheet") {
+      // Whole when nothing is unsaved; else the agent's appended rows go onto
+      // the grid and into the waiting save (SaveQueue.readExternalSheet).
+      const taken = await this.#queue.readExternalSheet(
+        open.id,
+        () => this.note?.id === open.id && !this.gone,
+      );
+      if (taken && this.note?.id === open.id) {
+        this.note = { ...taken.note, surfaceData: taken.surfaceData };
+      }
+      return;
+    }
     const shown = open.body;
     const fresh = await this.#queue.readExternal(
       open.id,

@@ -6,7 +6,7 @@
   import { getVersion } from "@tauri-apps/api/app";
   import { listen } from "@tauri-apps/api/event";
   import { save } from "@tauri-apps/plugin-dialog";
-  import { exportNoteFile, quitApp } from "$lib/api/client";
+  import { exportNoteFile, quitApp, sheetCsv } from "$lib/api/client";
   import { EVENTS } from "$lib/api/events";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import NoteList from "$lib/components/NoteList.svelte";
@@ -125,6 +125,13 @@
       void library.newWhiteboard();
     }).then((un) => (unlistenNewBoard = un));
 
+    let unlistenNewSheet: (() => void) | undefined;
+    void listen(EVENTS.MENU_NEW_SHEET, () => {
+      if (licenseSpace.locked) return;
+      settingsOpen = false;
+      void library.newSheet();
+    }).then((un) => (unlistenNewSheet = un));
+
     let unlistenExport: (() => void) | undefined;
     void listen(EVENTS.MENU_EXPORT_NOTE, () => {
       if (licenseSpace.locked) return;
@@ -155,6 +162,7 @@
       unlistenSettings?.();
       unlistenNewNote?.();
       unlistenNewBoard?.();
+      unlistenNewSheet?.();
       unlistenExport?.();
       unlistenSticky?.();
       unlistenQuit?.();
@@ -164,10 +172,16 @@
     };
   });
 
+  // A sheet's grid counts as typing: it stops only the keys it handles
+  // itself (sheet/keys.ts), so the list keys below must stand aside for it
+  // while the global keys above still run.
   function isTypingTarget(t: EventTarget | null): t is HTMLElement {
     return (
       t instanceof HTMLElement &&
-      (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)
+      (t.tagName === "INPUT" ||
+        t.tagName === "TEXTAREA" ||
+        t.isContentEditable ||
+        t.closest("[data-sheet]") !== null)
     );
   }
 
@@ -291,18 +305,26 @@
     if (!note) return;
     await library.flushPendingEdits();
     const filename = (note.title || "Untitled").replace(/[/\\?%*:|"<>]/g, "-");
-    // A board exports as the drawing itself, openable in Excalidraw.
+    // A board exports as the drawing itself, openable in Excalidraw; a sheet
+    // as CSV, openable in any spreadsheet.
     const board = note.contentKind === "whiteboard";
-    const path = await save({
-      defaultPath: `${filename}.${board ? "excalidraw" : "md"}`,
-      filters: board
-        ? [{ name: "Excalidraw", extensions: ["excalidraw"] }]
-        : [{ name: "Markdown", extensions: ["md"] }],
-    });
+    const sheet = note.contentKind === "sheet";
+    const [ext, filter] = board
+      ? ["excalidraw", { name: "Excalidraw", extensions: ["excalidraw"] }]
+      : sheet
+        ? ["csv", { name: "CSV", extensions: ["csv"] }]
+        : ["md", { name: "Markdown", extensions: ["md"] }];
+    const path = await save({ defaultPath: `${filename}.${ext}`, filters: [filter] });
     if (!path) return;
     // `note`, not library.selected: the selection can move while the dialog
-    // is open, and the flush above already brought `note` up to date.
-    await exportNoteFile(path, board ? excalidrawFile(parseBoard(note.surfaceData)) : note.body);
+    // is open, and the flush above already brought `note` up to date. The
+    // CSV comes from the store, the one serializer the vault writes with.
+    const contents = board
+      ? excalidrawFile(parseBoard(note.surfaceData))
+      : sheet
+        ? await sheetCsv(note.id)
+        : note.body;
+    await exportNoteFile(path, contents);
   }
 
   // Sidebar resize: pointer capture keeps the gesture on the handle even when

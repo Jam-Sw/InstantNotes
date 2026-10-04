@@ -207,6 +207,8 @@ pub fn run() {
                 true,
                 Some("CmdOrCtrl+Shift+N"),
             )?;
+            let new_sheet_item =
+                MenuItem::with_id(app, "new_sheet", "New Sheet", true, None::<&str>)?;
             let export_item =
                 MenuItem::with_id(app, "export_note", "Export Note As…", true, None::<&str>)?;
             let sticky_item = MenuItem::with_id(
@@ -220,6 +222,7 @@ pub fn run() {
                 let builder = SubmenuBuilder::new(app, "File")
                     .item(&new_note_item)
                     .item(&new_board_item)
+                    .item(&new_sheet_item)
                     .separator()
                     .item(&sticky_item)
                     .item(&export_item);
@@ -270,6 +273,10 @@ pub fn run() {
                 "new_whiteboard" => {
                     show_library_window(app);
                     let _ = app.emit(events::MENU_NEW_WHITEBOARD, ());
+                }
+                "new_sheet" => {
+                    show_library_window(app);
+                    let _ = app.emit(events::MENU_NEW_SHEET, ());
                 }
                 "export_note" => {
                     show_library_window(app);
@@ -474,6 +481,7 @@ pub fn run() {
             export_theme_file,
             import_theme_file,
             export_note_file,
+            sheet_csv,
             save_attachment,
             get_attachments_dir,
             import_image_file,

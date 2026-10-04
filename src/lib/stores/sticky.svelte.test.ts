@@ -199,6 +199,31 @@ describe("StickyNote when an agent writes its note", () => {
     });
   });
 
+  it("appends an agent's rows to a sheet being edited, and saves them along", async () => {
+    const grid = (rows: string[][]) =>
+      JSON.stringify({ v: 1, engine: "grid", data: { cols: rows[0].map(() => ({ w: 120 })), rows } });
+    const rowsOf = (raw: string | null | undefined) => JSON.parse(raw ?? "").data.rows as string[][];
+    const sticky = new StickyNote();
+    mockGetNote.mockResolvedValueOnce(
+      mkNote({ contentKind: "sheet", surfaceData: grid([["h"], ["1"], [""]]) }),
+    );
+    await sticky.load("n1");
+    sticky.editSheet("n1", grid([["h"], ["1"], ["2"]]));
+    mockGetNote.mockResolvedValueOnce(
+      mkNote({ contentKind: "sheet", surfaceData: grid([["h"], ["1"], ["a"]]), updatedAt: "2026-01-01T00:05:00Z" }),
+    );
+
+    await sticky.adoptExternal([write("n1")]);
+    expect(rowsOf(sticky.note?.surfaceData)).toEqual([["h"], ["1"], ["2"], ["a"]]);
+
+    mockUpdateNote.mockResolvedValueOnce(mkNote({ contentKind: "sheet", body: "| h |\n| --- |" }));
+    expect(await sticky.flush()).toBe(true);
+    const [, patch] = mockUpdateNote.mock.calls[0];
+    expect(rowsOf(patch.surfaceData)).toEqual([["h"], ["1"], ["2"], ["a"]]);
+    expect(patch.expectedUpdatedAt).toBe("2026-01-01T00:05:00Z");
+    expect(sticky.note?.body).toBe("| h |\n| --- |");
+  });
+
   it("says a save lost the race, not that a name is taken", async () => {
     const sticky = await loaded();
     sticky.editBody("milk, mine");

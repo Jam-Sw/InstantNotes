@@ -76,6 +76,11 @@ pub struct NoteSnapshot {
     pub tags: Vec<(String, String)>,
     /// Space names.
     pub spaces: Vec<String>,
+    /// A sheet's grid, whose body is derived from it: restoring the body
+    /// alone would leave the two disagreeing. `None` for every other kind
+    /// (a whiteboard's canvas can hold images, and no agent writes it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surface_data: Option<String>,
 }
 
 /// The raw exchange behind a call: the JSON-RPC message the agent sent and
@@ -223,8 +228,10 @@ fn snapshot(conn: &Connection, id: &str) -> Result<Option<NoteSnapshot>> {
     let head = conn
         .query_row(
             "SELECT title, title_is_auto, body, is_pinned, is_archived, is_deleted, \
-             deleted_at, updated_at FROM notes WHERE id = ?1",
-            params![id],
+             deleted_at, updated_at, \
+             CASE content_kind WHEN ?2 THEN surface_data ELSE NULL END \
+             FROM notes WHERE id = ?1",
+            params![id, CONTENT_KIND_SHEET],
             |r| {
                 Ok((
                     r.get::<_, String>(0)?,
@@ -235,6 +242,7 @@ fn snapshot(conn: &Connection, id: &str) -> Result<Option<NoteSnapshot>> {
                     r.get::<_, i64>(5)? != 0,
                     r.get::<_, Option<String>>(6)?,
                     r.get::<_, String>(7)?,
+                    r.get::<_, Option<String>>(8)?,
                 ))
             },
         )
@@ -248,6 +256,7 @@ fn snapshot(conn: &Connection, id: &str) -> Result<Option<NoteSnapshot>> {
         is_deleted,
         deleted_at,
         updated_at,
+        surface_data,
     )) = head
     else {
         return Ok(None);
@@ -278,6 +287,7 @@ fn snapshot(conn: &Connection, id: &str) -> Result<Option<NoteSnapshot>> {
         updated_at,
         tags,
         spaces,
+        surface_data,
     }))
 }
 
@@ -288,7 +298,8 @@ fn restore(tx: &Connection, snap: &NoteSnapshot) -> Result<()> {
     let now = now_iso();
     let changed = tx.execute(
         "UPDATE notes SET title = ?1, title_is_auto = ?2, body = ?3, is_pinned = ?4, \
-         is_archived = ?5, is_deleted = ?6, deleted_at = ?7, updated_at = ?8 WHERE id = ?9",
+         is_archived = ?5, is_deleted = ?6, deleted_at = ?7, updated_at = ?8, \
+         surface_data = COALESCE(?10, surface_data) WHERE id = ?9",
         params![
             snap.title,
             i64::from(snap.title_is_auto),
@@ -298,7 +309,8 @@ fn restore(tx: &Connection, snap: &NoteSnapshot) -> Result<()> {
             i64::from(snap.is_deleted),
             snap.deleted_at,
             now,
-            snap.id
+            snap.id,
+            snap.surface_data
         ],
     )?;
     if changed == 0 {

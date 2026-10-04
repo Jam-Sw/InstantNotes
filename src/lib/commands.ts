@@ -73,6 +73,12 @@ export function buildCommands(): Command[] {
       run: () => library.newWhiteboard(),
     },
     {
+      id: "note.newSheet",
+      title: "New sheet",
+      group: "Notes",
+      run: () => library.newSheet(),
+    },
+    {
       id: "view.graph",
       title: "Show graph",
       group: "View",

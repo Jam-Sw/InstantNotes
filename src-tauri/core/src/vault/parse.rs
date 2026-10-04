@@ -67,6 +67,6 @@ pub fn parse_note(text: &str) -> Result<VaultNote, ParseError> {
         kind: frontmatter
             .kind
             .unwrap_or_else(|| CONTENT_KIND_DOCUMENT.to_string()),
-        canvas: None,
+        surface: None,
     })
 }

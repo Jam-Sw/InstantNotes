@@ -4,8 +4,9 @@
 import type { ErrorCode } from "./error-codes";
 import type { FeedbackCategory } from "$lib/feedback";
 
-/** A Markdown document, or a whiteboard whose text is kept in `body`. */
-type ContentKind = "document" | "whiteboard";
+/** A Markdown document, a whiteboard whose text is kept in `body`, or a
+ *  sheet whose grid is kept in `body` as a Markdown table. */
+export type ContentKind = "document" | "whiteboard" | "sheet";
 
 export interface Note {
   id: string;
@@ -19,8 +20,9 @@ export interface Note {
   isDeleted: boolean;
   deletedAt?: string | null;
   contentKind: ContentKind;
-  /** A whiteboard's canvas (JSON). Only `getNote` carries it: list rows and
-   *  `updateNote`'s reply leave it out, since a board can hold images. */
+  /** A whiteboard's canvas or a sheet's grid (JSON). Only `getNote` carries
+   *  it: list rows and `updateNote`'s reply leave it out, since a board can
+   *  hold images. */
   surfaceData?: string | null;
 }
 
@@ -62,9 +64,11 @@ export interface UpdateNotePatch {
   body?: string;
   isPinned?: boolean;
   isArchived?: boolean;
-  /** Only ever "whiteboard": converting is one-way. */
+  /** "whiteboard" or "sheet": converting is one-way, and only a document
+   *  converts. A note made a sheet without a grid gets the default one. */
   contentKind?: ContentKind;
-  /** A whiteboard's canvas; rejected on a document. */
+  /** A whiteboard's canvas or a sheet's grid; rejected on a document. The
+   *  store derives a sheet's body from it and ignores a body sent with it. */
   surfaceData?: string;
   /** Apply only if the note's updatedAt still equals this; CONFLICT if not. */
   expectedUpdatedAt?: string;

@@ -43,13 +43,15 @@ fn validate_export_path(path: &str) -> CmdResult<()> {
     if !p.is_absolute() {
         return Err(CmdError::storage("export path must be absolute"));
     }
-    let is_allowed = p
-        .extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "md" | "txt" | "excalidraw"));
+    let is_allowed = p.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+        matches!(
+            e.to_ascii_lowercase().as_str(),
+            "md" | "txt" | "excalidraw" | "csv"
+        )
+    });
     if !is_allowed {
         return Err(CmdError::storage(
-            "export file must have a .md, .txt, or .excalidraw extension",
+            "export file must have a .md, .txt, .excalidraw, or .csv extension",
         ));
     }
     Ok(())
@@ -382,7 +384,7 @@ mod tests {
     }
 
     #[test]
-    fn note_export_accepts_markdown_text_and_excalidraw_only() {
+    fn note_export_accepts_markdown_text_excalidraw_and_csv_only() {
         // What counts as absolute is platform specific: on Windows a leading
         // separator is not enough without a drive prefix, so "/tmp/a.md" is a
         // relative path there and would fail the absolute check before the
@@ -391,7 +393,7 @@ mod tests {
         let dir = std::env::temp_dir();
         let path = |name: &str| dir.join(name).to_string_lossy().into_owned();
 
-        for name in ["a.md", "a.TXT", "board.excalidraw"] {
+        for name in ["a.md", "a.TXT", "board.excalidraw", "sheet.csv"] {
             let p = path(name);
             assert!(validate_export_path(&p).is_ok(), "{p}");
         }

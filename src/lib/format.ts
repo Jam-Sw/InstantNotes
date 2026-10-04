@@ -40,6 +40,18 @@ export function preview(body: string): string {
   return body.replace(/\s+/g, " ").trim().slice(0, 90);
 }
 
+/** A sheet's body is its grid as a Markdown table; its preview is the cells
+ *  in reading order, without the table's own pipes and rule. */
+export function sheetPreview(body: string): string {
+  const cells = body
+    .split("\n")
+    .filter((line) => !/^\|(?:\s*-+\s*\|)+\s*$/.test(line))
+    .flatMap((line) => line.replace(/^\|/, "").replace(/\|$/, "").split(/(?<!\\)\|/))
+    .map((cell) => cell.replace(/\\\|/g, "|").replace(/<br>/g, " ").trim())
+    .filter(Boolean);
+  return cells.join(" · ").slice(0, 90);
+}
+
 /** Whitespace-delimited word count; 0 for a blank body. */
 export function wordCount(body: string): number {
   const trimmed = body.trim();

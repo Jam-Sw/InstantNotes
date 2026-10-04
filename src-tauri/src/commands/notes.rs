@@ -1,6 +1,7 @@
 //! Note commands: create, read, update, delete, list, search.
 
 use crate::*;
+use instantnotes_core::sheet::Sheet;
 
 #[tauri::command(async)]
 pub fn create_note(
@@ -33,6 +34,19 @@ pub fn update_note(
     // would ship the whole board, pasted images included, on every save.
     note.surface_data = None;
     Ok(note)
+}
+
+/// A sheet's grid as CSV, for Export Note: the same bytes the vault mirror
+/// writes beside the note, from the one serializer (core `sheet.rs`).
+#[tauri::command(async)]
+pub fn sheet_csv(state: State<'_, AppState>, id: String) -> CmdResult<String> {
+    let note = locked(&state)?.get_note(&id, false)?;
+    if note.content_kind != CONTENT_KIND_SHEET {
+        return Err(CmdError::validation("only a sheet exports as CSV"));
+    }
+    let sheet = Sheet::parse(note.surface_data.as_deref().unwrap_or_default())
+        .map_err(CmdError::validation)?;
+    Ok(sheet.csv())
 }
 
 #[tauri::command(async)]

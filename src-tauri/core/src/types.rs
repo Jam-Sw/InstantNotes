@@ -1,9 +1,17 @@
 use serde::{Deserialize, Serialize};
 
-/// How a note is edited: a Markdown document, or a whiteboard canvas whose
-/// text is kept in `body` for search and tags. Strings on the wire.
+/// How a note is edited: a Markdown document, a whiteboard canvas whose
+/// text is kept in `body` for search and tags, or a sheet whose grid is
+/// kept in `body` as a Markdown table. Strings on the wire.
 pub const CONTENT_KIND_DOCUMENT: &str = "document";
 pub const CONTENT_KIND_WHITEBOARD: &str = "whiteboard";
+pub const CONTENT_KIND_SHEET: &str = "sheet";
+
+/// Whether notes of this kind keep a surface in `surface_data` beside
+/// their body: a whiteboard's canvas, a sheet's grid.
+pub fn has_surface(content_kind: &str) -> bool {
+    content_kind != CONTENT_KIND_DOCUMENT
+}
 
 /// Canonical note shape used by persistence and the desktop IPC layer.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -19,10 +27,11 @@ pub struct Note {
     pub is_archived: bool,
     pub is_deleted: bool,
     pub deleted_at: Option<String>,
-    /// `"document"` or `"whiteboard"`.
+    /// `"document"`, `"whiteboard"`, or `"sheet"`.
     pub content_kind: String,
-    /// A whiteboard's canvas as JSON. Only `get_note` carries it: list rows
-    /// leave it out, since a board can hold pasted images.
+    /// A whiteboard's canvas or a sheet's grid as JSON. Only `get_note`
+    /// carries it: list rows leave it out, since a board can hold pasted
+    /// images.
     pub surface_data: Option<String>,
 }
 
@@ -99,9 +108,11 @@ pub struct UpdateNotePatch {
     pub body: Option<String>,
     pub is_pinned: Option<bool>,
     pub is_archived: Option<bool>,
-    /// Only ever `"whiteboard"` in practice: converting is one-way.
+    /// `"whiteboard"` or `"sheet"` in practice: converting is one-way, and
+    /// only a document converts.
     pub content_kind: Option<String>,
-    /// A whiteboard's canvas; rejected on a document.
+    /// A whiteboard's canvas or a sheet's grid; rejected on a document. A
+    /// sheet's body is derived from it, so a body sent with it is ignored.
     pub surface_data: Option<String>,
     /// Optimistic concurrency: when set, the update applies only if the
     /// note's `updated_at` still equals it, and fails with `Conflict` otherwise.

@@ -55,8 +55,9 @@ developer-facing description and is never shown to users verbatim.
 | Command | Purpose |
 | --- | --- |
 | `create_note` | Create a note; title is derived from the body (see DATA_MODEL.md section 6). |
-| `get_note` | Fetch one note by id, including a whiteboard's `surfaceData`. |
-| `update_note` | Patch title/body/flags, `contentKind`, and `surfaceData`; an empty patch is a no-op. The reply omits `surfaceData`: the caller already holds the canvas it saved. |
+| `get_note` | Fetch one note by id, including a whiteboard's canvas or a sheet's grid as `surfaceData`. |
+| `update_note` | Patch title/body/flags, `contentKind`, and `surfaceData`; an empty patch is a no-op. The reply omits `surfaceData`: the caller already holds the surface it saved. |
+| `sheet_csv` | A sheet's grid as CSV, the bytes the vault writes beside it, for Export Note. `VALIDATION_ERROR` for a note that is not a sheet. |
 | `soft_delete_note` | Move a note to trash (`is_deleted = 1`). |
 | `restore_note` | Restore a trashed note. |
 | `set_notes_flags` / `soft_delete_notes` / `restore_notes` / `destroy_notes` | The same for a multi-selection (`ids`), each in one transaction. `set_notes_flags` takes optional `isPinned` and `isArchived`; `destroy_notes` refuses without `confirm: true`. |
@@ -66,10 +67,15 @@ developer-facing description and is never shown to users verbatim.
 | `space_suggestions` | Where each live note in no Space most likely belongs (section 4.1): `noteId`, `noteTitle`, `spaceId`, `spaceName`, `probability` (0 to 1), and up to three `reasons` (`label`, `kind` = `tag` or `word`), newest note first. Empty until two Spaces hold notes. |
 | `dismiss_space_suggestion` / `restore_space_suggestion` | "Not this one" for a (`noteId`, `spaceId`) pair, and its undo. Device-local (DATA_MODEL.md section 8); an unknown note or Space is `NOT_FOUND` on dismiss. Neither emits a library event: nothing about a note changed. |
 
-`contentKind` is `document` or `whiteboard`. `update_note` rejects turning a
-whiteboard back into a document and `surfaceData` on a document, both with
-`VALIDATION_ERROR`. A whiteboard's `body` is the text on its board, written
-by the app with each canvas save (DATA_MODEL.md section 3.1).
+`contentKind` is `document`, `whiteboard`, or `sheet`. `update_note` rejects
+turning a whiteboard or a sheet into anything else and `surfaceData` on a
+document, both with `VALIDATION_ERROR`. A whiteboard's `body` is the text on
+its board, written by the app with each canvas save (DATA_MODEL.md section
+3.1). A sheet's `body` is its grid as a Markdown table, derived by the store
+from `surfaceData` on every save (a body sent with a sheet is ignored), and
+its grid is validated against the sheet limits with `VALIDATION_ERROR`
+(section 3.2). A document patched to `sheet` without `surfaceData` gets the
+default grid.
 
 `update_note` takes an optional `expectedUpdatedAt`. When given, the patch
 applies only if the note's `updatedAt` still equals it, checked inside the
@@ -186,13 +192,14 @@ a copy at export time regardless of storage mode; see
 `export_theme_file`, `import_theme_file`, `export_note_file`, `open_url`,
 `quit_app`, `restart_app`. These drive native windows, theme file I/O, and external links; they
 carry no note data beyond what the user explicitly exports. `export_note_file`
-writes `.md`, `.txt`, or `.excalidraw` (a whiteboard's canvas).
+writes `.md`, `.txt`, `.excalidraw` (a whiteboard's canvas), or `.csv` (a
+sheet's grid, from `sheet_csv`).
 `get_shortcut_failure` returns why the global capture shortcut could not be
 registered at launch, or `null`; the welcome screen shows it.
 
 The File menu announces itself to the library window with `menu:new-note`,
-`menu:new-whiteboard`, `menu:export-note`, and `menu:toggle-sticky` (no
-payload). Every event name the
+`menu:new-whiteboard`, `menu:new-sheet`, `menu:export-note`, and
+`menu:toggle-sticky` (no payload). Every event name the
 shell emits is declared in `src-tauri/src/events.rs`.
 
 ### 9.1 Stickies
@@ -419,6 +426,7 @@ not a note. Resources sit behind the same read gate as the read tools.
 | `search_notes`, `list_notes`, `get_note`, `get_notes`, `list_tags`, `list_spaces` | read | `search_notes_page`, `list_notes` and `count_notes`, `get_note(id, false)`, `list_tags`, `list_workspaces` |
 | `suggest_space` | read | `space_suggestions` (section 4.1), for one note (`id`) or every unfiled note (`limit`, default 50): each with its Space, a probability, and the reasons. The same model the user sees in the Graph; it files nothing, and says so, so an agent that agrees calls `add_to_space`. |
 | `create_note`, `update_note`, `append_to_note` | write | `create_note`, `update_note` with `expectedUpdatedAt` |
+| `append_sheet_rows` | write | `update_note` with `expectedUpdatedAt`, on a sheet's grid (`sheet.rs`): rows land after the last row holding data, a short row is padded, a wider one is refused, and the store derives the body. Retries on conflict like `append_to_note`. Returns the note view plus `appended: { firstRow, count }` (spreadsheet numbering). |
 | `tag_note`, `untag_note`, `add_to_space`, `remove_from_space` | write | the tag and workspace membership calls |
 | `trash_note`, `restore_note` | write | `soft_delete_note`, `restore_note` |
 
@@ -443,7 +451,12 @@ match in all, `hasMore` whether to ask again, and `nextOffset` from where.
 `list_notes` with `status: "revisit"` is the Revisit view's filter. Reads never
 set `lastOpenedAt`. There is no permanent delete, no settings, no vault, and
 no whiteboard canvas at any access level; writing a whiteboard's text is
-refused.
+refused. A sheet's body is refused too (it is derived from the grid):
+`get_note` on a sheet returns the Markdown table and `sheet: { cols, rows }`
+(its width and how many rows hold data), and `append_sheet_rows` is the one
+way to write it. Append is the only agent write to a sheet on purpose: the
+app can then merge an agent's rows with the user's unsaved cells by
+mechanics alone, so neither side's work is lost.
 
 Two settings keys belong to this surface:
 
@@ -460,9 +473,9 @@ process), `client` (the client's name, from the handshake or the request),
 `error`, `durationMs`, `noteIds` (up to 50), `noteCount`, `titles` (first
 three), `space`, `tag`, `query`, `afterUpdatedAt`, `revertable`,
 `revertedAt`, and `reverts`. A successful write also stores the note as it
-was just before (fields, tags with their sources, Spaces), which is what
-makes it revertable; a create stores "no note", and reverting it trashes the
-note.
+was just before (fields, tags with their sources, Spaces, and a sheet's grid,
+whose body is derived from it), which is what makes it revertable; a create
+stores "no note", and reverting it trashes the note.
 
 | Command | Purpose |
 | --- | --- |

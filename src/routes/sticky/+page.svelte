@@ -8,6 +8,7 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import Editor from "$lib/components/Editor.svelte";
   import WhiteboardCanvas from "$lib/components/whiteboard/WhiteboardCanvas.svelte";
+  import SheetGrid from "$lib/components/sheet/SheetGrid.svelte";
   import { EVENTS } from "$lib/api/events";
   import {
     answerPopIn,
@@ -200,6 +201,16 @@
           onlinkopen={(url) => void openUrl(url)}
         />
       </div>
+    {:else if sticky.note.contentKind === "sheet"}
+      <div class="body grid">
+        <SheetGrid
+          noteId={sticky.note.id}
+          surfaceData={sticky.note.surfaceData}
+          readonly={sticky.gone}
+          onchange={(id, surfaceData) => sticky.editSheet(id, surfaceData)}
+          registerFlush={(flush) => sticky.onBeforeFlush(flush)}
+        />
+      </div>
     {:else}
       <div
         class="body"
@@ -306,6 +317,11 @@
   }
   .board {
     position: relative;
+  }
+  .grid {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
 
   .status {

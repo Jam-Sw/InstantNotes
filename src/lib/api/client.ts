@@ -218,6 +218,8 @@ export const importThemeFile = (path: string) =>
 // ---- note export ----
 export const exportNoteFile = (path: string, contents: string) =>
   call<void>("export_note_file", { path, contents });
+/** A sheet's grid as CSV, the bytes the vault writes beside it. */
+export const sheetCsv = (id: string) => call<string>("sheet_csv", { id });
 
 // ---- attachments ----
 // Raw-body invoke: image bytes go over IPC as-is (no JSON number array), with

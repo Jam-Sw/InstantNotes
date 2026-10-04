@@ -2,7 +2,7 @@
   import { library, type StatusFilter } from "$lib/stores/library.svelte";
   import { agents } from "$lib/stores/agents.svelte";
   import { clientLabel } from "$lib/agent-activity";
-  import { formatDate, formatExact, preview } from "$lib/format";
+  import { formatDate, formatExact, preview, sheetPreview } from "$lib/format";
   import { captureShortcut, modKey, shiftKey } from "$lib/platform";
   import { parseHighlightSegments } from "$lib/highlight";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
@@ -34,7 +34,7 @@
   // The kinds of note this toolbar can create. Clicking ＋ makes a document,
   // the common case, in one click. The chevron (or a right-click anywhere on
   // the control) opens the list, which is the only visible place a whiteboard
-  // can be started from.
+  // or a sheet can be started from.
   // A synthetic Space (the update, the agent trace) has no rows in the store:
   // its notes are derived, so they are rendered from where they come from.
   const syntheticNotes = $derived(
@@ -253,6 +253,11 @@
                 <rect x="1.5" y="2.5" width="13" height="11" rx="2" />
                 <path d="M4.5 10.5 7 7.5l2 2 2.5-3" />
               </svg>
+            {:else if note.contentKind === "sheet"}
+              <svg class="board-cue" viewBox="0 0 16 16" aria-label="Sheet" role="img">
+                <rect x="1.5" y="2.5" width="13" height="11" rx="2" />
+                <path d="M1.5 8h13M6.5 2.5v11" />
+              </svg>
             {/if}
             {#if library.isSticky(note.id)}
               <svg class="board-cue" viewBox="0 0 16 16" aria-label="Open as a sticky" role="img">
@@ -265,7 +270,11 @@
           <div class="row-date" title={formatExact(note.updatedAt)}>{formatDate(note.updatedAt)}</div>
           </div>
           <div class="row-preview">
-            {preview(note.body) || (note.contentKind === "whiteboard" ? "Empty whiteboard" : "Empty note")}
+            {#if note.contentKind === "sheet"}
+              {sheetPreview(note.body) || "Empty sheet"}
+            {:else}
+              {preview(note.body) || (note.contentKind === "whiteboard" ? "Empty whiteboard" : "Empty note")}
+            {/if}
           </div>
         </button>
       {/snippet}
@@ -314,6 +323,7 @@
         hint: `${modKey}${shiftKey}N`,
         run: () => void library.newWhiteboard(),
       },
+      { label: "New sheet", run: () => void library.newSheet() },
     ]}
     onclose={() => (newMenu = null)}
   />

@@ -4,6 +4,8 @@
   import FormatToolbar from "$lib/components/FormatToolbar.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import WhiteboardCanvas from "$lib/components/whiteboard/WhiteboardCanvas.svelte";
+  import SheetGrid from "$lib/components/sheet/SheetGrid.svelte";
+  import { filledRows, parseSheet } from "$lib/sheet/model";
   import { library } from "$lib/stores/library.svelte";
   import { agents } from "$lib/stores/agents.svelte";
   import { editorPrefs } from "$lib/stores/editor.svelte";
@@ -31,6 +33,14 @@
   let active = $state<ActiveMarks>({ ...NO_MARKS });
 
   const isBoard = $derived(library.selected?.contentKind === "whiteboard");
+  const isSheet = $derived(library.selected?.contentKind === "sheet");
+  // A surface note (board, sheet) has no text toolbar and runs edge to edge.
+  const isSurface = $derived(isBoard || isSheet);
+  const sheetShape = $derived.by(() => {
+    if (!isSheet) return null;
+    const grid = parseSheet(library.selected?.surfaceData);
+    return { rows: filledRows(grid), cols: grid.cols.length };
+  });
   // A synthetic note (the update Space's release notes) is not user data: its
   // body can be typed in, but it has no tags, no Space, and no lifecycle.
   const isVirtual = $derived(isSyntheticNoteId(library.selected?.id));
@@ -130,7 +140,7 @@
           </button>
         </div>
       {:else}
-        {#if !isBoard}
+        {#if !isSurface}
           <div class="icon-group">
             <button
               class="icon-btn"
@@ -190,12 +200,12 @@
       {/if}
     {/if}
   </header>
-  {#if !isBoard && editorPrefs.toolbarOpen}
+  {#if !isSurface && editorPrefs.toolbarOpen}
     <FormatToolbar {active} onFormat={(k) => editorRef?.applyFormat(k)} />
   {/if}
   <div
     class="doc"
-    class:wide={isBoard}
+    class:wide={isSurface}
     style="--editor-zoom: {editorPrefs.zoom}; --image-max-height: {imagePrefs.maxPreviewHeight}px"
   >
   <div class="doc-head">
@@ -276,6 +286,19 @@
         />
       {/key}
     </div>
+  {:else if isSheet}
+    <div class="editor-body sheet-body" data-agent={agents.noteMark(library.selected.id)}>
+      <!-- One grid per note: a new id mounts a fresh sheet. -->
+      {#key library.selected.id}
+        <SheetGrid
+          noteId={library.selected.id}
+          surfaceData={library.selected.surfaceData}
+          readonly={library.selected.isDeleted}
+          onchange={(id, surfaceData) => library.editSheet(id, surfaceData)}
+          registerFlush={(flush) => library.onBeforeFlush(flush)}
+        />
+      {/key}
+    </div>
   {:else}
     <div class="editor-body" data-agent={agents.noteMark(library.selected.id)}>
       <Editor
@@ -305,6 +328,11 @@
       <span class="error">{library.error}</span>
     {:else if isBoard}
       <span>Whiteboard</span>
+    {:else if sheetShape}
+      <span>
+        {sheetShape.rows} {sheetShape.rows === 1 ? "row" : "rows"} · {sheetShape.cols}
+        {sheetShape.cols === 1 ? "column" : "columns"}
+      </span>
     {:else}
       {@const n = wordCount(library.selected.body)}
       <span>{n} {n === 1 ? "word" : "words"}</span>
@@ -376,7 +404,7 @@
     margin: 0 auto;
     padding: 8px calc(16px * var(--density)) 0;
   }
-  /* A whiteboard runs edge to edge, so its heading does too. */
+  /* A whiteboard or a sheet runs edge to edge, so its heading does too. */
   .doc.wide .doc-head {
     max-width: none;
   }
@@ -486,6 +514,13 @@
     position: relative;
     margin-top: 10px;
     border-top: 1px solid var(--border);
+  }
+  .sheet-body {
+    display: flex;
+    flex-direction: column;
+    margin-top: 10px;
+    border-top: 1px solid var(--border);
+    overflow: hidden;
   }
   .status-bar {
     display: flex;
