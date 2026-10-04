@@ -317,6 +317,17 @@ dependency, and unit 14 still owns those. Agents get the same answers through
 a read-only MCP tool; the policy is suggest-only everywhere. Built on
 `0.9.3-pre` on 2026-10-03. See `changes/feat-graph-suggestions/`.
 
+## 13h. `feat-note-sheet` (PROPOSED, awaiting review)
+
+A third note kind, `sheet`: a keyboard-first cell grid written in-house as
+Svelte DOM, with no third-party grid, for logging beside another editor. It
+follows the whiteboard's blueprint: the grid in `surface_data`, a Markdown
+table in `body`, and a `.csv` sidecar in the vault. It adds no column and no
+migration (`content_kind` is validated in code, and the sidecar hash reuses
+`board_sha`). Formulas are out of scope; the view reads cells through one
+`display` function a headless engine can take over later. Proposed on
+`0.9.4-pre` on 2026-10-03. See `changes/feat-note-sheet/`.
+
 ## 14. Local AI
 
 Needs embedding storage, so it cannot precede unit 10. Embeddings are a
