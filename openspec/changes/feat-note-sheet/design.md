@@ -20,10 +20,12 @@
 - `cols` carries only per-column view state (width in CSS px). Column names
   are spreadsheet letters (A, B, C ...) drawn by the view, not stored.
 - A new sheet is 3 columns by 20 rows, all empty.
-- Limits that keep it a companion, not a database: 52 columns, 5,000 rows.
-  Past them, Enter stops appending and the status line says why. Both numbers
-  are checked by the Rust validation too, so a bad write over MCP cannot exceed
-  them.
+- Limits that keep it a companion, not a database: 52 columns (A to AZ),
+  5,000 rows, 10,000 characters per cell. Past the row cap, Enter stops
+  appending and a toast says why (the editor's status bar shows save state,
+  not messages). All three are enforced in `update_note`'s validation, so no
+  writer, MCP included, can exceed them, and the worst-case envelope is
+  bounded.
 
 Strings only, deliberately. Typed values (number, date) are what a formula
 engine produces; storing them now would mean deciding the engine's type system
@@ -32,17 +34,27 @@ before the engine exists.
 ## 2. Model, view, and the seam for formulas
 
 ```
+src-tauri/core/src/
+  sheet.rs       parse and validate the envelope; Sheet -> GFM table (the
+                 body); Sheet -> CSV (vault sidecar, export); append_rows
 src/lib/sheet/
   model.ts       Sheet type, pure edit operations (setCell, insertRow,
                  deleteRows, insertCol, deleteCols, resizeCol, pasteBlock),
                  each returning a new Sheet plus its inverse for undo
   selection.ts   active cell, anchor, range; pure movement functions
   keys.ts        keydown -> intent, pure and table-tested
-  markdown.ts    Sheet -> GFM table (the body)
-  csv.ts         Sheet <-> CSV (vault sidecar, export) and TSV (clipboard)
+  tsv.ts         range <-> TSV for the clipboard
 src/lib/components/sheet/
   SheetGrid.svelte   the DOM grid; owns focus, renders, dispatches intents
 ```
+
+The serializers are in Rust, once, because two writers produce a sheet's
+body: the grid and `append_sheet_rows`. A TS copy would have to match the
+Rust one byte for byte or every agent append would rewrite the vault file
+with a differently spaced table. So `update_note` derives a sheet's `body`
+from its `surfaceData` on every save, and the frontend never sends a sheet's
+body (§4). The TSV clipboard format is the one serializer that only the view
+needs, and it stays in TS.
 
 The view never formats a cell itself. It calls one function:
 
@@ -103,8 +115,16 @@ It calls `preventDefault` and `stopPropagation` only for the keys in the two
 tables above. Any key with Cmd/Ctrl that is not in those tables (palette, new
 note, pop-out, settings, quit) passes through untouched, and so does every key
 when the grid is not focused. A test asserts this against the command
-registry, so a future app shortcut that collides fails CI instead of silently
-losing to the grid.
+registry and against the window handler's own global keys (⌘K, ⌘⇧A, ⌘\\,
+⌘=, ⌘-, ⌘0), so a future app shortcut that collides fails CI instead of
+silently losing to the grid.
+
+The library window's handler (`+page.svelte`) treats the grid as a typing
+target, like an `<input>`, not as a board target. A board target makes the
+handler stand aside for every key because Excalidraw owns arrows and ⌘A; the
+grid owns only the keys above, so it takes the typing-target path, where the
+handler's list keys (arrows, ⌘A, ⌘Backspace, Escape) already stand aside and
+its global keys already run. `isTypingTarget` gains `[data-sheet]`.
 
 **Rendering.** One `<table>` of `<td>` elements; the cell being edited holds a
 single `<input>` (a `<textarea>` once it contains a newline). Only one input
@@ -116,48 +136,108 @@ theme code.
 
 ## 4. Saving
 
-A grid edit produces a new `Sheet`; `SheetGrid` hands
-`{ surfaceData, body }` to the note's `SaveQueue` exactly as
-`WhiteboardCanvas` does. `body` is `markdown.ts`'s output. Undo history lives
-in the component and is not persisted.
+A grid edit produces a new `Sheet`; `SheetGrid` hands `{ surfaceData }` to
+the note's `SaveQueue` as `WhiteboardCanvas` hands its canvas. The store
+derives `body` (`sheet.rs`) inside `update_note` and returns the note with
+it, so the list preview and search update from the saved note, not from an
+optimistic copy. A body sent with a sheet's `surfaceData` is ignored. Undo
+history lives in the component and is not persisted.
 
 `body` is a GFM table using row 1 as the header row, trailing empty rows and
-columns trimmed, pipes and newlines in cells escaped. An all-empty sheet has an
-empty body. As with whiteboards, a sheet's title is frozen on creation
-(`title_is_auto = 0`, default "Untitled sheet") since the body moves with every
-cell.
+columns trimmed, pipes and newlines in cells escaped (`\|`, `<br>`). An
+all-empty sheet has an empty body. As with whiteboards, a sheet's title is
+frozen on creation (`title_is_auto = 0`, default "Untitled sheet") since the
+body moves with every cell.
+
+"New sheet" creates a note and patches it to `sheet`, the two steps
+`newWhiteboard` takes; the store allows `document` -> `sheet` one way and
+nothing out of `sheet`. The conversion is not offered in the UI for an
+existing document (no Markdown-table import, a non-goal), so the only
+document that becomes a sheet is the empty one just created.
 
 ## 5. Vault and export
 
 The note file carries `kind: sheet` in its frontmatter and the Markdown table
-as its body. Beside it, `<Title>.csv` holds the full grid (RFC 4180, UTF-8,
-no BOM), opening in any spreadsheet. It follows the note through renames, the
-trash, and deletes under the same rules as a whiteboard's `.excalidraw` file,
-and its hash goes in `board_sha`. Column widths are not in the CSV; they live
-only in the database, which is authoritative.
+as its body. Beside it, `<Title>.csv` holds the grid (RFC 4180, CRLF, UTF-8,
+no BOM; trailing empty rows trimmed, every column kept), opening in any
+spreadsheet. It follows the note through renames, the trash, and deletes
+under the same rules as a whiteboard's `.excalidraw` file, and its hash goes
+in `board_sha`. Column widths are not in the CSV; they live only in the
+database, which is authoritative.
 
-Export Note writes a sheet as `.csv`.
+The mirror's canvas code is keyed on the `.excalidraw` extension
+(`canvas_rel`, `note_rel_of_canvas`, `board_claims`, the `canvas` field of
+`VaultNote`, and the export). It generalises to one surface sidecar whose
+extension follows the kind (`.excalidraw` for a whiteboard, `.csv` for a
+sheet), so write, rename, trash, tombstone, and export each handle the
+sidecar once rather than twice.
 
-## 6. Agents (needs review)
+Export Note writes a sheet as `.csv`; the vault export writes the sidecar.
+
+## 6. Agents (decided 2026-10-04: ship `append_sheet_rows`)
 
 The use case pairs a sheet with an agent running in another editor, so the
-proposal goes one step past whiteboards:
+design goes one step past whiteboards:
 
 - `update_note` and `append_to_note` refuse a sheet's body, as they refuse a
   whiteboard's: the body is derived, and a write to it would be thrown away on
   the next save.
-- `get_note` on a sheet returns the Markdown table, which agents already read.
-- **New tool `append_sheet_rows(note_id, rows: string[][])`** appends rows to
-  the sheet, padding or refusing rows wider than the sheet, and rewrites the
-  body. It reaches an open or popped-out sheet the same way agent writes reach
-  an open note today (`feat-agent-access`): taken in place when nothing is
-  unsaved, offered back otherwise.
+- `get_note` on a sheet returns the Markdown table, which agents already
+  read, plus `sheet: { rows, cols }` so the agent knows the width before it
+  appends.
+- **New tool `append_sheet_rows(id, rows: string[][])`**, write level, not
+  destructive, not idempotent. Rows shorter than the sheet are padded with
+  `""`; a row wider than the sheet is refused with the column count, so an
+  agent cannot widen the sheet's shape. Rows land after the last non-empty
+  row, reclaiming the default grid's trailing empty rows, so the first append
+  to a new sheet fills row 2, not row 21. Past 5,000 rows or 10,000 characters
+  in a cell the call is refused. Like `append_to_note` it reads, appends, and
+  writes with the version check, retrying on conflict. It returns the note
+  view with the first appended row's index.
 
-If you'd rather keep agent writes out of v1, the tool drops out and the first
-two bullets stay.
+Append is the only agent write to a sheet. That is what makes two writers
+safe: the library's `#adoptExternal` today skips whiteboards and keeps the
+open note's `surfaceData`; for a sheet it reads the fresh note (surface
+included) and, with nothing unsaved, replaces the grid, as the editor applies
+an agent's text change. With unsaved cells the grid merges instead of
+yielding: the fresh sheet's rows beyond the grid's last known row are the
+agent's and are appended to the local grid, then the save goes out with the
+fresh `updatedAt`. No column, width, or existing cell can have changed under
+the user, so nothing is lost on either side and nothing is "offered back".
+The sticky store follows the same rule for a popped-out sheet.
 
 ## 7. Where it sits
 
 It changes note shape (a new kind) but adds no column and no migration, and
 the vault serializer already handles a surface sidecar. It takes the next
 slot after the open 13x units, as `13h`.
+
+## 8. Review findings (2026-10-04)
+
+What the review of the proposal against the code changed, beyond the four
+questions in tasks.md:
+
+1. **One serializer, in Rust.** The proposal had `markdown.ts` and `csv.ts`
+   in the frontend and an agent tool that also "rewrites the body". That is
+   two GFM serializers. Moved to `core/src/sheet.rs`; `update_note` derives
+   the body (§2, §4).
+2. **Agent writes do not reach an open sheet for free.** `#adoptExternal`
+   returns early for a whiteboard and keeps the UI's `surfaceData` for
+   documents. A sheet needs its own branch, and the append-only rule makes
+   its merge mechanical (§6).
+3. **The grid is a typing target, not a board target.** Treating it as a
+   board would make the window handler stand aside for every key, which is
+   the opposite of the focus contract (§3).
+4. **A cell cap.** 52 columns and 5,000 rows bound nothing without a
+   per-cell limit (§1).
+5. **The sidecar code generalises rather than duplicates.** Five places in
+   the mirror and the export know the `.excalidraw` extension (§5).
+6. **No status line.** The editor's status bar shows save state; limits are
+   reported by toast (§1).
+7. **Creation reuses conversion.** `newWhiteboard` is create-then-patch;
+   "New sheet" does the same, and the store allows `document` -> `sheet`
+   one way (§4). No separate create path.
+8. **Working rule.** Five units (13c to 13g) are BUILT and open until checked
+   in the app. SEQUENCE.md allows one unit in flight. Building 13h before
+   they archive needs either those checks done or the exception recorded, as
+   13d and 13e recorded theirs.

@@ -27,8 +27,8 @@ fight InstantNotes for the keyboard, the theme, or the window.
   view reads what each cell shows through one function, so a headless formula
   engine can later compute cell values without changing the view (design.md
   §2).
-- A sheet's `body` is its grid as a GitHub-flavored Markdown table, rewritten
-  on every save. Search, inline `#tags`, list previews, the graph, filing
+- A sheet's `body` is its grid as a GitHub-flavored Markdown table, derived
+  by the store from `surfaceData` on every save (one serializer, in Rust). Search, inline `#tags`, list previews, the graph, filing
   suggestions, MCP reads, and the vault's Markdown file see what the sheet
   holds.
 - "New sheet" creates one directly (palette, File menu). Sheets pop out as
@@ -58,12 +58,16 @@ fight InstantNotes for the keyboard, the theme, or the window.
   **No migration**: `content_kind` is validated in code, not by a CHECK, and the
   sidecar's hash reuses `board_sha`, which `DATA_MODEL.md` will describe as the
   hash of the note's surface file rather than of a canvas only.
+- Core: `core/src/sheet.rs` (new): envelope validation, the Markdown table,
+  CSV, and row append, shared by the store, the vault, and the agent tool.
 - Agents: `src-tauri/agents/src/tools.rs` refuses body edits to a sheet as it
-  does to a whiteboard, and adds one tool that appends rows (design.md §6;
-  **needs review**).
-- Frontend: `src/lib/sheet/` (model, keys, Markdown and CSV serializers, new),
+  does to a whiteboard, and adds `append_sheet_rows` (design.md §6; decided
+  2026-10-04). The library and sticky stores take an agent's appended rows
+  into an open sheet.
+- Frontend: `src/lib/sheet/` (model, selection, keys, TSV, new),
   `src/lib/components/sheet/SheetGrid.svelte` (new), `NoteEditor.svelte`,
-  `NoteList.svelte`, `commands.ts`, the sticky route, `api/types.ts`.
+  `NoteList.svelte`, `commands.ts`, `+page.svelte` (typing-target rule), the
+  sticky route, `api/types.ts`.
 - Shell: File > New Sheet menu item.
 - Docs: `DATA_MODEL.md` §3.2 and §10, `API.md`, `CHANGELOG.md`, and a
   `Sheet Notes` requirement in `openspec/specs/instantnotes/spec.md`.
@@ -94,6 +98,12 @@ tagged, filed in Spaces, trashed, popped out, and searched like any other.
 - **WHEN** the user types into a cell and immediately switches notes, pops the
   sheet out, trashes it, or quits
 - **THEN** the typed value is saved
+
+#### Scenario: An agent logs rows
+- **WHEN** an agent calls `append_sheet_rows` on a sheet that is open in the
+  app with nothing unsaved
+- **THEN** the rows appear at the bottom of the grid without a reload
+- **AND** `update_note` and `append_to_note` on the same sheet are refused
 
 #### Scenario: A sheet in the vault
 - **WHEN** a vault folder is set and a sheet is saved

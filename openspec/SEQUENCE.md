@@ -317,7 +317,7 @@ dependency, and unit 14 still owns those. Agents get the same answers through
 a read-only MCP tool; the policy is suggest-only everywhere. Built on
 `0.9.3-pre` on 2026-10-03. See `changes/feat-graph-suggestions/`.
 
-## 13h. `feat-note-sheet` (PROPOSED, awaiting review)
+## 13h. `feat-note-sheet` (REVIEWED, approved for build)
 
 A third note kind, `sheet`: a keyboard-first cell grid written in-house as
 Svelte DOM, with no third-party grid, for logging beside another editor. It
@@ -326,7 +326,11 @@ table in `body`, and a `.csv` sidecar in the vault. It adds no column and no
 migration (`content_kind` is validated in code, and the sidecar hash reuses
 `board_sha`). Formulas are out of scope; the view reads cells through one
 `display` function a headless engine can take over later. Proposed on
-`0.9.4-pre` on 2026-10-03. See `changes/feat-note-sheet/`.
+`0.9.4-pre` on 2026-10-03; reviewed and its four open questions decided on
+2026-10-04 (ship `append_sheet_rows`; 52 x 5,000 plus a 10,000-character cell
+cap; Enter edits; the body is derived in Rust from the grid). It starts once
+13c to 13g are checked in the app and archived, or an exception is recorded
+here, per the working rule. See `changes/feat-note-sheet/`.
 
 ## 14. Local AI
 
