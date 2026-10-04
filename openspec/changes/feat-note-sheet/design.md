@@ -115,7 +115,7 @@ It calls `preventDefault` and `stopPropagation` only for the keys in the two
 tables above. Any key with Cmd/Ctrl that is not in those tables (palette, new
 note, pop-out, settings, quit) passes through untouched, and so does every key
 when the grid is not focused. A test asserts this against the command
-registry and against the window handler's own global keys (⌘K, ⌘⇧A, ⌘\\,
+registry and against the window handler's own global keys (⌘K, ⌘⇧A, ⌘\,
 ⌘=, ⌘-, ⌘0), so a future app shortcut that collides fails CI instead of
 silently losing to the grid.
 
