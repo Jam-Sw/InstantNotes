@@ -161,7 +161,8 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Read,
         destructive: false,
         idempotent: true,
-        description: "Every space with how many notes it holds.",
+        description: "Every Space with how many notes it holds. Call this before create_note, so the note \
+                      is filed in an existing Space instead of a new or missing one.",
         schema: || object(json!({}), &[]),
     },
     ToolDef {
@@ -186,12 +187,14 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Write,
         destructive: false,
         idempotent: false,
-        description: "Create a note. The title is taken from the first line unless given. #words in the body become tags.",
+        description: "Create a note. The title is taken from the first line unless given. #words in the body \
+                      become tags. Always file it: pass `space` with the existing Space it belongs in \
+                      (call list_spaces first). A note without a space is lost in All Notes.",
         schema: || object(json!({
             "body": { "type": "string", "description": "Markdown." },
             "title": { "type": "string", "description": "Only to override the first line as the title." },
             "tags": { "type": "array", "items": tag_param() },
-            "space": { "type": "string", "description": "Space to file it in; created if new." }
+            "space": { "type": "string", "description": "The existing Space this note belongs in (names from list_spaces). A new name creates a new Space, so reuse an existing one when it fits. Required whenever the library has any Space." }
         }), &["body"]),
     },
     ToolDef {
@@ -244,7 +247,8 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Write,
         destructive: false,
         idempotent: true,
-        description: "Add a note to a space, creating the space if it is new.",
+        description: "Add an existing note to a Space. Use it to file a note that has no Space, or one \
+                      suggest_space matched.",
         schema: || object(json!({ "id": id_param(), "space": space_param() }), &["id", "space"]),
     },
     ToolDef {
@@ -629,6 +633,25 @@ impl<'a> Tools<'a> {
     }
 
     fn create_note(&mut self, a: CreateArgs) -> ToolResult {
+        // A note with no Space is lost in All Notes, and agents rarely file one afterwards.
+        // Refuse, naming the Spaces that exist, so the retry is one call. A library with no
+        // Spaces yet has nothing to file into, so it is let through.
+        if a.space.as_deref().is_none_or(|s| s.trim().is_empty()) {
+            let names: Vec<String> = self
+                .store
+                .list_workspaces()
+                .map_err(fail)?
+                .into_iter()
+                .map(|w| w.workspace.name)
+                .collect();
+            if !names.is_empty() {
+                return Err(format!(
+                    "Nothing was saved: pick a Space first. Existing Spaces: {}. Call create_note \
+                     again with `space` set to the best match.",
+                    names.join(", ")
+                ));
+            }
+        }
         let note = self
             .store
             .create_note(CreateNoteInput {
