@@ -1274,3 +1274,47 @@ fn reverting_a_sheet_append_restores_the_grid_with_the_body() {
     assert_eq!(note.body, "| h1 | h2 |\n| --- | --- |");
     assert_eq!(grid_rows(&mut store, &sheet.id)[1], vec!["", "", ""]);
 }
+
+#[test]
+fn a_note_with_no_space_is_refused_and_the_spaces_are_named() {
+    let mut store = store_with("write");
+    store.get_or_create_workspace("Hardware").unwrap();
+    store.get_or_create_workspace("Job Hunt").unwrap();
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(1, "create_note", json!({ "body": "Orphan" })),
+            call(2, "create_note", json!({ "body": "Blank", "space": "  " })),
+            call(
+                3,
+                "create_note",
+                json!({ "body": "Filed", "space": "Hardware" }),
+            ),
+        ],
+    );
+    for i in [1, 2] {
+        let (is_error, text, _) = result_of(&replies[i]);
+        assert!(is_error, "{text}");
+        assert!(
+            text.contains("Hardware") && text.contains("Job Hunt"),
+            "{text}"
+        );
+    }
+    let (is_error, _, created) = result_of(&replies[3]);
+    assert!(!is_error);
+    assert_eq!(created["spaces"], json!(["Hardware"]));
+    // Only the filed note was saved.
+    let notes = store.list_notes(Default::default()).unwrap();
+    assert_eq!(notes.len(), 1);
+}
+
+#[test]
+fn a_library_with_no_spaces_still_takes_an_unfiled_note() {
+    let mut store = store_with("write");
+    let replies = session(
+        &mut store,
+        &[init(), call(1, "create_note", json!({ "body": "First" }))],
+    );
+    assert!(!result_of(&replies[1]).0, "{}", replies[1]);
+}
