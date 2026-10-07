@@ -442,7 +442,7 @@ An agent is meant to search, then read only what matters. `search_notes`
 takes `query` (at least one word; an empty one is refused), `match` (`all` or
 `any` of the words), `detail` (`passages`, or `titles` for `id`, `title`,
 `spaces`, `updatedAt` only), `space`, `tag`, `status` (`active`, `archived`,
-`all`; never the Trash), `updatedAfter` and `updatedBefore` (a date or a UTC
+`pinned`, `trash`, `all`), `updatedAfter` and `updatedBefore` (a date or a UTC
 timestamp), `limit` (default 10, at most 200), and `offset`. A search with no
 match returns a `hint`: how many notes match any of the words, or what to
 loosen. Each

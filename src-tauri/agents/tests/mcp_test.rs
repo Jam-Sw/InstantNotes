@@ -1621,11 +1621,7 @@ fn refusals_name_the_valid_values_and_where_to_look() {
         &mut store,
         &[
             init(),
-            call(
-                1,
-                "search_notes",
-                json!({ "query": "a", "status": "trash" }),
-            ),
+            call(1, "search_notes", json!({ "query": "a", "status": "x" })),
             call(2, "search_notes", json!({ "query": "a", "match": "some" })),
             call(3, "search_notes", json!({ "query": "a", "detail": "x" })),
             call(4, "list_notes", json!({ "status": "x" })),
@@ -1634,7 +1630,7 @@ fn refusals_name_the_valid_values_and_where_to_look() {
         ],
     );
     let said = |i: usize| result_of(&replies[i]).1;
-    assert!(said(1).contains("active, archived or all") && said(1).contains("list_notes"));
+    assert!(said(1).contains("active, archived, pinned, trash or all"));
     assert!(said(2).contains("\"all\" or \"any\""));
     assert!(said(3).contains("\"titles\" or \"passages\""));
     assert!(said(4).contains("pinned, archived, trash or revisit"));
@@ -1788,4 +1784,64 @@ fn default_results_stay_inside_their_token_budgets() {
             size(i)
         );
     }
+}
+
+#[test]
+fn search_reaches_the_trash_and_pinned_notes() {
+    let mut store = store_with("write");
+    let live = note(&mut store, "alpha live");
+    let gone = note(&mut store, "alpha trashed");
+    let pinned = note(&mut store, "alpha pinned");
+    let archived = note(&mut store, "alpha archived");
+    store.soft_delete_note(&gone).unwrap();
+    store
+        .update_note(
+            &pinned,
+            instantnotes_core::types::UpdateNotePatch {
+                is_pinned: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    store
+        .update_note(
+            &archived,
+            instantnotes_core::types::UpdateNotePatch {
+                is_archived: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let mut messages = vec![init()];
+    for (i, status) in ["active", "archived", "pinned", "trash", "all"]
+        .iter()
+        .enumerate()
+    {
+        messages.push(call(
+            i as i64 + 1,
+            "search_notes",
+            json!({ "query": "alpha", "status": status, "detail": "titles" }),
+        ));
+    }
+    let replies = session(&mut store, &messages);
+    let ids = |i: usize| -> Vec<String> {
+        let (_, _, found) = result_of(&replies[i]);
+        let mut ids: Vec<String> = found["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["id"].as_str().unwrap().to_string())
+            .collect();
+        ids.sort();
+        ids
+    };
+    let sorted = |mut v: Vec<String>| {
+        v.sort();
+        v
+    };
+    assert_eq!(ids(1), sorted(vec![live.clone(), pinned.clone()]));
+    assert_eq!(ids(2), vec![archived.clone()]);
+    assert_eq!(ids(3), vec![pinned.clone()]);
+    assert_eq!(ids(4), vec![gone.clone()]);
+    assert_eq!(ids(5), sorted(vec![live, pinned, archived]));
 }

@@ -86,7 +86,7 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Read,
         destructive: false,
         idempotent: true,
-        description: "Full-text search over note titles and bodies: the way to find what matters without reading every note. Use two or three keywords, not a sentence. Each result carries id, title, spaces, tags, createdAt, and updatedAt (enough to call update_note directly), and with detail \"passages\" the matching lines with their line numbers and the lines around them. Narrow by space, tag, status, or when a note last changed. Results are paged: total says how many notes match in all, hasMore whether to ask again with nextOffset. The Trash is never searched; list_notes with status \"trash\" shows it.",
+        description: "Full-text search over note titles and bodies: the way to find what matters without reading every note. Use two or three keywords, not a sentence. Each result carries id, title, spaces, tags, createdAt, and updatedAt (enough to call update_note directly), and with detail \"passages\" the matching lines with their line numbers and the lines around them. Narrow by space, tag, status, or when a note last changed. Results are paged: total says how many notes match in all, hasMore whether to ask again with nextOffset. Trashed notes are searched only with status \"trash\".",
         schema: || object(json!({
             "query": { "type": "string", "description": "Words to search for. A word also matches words that begin with it." },
             "match": {
@@ -105,9 +105,9 @@ const TOOLS: &[ToolDef] = &[
             "tag": tag_param(),
             "status": {
                 "type": "string",
-                "enum": ["active", "archived", "all"],
+                "enum": ["active", "archived", "pinned", "trash", "all"],
                 "default": "active",
-                "description": "active: notes not archived. archived: archived notes. all: both. Pinned notes and the Trash are list_notes statuses."
+                "description": "active: notes not archived or trashed. archived, pinned, trash: those notes. all: active and archived together."
             },
             "updatedAfter": date_param("Only notes last changed on or after this."),
             "updatedBefore": date_param("Only notes last changed before this."),
@@ -565,6 +565,12 @@ impl<'a> Tools<'a> {
                 ))
             }
         };
+        let status = a.status.as_deref().unwrap_or("active");
+        if !matches!(status, "active" | "archived" | "pinned" | "trash" | "all") {
+            return Err(format!(
+                "status must be active, archived, pinned, trash or all (got {status})"
+            ));
+        }
         let limit = clamp_limit(a.limit, SEARCH_LIMIT);
         let offset = a.offset.unwrap_or(0).max(0);
         let search = NoteSearch {
@@ -576,16 +582,13 @@ impl<'a> Tools<'a> {
             },
             workspace_id: a.space.as_deref().map(|s| self.space_id(s)).transpose()?,
             tag_id: a.tag.as_deref().map(|t| self.tag_id(t)).transpose()?,
-            is_archived: match a.status.as_deref().unwrap_or("active") {
-                "active" => Some(false),
+            is_archived: match status {
+                "active" | "pinned" => Some(false),
                 "archived" => Some(true),
-                "all" => None,
-                other => {
-                    return Err(format!(
-                        "status must be active, archived or all (got {other}); the Trash and pinned notes are list_notes statuses"
-                    ))
-                }
+                _ => None,
             },
+            pinned_only: status == "pinned",
+            trashed: status == "trash",
             updated_after: a.updated_after.as_deref().map(date_bound).transpose()?,
             updated_before: a.updated_before.as_deref().map(date_bound).transpose()?,
             limit,

@@ -412,8 +412,12 @@ impl Store {
         let Some(match_expr) = fts_match_expr_with(&q.text, q.any_term) else {
             return Ok(NoteSearchPage::default());
         };
-        let mut conditions = vec!["notes_fts MATCH ?".to_string(), "n.is_deleted = 0".into()];
-        let mut args: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(match_expr)];
+        let mut conditions = vec!["notes_fts MATCH ?".to_string(), "n.is_deleted = ?".into()];
+        let mut args: Vec<Box<dyn rusqlite::ToSql>> =
+            vec![Box::new(match_expr), Box::new(i64::from(q.trashed))];
+        if q.pinned_only {
+            conditions.push("n.is_pinned = 1".into());
+        }
         if let Some(archived) = q.is_archived {
             conditions.push("n.is_archived = ?".into());
             args.push(Box::new(i64::from(archived)));

@@ -183,8 +183,10 @@ pub struct NoteSearch {
     pub workspace_id: Option<String>,
     pub tag_id: Option<String>,
     /// `Some(false)`: live notes only. `Some(true)`: archived only. `None`:
-    /// both. Trashed notes are never searched.
+    /// both.
     pub is_archived: Option<bool>,
+    pub pinned_only: bool,
+    pub trashed: bool,
     pub updated_after: Option<String>,
     pub updated_before: Option<String>,
     pub limit: i64,
