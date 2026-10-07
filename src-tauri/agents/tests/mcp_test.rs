@@ -1509,7 +1509,7 @@ fn edit_note_replaces_one_exact_passage() {
     let first = log
         .iter()
         .filter(|r| r.tool == "edit_note" && r.status == "ok")
-        .last()
+        .next_back()
         .unwrap();
     assert!(first.revertable);
     store.revert_activity(first.seq).unwrap();
