@@ -120,6 +120,7 @@ fn tools_list_describes_every_tool_with_a_schema() {
         "create_note",
         "update_note",
         "append_to_note",
+        "edit_note",
         "append_sheet_rows",
     ] {
         assert!(names.contains(&expected), "missing {expected}");
@@ -144,7 +145,7 @@ fn tools_list_describes_every_tool_with_a_schema() {
         // Destructive means it can remove or replace: never the additive ones.
         let destructive = matches!(
             name,
-            "update_note" | "untag_note" | "remove_from_space" | "trash_note"
+            "update_note" | "edit_note" | "untag_note" | "remove_from_space" | "trash_note"
         );
         assert_eq!(
             tool["annotations"]["destructiveHint"], destructive,
@@ -386,12 +387,16 @@ fn write_creates_files_and_appends_through_the_core_rules() {
         ],
     );
     let (_, _, appended) = result_of(&replies[1]);
-    assert_eq!(appended["body"], "Agent idea\nwith a #plan\n- step one");
+    assert!(appended.get("body").is_none());
+    assert_eq!(
+        store.get_note(&id, false).unwrap().body,
+        "Agent idea\nwith a #plan\n- step one"
+    );
     let (_, _, listed) = result_of(&replies[2]);
     assert_eq!(listed["notes"][0]["id"], json!(id));
     let (_, _, found) = result_of(&replies[3]);
     assert_eq!(found["results"][0]["id"], json!(id));
-    assert!(!found["results"][0]["excerpt"]
+    assert!(!found["results"][0]["passages"][0]["text"]
         .as_str()
         .unwrap()
         .contains('\u{1}'));
@@ -749,7 +754,7 @@ fn a_titled_note_is_found_by_its_title_and_rewritten_without_a_read() {
     let (is_error, text, _) = result_of(&replies[2]);
     assert!(is_error);
     assert!(
-        text.starts_with("CONFLICT") && text.contains("\"body\": \"steps\""),
+        text.starts_with("CONFLICT") && text.contains("\"body\":\"steps\""),
         "{text}"
     );
 }
@@ -1139,11 +1144,11 @@ fn sheet_rows_land_after_the_data_and_the_body_follows() {
     let (is_error, text, first) = result_of(&replies[2]);
     assert!(!is_error, "{text}");
     assert_eq!(first["appended"], json!({ "firstRow": 1, "count": 2 }));
-    assert_eq!(first["sheet"], json!({ "cols": 3, "rows": 2 }));
     assert_eq!(
-        first["body"],
-        "| Date | Build | ms |\n| --- | --- | --- |\n| 2026-10-04 | a1f3 |  |"
+        first["sheet"],
+        json!({ "cols": 3, "rows": 2, "header": ["Date", "Build", "ms"] })
     );
+    assert!(first.get("body").is_none());
 
     let (_, _, second) = result_of(&replies[3]);
     assert_eq!(second["appended"], json!({ "firstRow": 3, "count": 1 }));
@@ -1152,6 +1157,10 @@ fn sheet_rows_land_after_the_data_and_the_body_follows() {
     assert_eq!(rows.len(), 20);
     assert_eq!(rows[2], vec!["2026-10-05", "b2c4", "398"]);
     assert_eq!(rows[1], vec!["2026-10-04", "a1f3", ""]);
+    assert_eq!(
+        store.get_note(&sheet.id, false).unwrap().body,
+        "| Date | Build | ms |\n| --- | --- | --- |\n| 2026-10-04 | a1f3 |  |\n| 2026-10-05 | b2c4 | 398 |"
+    );
 }
 
 #[test]

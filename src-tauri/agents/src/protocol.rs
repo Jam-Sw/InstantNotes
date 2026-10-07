@@ -46,36 +46,54 @@ const INSTRUCTIONS: &str = "You are connected to InstantNotes, the user's \
 personal notes app: a place to park thoughts fast and trust they come back. \
 The user sees what you read and change as you do it, highlighted in the app.
 
-Library: notes, tags, and Spaces. A Space is a named collection for one \
-effort; a note can be in several. A note's title is its first line unless set.
+# Vocabulary
+- Space: a named collection for one effort; a note can be in several.
+- Note kinds: document (Markdown), sheet (a cell grid), whiteboard (a canvas). \
+A document's title is its first line unless set.
+- Markdown as the editor renders it: GitHub extensions, ==highlight==, \
+- [ ] tasks, images as ![](attachments/<file>). A #word in the text is a tag.
 
-Formatting, as the editor renders it: Markdown with GitHub extensions. \
-# headings, **bold**, *italic*, ~~strike~~, ==highlight==, `code`, fenced code \
-blocks, > quotes, - lists (indent to nest), - [ ] tasks, [links](url), and \
-images as ![](attachments/<file>). A #word in the text is a tag.
+# Rules
+- Call a write tool only for a change the user asked for; otherwise ask.
+- Read small before large: search_notes with detail \"titles\" to locate, \
+passages to answer, get_notes to read in full.
+- Write small before large: append_to_note to add, edit_note to change a \
+passage, update_note to rewrite a whole note.
+- search_notes, list_notes, and suggest_space report total, hasMore, and \
+nextOffset.
+- File every note you create in an existing Space: call list_spaces first and \
+reuse a name.
 
-Reading: search, then read only what matters. search_notes returns the \
-matching passages with their line numbers and surrounding lines, and takes \
-match \"any\" to cast wide, a space, a tag, a status, and dates; that is \
-usually enough to answer without opening a note. To read notes in full, pass \
-their ids to get_notes, several at a time. Do not page through the whole \
-library with list_notes to read everything, and do not script around these \
-tools: results say total and hasMore, so you always know what is left.
+# Find or answer
+1. search_notes with two or three keywords; match \"any\" casts wide, and \
+space, tag, status, and dates narrow. Passages carry line numbers, so a \
+search often answers the question.
+2. Read in full only the notes that matter: get_notes with their ids. A long \
+body comes back with truncated true; get_note with bodyOffset reads on.
 
-Working with notes: search or list before creating, so you add to an existing \
-note instead of duplicating it. search_notes matches titles, so search a \
-note's title to find it; its results already carry the id, spaces, and \
-updatedAt. Prefer append_to_note to add to a note. To rewrite one, pass the \
-updatedAt from search_notes, list_notes, or get_note to update_note; you do \
-not need to read the note first unless you need its current text. A CONFLICT \
-means the user changed it since; it includes the current note, so retry from \
-that. Nothing you do \
-deletes for good: trash_note is undoable by the user.
+# Add or change a note
+1. search_notes with the note's title. Found: go to step 2, 3, or 4. Not \
+found: create_note.
+2. Add text: append_to_note.
+3. Change text: edit_note with oldText copied from a passage. On 0 or \
+several matches, get_note and copy the exact passage.
+4. Rewrite everything: update_note with the updatedAt from your last read of \
+that note. A CONFLICT carries the current note: re-apply your change to it and \
+retry once; a second CONFLICT goes to the user.
+5. Remove: trash_note. The user can restore it, and nothing you do deletes \
+for good.
 
-Open loops: list_notes with status \"revisit\" gives captures the user has \
-not come back to, oldest first. That is the list to help close, in a Space or \
-across the library. InstantNotes is not a task manager: do not add dates, \
-reminders, or checklists the user did not ask for.";
+# Open loops
+list_notes with status \"revisit\" gives captures the user has not come back \
+to, oldest first, in a Space or across the library: the list to help close.
+
+# Sheets and whiteboards
+append_sheet_rows adds rows to a sheet; get_note's sheet.header names its \
+columns. Cells are edited in the app. A whiteboard is read-only.
+
+# Scope
+InstantNotes is a notes app: add dates, reminders, or checklists when the \
+user asks for them.";
 
 /// Serve one client until stdin closes.
 pub fn serve(
@@ -185,7 +203,7 @@ fn handle_unguarded(tools: &mut Tools, message: Value) -> Option<Value> {
     };
     // The trace keeps the whole exchange, so the user can read exactly what
     // an agent sent and what it was told.
-    if method == "tools/call" {
+    if matches!(method, "tools/call" | "resources/list" | "resources/read") {
         if let (Ok(sent), Ok(answered)) =
             (serde_json::to_string(&msg), serde_json::to_string(&reply))
         {
