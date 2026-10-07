@@ -411,7 +411,7 @@ else follows the `initialize` handshake of 2025-11-25 back to 2024-11-05,
 including a JSON-RPC batch on one line. An unknown tool, or `arguments` that
 are not an object, is a JSON-RPC error (`-32602`); everything a tool refuses
 is a result with `isError`, which the model sees. Successful results carry
-their JSON as `structuredContent` and again as text. A request that panics
+their JSON as `structuredContent` and again as compact JSON text. A request that panics
 inside the server is answered with `-32603` and the connection goes on. Every
 response is checked against the official MCP JSON Schema of its revision.
 
@@ -419,41 +419,53 @@ Besides tools, the server declares `resources`: `resources/list` offers the
 fifty most recently updated live notes as `instantnotes://notes/<id>`
 (`text/markdown`), `resources/templates/list` names that template, and
 `resources/read` returns one note's Markdown, or `-32002` for an id that is
-not a note. Resources sit behind the same read gate as the read tools.
+not a note. Resources sit behind the same read gate as the read tools, and each call is
+traced as `resources/list` or `resources/read` (kind `read`).
 
 | Tool | Access | Store call |
 | --- | --- | --- |
 | `search_notes`, `list_notes`, `get_note`, `get_notes`, `list_tags`, `list_spaces` | read | `search_notes_page`, `list_notes` and `count_notes`, `get_note(id, false)`, `list_tags`, `list_workspaces` |
-| `suggest_space` | read | `space_suggestions` (section 4.1), for one note (`id`) or every unfiled note (`limit`, default 50): each with its Space, a probability, and the reasons. The same model the user sees in the Graph; it files nothing, and says so, so an agent that agrees calls `add_to_space`. |
+| `suggest_space` | read | `space_suggestions` (section 4.1), for one note (`id`) or every unfiled note (`limit`, default 50, and `offset`): each with its Space, a probability, and the reasons. The same model the user sees in the Graph; it files nothing, and says so, so an agent that agrees calls `add_to_space`. |
 | `create_note`, `update_note`, `append_to_note` | write | `create_note`, `update_note` with `expectedUpdatedAt` |
-| `append_sheet_rows` | write | `update_note` with `expectedUpdatedAt`, on a sheet's grid (`sheet.rs`): rows land after the last row holding data, a short row is padded, a wider one is refused, and the store derives the body. Retries on conflict like `append_to_note`. Returns the note view plus `appended: { firstRow, count }` (spreadsheet numbering). |
+| `edit_note` | write | `update_note` with the `updatedAt` just read: replaces one exact `oldText` that appears once in a document's body (0 or several matches are refused with the count). Retries on conflict like `append_to_note`. |
+| `append_sheet_rows` | write | `update_note` with `expectedUpdatedAt`, on a sheet's grid (`sheet.rs`): rows land after the last row holding data, a short row is padded, a wider one is refused, and the store derives the body. Retries on conflict like `append_to_note`. Returns the note view without its body plus `appended: { firstRow, count }` (spreadsheet numbering). |
 | `tag_note`, `untag_note`, `add_to_space`, `remove_from_space` | write | the tag and workspace membership calls |
 | `trash_note`, `restore_note` | write | `soft_delete_note`, `restore_note` |
 
 Every tool declares a `title`, an input schema that rejects unknown
 properties, and annotations: `readOnlyHint` for reads, `destructiveHint` for
-the writes that remove or replace (`update_note`, `untag_note`,
+the writes that remove or replace (`update_note`, `edit_note`, `untag_note`,
 `remove_from_space`, `trash_note`), `idempotentHint`, and `openWorldHint:
 false`, since a tool only ever touches this library.
 
 An agent is meant to search, then read only what matters. `search_notes`
-takes `query`, `match` (`all` or `any` of the words), `space`, `tag`, `status`
-(`active`, `archived`, `all`; never the Trash), `updatedAfter` and
-`updatedBefore` (a date or a UTC timestamp), `limit`, and `offset`. Each
+takes `query` (at least one word; an empty one is refused), `match` (`all` or
+`any` of the words), `detail` (`passages`, or `titles` for `id`, `title`,
+`spaces`, `updatedAt` only), `space`, `tag`, `status` (`active`, `archived`,
+`all`; never the Trash), `updatedAfter` and `updatedBefore` (a date or a UTC
+timestamp), `limit` (default 10, at most 200), and `offset`. A search with no
+match returns a `hint`: how many notes match any of the words, or what to
+loosen. Each
 result carries `passages`: up to three, each the matching line with the
 line before and after it and its 1-based `line`, plus `matchingLines`, the
-count of lines that match in all. `get_notes` reads up to 50 notes in full
-in one call, in the order asked, and returns ids that name no note in
-`missing`. `search_notes` and `list_notes` are paged: `total` is how many
-match in all, `hasMore` whether to ask again, and `nextOffset` from where.
+count of lines that match in all. `get_note` and `get_notes` cut each body at `maxChars` (default 12,000,
+1,000 to 100,000); `get_notes` also holds one call to 60,000 characters, so
+each of many notes is shorter (never under 1,000). A cut body says
+`truncated`, `totalChars`, and `nextBodyOffset`, which `get_note` takes as
+`bodyOffset` to read on. `get_notes` reads up to 50 notes in one call, in the
+order asked, and returns ids that name no note in `missing`. Write tools
+return the note without its body. `search_notes`, `list_notes`, and `suggest_space` are paged: `total` is how
+many match in all, `hasMore` whether to ask again, `nextOffset` from where, and
+`limit` the page size applied.
 `list_notes` takes the same two dates.
 
 `list_notes` with `status: "revisit"` is the Revisit view's filter. Reads never
 set `lastOpenedAt`. There is no permanent delete, no settings, no vault, and
 no whiteboard canvas at any access level; writing a whiteboard's text is
 refused. A sheet's body is refused too (it is derived from the grid):
-`get_note` on a sheet returns the Markdown table and `sheet: { cols, rows }`
-(its width and how many rows hold data), and `append_sheet_rows` is the one
+`get_note` on a sheet returns the Markdown table and
+`sheet: { cols, rows, header }` (its width, how many rows hold data, and the
+first row), and `append_sheet_rows` is the one
 way to write it. Append is the only agent write to a sheet on purpose: the
 app can then merge an agent's rows with the user's unsaved cells by
 mechanics alone, so neither side's work is lost.

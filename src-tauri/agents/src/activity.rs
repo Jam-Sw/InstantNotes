@@ -167,7 +167,7 @@ fn touched_notes(result: &Value) -> Vec<(String, String)> {
     if let Some(one) = pair(result) {
         return vec![one];
     }
-    ["notes", "results"]
+    ["notes", "results", "suggestions"]
         .iter()
         .filter_map(|k| result.get(*k).and_then(Value::as_array))
         .flatten()
@@ -225,6 +225,14 @@ mod tests {
         assert_eq!(rec.space.as_deref(), Some("Work"));
         assert_eq!(rec.after_updated_at, None);
         assert_eq!(rec.reverts, None);
+    }
+
+    #[test]
+    fn suggestions_name_the_notes_they_are_about() {
+        let t = trace("suggest_space", Kind::Read, json!({}));
+        let result = Ok(json!({ "suggestions": [{ "id": "n1", "title": "One" }] }));
+        let rec = record_for(t, "s1", "claude-code", &result, 1);
+        assert_eq!(rec.note_ids, vec!["n1"]);
     }
 
     #[test]

@@ -10,6 +10,9 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.9.4]
 
 ### Added
+- Agents: `edit_note` replaces one exact passage (`oldText` appears once in a
+  document's body); `search_notes` `detail: "titles"`; `get_note` `maxChars` and
+  `bodyOffset`; `suggest_space` `offset`; `sheet.header` in a sheet's view.
 - Sheet notes: a third kind of note, a cell grid that stays a note. New sheet
   from the palette, the ＋ menu, or File > New Sheet. It works like Sheets or
   Excel: type into a cell, Tab across, Enter down (a new row appears at the
@@ -26,6 +29,12 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   nodes, drawn in perspective back to front. Pan, zoom and lens unchanged.
 
 ### Changed
+- Agents: writes return the note without its body; `get_note` and `get_notes`
+  cut bodies at 12,000 characters (60,000 shared per `get_notes`); results are
+  compact JSON; `search_notes` defaults to 10 results, refuses an empty query
+  and returns a `hint` on no match; every page echoes `limit`; refusals list
+  valid values; `create_note` and `add_to_space` return `createdSpace`; resource
+  reads are traced; `INSTRUCTIONS` rewritten as rules and steps.
 - Graph: labels never overlap: placed by priority (open note, hovered, lit,
   hubs by degree, nearest) under or else over their node (`rbush`), above all nodes.
 

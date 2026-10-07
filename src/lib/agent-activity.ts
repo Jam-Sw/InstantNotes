@@ -189,7 +189,13 @@ export function describeActivity(e: AgentActivity): string {
       if (e.tag) return `Looking through #${e.tag}`;
       return "Looking through your notes";
     case "get_note":
+    case "get_notes":
+    case "resources/read":
       return `Reading ${title}${more}`;
+    case "resources/list":
+      return "Looking through your notes";
+    case "suggest_space":
+      return "Looking for where notes belong";
     case "list_tags":
       return "Looking at your tags";
     case "list_spaces":
@@ -197,9 +203,12 @@ export function describeActivity(e: AgentActivity): string {
     case "create_note":
       return `Writing a new note, ${title}`;
     case "update_note":
+    case "edit_note":
       return `Editing ${title}`;
     case "append_to_note":
       return `Adding to ${title}`;
+    case "append_sheet_rows":
+      return `Adding rows to ${title}`;
     case "tag_note":
       return `Tagging ${title} #${e.tag ?? ""}`;
     case "untag_note":
@@ -224,11 +233,17 @@ function describeAttempt(e: AgentActivity): string {
     search_notes: "search",
     list_notes: "list notes",
     get_note: "read a note",
+    get_notes: "read notes",
+    "resources/read": "read a note",
+    "resources/list": "list notes",
+    suggest_space: "suggest a Space",
     list_tags: "list tags",
     list_spaces: "list Spaces",
     create_note: "create a note",
     update_note: "edit a note",
+    edit_note: "edit a note",
     append_to_note: "add to a note",
+    append_sheet_rows: "add rows to a sheet",
     tag_note: "tag a note",
     untag_note: "untag a note",
     add_to_space: "file a note",

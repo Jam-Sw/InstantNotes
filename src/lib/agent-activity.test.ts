@@ -65,6 +65,19 @@ describe("agent activity", () => {
     expect(describeActivity(entry({ tool: "revert", client: "instantnotes" }))).toBe(
       "Reverted a change to “Groceries”",
     );
+    expect(describeActivity(entry({ tool: "get_notes", noteCount: 3 }))).toBe(
+      "Reading “Groceries” and 2 more",
+    );
+    expect(describeActivity(entry({ tool: "edit_note", kind: "write" }))).toBe("Editing “Groceries”");
+    expect(describeActivity(entry({ tool: "append_sheet_rows", kind: "write" }))).toBe(
+      "Adding rows to “Groceries”",
+    );
+    expect(describeActivity(entry({ tool: "suggest_space" }))).toBe("Looking for where notes belong");
+    expect(describeActivity(entry({ tool: "resources/read" }))).toBe("Reading “Groceries”");
+    expect(describeActivity(entry({ tool: "resources/list" }))).toBe("Looking through your notes");
+    expect(
+      describeActivity(entry({ tool: "append_sheet_rows", status: "error", error: "x" })),
+    ).toBe("Tried to add rows to a sheet, but it failed");
     expect(clientLabel("instantnotes")).toBe("You");
     // A failed call says what was tried, never a made-up outcome.
     expect(
