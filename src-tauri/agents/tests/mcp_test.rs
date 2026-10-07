@@ -1327,3 +1327,465 @@ fn a_library_with_no_spaces_still_takes_an_unfiled_note() {
     );
     assert!(!result_of(&replies[1]).0, "{}", replies[1]);
 }
+
+fn keys_of(value: &Value) -> Vec<String> {
+    let mut keys: Vec<String> = value.as_object().unwrap().keys().cloned().collect();
+    keys.sort();
+    keys
+}
+
+fn big_note(store: &mut Store, chars: usize) -> String {
+    store
+        .create_note(CreateNoteInput {
+            title: Some("Big".into()),
+            body: Some(format!(
+                "Big\n\n{}",
+                "lorem ipsum pricing. ".repeat(chars / 21 + 1)
+            )),
+            ..Default::default()
+        })
+        .unwrap()
+        .id
+}
+
+#[test]
+fn write_results_leave_the_body_out() {
+    let mut store = store_with("write");
+    let id = big_note(&mut store, 40_000);
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(1, "append_to_note", json!({ "id": id, "text": "one line" })),
+            call(2, "tag_note", json!({ "id": id, "tag": "x" })),
+            call(3, "add_to_space", json!({ "id": id, "space": "Ideas" })),
+            call(
+                4,
+                "create_note",
+                json!({ "body": "Short", "space": "Ideas" }),
+            ),
+            call(5, "trash_note", json!({ "id": id })),
+            call(6, "restore_note", json!({ "id": id })),
+        ],
+    );
+    for reply in &replies[1..] {
+        let (is_error, text, view) = result_of(reply);
+        assert!(!is_error, "{text}");
+        assert!(view.get("body").is_none(), "{text}");
+        assert!(text.len() < 1_500, "{} bytes", text.len());
+    }
+}
+
+#[test]
+fn a_long_body_is_cut_and_read_on_with_a_body_offset() {
+    let mut store = store_with("read");
+    let body: String = (0..30_000)
+        .map(|i| char::from(b'a' + (i % 26) as u8))
+        .collect();
+    let id = note(&mut store, &body);
+    let short = note(&mut store, "short");
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(1, "get_note", json!({ "id": id })),
+            call(2, "get_note", json!({ "id": id, "bodyOffset": 12_000 })),
+            call(
+                3,
+                "get_note",
+                json!({ "id": id, "bodyOffset": 24_000, "maxChars": 100_000 }),
+            ),
+            call(4, "get_note", json!({ "id": id, "maxChars": 100 })),
+            call(5, "get_note", json!({ "id": short })),
+        ],
+    );
+    let (_, _, first) = result_of(&replies[1]);
+    let (_, _, second) = result_of(&replies[2]);
+    let (_, _, third) = result_of(&replies[3]);
+    assert_eq!(first["body"].as_str().unwrap().chars().count(), 12_000);
+    assert_eq!(first["truncated"], true);
+    assert_eq!(first["totalChars"], 30_000);
+    assert_eq!(first["nextBodyOffset"], 12_000);
+    assert_eq!(second["nextBodyOffset"], 24_000);
+    assert!(third.get("nextBodyOffset").is_none());
+    assert_eq!(third["truncated"], true);
+    let joined = format!(
+        "{}{}{}",
+        first["body"].as_str().unwrap(),
+        second["body"].as_str().unwrap(),
+        third["body"].as_str().unwrap()
+    );
+    assert_eq!(joined, body);
+    let (_, _, floor) = result_of(&replies[4]);
+    assert_eq!(floor["body"].as_str().unwrap().chars().count(), 1_000);
+    let (_, _, whole) = result_of(&replies[5]);
+    assert_eq!(whole["body"], "short");
+    assert!(whole.get("truncated").is_none());
+}
+
+#[test]
+fn several_notes_share_one_read_budget() {
+    let mut store = store_with("read");
+    let ids: Vec<String> = (0..50)
+        .map(|i| note(&mut store, &format!("n{i} {}", "x".repeat(5_000))))
+        .collect();
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(1, "get_notes", json!({ "ids": ids })),
+            call(2, "get_notes", json!({ "ids": &ids[..2] })),
+        ],
+    );
+    let (_, text, many) = result_of(&replies[1]);
+    for n in many["notes"].as_array().unwrap() {
+        assert_eq!(n["body"].as_str().unwrap().chars().count(), 1_200);
+        assert_eq!(n["truncated"], true);
+    }
+    assert!(text.len() < 80_000, "{} bytes", text.len());
+    let (_, _, few) = result_of(&replies[2]);
+    for n in few["notes"].as_array().unwrap() {
+        assert!(n["body"].as_str().unwrap().chars().count() > 5_000);
+        assert!(n.get("truncated").is_none());
+    }
+}
+
+#[test]
+fn edit_note_replaces_one_exact_passage() {
+    let mut store = store_with("write");
+    let id = note(&mut store, "alpha beta gamma beta");
+    let sheet = new_sheet(&mut store);
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(
+                1,
+                "edit_note",
+                json!({ "id": id, "oldText": "gamma", "newText": "delta" }),
+            ),
+            call(
+                2,
+                "edit_note",
+                json!({ "id": id, "oldText": "beta", "newText": "x" }),
+            ),
+            call(
+                3,
+                "edit_note",
+                json!({ "id": id, "oldText": "zzz", "newText": "x" }),
+            ),
+            call(
+                4,
+                "edit_note",
+                json!({ "id": id, "oldText": "", "newText": "x" }),
+            ),
+            call(
+                5,
+                "edit_note",
+                json!({ "id": sheet.id, "oldText": "a", "newText": "b" }),
+            ),
+            call(
+                6,
+                "edit_note",
+                json!({ "id": id, "oldText": "delta", "newText": "" }),
+            ),
+        ],
+    );
+    let (is_error, text, edited) = result_of(&replies[1]);
+    assert!(!is_error, "{text}");
+    assert!(edited.get("body").is_none());
+    let (is_error, text, _) = result_of(&replies[2]);
+    assert!(is_error && text.contains("appears 2 times"), "{text}");
+    let (is_error, text, _) = result_of(&replies[3]);
+    assert!(is_error && text.starts_with("NOT_FOUND"), "{text}");
+    let (is_error, text, _) = result_of(&replies[4]);
+    assert!(is_error && text.contains("append_to_note"), "{text}");
+    let (is_error, text, _) = result_of(&replies[5]);
+    assert!(is_error && text.contains("sheet"), "{text}");
+    assert!(!result_of(&replies[6]).0);
+    assert_eq!(store.get_note(&id, false).unwrap().body, "alpha beta  beta");
+
+    let log = trace(&store);
+    let first = log
+        .iter()
+        .filter(|r| r.tool == "edit_note" && r.status == "ok")
+        .last()
+        .unwrap();
+    assert!(first.revertable);
+    store.revert_activity(first.seq).unwrap();
+    assert_eq!(
+        store.get_note(&id, false).unwrap().body,
+        "alpha beta gamma beta"
+    );
+}
+
+#[test]
+fn search_titles_return_only_the_locating_fields() {
+    let mut store = store_with("read");
+    note(&mut store, "Roadmap\n\nship the pricing page");
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(
+                1,
+                "search_notes",
+                json!({ "query": "pricing", "detail": "titles" }),
+            ),
+            call(2, "search_notes", json!({ "query": "pricing" })),
+        ],
+    );
+    let (_, _, titles) = result_of(&replies[1]);
+    assert_eq!(
+        keys_of(&titles["results"][0]),
+        vec!["id", "spaces", "title", "updatedAt"]
+    );
+    let (_, _, passages) = result_of(&replies[2]);
+    assert!(passages["results"][0].get("excerpt").is_none());
+    assert!(passages["results"][0]["passages"].is_array());
+}
+
+#[test]
+fn search_pages_ten_at_a_time_and_every_page_echoes_its_limit() {
+    let mut store = store_with("read");
+    for i in 0..15 {
+        note(&mut store, &format!("pricing note {i}"));
+    }
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(1, "search_notes", json!({ "query": "pricing" })),
+            call(2, "search_notes", json!({ "query": "pricing", "limit": 3 })),
+            call(3, "list_notes", json!({ "limit": 500 })),
+            call(4, "list_notes", json!({ "limit": 0 })),
+            call(5, "list_notes", json!({})),
+            call(6, "suggest_space", json!({})),
+        ],
+    );
+    let (_, _, page) = result_of(&replies[1]);
+    assert_eq!(page["results"].as_array().unwrap().len(), 10);
+    assert_eq!(page["limit"], 10);
+    assert_eq!(page["total"], 15);
+    assert_eq!(page["hasMore"], true);
+    assert_eq!(page["nextOffset"], 10);
+    assert_eq!(result_of(&replies[2]).2["limit"], 3);
+    assert_eq!(result_of(&replies[3]).2["limit"], 200);
+    assert_eq!(result_of(&replies[4]).2["limit"], 1);
+    assert_eq!(result_of(&replies[5]).2["limit"], 50);
+    assert_eq!(result_of(&replies[6]).2["limit"], 50);
+}
+
+#[test]
+fn an_empty_search_says_what_to_try_next() {
+    let mut store = store_with("read");
+    note(&mut store, "alpha one");
+    note(&mut store, "beta two");
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(1, "search_notes", json!({ "query": "alpha beta" })),
+            call(2, "search_notes", json!({ "query": "zzz" })),
+            call(3, "search_notes", json!({ "query": "  " })),
+            call(4, "search_notes", json!({ "query": "alpha" })),
+            call(
+                5,
+                "search_notes",
+                json!({ "query": "alpha beta", "match": "any" }),
+            ),
+        ],
+    );
+    let (_, _, both) = result_of(&replies[1]);
+    assert_eq!(both["total"], 0);
+    let hint = both["hint"].as_str().unwrap();
+    assert!(
+        hint.contains("2 contain at least one") && hint.contains("match \"any\""),
+        "{hint}"
+    );
+    let (_, _, none) = result_of(&replies[2]);
+    assert!(none["hint"]
+        .as_str()
+        .unwrap()
+        .starts_with("No note matches"));
+    let (is_error, text, _) = result_of(&replies[3]);
+    assert!(is_error && text.contains("list_notes"), "{text}");
+    assert!(result_of(&replies[4]).2.get("hint").is_none());
+    assert!(result_of(&replies[5]).2.get("hint").is_none());
+}
+
+#[test]
+fn refusals_name_the_valid_values_and_where_to_look() {
+    let mut store = store_with("read");
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(
+                1,
+                "search_notes",
+                json!({ "query": "a", "status": "trash" }),
+            ),
+            call(2, "search_notes", json!({ "query": "a", "match": "some" })),
+            call(3, "search_notes", json!({ "query": "a", "detail": "x" })),
+            call(4, "list_notes", json!({ "status": "x" })),
+            call(5, "search_notes", json!({ "query": "a", "space": "nope" })),
+            call(6, "list_notes", json!({ "tag": "nope" })),
+        ],
+    );
+    let said = |i: usize| result_of(&replies[i]).1;
+    assert!(said(1).contains("active, archived or all") && said(1).contains("list_notes"));
+    assert!(said(2).contains("\"all\" or \"any\""));
+    assert!(said(3).contains("\"titles\" or \"passages\""));
+    assert!(said(4).contains("pinned, archived, trash or revisit"));
+    assert!(said(5).contains("list_spaces"));
+    assert!(said(6).contains("list_tags"));
+}
+
+#[test]
+fn a_new_space_is_flagged_where_a_write_creates_one() {
+    let mut store = store_with("write");
+    store.get_or_create_workspace("Existing").unwrap();
+    let id = note(&mut store, "a note");
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(
+                1,
+                "create_note",
+                json!({ "body": "a", "space": "Existing" }),
+            ),
+            call(2, "create_note", json!({ "body": "b", "space": "Fresh" })),
+            call(3, "add_to_space", json!({ "id": id, "space": "Another" })),
+            call(4, "add_to_space", json!({ "id": id, "space": "another" })),
+        ],
+    );
+    assert!(result_of(&replies[1]).2.get("createdSpace").is_none());
+    assert_eq!(result_of(&replies[2]).2["createdSpace"], true);
+    assert_eq!(result_of(&replies[3]).2["createdSpace"], true);
+    assert!(result_of(&replies[4]).2.get("createdSpace").is_none());
+}
+
+#[test]
+fn suggest_space_pages_and_explains_an_empty_answer() {
+    let mut store = store_with("read");
+    let lone = note(&mut store, "nothing like the rest");
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(1, "suggest_space", json!({ "id": lone })),
+            call(2, "suggest_space", json!({})),
+        ],
+    );
+    let (_, _, one) = result_of(&replies[1]);
+    assert_eq!(one["total"], 0);
+    assert_eq!(one["hasMore"], false);
+    assert!(one["hint"].as_str().unwrap().contains("No Space"));
+    assert!(result_of(&replies[2]).2.get("hint").is_none());
+}
+
+#[test]
+fn resource_reads_are_traced_like_tool_reads() {
+    let mut store = store_with("read");
+    let id = note(&mut store, "Roadmap\nQ4");
+    let uri = format!("instantnotes://notes/{id}");
+    session(
+        &mut store,
+        &[
+            init(),
+            json!({ "jsonrpc": "2.0", "id": 1, "method": "resources/list" }),
+            json!({ "jsonrpc": "2.0", "id": 2, "method": "resources/read", "params": { "uri": uri } }),
+        ],
+    );
+    let log = trace(&store);
+    assert_eq!(log[0].tool, "resources/read");
+    assert_eq!(log[0].kind, "read");
+    assert_eq!(log[0].note_ids, vec![id.clone()]);
+    assert_eq!(log[1].tool, "resources/list");
+    let wire = store.activity_wire(log[0].seq).unwrap();
+    assert!(wire.response.as_deref().unwrap().contains("Roadmap"));
+}
+
+#[test]
+fn the_instructions_name_only_tools_that_exist() {
+    let mut store = store_with("off");
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }),
+        ],
+    );
+    let instructions = replies[0]["result"]["instructions"].as_str().unwrap();
+    let tools = replies[1]["result"]["tools"].as_array().unwrap();
+    let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
+    let mentioned: Vec<&str> = instructions
+        .split(|c: char| !(c.is_ascii_lowercase() || c == '_'))
+        .filter(|t| t.contains('_'))
+        .collect();
+    assert!(!mentioned.is_empty());
+    for token in mentioned {
+        assert!(names.contains(&token), "{token} is not a tool");
+    }
+}
+
+#[test]
+fn default_results_stay_inside_their_token_budgets() {
+    let mut store = store_with("write");
+    let para = "The pricing discussion covered tiers, annual discounts, and the legacy plan. ";
+    for i in 0..120 {
+        note(
+            &mut store,
+            &format!(
+                "Meeting {i}\n\n{}\n\nAction: follow up on pricing #pricing",
+                para.repeat(40)
+            ),
+        );
+    }
+    let big = big_note(&mut store, 144_000);
+    let ids: Vec<String> = store
+        .list_notes(Default::default())
+        .unwrap()
+        .iter()
+        .take(50)
+        .map(|n| n.id.clone())
+        .collect();
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(1, "search_notes", json!({ "query": "pricing" })),
+            call(2, "list_notes", json!({})),
+            call(3, "get_notes", json!({ "ids": ids })),
+            call(4, "get_note", json!({ "id": big })),
+            call(
+                5,
+                "append_to_note",
+                json!({ "id": big, "text": "one line" }),
+            ),
+            call(
+                6,
+                "update_note",
+                json!({ "id": big, "expectedUpdatedAt": "2020-01-01T00:00:00Z", "body": "x" }),
+            ),
+        ],
+    );
+    let size = |i: usize| result_of(&replies[i]).1.len();
+    let budgets = [
+        (1, 7_000),
+        (2, 23_000),
+        (3, 85_000),
+        (4, 14_000),
+        (5, 600),
+        (6, 14_000),
+    ];
+    for (i, budget) in budgets {
+        assert!(
+            size(i) < budget,
+            "call {i}: {} bytes over {budget}",
+            size(i)
+        );
+    }
+}
