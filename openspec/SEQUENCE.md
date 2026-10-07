@@ -336,6 +336,19 @@ hard-delete trigger needed a migration (v12, no column) so a destroyed
 sheet's `.csv` is tombstoned under its own extension. It stays open until the
 in-app checks in `changes/feat-note-sheet/tasks.md` pass, then archives.
 
+## 13i. `feat-agent-tool-surface` (BUILT, open until checked in the app)
+
+The MCP tools return what an agent reads and no more: writes drop the body,
+reads cap it, searches page at 10 and say what to try after no match, and
+`edit_note` changes one passage instead of a whole body. `NoteSearch` gains
+two filters and nothing persisted moves, so the insertion rule places it like
+a view change, in any slot. Built on `0.9.4-pre` on 2026-10-07 with its tests
+green, at the maintainer's request while 13c to 13h stay open: a recorded
+exception to the one-unit rule. The capture eval was re-run on the new surface
+with no loss in filing. It stays open until the in-app check in
+`changes/feat-agent-tool-surface/tasks.md` passes, then archives. See
+`changes/feat-agent-tool-surface/`.
+
 ## 14. Local AI
 
 Needs embedding storage, so it cannot precede unit 10. Embeddings are a

@@ -14,10 +14,10 @@ the obvious UI for it: no agents tab, which clutters; show it near All Notes.
 ## What Changes
 
 - `instantnotes mcp --db <path>`: the app's own binary serves MCP over stdio.
-  Fourteen tools map onto `Store`'s public API. Access is off by default, then
+  Fourteen tools (seventeen now; see `feat-agent-tool-surface`) map onto `Store`'s public API. Access is off by default, then
   read or read-and-write, re-read on every call. No permanent delete, settings,
   vault, or canvas at any level.
-- Presence: every call is recorded in `agents.activity`; the app notices other
+- Presence: every call is recorded in `agent_activity`; the app notices other
   processes' commits through SQLite's `data_version` and lights up what an
   agent touches (note rows, Spaces, tags, the open note), with one live line
   under All Notes naming who is doing what.
@@ -31,7 +31,7 @@ the obvious UI for it: no agents tab, which clutters; show it near All Notes.
 
 - Transports other than stdio (HTTP, remote). stdio needs no port or token and
   every client supports it.
-- MCP resources and prompts; tools cover every read and write.
+- MCP prompts; tools cover every read and write. Resources were added later for Claude Desktop's note picker.
 - Embeddings and semantic search (SEQUENCE unit 14; one more tool later).
 - A terminal or agent host inside the app ("0.6.2" floated it; connecting the
   agents the user already runs comes first).
