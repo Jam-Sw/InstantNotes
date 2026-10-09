@@ -5,7 +5,9 @@ use std::time::{Duration, Instant};
 
 const QUIET: Duration = Duration::from_millis(300);
 const MAX_DELAY: Duration = Duration::from_secs(2);
-const CHUNK: usize = 50;
+const CHUNK: usize = 10;
+const QUIT_CHUNK: usize = 50;
+const BETWEEN_CHUNKS: Duration = Duration::from_millis(1);
 
 pub(crate) struct VaultFlusher {
     poke: Sender<()>,
@@ -34,6 +36,11 @@ pub(crate) fn flush_vault_now(app: &AppHandle, max_chunks: Option<usize>) {
     let Some(state) = app.try_state::<AppState>() else {
         return;
     };
+    let chunk = if max_chunks.is_some() {
+        QUIT_CHUNK
+    } else {
+        CHUNK
+    };
     let mut chunks = 0;
     loop {
         let outcome = {
@@ -43,7 +50,7 @@ pub(crate) fn flush_vault_now(app: &AppHandle, max_chunks: Option<usize>) {
             if store.vault_root().is_none() {
                 return;
             }
-            store.flush_vault(CHUNK)
+            store.flush_vault(chunk)
         };
         chunks += 1;
         let more = matches!(&outcome, Ok(out)
@@ -51,6 +58,7 @@ pub(crate) fn flush_vault_now(app: &AppHandle, max_chunks: Option<usize>) {
         if !more || max_chunks.is_some_and(|max| chunks >= max) {
             break;
         }
+        std::thread::sleep(BETWEEN_CHUNKS);
     }
     let _ = app.emit(events::VAULT_STATUS, ());
 }

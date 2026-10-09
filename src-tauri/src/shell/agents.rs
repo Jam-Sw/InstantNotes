@@ -22,48 +22,81 @@ pub struct AgentSessionView {
     connected: bool,
 }
 
-fn sessions(store: &mut Store, db: &Path) -> Vec<AgentSessionView> {
-    let rows = store.list_agent_sessions(SESSIONS).unwrap_or_default();
-    rows.into_iter()
-        .map(|mut session| {
-            let connected =
-                session.disconnected_at.is_none() && session_alive(db, &session.session);
-            if !connected && session.disconnected_at.is_none() {
-                let _ = store.close_agent_session(&session.session);
-                session.disconnected_at = Some(now_ms());
-            }
-            if connected {
-                let now = Client::from_name(&session.client).and_then(|client| {
-                    clients::current(
-                        client,
-                        session.client_pid,
-                        session.client_session.as_deref(),
-                    )
-                });
-                if let Some(now) = now {
-                    let renamed = now.label.is_some() && now.label != session.label;
-                    let resumed = now.id.is_some() && now.id != session.client_session;
-                    if renamed || resumed {
-                        let about = ClientSession {
-                            label: now.label.clone(),
-                            client_session: now.id.clone(),
-                            ..Default::default()
-                        };
-                        let _ = store.describe_agent_session(&session.session, &about);
-                        session.label = now.label.or(session.label);
-                        session.client_session = now.id.or(session.client_session);
-                    }
-                }
-            }
-            AgentSessionView { session, connected }
+struct Presence {
+    connected: bool,
+    now: Option<clients::Found>,
+}
+
+fn probe(db: &Path, session: &AgentSession) -> Presence {
+    let connected = session.disconnected_at.is_none() && session_alive(db, &session.session);
+    let now = if connected {
+        Client::from_name(&session.client).and_then(|client| {
+            clients::current(
+                client,
+                session.client_pid,
+                session.client_session.as_deref(),
+            )
         })
-        .collect()
+    } else {
+        None
+    };
+    Presence { connected, now }
+}
+
+fn sessions(state: &AppState, db: &Path) -> Option<Vec<AgentSessionView>> {
+    let rows = state
+        .reader
+        .lock()
+        .ok()?
+        .list_agent_sessions(SESSIONS)
+        .unwrap_or_default();
+    let probed: Vec<(AgentSession, Presence)> = rows
+        .into_iter()
+        .map(|session| {
+            let presence = probe(db, &session);
+            (session, presence)
+        })
+        .collect();
+    let mut views = Vec::with_capacity(probed.len());
+    let mut store: Option<std::sync::MutexGuard<'_, Store>> = None;
+    for (mut session, presence) in probed {
+        let Presence { connected, now } = presence;
+        if !connected && session.disconnected_at.is_none() {
+            if store.is_none() {
+                store = Some(state.store.lock().ok()?);
+            }
+            if let Some(store) = store.as_mut() {
+                let _ = store.close_agent_session(&session.session);
+            }
+            session.disconnected_at = Some(now_ms());
+        }
+        if let Some(now) = now {
+            let renamed = now.label.is_some() && now.label != session.label;
+            let resumed = now.id.is_some() && now.id != session.client_session;
+            if renamed || resumed {
+                let about = ClientSession {
+                    label: now.label.clone(),
+                    client_session: now.id.clone(),
+                    ..Default::default()
+                };
+                if store.is_none() {
+                    store = Some(state.store.lock().ok()?);
+                }
+                if let Some(store) = store.as_mut() {
+                    let _ = store.describe_agent_session(&session.session, &about);
+                }
+                session.label = now.label.or(session.label);
+                session.client_session = now.id.or(session.client_session);
+            }
+        }
+        views.push(AgentSessionView { session, connected });
+    }
+    Some(views)
 }
 
 fn read_sessions(app: &AppHandle, db: &Path) -> Option<Vec<AgentSessionView>> {
     let state = app.try_state::<AppState>()?;
-    let mut store = state.store.lock().ok()?;
-    Some(sessions(&mut store, db))
+    sessions(&state, db)
 }
 
 pub(crate) struct AgentBridge {
@@ -195,8 +228,7 @@ pub fn list_agent_sessions(
     state: State<'_, AppState>,
     bridge: State<'_, AgentBridge>,
 ) -> CmdResult<Vec<AgentSessionView>> {
-    let mut store = locked(&state)?;
-    Ok(sessions(&mut store, &bridge.db_path))
+    sessions(&state, &bridge.db_path).ok_or_else(|| CmdError::storage("the library is busy"))
 }
 
 #[tauri::command(async)]
@@ -278,7 +310,71 @@ pub fn clear_agent_activity(state: State<'_, AppState>) -> CmdResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{agent_exe, library_changed, session_pid};
+    use super::{agent_exe, library_changed, session_pid, sessions};
+    use crate::AppState;
+    use instantnotes_core::store::activity::hold_session_lock;
+    use instantnotes_core::Store;
+    use std::sync::Mutex;
+
+    fn state_over(path: &std::path::Path) -> AppState {
+        AppState {
+            store: Mutex::new(Store::open(path).unwrap()),
+            reader: Mutex::new(Store::open_reader(path).unwrap()),
+            analyst: Mutex::new(Store::open_reader(path).unwrap()),
+        }
+    }
+
+    #[test]
+    fn a_session_whose_agent_is_gone_is_closed_and_reported_so() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("lib.db");
+        let state = state_over(&db);
+        state
+            .store
+            .lock()
+            .unwrap()
+            .open_agent_session("1f4a-19a0c3e2b11", "someone")
+            .unwrap();
+
+        let views = sessions(&state, &db).unwrap();
+        assert_eq!(views.len(), 1);
+        assert!(!views[0].connected);
+        assert!(views[0].session.disconnected_at.is_some());
+
+        let stored = state
+            .reader
+            .lock()
+            .unwrap()
+            .list_agent_sessions(10)
+            .unwrap();
+        assert!(stored[0].disconnected_at.is_some());
+        assert!(!sessions(&state, &db).unwrap()[0].connected);
+    }
+
+    #[test]
+    fn a_session_whose_agent_still_holds_its_lock_stays_connected() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("lib.db");
+        let state = state_over(&db);
+        state
+            .store
+            .lock()
+            .unwrap()
+            .open_agent_session("1f4a-19a0c3e2b11", "someone")
+            .unwrap();
+        let _held = hold_session_lock(&db, "1f4a-19a0c3e2b11").unwrap();
+
+        let views = sessions(&state, &db).unwrap();
+        assert!(views[0].connected);
+        assert_eq!(views[0].session.disconnected_at, None);
+        let stored = state
+            .reader
+            .lock()
+            .unwrap()
+            .list_agent_sessions(10)
+            .unwrap();
+        assert_eq!(stored[0].disconnected_at, None);
+    }
 
     #[test]
     fn the_pid_comes_from_the_session_id_and_nothing_else() {
