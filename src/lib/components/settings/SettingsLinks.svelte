@@ -3,7 +3,7 @@
   import { openUrl } from "$lib/api/client";
   import { modKey } from "$lib/platform";
   import { linkPrefs } from "$lib/stores/links.svelte";
-  import type { LinkOpenWith, LinkUnderline } from "$lib/editor";
+  import type { LinkOpenWith, LinkUnderline } from "$lib/editor/link-prefs";
   import SegmentedRow from "$lib/components/settings/SegmentedRow.svelte";
   import ToggleRow from "$lib/components/settings/ToggleRow.svelte";
 

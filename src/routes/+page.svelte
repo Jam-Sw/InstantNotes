@@ -7,13 +7,10 @@
   import { EVENTS } from "$lib/api/events";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import NoteList from "$lib/components/NoteList.svelte";
-  import NoteEditor from "$lib/components/NoteEditor.svelte";
   import UpdateNote from "$lib/components/UpdateNote.svelte";
   import BulkActions from "$lib/components/BulkActions.svelte";
   import WelcomeScreen from "$lib/components/WelcomeScreen.svelte";
-  import GraphView from "$lib/components/GraphView.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
-  import SettingsView from "$lib/components/SettingsView.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import Toast from "$lib/components/Toast.svelte";
   import AgentNote from "$lib/components/AgentNote.svelte";
@@ -80,6 +77,11 @@
     void linkPrefsStore.init();
     void contexting.init();
     void agents.init();
+    const warmEditor = setTimeout(() => void import("$lib/components/NoteEditor.svelte"), 800);
+    const warmViews = setTimeout(() => {
+      void import("$lib/components/SettingsView.svelte");
+      void import("$lib/components/GraphView.svelte");
+    }, 5000);
     void getVersion().then((v) => (appVersion = v));
     updater.start();
     let unlistenCheck: (() => void) | undefined;
@@ -143,6 +145,8 @@
     narrow.addEventListener("change", onNarrow);
     return () => {
       narrow.removeEventListener("change", onNarrow);
+      clearTimeout(warmEditor);
+      clearTimeout(warmViews);
       updater.stop();
       unlistenCheck?.();
       unlistenSettings?.();
@@ -334,15 +338,17 @@
 </script>
 
 {#if settingsOpen && !licenseSpace.locked}
-  <SettingsView
-    {appVersion}
-    onBack={() => (settingsOpen = false)}
-    onShowSpace={(id) => {
-      if (isAgentsSpaceId(id)) agentsSpace.open();
-      else library.selectWorkspace(id);
-      settingsOpen = false;
-    }}
-  />
+  {#await import("$lib/components/SettingsView.svelte") then { default: SettingsView }}
+    <SettingsView
+      {appVersion}
+      onBack={() => (settingsOpen = false)}
+      onShowSpace={(id) => {
+        if (isAgentsSpaceId(id)) agentsSpace.open();
+        else library.selectWorkspace(id);
+        settingsOpen = false;
+      }}
+    />
+  {/await}
 {:else}
   <div
     class="layout"
@@ -370,13 +376,17 @@
     {/if}
     {#if library.graphMode && !licenseSpace.locked}
       <section class="graph-span">
-        <GraphView />
+        {#await import("$lib/components/GraphView.svelte") then { default: GraphView }}
+          <GraphView />
+        {/await}
       </section>
     {:else}
       <NoteList />
       <section class="editor-pane">
         {#if !licenseSpace.locked && library.multiSelected.size <= 1 && library.selected && !isUpdateNoteId(library.selected.id) && !isAgentNoteId(library.selected.id)}
-          <NoteEditor />
+          {#await import("$lib/components/NoteEditor.svelte") then { default: NoteEditor }}
+            <NoteEditor />
+          {/await}
         {:else}
           <div class="pane-header" data-tauri-drag-region></div>
           {#if licenseSpace.locked}

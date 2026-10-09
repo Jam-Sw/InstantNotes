@@ -9,8 +9,8 @@ import {
   normalizeHref,
   linkMarkClass,
   modKeyCursor,
-  DEFAULT_LINK_PREFS,
 } from "./links";
+import { DEFAULT_LINK_PREFS } from "./link-prefs";
 
 function stateOf(doc: string): EditorState {
   const state = EditorState.create({

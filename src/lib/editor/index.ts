@@ -65,6 +65,5 @@ export function editorKernel(opts: EditorKernelOpts): Extension {
 }
 
 export { setPreviewMode } from "./kernel";
-export { setLinkPrefs, DEFAULT_LINK_PREFS } from "./links";
-export type { LinkOpenWith, LinkUnderline, LinkPrefsSnapshot } from "./links";
+export { setLinkPrefs } from "./links";
 export { setAttachmentsBase, linkedImagePaths } from "./images";

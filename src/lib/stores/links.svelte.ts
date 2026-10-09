@@ -4,7 +4,7 @@ import {
   type LinkOpenWith,
   type LinkUnderline,
   type LinkPrefsSnapshot,
-} from "$lib/editor";
+} from "$lib/editor/link-prefs";
 
 const KEY_OPEN = "links.openWith";
 const KEY_UNDERLINE = "links.underline";
