@@ -88,7 +88,7 @@
 
   async function loadRecent() {
     try {
-      const notes = await listNotes({ sortBy: "lastOpenedAt", sortOrder: "desc" });
+      const notes = await listNotes({ sortBy: "lastOpenedAt", sortOrder: "desc", bodyChars: 0 });
       recent = notes.filter((n) => n.lastOpenedAt && n.contentKind === "document").slice(0, RECENT);
     } catch {
       recent = [];

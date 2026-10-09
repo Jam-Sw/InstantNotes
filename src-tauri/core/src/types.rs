@@ -114,6 +114,7 @@ pub struct NoteFilter {
     pub sort_order: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+    pub body_chars: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]

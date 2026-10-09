@@ -207,3 +207,47 @@ fn a_sheet_with_the_version_check_conflicts_like_any_note() {
     )
     .unwrap();
 }
+
+#[test]
+fn a_capped_list_cuts_documents_and_leaves_sheets_whole() {
+    let mut s = store();
+    let doc = create(&mut s, &"caf\u{e9} \u{1f600} ".repeat(50));
+    let sheet = new_sheet(&mut s);
+    let rows: Vec<String> = (0..40)
+        .map(|i| format!(r#"["row {i}","cell {i}"]"#))
+        .collect();
+    save_grid(
+        &mut s,
+        &sheet.id,
+        &format!(
+            r#"{{"v":1,"engine":"grid","data":{{"cols":[{{"w":1}},{{"w":1}}],"rows":[{}]}}}}"#,
+            rows.join(",")
+        ),
+    );
+
+    let full = s.list_notes(NoteFilter::default()).unwrap();
+    let capped = s
+        .list_notes(NoteFilter {
+            body_chars: Some(10),
+            ..Default::default()
+        })
+        .unwrap();
+    let find = |notes: &[Note], id: &str| notes.iter().find(|n| n.id == id).unwrap().body.clone();
+
+    assert_eq!(find(&capped, &doc.id).chars().count(), 10);
+    assert!(find(&full, &doc.id).starts_with(&find(&capped, &doc.id)));
+    assert_eq!(find(&capped, &sheet.id), find(&full, &sheet.id));
+    assert!(find(&capped, &sheet.id).chars().count() > 10);
+
+    let none = s
+        .list_notes(NoteFilter {
+            body_chars: Some(0),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(find(&none, &doc.id), "");
+    assert_eq!(
+        s.get_note(&doc.id, false).unwrap().body,
+        find(&full, &doc.id)
+    );
+}

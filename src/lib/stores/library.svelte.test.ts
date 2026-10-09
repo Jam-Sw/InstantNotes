@@ -590,19 +590,20 @@ describe("scoped tag filter (chips inside a workspace)", () => {
 
     library.selectWorkspace("ws1");
     await vi.advanceTimersByTimeAsync(0);
-    expect(mockListNotes).toHaveBeenLastCalledWith({ workspaceId: "ws1" });
+    expect(mockListNotes).toHaveBeenLastCalledWith({ workspaceId: "ws1", bodyChars: 2048 });
 
     library.toggleScopedTag("t-school");
     await vi.advanceTimersByTimeAsync(0);
     expect(mockListNotes).toHaveBeenLastCalledWith({
       workspaceId: "ws1",
       tagIds: ["t-school"],
+      bodyChars: 2048,
     });
 
     library.toggleScopedTag("t-school");
     await vi.advanceTimersByTimeAsync(0);
     expect(library.scopedTagId).toBeNull();
-    expect(mockListNotes).toHaveBeenLastCalledWith({ workspaceId: "ws1" });
+    expect(mockListNotes).toHaveBeenLastCalledWith({ workspaceId: "ws1", bodyChars: 2048 });
 
     library.toggleScopedTag("t-school");
     await vi.advanceTimersByTimeAsync(0);
@@ -625,7 +626,7 @@ describe("scoped tag filter (chips inside a workspace)", () => {
     library.setTagFilter("t-global");
     await vi.advanceTimersByTimeAsync(0);
     expect(library.scopedTagId).toBeNull();
-    expect(mockListNotes).toHaveBeenLastCalledWith({ tagIds: ["t-global"] });
+    expect(mockListNotes).toHaveBeenLastCalledWith({ tagIds: ["t-global"], bodyChars: 2048 });
   });
 
   it("drops a scoped tag that vanished from the workspace's visible notes", async () => {
@@ -643,7 +644,7 @@ describe("scoped tag filter (chips inside a workspace)", () => {
     await library.refresh();
     await vi.advanceTimersByTimeAsync(0);
     expect(library.scopedTagId).toBeNull();
-    expect(mockListNotes).toHaveBeenLastCalledWith({ workspaceId: "ws1" });
+    expect(mockListNotes).toHaveBeenLastCalledWith({ workspaceId: "ws1", bodyChars: 2048 });
   });
 });
 
@@ -737,7 +738,7 @@ describe("revisit mode (open-loop resurfacing)", () => {
     library.selectRevisit();
     await vi.advanceTimersByTimeAsync(0);
     const filter = mockListNotes.mock.lastCall?.[0];
-    expect(filter).toEqual({ revisit: true });
+    expect(filter).toEqual({ revisit: true, bodyChars: 2048 });
   });
 
   it("keeps the count in lockstep, and opening a note burns it down live", async () => {

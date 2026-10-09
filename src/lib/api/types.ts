@@ -73,6 +73,7 @@ export interface NoteFilter {
   sortOrder?: "asc" | "desc";
   limit?: number;
   offset?: number;
+  bodyChars?: number;
 }
 
 export interface SearchResult {

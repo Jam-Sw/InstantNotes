@@ -65,6 +65,7 @@ export type { StatusFilter } from "$lib/stores/library/navigation.svelte";
 
 const SEARCH_DEBOUNCE_MS = 150;
 const SUGGESTION_COUNT_DEBOUNCE_MS = 1500;
+const LIST_BODY_CHARS = 2048;
 
 class LibraryStore {
   #nav = new NavigationModel();
@@ -273,7 +274,7 @@ class LibraryStore {
         if (token !== this.#refreshToken) return;
         this.searchResults = results;
       } else {
-        const notes = await listNotes(this.#nav.filter());
+        const notes = await listNotes({ ...this.#nav.filter(), bodyChars: LIST_BODY_CHARS });
         if (token !== this.#refreshToken) return;
         this.searchResults = null;
         this.notes = notes;

@@ -341,7 +341,13 @@ impl Store {
             rusqlite::params_from_iter(args.iter().map(|a| a.as_ref())),
             row_to_note,
         )?;
-        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+        let mut notes = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+        if let Some(cap) = filter.body_chars {
+            for note in notes.iter_mut().filter(|n| n.content_kind != "sheet") {
+                cut_chars(&mut note.body, cap);
+            }
+        }
+        Ok(notes)
     }
 
     pub fn count_notes(&self, filter: &NoteFilter) -> Result<i64> {
@@ -428,6 +434,12 @@ impl Store {
             matches: rows.collect::<rusqlite::Result<Vec<_>>>()?,
             total,
         })
+    }
+}
+
+fn cut_chars(text: &mut String, cap: usize) {
+    if let Some((at, _)) = text.char_indices().nth(cap) {
+        text.truncate(at);
     }
 }
 
