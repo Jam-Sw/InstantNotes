@@ -6,9 +6,29 @@
   ],
   "ignore": [
     "src/lib/agreements.svelte.ts",
-    "src/lib/AgreementGate.svelte"
+    "src/lib/AgreementGate.svelte",
+    "static/boot.js"
   ],
   "ignoreDependencies": [
     "@types/d3-force"
-  ]
+  ],
+  "ignoreIssues": {
+    "src/lib/agents/space.ts": ["exports"],
+    "src/lib/command-filter.ts": ["exports"],
+    "src/lib/contexting-format.ts": ["exports"],
+    "src/lib/editor/blocks.ts": ["exports"],
+    "src/lib/editor/images.ts": ["exports"],
+    "src/lib/editor/links.ts": ["exports"],
+    "src/lib/errors.ts": ["exports"],
+    "src/lib/external-edit.ts": ["exports"],
+    "src/lib/graph/layout.ts": ["exports"],
+    "src/lib/graph/projection.ts": ["exports"],
+    "src/lib/highlight.ts": ["exports"],
+    "src/lib/markdown-format.ts": ["exports"],
+    "src/lib/markdown-highlight.ts": ["exports"],
+    "src/lib/stores/agents.svelte.ts": ["exports"],
+    "src/lib/stores/images.svelte.ts": ["exports"],
+    "src/lib/update/release-size.ts": ["exports"],
+    "src/lib/update/space.ts": ["exports"]
+  }
 }

@@ -123,7 +123,6 @@ type SimLink = SimulationLinkDatum<SimNode> & { kind: EdgeKind };
 const DEPTH_SEED = 120;
 const DEPTH_PULL = 0.12;
 
-/** @internal */
 export const LAYOUT_TICKS = 300;
 
 export interface LayoutRun {

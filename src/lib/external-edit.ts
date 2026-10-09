@@ -14,7 +14,6 @@ interface TextChange {
   insert: string;
 }
 
-/** @internal */
 export function minimalChange(before: string, after: string): TextChange | null {
   if (before === after) return null;
   const max = Math.min(before.length, after.length);
@@ -66,7 +65,6 @@ const flashTheme = EditorView.baseTheme({
 
 export const externalEdit = [flashField, flashTheme];
 
-/** @internal */
 export function externalEditSpec(state: EditorState, next: string): TransactionSpec | null {
   const change = minimalChange(state.doc.toString(), next);
   if (!change) return null;

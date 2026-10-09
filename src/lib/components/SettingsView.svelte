@@ -43,7 +43,6 @@
     | "vault"
     | "agents"
     | "import";
-  // svelte-ignore state_referenced_locally
   let page = $state<Page>(initialPage);
   let filter = $state("");
   let filterInput = $state<HTMLInputElement>();

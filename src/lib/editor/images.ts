@@ -15,7 +15,6 @@ export const attachmentsBaseField = StateField.define<string | null>({
 
 const ATTACHMENT_PREFIX = "attachments/";
 
-/** @internal */
 export function attachmentSrc(
   url: string,
   base: string | null,
@@ -30,7 +29,6 @@ export function attachmentSrc(
   return base ? convert(`${base}/${name}`) : null;
 }
 
-/** @internal */
 export function localFilePath(url: string): string | null {
   const u = url.trim();
   if (u.startsWith(ATTACHMENT_PREFIX)) return null;
@@ -69,7 +67,6 @@ export function linkedImagePaths(body: string): string[] {
   return [...out];
 }
 
-/** @internal */
 export function extForMime(mime: string): string | null {
   switch (mime) {
     case "image/png":

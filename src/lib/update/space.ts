@@ -2,9 +2,7 @@ import type { Note } from "$lib/api/types";
 import { formatBytes } from "$lib/format";
 
 export const UPDATE_SPACE_ID = "update-space";
-/** @internal */
 export const UPDATE_NOTE_ID = "update-note";
-/** @internal */
 export const RELEASE_NOTES_NOTE_ID = "update-release-notes";
 
 export const UPDATE_SPACE_NAME = "Update";
@@ -19,7 +17,6 @@ export function isUpdateNoteId(id: string | null | undefined): boolean {
   return id === UPDATE_NOTE_ID;
 }
 
-/** @internal */
 export function isReleaseNotesNoteId(id: string | null | undefined): boolean {
   return id === RELEASE_NOTES_NOTE_ID;
 }
@@ -35,7 +32,6 @@ export function updateNoteTitle(
   return `update ${currentVersion} → ${version}`;
 }
 
-/** @internal */
 export function releaseNotesTitle(version: string): string {
   return `What's new in ${version}`;
 }

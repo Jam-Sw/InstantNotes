@@ -18,7 +18,6 @@ export interface Projected {
 
 export const FRONT: Orbit = { yaw: 0, pitch: 0 };
 
-/** @internal */
 export const PITCH_LIMIT = 1.4;
 
 const EYE = 900;

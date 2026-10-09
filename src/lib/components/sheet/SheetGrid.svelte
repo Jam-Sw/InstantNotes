@@ -530,7 +530,6 @@
   });
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
   class="sheet"
   class:focused
@@ -582,7 +581,6 @@
           >
             {columnName(c)}
             {#if !readonly}
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
               <span class="resize" onpointerdown={(e) => startResize(e, c)}></span>
             {/if}
           </th>

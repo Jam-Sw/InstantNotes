@@ -24,7 +24,6 @@ export function recentCommands(all: Command[]): Command[] {
     .filter((c): c is Command => c !== undefined);
 }
 
-/** @internal */
 export function fuzzyScore(title: string, query: string): number | null {
   if (!query) return 0;
   const t = title.toLowerCase();
@@ -47,7 +46,6 @@ export function childrenOf(commands: Command[], parent: string | null): Command[
   return commands.filter((c) => (c.parent ?? null) === parent);
 }
 
-/** @internal */
 export function hasChildren(commands: Command[], id: string): boolean {
   return commands.some((c) => c.parent === id);
 }

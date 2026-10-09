@@ -2,7 +2,6 @@ import { keymap } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
 import { previewModeField } from "./kernel";
 
-/** @internal */
 export function blockMarkerRange(
   lineText: string,
   lineFrom: number,

@@ -1,20 +1,17 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import { sveltekit } from "@sveltejs/kit/vite";
 
 const host = process.env.TAURI_DEV_HOST;
 
-/** @returns {import("vite").Plugin} */
-function noStore() {
+function noStore(): Plugin {
   return {
     name: "tauri-dev-no-store",
     apply: "serve",
     configureServer(server) {
       server.middlewares.use((_req, res, next) => {
         const set = res.setHeader.bind(res);
-        res.setHeader = /** @type {typeof res.setHeader} */ (
-          (/** @type {string} */ name, /** @type {any} */ value) =>
-            set(name, name.toLowerCase() === "cache-control" ? "no-store" : value)
-        );
+        res.setHeader = ((name: string, value: Parameters<typeof set>[1]) =>
+          set(name, name.toLowerCase() === "cache-control" ? "no-store" : value)) as typeof res.setHeader;
         next();
       });
     },

@@ -9,10 +9,8 @@ const MESSAGES: Record<ErrorCode, string> = {
   MIGRATION_ERROR: "The notes database needs attention — your data is safe, but the app couldn't upgrade it.",
 };
 
-/** @internal */
 export const GENERIC_MESSAGE = "Something went wrong. Please try again.";
 
-/** @internal */
 export function friendlyMessage(code: ErrorCode, fallback?: string): string {
   return MESSAGES[code] ?? fallback ?? GENERIC_MESSAGE;
 }

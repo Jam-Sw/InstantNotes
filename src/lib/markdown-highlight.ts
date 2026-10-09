@@ -2,7 +2,6 @@ import { HighlightStyle } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 import { highlightTag } from "./markdown-extensions";
 
-/** @internal */
 export const markdownHighlightSpec = [
   { tag: t.heading1, fontSize: "1.5em", fontWeight: "700" },
   { tag: t.heading2, fontSize: "1.3em", fontWeight: "650" },

@@ -12,7 +12,6 @@
     <div class="license-toolbar">
       <h1 class="license-title" id="license-title">{doc.title}</h1>
     </div>
-    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <div class="license-text" tabindex="0" role="document">{doc.text}</div>
     <footer class="license-foot">
       <p class="muted">{agreements.copy.lead}</p>

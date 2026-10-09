@@ -11,7 +11,6 @@ export const DEFAULT_IMAGE_MODE: ContextImageMode = "absolute";
 const ATTACHMENT_PREFIX = "attachments/";
 const IMAGE_RE = /!\[([^\]]*)\]\(([^)\s]+)\)/g;
 
-/** @internal */
 export function applyImageMode(
   body: string,
   mode: ContextImageMode,

@@ -1,6 +1,4 @@
-/** @internal */
 export const HIGHLIGHT_START = "\u0001";
-/** @internal */
 export const HIGHLIGHT_END = "\u0002";
 
 export interface HighlightSegment {

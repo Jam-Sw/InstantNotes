@@ -35,7 +35,6 @@ import {
   type AgentTags,
 } from "$lib/agent-activity";
 
-/** @internal */
 export const PRESENCE_MS = 4000;
 const RECENT_KEEP = 500;
 const PAGE = 200;

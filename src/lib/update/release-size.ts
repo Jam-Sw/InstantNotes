@@ -11,7 +11,6 @@ function assetMatcher(userAgent: string): (name: string) => boolean {
   return (n) => n.endsWith(".AppImage");
 }
 
-/** @internal */
 export function selectAsset(
   assets: ReleaseAsset[],
   userAgent: string,

@@ -341,7 +341,6 @@
   </header>
 
   <div class="graph-body">
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       class="graph-host"
       class:panning={drag !== null}

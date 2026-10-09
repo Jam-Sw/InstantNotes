@@ -38,7 +38,6 @@ export function formatEdit(doc: string, sel: Sel, kind: FormatKind): Edit {
   }
 }
 
-/** @internal */
 export function toggleWrap(doc: string, sel: Sel, marker: string): Edit {
   const { from, to } = sel;
   const ml = marker.length;
@@ -65,7 +64,6 @@ export function toggleWrap(doc: string, sel: Sel, marker: string): Edit {
   return { text, selection: { from: from + ml, to: to + ml } };
 }
 
-/** @internal */
 export function toggleLinePrefix(doc: string, sel: Sel, prefix: string): Edit {
   const blockStart = doc.lastIndexOf("\n", sel.from - 1) + 1;
   const nextNl = doc.indexOf("\n", sel.to);
@@ -82,7 +80,6 @@ export function toggleLinePrefix(doc: string, sel: Sel, prefix: string): Edit {
   return { text, selection: { from: blockStart, to: blockStart + newBlock.length } };
 }
 
-/** @internal */
 export function insertLink(doc: string, sel: Sel): Edit {
   const { from, to } = sel;
   const selected = doc.slice(from, to);

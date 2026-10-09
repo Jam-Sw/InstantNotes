@@ -41,7 +41,6 @@ class PreviewKernel {
   constructor(
     view: EditorView,
     private readonly scanner: ConstructScanner,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     private readonly rescanOn: readonly StateField<any>[],
   ) {
     this.table = this.#scan(view);

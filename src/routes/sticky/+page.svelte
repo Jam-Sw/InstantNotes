@@ -133,7 +133,6 @@
 </script>
 
 <div class="sticky" class:collapsed>
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <header onmousedown={onHeaderMousedown} title={header}>
     <span class="title">
       {sticky.note?.title || "Untitled"}

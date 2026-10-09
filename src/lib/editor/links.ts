@@ -22,7 +22,6 @@ export const linkPrefsField = StateField.define<LinkPrefsSnapshot>({
   },
 });
 
-/** @internal */
 export function normalizeHref(raw: string): string | null {
   const url = raw.trim();
   if (/^https?:\/\//i.test(url) || /^mailto:/i.test(url)) return url;

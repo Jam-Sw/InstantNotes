@@ -1,23 +1,16 @@
-# macOS
 .DS_Store
 
-# Node
 node_modules/
 dist/
 build/
 
-# Rust / Tauri
 src-tauri/target/
 src-tauri/gen/
 
-# SvelteKit generated files
 .svelte-kit/
 
-# generated update manifest (scripts/make-update-manifest.sh)
 /latest.json
 
-# local-only reference files
 .hermes_guide.md
 
-# Excalidraw fonts, copied in by scripts/copy-excalidraw-fonts.mjs
 /static/excalidraw/

@@ -20,7 +20,6 @@ export function isAgentNoteId(id: string | null | undefined): boolean {
   return !!id && id.startsWith(NOTE_PREFIX);
 }
 
-/** @internal */
 export function agentNoteId(session: string): string {
   return NOTE_PREFIX + session;
 }
@@ -31,7 +30,6 @@ export function sessionOfNote(id: string | null | undefined): string | null {
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-/** @internal */
 export function sessionSummary(s: AgentSession): string {
   const parts: string[] = [];
   if (s.writes) parts.push(plural(s.writes, "change", "changes"));

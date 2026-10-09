@@ -1,5 +1,3 @@
-// @vitest-environment jsdom
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import manifest from "../../../src-tauri/installer/agreements.json";
 
