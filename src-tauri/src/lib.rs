@@ -15,6 +15,7 @@ use tauri_plugin_opener::OpenerExt;
 
 struct AppState {
     store: Mutex<Store>,
+    reader: Mutex<Store>,
 }
 
 fn locked<'a>(
@@ -22,6 +23,15 @@ fn locked<'a>(
 ) -> Result<std::sync::MutexGuard<'a, Store>, CmdError> {
     state
         .store
+        .lock()
+        .map_err(|_| CmdError::storage("internal state lock poisoned"))
+}
+
+fn locked_reader<'a>(
+    state: &'a State<'_, AppState>,
+) -> Result<std::sync::MutexGuard<'a, Store>, CmdError> {
+    state
+        .reader
         .lock()
         .map_err(|_| CmdError::storage("internal state lock poisoned"))
 }
@@ -150,8 +160,11 @@ pub fn run() {
             if store.attach_saved_vault().is_err() {
                 eprintln!("vault mirror setting unreadable; mirroring stays off");
             }
+            let reader =
+                Store::open_reader(&db_path).map_err(|e| format!("cannot open reader: {e}"))?;
             app.manage(AppState {
                 store: Mutex::new(store),
+                reader: Mutex::new(reader),
             });
             app.manage(CaptureMetrics::default());
             app.manage(start_vault_flusher(app.handle()));
@@ -476,6 +489,7 @@ pub fn run() {
             soft_delete_note,
             restore_note,
             list_notes,
+            count_notes,
             search_notes,
             set_notes_flags,
             soft_delete_notes,

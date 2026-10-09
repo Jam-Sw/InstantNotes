@@ -96,6 +96,8 @@ export const restoreSpaceSuggestion = (noteId: string, spaceId: string) =>
   call<void>("restore_space_suggestion", { noteId, spaceId });
 export const listNotes = (filter: NoteFilter = {}) =>
   call<Note[]>("list_notes", { filter });
+export const countNotes = (filter: NoteFilter = {}) =>
+  call<number>("count_notes", { filter });
 export const searchNotes = (text: string, limit = 50) =>
   call<SearchResult[]>("search_notes", { text, limit });
 

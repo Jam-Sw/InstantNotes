@@ -6,13 +6,13 @@ use crate::*;
 /// The library as a graph of notes, tags, and Spaces, for the Graph view.
 #[tauri::command(async)]
 pub fn library_graph(state: State<'_, AppState>) -> CmdResult<LibraryGraph> {
-    Ok(locked(&state)?.library_graph()?)
+    Ok(locked_reader(&state)?.library_graph()?)
 }
 
 /// Where each live note in no Space most likely belongs, with reasons.
 #[tauri::command(async)]
 pub fn space_suggestions(state: State<'_, AppState>) -> CmdResult<Vec<SpaceSuggestion>> {
-    Ok(locked(&state)?.space_suggestions()?)
+    Ok(locked_reader(&state)?.space_suggestions()?)
 }
 
 #[tauri::command(async)]
@@ -20,7 +20,7 @@ pub fn tag_suggestion(
     state: State<'_, AppState>,
     note_id: String,
 ) -> CmdResult<Option<TagSuggestion>> {
-    Ok(locked(&state)?.tag_suggestion(&note_id)?)
+    Ok(locked_reader(&state)?.tag_suggestion(&note_id)?)
 }
 
 /// The user said a note does not belong in a Space; stop suggesting it.

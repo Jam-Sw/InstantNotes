@@ -76,3 +76,33 @@ fn two_stores_on_one_file_see_each_other_and_data_version_moves() {
         .unwrap_err();
     assert_eq!(err.code(), "CONFLICT");
 }
+
+#[test]
+fn a_reader_sees_the_writers_commits_and_cannot_write() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("library.db");
+    let mut writer = Store::open(&path).unwrap();
+    let reader = Store::open_reader(&path).unwrap();
+    assert!(reader.list_notes(NoteFilter::default()).unwrap().is_empty());
+
+    let n = create(&mut writer, "first");
+    let listed = reader.list_notes(NoteFilter::default()).unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, n.id);
+
+    writer
+        .update_note(&n.id, body_patch("second", None))
+        .unwrap();
+    assert_eq!(
+        reader.list_notes(NoteFilter::default()).unwrap()[0].body,
+        "second"
+    );
+
+    let mut reader = reader;
+    assert!(reader
+        .create_note(CreateNoteInput {
+            body: Some("nope".to_string()),
+            ..Default::default()
+        })
+        .is_err());
+}

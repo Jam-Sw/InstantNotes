@@ -4,7 +4,7 @@ use crate::*;
 
 #[tauri::command(async)]
 pub fn list_tags(state: State<'_, AppState>) -> CmdResult<Vec<TagWithCount>> {
-    Ok(locked(&state)?.list_tags()?)
+    Ok(locked_reader(&state)?.list_tags()?)
 }
 
 #[tauri::command(async)]

@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addNoteToWorkspace,
   ApiError,
+  countNotes,
   createNote,
   deleteWorkspace,
   destroyNotes,
@@ -62,6 +63,7 @@ vi.mock("$lib/api/client", () => {
     setNotesFlags: vi.fn(),
     destroyNotes: vi.fn(),
     listNotes: vi.fn(),
+    countNotes: vi.fn().mockResolvedValue(0),
     searchNotes: vi.fn(),
     spaceSuggestions: vi.fn().mockResolvedValue([]),
     listTags: vi.fn(),
@@ -98,6 +100,7 @@ const mockCreateNote = vi.mocked(createNote);
 const mockGetNote = vi.mocked(getNote);
 const mockUpdateNote = vi.mocked(updateNote);
 const mockListNotes = vi.mocked(listNotes);
+const mockCountNotes = vi.mocked(countNotes);
 const mockSearchNotes = vi.mocked(searchNotes);
 const mockListTags = vi.mocked(listTags);
 const mockListWorkspaces = vi.mocked(listWorkspaces);
@@ -556,8 +559,8 @@ describe("init ordering", () => {
     gate.resolve(() => {});
     await initPromise;
 
-    // Two listNotes calls: the visible list and the revisit count.
-    expect(mockListNotes).toHaveBeenCalledTimes(2);
+    expect(mockListNotes).toHaveBeenCalledTimes(1);
+    expect(mockCountNotes).toHaveBeenCalledTimes(1);
     expect(mockListTags).toHaveBeenCalledTimes(1);
     expect(mockListWorkspaces).toHaveBeenCalledTimes(1);
   });
@@ -570,8 +573,8 @@ describe("init ordering", () => {
     await Promise.all([p1, p2]);
 
     expect(mockListen).toHaveBeenCalledTimes(5);
-    // Two listNotes calls: the visible list and the revisit count.
-    expect(mockListNotes).toHaveBeenCalledTimes(2);
+    expect(mockListNotes).toHaveBeenCalledTimes(1);
+    expect(mockCountNotes).toHaveBeenCalledTimes(1);
     expect(mockListTags).toHaveBeenCalledTimes(1);
     expect(mockListWorkspaces).toHaveBeenCalledTimes(1);
   });
@@ -580,6 +583,7 @@ describe("init ordering", () => {
     const library = await load();
     await library.init();
     mockListNotes.mockClear();
+    mockCountNotes.mockClear();
 
     const handler = mockListen.mock.calls.find(
       (c) => c[0] === EVENTS.NOTES_CHANGED,
@@ -589,8 +593,8 @@ describe("init ordering", () => {
 
     expect(mockListNotes).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(50);
-    // The debounce window releases both the list and the revisit count.
-    expect(mockListNotes).toHaveBeenCalledTimes(2);
+    expect(mockListNotes).toHaveBeenCalledTimes(1);
+    expect(mockCountNotes).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -793,6 +797,14 @@ describe("revisit mode (open-loop resurfacing)", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(library.revisitCount).toBe(1);
     expect(library.notes.map((n) => n.id)).toEqual(["n2"]);
+  });
+
+  it("counts the open loops with a count, not by listing them", async () => {
+    mockCountNotes.mockResolvedValue(7);
+    const library = await load();
+    await library.init();
+    expect(library.revisitCount).toBe(7);
+    expect(mockCountNotes).toHaveBeenLastCalledWith({ revisit: true });
   });
 
   it("creating a note exits revisit mode, like it exits trash", async () => {

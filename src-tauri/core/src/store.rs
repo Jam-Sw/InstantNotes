@@ -498,6 +498,18 @@ impl Store {
         }
     }
 
+    /// A second connection that only reads, so a heavy query never waits
+    /// behind a save or holds one up. It sees every commit the writer has made.
+    pub fn open_reader(path: &Path) -> Result<Self> {
+        let conn = Connection::open(path)
+            .map_err(|e| AppError::Storage(format!("cannot open database: {e}")))?;
+        conn.busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(|e| AppError::Storage(format!("cannot set busy timeout: {e}")))?;
+        conn.pragma_update(None, "query_only", "ON")
+            .map_err(|e| AppError::Storage(format!("cannot set read-only mode: {e}")))?;
+        Ok(Store { conn, vault: None })
+    }
+
     /// In-memory store for tests that don't need restart semantics.
     pub fn open_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()

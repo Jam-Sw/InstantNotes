@@ -4,7 +4,7 @@ use crate::*;
 
 #[tauri::command(async)]
 pub fn list_workspaces(state: State<'_, AppState>) -> CmdResult<Vec<WorkspaceWithCount>> {
-    Ok(locked(&state)?.list_workspaces()?)
+    Ok(locked_reader(&state)?.list_workspaces()?)
 }
 
 #[tauri::command(async)]
@@ -47,7 +47,7 @@ pub fn list_workspace_tags(
     state: State<'_, AppState>,
     workspace_id: String,
 ) -> CmdResult<Vec<TagWithCount>> {
-    Ok(locked(&state)?.list_workspace_tags(&workspace_id)?)
+    Ok(locked_reader(&state)?.list_workspace_tags(&workspace_id)?)
 }
 
 #[tauri::command(async)]

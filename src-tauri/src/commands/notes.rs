@@ -65,7 +65,12 @@ pub fn restore_note(state: State<'_, AppState>, app: AppHandle, id: String) -> C
 
 #[tauri::command(async)]
 pub fn list_notes(state: State<'_, AppState>, filter: Option<NoteFilter>) -> CmdResult<Vec<Note>> {
-    Ok(locked(&state)?.list_notes(filter.unwrap_or_default())?)
+    Ok(locked_reader(&state)?.list_notes(filter.unwrap_or_default())?)
+}
+
+#[tauri::command(async)]
+pub fn count_notes(state: State<'_, AppState>, filter: Option<NoteFilter>) -> CmdResult<i64> {
+    Ok(locked_reader(&state)?.count_notes(&filter.unwrap_or_default())?)
 }
 
 #[tauri::command(async)]
@@ -74,7 +79,7 @@ pub fn search_notes(
     text: String,
     limit: Option<i64>,
 ) -> CmdResult<Vec<SearchResult>> {
-    Ok(locked(&state)?.search_notes(&text, limit.unwrap_or(50))?)
+    Ok(locked_reader(&state)?.search_notes(&text, limit.unwrap_or(50))?)
 }
 
 // ---- bulk commands ----

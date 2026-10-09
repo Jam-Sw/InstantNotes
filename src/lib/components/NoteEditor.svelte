@@ -51,9 +51,14 @@
   const writer = $derived(lastWriter === "instantnotes" ? null : lastWriter);
   let suggestedTag = $state<TagSuggestion | null>(null);
 
+  const selectedId = $derived(library.selected?.id);
+  const selectedVersion = $derived(library.selected?.updatedAt);
+  const selectedTagKey = $derived(library.selectedTags.map((t) => t.id).join(","));
+
   $effect(() => {
-    const id = library.selected?.id;
-    void library.selectedTags;
+    const id = selectedId;
+    void selectedVersion;
+    void selectedTagKey;
     suggestedTag = null;
     if (!id || isVirtual) return;
     tagSuggestion(id).then(

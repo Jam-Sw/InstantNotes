@@ -5,6 +5,7 @@ import {
   addNoteToWorkspace,
   addTagToNote,
   ApiError,
+  countNotes,
   createNote,
   deleteWorkspace,
   getNote,
@@ -68,6 +69,7 @@ export type { StatusFilter } from "$lib/stores/library/navigation.svelte";
 // Debounce for search-text refreshes only, so a query runs per pause rather
 // than per keystroke; filter clicks and change events stay immediate.
 const SEARCH_DEBOUNCE_MS = 150;
+const SUGGESTION_COUNT_DEBOUNCE_MS = 1500;
 
 class LibraryStore {
   #nav = new NavigationModel();
@@ -181,7 +183,10 @@ class LibraryStore {
   // events (bulk delete, undo) costs one count query, not one per event.
   #revisitCountDebounced = debounce(() => void this.#refreshRevisitCount(), 50);
   // The suggestion count too: every library change can change the evidence.
-  #suggestionCountDebounced = debounce(() => void this.refreshSuggestionCount(), 50);
+  #suggestionCountDebounced = debounce(
+    () => void this.refreshSuggestionCount(),
+    SUGGESTION_COUNT_DEBOUNCE_MS,
+  );
   #searchRefresh = debounce(() => void this.refresh(), SEARCH_DEBOUNCE_MS);
 
   /** Save status of the selected note, for the editor status bar. */
@@ -448,8 +453,7 @@ class LibraryStore {
    */
   async #refreshRevisitCount(): Promise<void> {
     try {
-      const loops = await listNotes(revisitFilter());
-      this.revisitCount = loops.length;
+      this.revisitCount = await countNotes(revisitFilter());
     } catch {
     }
   }
