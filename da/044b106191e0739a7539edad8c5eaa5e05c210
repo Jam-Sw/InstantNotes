@@ -1,0 +1,20 @@
+src-tauri/src/error.rs
+  s_5cea6df1897f64::t_2bd0bd6edecb3e 130-132,134
+  s_5cea6df1897f64::t_75206dc0f2c44f 73-80,83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "da044b106191e0739a7539edad8c5eaa5e05c210",
+  "prompts": {},
+  "sessions": {
+    "s_5cea6df1897f64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea9de0c5-a611-44a3-ac1c-a132a3695ef0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
