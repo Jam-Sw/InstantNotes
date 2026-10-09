@@ -181,3 +181,45 @@ describe("restart", () => {
     expect(vi.mocked(restartApp)).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("the automatic schedule", () => {
+  it("waits before the first check and then repeats", async () => {
+    mockCheck.mockResolvedValue(null);
+    const updater = await load();
+
+    updater.start();
+    expect(mockCheck).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(7_999);
+    expect(mockCheck).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mockCheck).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1000);
+    expect(mockCheck).toHaveBeenCalledTimes(2);
+    updater.stop();
+  });
+
+  it("answers a manual check at once, while the first automatic one is still waiting", async () => {
+    mockCheck.mockResolvedValue(null);
+    const updater = await load();
+
+    updater.start();
+    await updater.checkNow({ manual: true });
+
+    expect(mockCheck).toHaveBeenCalledTimes(1);
+    expect(updater.status).toBe("uptodate");
+    updater.stop();
+  });
+
+  it("cancels the waiting first check when stopped", async () => {
+    mockCheck.mockResolvedValue(null);
+    const updater = await load();
+
+    updater.start();
+    updater.stop();
+    await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1000);
+
+    expect(mockCheck).not.toHaveBeenCalled();
+  });
+});

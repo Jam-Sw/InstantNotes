@@ -15,6 +15,7 @@ type UpdateStatus =
 type DeltaState = "idle" | "loading" | "ready" | "unavailable";
 
 const RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const FIRST_CHECK_DELAY_MS = 8_000;
 
 class UpdaterStore {
   status = $state<UpdateStatus>("idle");
@@ -29,6 +30,7 @@ class UpdaterStore {
 
   #update: Update | null = null;
   #timer: ReturnType<typeof setInterval> | null = null;
+  #firstCheck: ReturnType<typeof setTimeout> | null = null;
   #acknowledgedVersion: string | null = null;
 
   get pendingUpdate(): boolean {
@@ -47,13 +49,17 @@ class UpdaterStore {
   start() {
     if (this.#timer) return;
     this.#timer = setInterval(() => void this.checkNow(), RECHECK_INTERVAL_MS);
-    void this.checkNow();
+    this.#firstCheck = setTimeout(() => void this.checkNow(), FIRST_CHECK_DELAY_MS);
   }
 
   stop() {
     if (this.#timer) {
       clearInterval(this.#timer);
       this.#timer = null;
+    }
+    if (this.#firstCheck) {
+      clearTimeout(this.#firstCheck);
+      this.#firstCheck = null;
     }
   }
 
