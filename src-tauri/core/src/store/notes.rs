@@ -437,9 +437,22 @@ impl Store {
     }
 }
 
+const PREVIEW_CONTENT_CHARS: usize = 128;
+
 fn cut_chars(text: &mut String, cap: usize) {
-    if let Some((at, _)) = text.char_indices().nth(cap) {
-        text.truncate(at);
+    if cap == 0 {
+        text.clear();
+        return;
+    }
+    let mut content = 0;
+    for (n, (at, c)) in text.char_indices().enumerate() {
+        if n >= cap && content >= PREVIEW_CONTENT_CHARS {
+            text.truncate(at);
+            return;
+        }
+        if !c.is_whitespace() && c != '\u{feff}' {
+            content += 1;
+        }
     }
 }
 
@@ -914,5 +927,97 @@ mod tests {
         assert_eq!(filter.never_opened, None);
         assert_eq!(filter.created_before, None);
         assert_eq!(filter.is_archived, Some(true));
+    }
+
+    fn preview_units(text: &str) -> Vec<u16> {
+        let is_space = |c: char| (c.is_whitespace() && c != '\u{85}') || c == '\u{feff}';
+        text.split(is_space)
+            .filter(|w| !w.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ")
+            .encode_utf16()
+            .take(90)
+            .collect()
+    }
+
+    fn cut(text: &str, cap: usize) -> String {
+        let mut cut = text.to_string();
+        cut_chars(&mut cut, cap);
+        cut
+    }
+
+    #[test]
+    fn a_cut_body_always_previews_like_the_whole_body() {
+        const PIECES: &[&str] = &[
+            "a",
+            "word",
+            "caf\u{e9}",
+            "\u{4e2d}\u{6587}",
+            "\u{1f600}",
+            "e\u{301}",
+            " ",
+            "   ",
+            "\n",
+            "\n\n",
+            "\t",
+            "\u{a0}",
+            "\u{2003}",
+            "\u{85}",
+            "\u{feff}",
+            "\u{2028}",
+            "#",
+            "- [ ] task",
+            "```",
+            "---",
+            "<!--",
+        ];
+        const BLANKS: &[usize] = &[0, 1, 10, 127, 1000, 2047, 2048, 2049, 5000];
+        let mut state = 0x9E37_79B9_7F4A_7C15u64;
+        let mut next = move || {
+            state ^= state >> 12;
+            state ^= state << 25;
+            state ^= state >> 27;
+            state.wrapping_mul(0x2545_F491_4F6C_DD1D)
+        };
+        for _ in 0..4_000 {
+            let blanks = BLANKS[(next() % BLANKS.len() as u64) as usize];
+            let lead = [" ", "\n", "\u{a0}", "\t \n"][(next() % 4) as usize];
+            let pieces = (next() % 400) as usize;
+            let mut body = lead.repeat(blanks);
+            for _ in 0..pieces {
+                body.push_str(PIECES[(next() % PIECES.len() as u64) as usize]);
+            }
+            for cap in [1, 7, 90, 2048] {
+                let cut = cut(&body, cap);
+                assert!(body.starts_with(&cut));
+                assert!(cut.chars().count() >= cap.min(body.chars().count()));
+                assert_eq!(preview_units(&cut), preview_units(&body), "cap {cap}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_cut_runs_past_a_long_blank_opening_to_the_first_words() {
+        let body = format!("{}hello there {}", " \n".repeat(5000), "x".repeat(10_000));
+        let cut = cut(&body, 2048);
+        assert!(cut.chars().count() > 10_000);
+        assert!(cut.contains("hello there"));
+        assert_eq!(preview_units(&cut), preview_units(&body));
+    }
+
+    #[test]
+    fn a_cut_of_ordinary_text_is_exactly_the_cap() {
+        let body = "word ".repeat(10_000);
+        assert_eq!(cut(&body, 2048).chars().count(), 2048);
+        let image = format!("![](data:image/png;base64,{})", "A".repeat(100_000));
+        assert_eq!(cut(&image, 2048).chars().count(), 2048);
+        let fenced = format!("```rust\n{}\n```", "let x = 1;\n".repeat(5000));
+        assert_eq!(cut(&fenced, 2048).chars().count(), 2048);
+    }
+
+    #[test]
+    fn a_cap_of_zero_leaves_no_body() {
+        assert_eq!(cut("text", 0), "");
+        assert_eq!(cut("", 0), "");
     }
 }

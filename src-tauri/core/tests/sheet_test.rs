@@ -211,7 +211,7 @@ fn a_sheet_with_the_version_check_conflicts_like_any_note() {
 #[test]
 fn a_capped_list_cuts_documents_and_leaves_sheets_whole() {
     let mut s = store();
-    let doc = create(&mut s, &"caf\u{e9} \u{1f600} ".repeat(50));
+    let doc = create(&mut s, &"caf\u{e9} \u{1f600} ".repeat(200));
     let sheet = new_sheet(&mut s);
     let rows: Vec<String> = (0..40)
         .map(|i| format!(r#"["row {i}","cell {i}"]"#))
@@ -228,16 +228,16 @@ fn a_capped_list_cuts_documents_and_leaves_sheets_whole() {
     let full = s.list_notes(NoteFilter::default()).unwrap();
     let capped = s
         .list_notes(NoteFilter {
-            body_chars: Some(10),
+            body_chars: Some(300),
             ..Default::default()
         })
         .unwrap();
     let find = |notes: &[Note], id: &str| notes.iter().find(|n| n.id == id).unwrap().body.clone();
 
-    assert_eq!(find(&capped, &doc.id).chars().count(), 10);
+    assert_eq!(find(&capped, &doc.id).chars().count(), 300);
     assert!(find(&full, &doc.id).starts_with(&find(&capped, &doc.id)));
     assert_eq!(find(&capped, &sheet.id), find(&full, &sheet.id));
-    assert!(find(&capped, &sheet.id).chars().count() > 10);
+    assert!(find(&capped, &sheet.id).chars().count() > 300);
 
     let none = s
         .list_notes(NoteFilter {
