@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  agentKind,
   canRevert,
   claudeCodeCommand,
   clientLabel,
@@ -11,7 +12,9 @@ import {
   mcpServersJson,
   parseAccess,
   parseActivityLog,
+  parseBlocked,
   parseNotify,
+  parseTags,
   timeAgo,
   type AgentActivity,
 } from "./agent-activity";
@@ -121,6 +124,22 @@ describe("agent activity", () => {
     expect(parseAccess(null)).toBe("off");
     expect(parseNotify("all")).toBe("all");
     expect(parseNotify(undefined)).toBe("writes");
+  });
+
+  it("names the kind of agent from the client's own name", () => {
+    expect(agentKind("claude-code")).toBe("claude-code");
+    expect(agentKind("Codex-MCP-Client")).toBe("codex");
+    expect(agentKind("Cursor")).toBe("cursor");
+    expect(parseBlocked(["codex", 2, null])).toEqual(["codex"]);
+    expect(parseBlocked({})).toEqual([]);
+  });
+
+  it("keeps only well-formed tag lists per kind of agent", () => {
+    expect(parseTags({ codex: ["codex", 3, "ai"], hermes: [], cursor: "x" })).toEqual({
+      codex: ["codex", "ai"],
+    });
+    expect(parseTags(["codex"])).toEqual({});
+    expect(parseTags(null)).toEqual({});
   });
 
   it("drops malformed log entries", () => {

@@ -16,6 +16,7 @@
   import type { SpaceSuggestion } from "$lib/api/types";
   import { LIBRARY_CHANGED_EVENTS } from "$lib/api/events";
   import { library } from "$lib/stores/library.svelte";
+  import { agents } from "$lib/stores/agents.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
   import { debounce } from "$lib/debounce";
   import {
@@ -74,6 +75,19 @@
   const shown = $derived(suggestions.slice(0, pages * PAGE));
   const more = $derived(suggestions.length - shown.length);
   const suggestedSpace = $derived(new Map(shown.map((s) => [s.noteId, s.spaceName])));
+  const agentWritten = $derived(
+    new Set(
+      agents.recent
+        .filter(
+          (e) =>
+            e.kind === "write" &&
+            e.status === "ok" &&
+            e.client !== "instantnotes" &&
+            e.revertedAt === null,
+        )
+        .flatMap((e) => e.noteIds),
+    ),
+  );
   const byId = $derived(new Map((graph?.nodes ?? []).map((n) => [n.id, n])));
   const currentId = $derived(
     library.selected && byId.has(library.selected.id) ? library.selected.id : null,
@@ -125,7 +139,8 @@
   function nodeName(n: GraphNode): string {
     const base = `${KIND_LABEL[n.kind]}: ${n.label}`;
     const space = n.kind === "note" ? suggestedSpace.get(n.id) : undefined;
-    return space ? `${base}, suggested for ${space}` : base;
+    const named = space ? `${base}, suggested for ${space}` : base;
+    return n.kind === "note" && agentWritten.has(n.id) ? `${named}, written by an agent` : named;
   }
 
   async function load() {
@@ -420,6 +435,9 @@
                 {:else}
                   <circle {r} style:fill={n.kind === "tag" && n.color ? n.color : null} />
                 {/if}
+                {#if n.kind === "note" && agentWritten.has(n.id)}
+                  <circle class="agent-ring" r={r + 3} />
+                {/if}
               </g>
             {/each}
             <!-- Labels above every node, so a nearer node never covers a name
@@ -501,8 +519,7 @@
         <li><svg width="22" height="8" aria-hidden="true"><line class="edge tag inline" x1="1" y1="4" x2="21" y2="4" /></svg>tag written in the note</li>
         <li><svg width="22" height="8" aria-hidden="true"><line class="edge tag manual" x1="1" y1="4" x2="21" y2="4" /></svg>tag added</li>
         <li><svg width="22" height="8" aria-hidden="true"><line class="edge space" x1="1" y1="4" x2="21" y2="4" /></svg>Space</li>
-        <li><svg width="22" height="8" aria-hidden="true"><line class="edge suggested" x1="1" y1="4" x2="21" y2="4" /></svg>suggested Space</li>
-      </ul>
+        <li><svg width="22" height="8" aria-hidden="true"><line class="edge suggested" x1="1" y1="4" x2="21" y2="4" /></svg>suggested Space</li>      </ul>
       {#if graph.unconnectedNotes > 0}
         <span class="foot-note">
           {plural(graph.unconnectedNotes, "note", "notes")} with no tags or Spaces
@@ -623,6 +640,12 @@
     fill: var(--bg);
     stroke: var(--accent);
     stroke-dasharray: 3 2;
+  }
+  .node.note circle.agent-ring {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 1.25;
+    stroke-opacity: 0.7;
   }
   .node.tag circle {
     fill: var(--tag);

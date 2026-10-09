@@ -5,6 +5,17 @@
 /** Settings keys owned by this surface. */
 export const AGENT_ACCESS_KEY = "agents.access";
 export const AGENT_NOTIFY_KEY = "agents.notify";
+export const AGENT_TAGS_KEY = "agents.tags";
+export const AGENT_BLOCKED_KEY = "agents.blocked";
+
+export const AGENT_KINDS = ["claude-code", "codex", "hermes"];
+
+export function agentKind(client: string): string {
+  const name = client.trim().toLowerCase();
+  return AGENT_KINDS.find((kind) => name.startsWith(kind)) ?? name;
+}
+
+export type AgentTags = Record<string, string[]>;
 
 export type AgentAccess = "off" | "read" | "write";
 
@@ -70,6 +81,20 @@ export function parseAccess(value: unknown): AgentAccess {
 
 export function parseNotify(value: unknown): AgentNotify {
   return value === "all" || value === "off" ? value : "writes";
+}
+
+export function parseBlocked(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((k): k is string => typeof k === "string") : [];
+}
+
+export function parseTags(value: unknown): AgentTags {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out: AgentTags = {};
+  for (const [client, tags] of Object.entries(value)) {
+    const names = Array.isArray(tags) ? tags.filter((t): t is string => typeof t === "string") : [];
+    if (names.length > 0) out[client] = names;
+  }
+  return out;
 }
 
 /** Keep only well-formed rows: the trace is data another process wrote. */

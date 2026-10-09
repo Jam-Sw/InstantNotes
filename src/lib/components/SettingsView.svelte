@@ -94,7 +94,7 @@
     {
       label: "Connections",
       entries: [
-        { id: "agents", title: "Agents", desc: "Let Claude Code and other agents read and write your notes.", keywords: "mcp claude codex cursor ai access revert trace" },
+        { id: "agents", title: "Agents", desc: "Let Claude Code and other agents read and write your notes.", keywords: "mcp claude codex cursor ai access revert trace block tags" },
       ],
     },
     {
@@ -122,6 +122,16 @@
       ),
     })).filter((g) => g.entries.length > 0);
   });
+
+  const searching = $derived(filter.trim() !== "");
+  const results = $derived(
+    shownGroups.flatMap((g) => g.entries.map((e) => ({ ...e, group: g.label }))),
+  );
+
+  function openPage(id: Page) {
+    page = id;
+    filter = "";
+  }
 
   let stats = $state<DashboardStats | null>(null);
   let captureMs = $state<number | null>(null);
@@ -157,7 +167,7 @@
     // Enter opens the first match, so typing "vau⏎" is a way to get there.
     if (e.key === "Enter") {
       const first = shownGroups[0]?.entries[0];
-      if (first) page = first.id;
+      if (first) openPage(first.id);
     }
   }
 
@@ -192,7 +202,7 @@
               class:active={page === entry.id}
               aria-current={page === entry.id ? "page" : undefined}
               title={entry.desc}
-              onclick={() => (page = entry.id)}
+              onclick={() => openPage(entry.id)}
             >
               {entry.title}
               {#if entry.id === "agents" && agents.unseen > 0}
@@ -211,7 +221,20 @@
   </nav>
 
   <div class="settings-main">
-    {#if page === "home"}
+    {#if searching}
+      <div class="pane-header" data-tauri-drag-region></div>
+      <section class="settings-results" aria-label="Search results">
+        {#each results as result (result.id)}
+          <button class="result" onclick={() => openPage(result.id)}>
+            <span class="result-title">{result.title}</span>
+            <span class="result-group">{result.group}</span>
+            <span class="result-desc">{result.desc}</span>
+          </button>
+        {:else}
+          <p class="nav-empty">Nothing matches “{filter}”.</p>
+        {/each}
+      </section>
+    {:else if page === "home"}
       <div class="pane-header" data-tauri-drag-region></div>
       <div class="settings-home">
         <header class="home-head">
@@ -499,6 +522,47 @@
     min-height: 0;
     overflow-y: auto;
     padding: 20px 40px 40px;
+  }
+
+  .settings-results {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 4px 40px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-width: 820px;
+  }
+  .result {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 2px 12px;
+    text-align: left;
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    color: var(--text);
+  }
+  .result:hover {
+    background: var(--bg-hover);
+  }
+  .result-title {
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .result-group {
+    align-self: center;
+    font-size: 10.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-tertiary);
+    font-family: var(--font-meta);
+  }
+  .result-desc {
+    grid-column: 1 / -1;
+    font-size: 12.5px;
+    color: var(--text-secondary);
   }
 
   /* ---- overview ---- */

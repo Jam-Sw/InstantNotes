@@ -289,3 +289,22 @@ describe("a save meets an agent's edit", () => {
     expect(toasts.items).toHaveLength(0);
   });
 });
+
+describe("another window adds to the open note", () => {
+  it("takes the new text in place, so the next edit builds on it", async () => {
+    const { library } = await setup();
+    const changed = mockListen.mock.calls.find(([name]) => name === EVENTS.NOTES_CHANGED)![1] as () => void;
+    const appended = mkNote("n1", { body: "Plan\n\nfrom the capture panel", updatedAt: T1 });
+    vi.mocked(listNotes).mockResolvedValue([appended]);
+    mockGetNote.mockResolvedValueOnce(appended);
+
+    changed();
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(library.selected?.body).toBe("Plan\n\nfrom the capture panel");
+    mockUpdateNote.mockResolvedValueOnce(mkNote("n1", { body: `${appended.body}!`, updatedAt: T2 }));
+    library.editBody(`${appended.body}!`);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(mockUpdateNote).toHaveBeenLastCalledWith("n1", { body: `${appended.body}!`, expectedUpdatedAt: T1 });
+  });
+});

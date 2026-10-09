@@ -51,7 +51,14 @@ fn emit_workspaces_changed(app: &AppHandle) {
 /// before the library webview has listeners attached, so an event alone
 /// would be lost.
 pub(crate) struct ShortcutStatus {
-    failed: Option<String>,
+    failed: Option<ShortcutFailure>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ShortcutFailure {
+    label: String,
+    wayland: bool,
 }
 
 mod commands;
@@ -75,7 +82,11 @@ pub fn run() {
         // the app while it already lives in the tray) is routed into this callback
         // and surfaces the running window, instead of starting a rival process -
         // which would otherwise mean two trays and two writers on one database.
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if asks_for_capture(&argv) {
+                toggle_capture_window(app);
+                return;
+            }
             show_library_window(app);
             // Dev: a re-run of `npm run tauri:dev` is routed here instead of spawning
             // a fresh process, so reload the webview to pick up the latest frontend
@@ -402,14 +413,24 @@ pub fn run() {
             } else {
                 "Ctrl+Shift+Space"
             };
-            let shortcut_failure = app.global_shortcut().register(shortcut).err().map(|e| {
-                // Content-free log per SEC-001; the welcome screen surfaces
-                // the conflict to the user.
-                eprintln!("global shortcut registration failed: {e}");
-                shortcut_label.to_string()
+            let wayland =
+                cfg!(target_os = "linux") && std::env::var_os("WAYLAND_DISPLAY").is_some();
+            let shortcut_failure = match app.global_shortcut().register(shortcut) {
+                Err(e) => {
+                    // Content-free log per SEC-001; the welcome screen surfaces
+                    // the conflict to the user.
+                    eprintln!("global shortcut registration failed: {e}");
+                    Some(false)
+                }
+                Ok(()) if wayland => Some(true),
+                Ok(()) => None,
+            }
+            .map(|wayland| ShortcutFailure {
+                label: shortcut_label.to_string(),
+                wayland,
             });
-            if let Some(label) = &shortcut_failure {
-                let _ = app.emit(events::SHORTCUT_FAILED, label.clone());
+            if let Some(failure) = &shortcut_failure {
+                let _ = app.emit(events::SHORTCUT_FAILED, failure.clone());
             }
             app.manage(ShortcutStatus {
                 failed: shortcut_failure,
@@ -443,6 +464,9 @@ pub fn run() {
             // Last: the store is managed and the library exists, so a sticky
             // restored now is never the app's first window.
             restore_stickies(app.handle());
+            if asks_for_capture(&std::env::args().collect::<Vec<_>>()) {
+                show_capture_window(app.handle());
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -489,6 +513,7 @@ pub fn run() {
             open_attachments_folder,
             library_graph,
             space_suggestions,
+            tag_suggestion,
             dismiss_space_suggestion,
             restore_space_suggestion,
             unused_attachments,
@@ -524,6 +549,7 @@ pub fn run() {
             agent_activity_wire,
             list_agent_sessions,
             revert_agent_activity,
+            end_agent_session,
             clear_agent_activity
         ])
         .build(tauri::generate_context!())

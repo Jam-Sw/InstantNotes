@@ -4,6 +4,7 @@ import { EditorView } from "@codemirror/view";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { ensureSyntaxTree } from "@codemirror/language";
 import {
+  droppedLink,
   linkAt,
   normalizeHref,
   linkMarkClass,
@@ -170,5 +171,30 @@ describe("modKeyCursor", () => {
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Meta", metaKey: true }));
     view.destroy();
     expect(view.dom.classList.contains("cm-mod-held")).toBe(false);
+  });
+});
+
+describe("droppedLink", () => {
+  const drag = (types: Record<string, string>) => ({ getData: (t: string) => types[t] ?? "" });
+  const video = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+
+  it("keeps the title a browser drags along with a link", () => {
+    expect(droppedLink(drag({ "text/x-moz-url": `${video}\nNever Gonna Give You Up - YouTube` }))).toBe(
+      `[Never Gonna Give You Up - YouTube](${video})`,
+    );
+    expect(droppedLink(drag({ "text/html": `<a href="${video}"> Rick [Official]\n Video </a>`, "text/uri-list": video }))).toBe(
+      `[Rick \\[Official\\] Video](${video})`,
+    );
+  });
+
+  it("leaves a drop with no title, or no web link, to the editor", () => {
+    expect(droppedLink(drag({ "text/uri-list": video, "text/plain": video }))).toBeNull();
+    expect(droppedLink(drag({ "text/x-moz-url": `${video}\n${video}` }))).toBeNull();
+    expect(droppedLink(drag({ "text/html": '<a href="javascript:alert(1)">Click</a>', "text/uri-list": "javascript:alert(1)" }))).toBeNull();
+  });
+
+  it("leaves a dropped paragraph that holds a link to the editor", () => {
+    const html = `<p>Watch <a href="${video}">this</a> later</p>`;
+    expect(droppedLink(drag({ "text/html": html, "text/plain": "Watch this later" }))).toBeNull();
   });
 });

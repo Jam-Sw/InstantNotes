@@ -2,8 +2,30 @@
   import { onMount } from "svelte";
   import { editorPrefs } from "$lib/stores/editor.svelte";
   import ToggleRow from "$lib/components/settings/ToggleRow.svelte";
+  import SegmentedRow from "$lib/components/settings/SegmentedRow.svelte";
+  import { getSetting, setSetting } from "$lib/api/client";
+  import {
+    parseTagSuggest,
+    SURENESS,
+    TAG_SUGGEST_DEFAULT,
+    TAG_SUGGEST_KEY,
+    type TagSuggestSetting,
+  } from "$lib/tag-suggest";
 
-  onMount(() => void editorPrefs.init());
+  let tagSuggest = $state<TagSuggestSetting>(TAG_SUGGEST_DEFAULT);
+
+  function saveTagSuggest(next: TagSuggestSetting) {
+    tagSuggest = next;
+    void setSetting(TAG_SUGGEST_KEY, next);
+  }
+
+  onMount(() => {
+    void editorPrefs.init();
+    getSetting<unknown>(TAG_SUGGEST_KEY).then(
+      (v) => (tagSuggest = parseTagSuggest(v)),
+      () => {},
+    );
+  });
 </script>
 
 <div class="editor-pane-settings">
@@ -27,6 +49,26 @@
     sub="Start new notes with the Aa toolbar open (raw markdown editing) rather than the reading view."
     checked={editorPrefs.toolbarOpen}
     onchange={() => editorPrefs.toggleToolbar()}
+  />
+
+  <span class="group-label">Tag suggestions</span>
+  <p class="section-hint">
+    The open note gets a + #tag chip when its words match notes that already carry that tag. The
+    model counts words in your own notes, on this device, each time you open one. Nothing is
+    stored or sent, and agents cannot see or change it. The chip's hover lists the words that led
+    to it.
+  </p>
+  <ToggleRow
+    label="Suggest a tag for the open note"
+    checked={tagSuggest.enabled}
+    onchange={(v) => saveTagSuggest({ ...tagSuggest, enabled: v })}
+  />
+  <SegmentedRow
+    label="How sure it must be"
+    sub="Eager suggests more often and is wrong more often. Careful speaks up only when the words clearly point to one tag."
+    options={SURENESS.map((s) => ({ value: String(s.value), label: s.label }))}
+    value={String(tagSuggest.showAt)}
+    onchange={(v) => saveTagSuggest({ ...tagSuggest, showAt: Number(v) })}
   />
 </div>
 

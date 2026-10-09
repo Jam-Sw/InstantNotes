@@ -23,20 +23,26 @@ import { friendlyError } from "$lib/errors";
 import { toasts } from "$lib/stores/toasts.svelte";
 import {
   AGENT_ACCESS_KEY,
+  AGENT_BLOCKED_KEY,
   AGENT_NOTIFY_KEY,
+  AGENT_TAGS_KEY,
+  agentKind,
   canRevert,
   clientLabel,
   describeActivity,
   parseAccess,
   parseActivityLog,
+  parseBlocked,
   parseNotify,
   parsePresence,
+  parseTags,
   type AgentAccess,
   type AgentActivity,
   type AgentConnection,
   type AgentKind,
   type AgentNotify,
   type AgentPresence,
+  type AgentTags,
 } from "$lib/agent-activity";
 
 /**
@@ -54,6 +60,8 @@ type AgentMark = AgentKind;
 class AgentsStore {
   access = $state<AgentAccess>("off");
   notify = $state<AgentNotify>("writes");
+  tags = $state<AgentTags>({});
+  blocked = $state<string[]>([]);
   /** The trace, newest first. */
   recent = $state<AgentActivity[]>([]);
   /** Whether a load returned a full page, so there may be more. */
@@ -94,12 +102,16 @@ class AgentsStore {
     });
     void this.loadSessions();
     try {
-      const [access, notify] = await Promise.all([
+      const [access, notify, tags, blocked] = await Promise.all([
         getSetting<unknown>(AGENT_ACCESS_KEY),
         getSetting<unknown>(AGENT_NOTIFY_KEY),
+        getSetting<unknown>(AGENT_TAGS_KEY),
+        getSetting<unknown>(AGENT_BLOCKED_KEY),
       ]);
       this.access = parseAccess(access);
       this.notify = parseNotify(notify);
+      this.tags = parseTags(tags);
+      this.blocked = parseBlocked(blocked);
     } catch {
       // Best-effort, like every settings store: presence still works.
     }
@@ -166,6 +178,26 @@ class AgentsStore {
   setNotify(notify: AgentNotify): void {
     this.notify = notify;
     void setSetting(AGENT_NOTIFY_KEY, notify);
+  }
+
+  setTags(client: string, names: string[]): void {
+    const next = { ...this.tags };
+    if (names.length > 0) next[client] = names;
+    else delete next[client];
+    this.tags = next;
+    void setSetting(AGENT_TAGS_KEY, next);
+  }
+
+  isBlocked(client: string): boolean {
+    return this.blocked.includes(agentKind(client));
+  }
+
+  setBlocked(client: string, on: boolean): void {
+    const kind = agentKind(client);
+    this.blocked = on
+      ? [...new Set([...this.blocked, kind])]
+      : this.blocked.filter((k) => k !== kind);
+    void setSetting(AGENT_BLOCKED_KEY, this.blocked);
   }
 
   setWatching(on: boolean): void {

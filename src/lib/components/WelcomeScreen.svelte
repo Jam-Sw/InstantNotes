@@ -4,6 +4,7 @@
   import { library } from "$lib/stores/library.svelte";
   import { updater } from "$lib/stores/updater.svelte";
   import { captureShortcut, modKey } from "$lib/platform";
+  import type { ShortcutFailure } from "$lib/api/types";
 
   let { appVersion, onOpenUpdate }: { appVersion: string; onOpenUpdate: () => void } =
     $props();
@@ -12,7 +13,7 @@
   // (another app owns it); without this notice the core feature would just
   // silently not exist. Queried, not event-driven: the failure happens before
   // this webview has listeners attached.
-  let shortcutConflict = $state<string | null>(null);
+  let shortcutConflict = $state<ShortcutFailure | null>(null);
   let conflictDismissed = $state(false);
 
   onMount(() => {
@@ -59,12 +60,19 @@
         {/if}
       {/if}
     </h2>
-    <p>Select a note, or press <kbd>{captureShortcut}</kbd> anywhere to capture.</p>
+    <p>
+      Select a note{#if !shortcutConflict?.wayland}, or press <kbd>{captureShortcut}</kbd> anywhere to capture{/if}.
+    </p>
     <p class="hint-line">Press <kbd>{modKey}K</kbd> for commands and themes.</p>
     {#if shortcutConflict && !conflictDismissed}
       <p class="shortcut-notice">
-        The capture shortcut <kbd>{shortcutConflict}</kbd> could not be registered;
-        another app likely owns it.
+        {#if shortcutConflict.wayland}
+          On Wayland, <kbd>{shortcutConflict.label}</kbd> only reaches InstantNotes while an X11 app is focused.
+          Bind a shortcut to <code>instantnotes capture</code> in your desktop's keyboard settings instead.
+        {:else}
+          The capture shortcut <kbd>{shortcutConflict.label}</kbd> could not be registered;
+          another app likely owns it.
+        {/if}
         <button class="notice-dismiss" onclick={() => (conflictDismissed = true)}>
           Dismiss
         </button>

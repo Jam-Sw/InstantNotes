@@ -56,4 +56,14 @@ describe("SettingsEditor", () => {
       ),
     ).toBe("false");
   });
+
+  it("turns tag suggestions off and sets how sure they must be, saved under one key", async () => {
+    const { findByRole } = render(SettingsEditor);
+    const sw = await findByRole("switch", { name: "Suggest a tag for the open note" });
+    expect(sw.getAttribute("aria-checked")).toBe("true");
+    await fireEvent.click(sw);
+    expect(vi.mocked(setSetting)).toHaveBeenLastCalledWith("suggest.tags", { enabled: false, showAt: 0.5 });
+    await fireEvent.click(await findByRole("radio", { name: "Careful" }));
+    expect(vi.mocked(setSetting)).toHaveBeenLastCalledWith("suggest.tags", { enabled: false, showAt: 0.7 });
+  });
 });

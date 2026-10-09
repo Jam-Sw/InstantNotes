@@ -12,14 +12,16 @@
   import { imagePrefs } from "$lib/stores/images.svelte";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
-  import { importImageFile, allowImageFile, openUrl, popOutNote } from "$lib/api/client";
+  import { importImageFile, allowImageFile, openUrl, popOutNote, tagSuggestion } from "$lib/api/client";
   import { modKey, shiftKey } from "$lib/platform";
   import { theme } from "$lib/stores/theme.svelte";
   import { effectiveVariant } from "$lib/themes/apply";
   import { attachmentMarkdown } from "$lib/editor/images";
   import { formatDate, formatExact, wordCount } from "$lib/format";
+  import type { TagSuggestion } from "$lib/api/types";
   import type { FormatKind } from "$lib/markdown-format";
   import { NO_MARKS, type ActiveMarks } from "$lib/markdown-active";
+  import { clientLabel } from "$lib/agent-activity";
   import { isSyntheticNoteId } from "$lib/synthetic";
   import { autosize, singleLine } from "$lib/title-field";
 
@@ -44,6 +46,23 @@
   // A synthetic note (the update Space's release notes) is not user data: its
   // body can be typed in, but it has no tags, no Space, and no lifecycle.
   const isVirtual = $derived(isSyntheticNoteId(library.selected?.id));
+  const suggestion = $derived(library.suggestions.find((s) => s.noteId === library.selected?.id));
+  const lastWriter = $derived(library.selected ? agents.lastWriter(library.selected.id) : null);
+  const writer = $derived(lastWriter === "instantnotes" ? null : lastWriter);
+  let suggestedTag = $state<TagSuggestion | null>(null);
+
+  $effect(() => {
+    const id = library.selected?.id;
+    void library.selectedTags;
+    suggestedTag = null;
+    if (!id || isVirtual) return;
+    tagSuggestion(id).then(
+      (tag) => {
+        if (library.selected?.id === id) suggestedTag = tag;
+      },
+      () => {},
+    );
+  });
   // The board follows the app's light or dark look, including themes that
   // only come in one of the two.
   const boardTheme = $derived(effectiveVariant(theme.activeTheme, theme.resolvedVariant));
@@ -243,6 +262,15 @@
     <form onsubmit={submitTag}>
       <input class="tag-input" placeholder="Add tag…" bind:value={tagInput} />
     </form>
+    {#if suggestedTag}
+      <button
+        class="chip suggest-chip"
+        title={`${Math.round(suggestedTag.probability * 100)}% sure, from ${suggestedTag.reasons.join(", ")}`}
+        onclick={() => library.addTag(suggestedTag?.tag ?? "")}
+      >
+        + #{suggestedTag.tag}
+      </button>
+    {/if}
     <span class="bar-divider"></span>
     {#each library.selectedWorkspaces as ws (ws.id)}
       <span class="chip workspace-chip">
@@ -268,6 +296,23 @@
         <option value={ws.name}></option>
       {/each}
     </datalist>
+    {#if suggestion}
+      <button
+        class="chip suggest-chip"
+        title="Suggested from this note's tags and words"
+        onclick={() => library.addSelectedToWorkspace(suggestion.spaceName)}
+      >
+        + {suggestion.spaceName}
+      </button>
+    {/if}
+    {#if writer}
+      <span
+        class="agent-mark"
+        role="img"
+        title="Last changed by {clientLabel(writer)}"
+        aria-label="Last changed by {clientLabel(writer)}"
+      ></span>
+    {/if}
   </div>
   {/if}
   </div>
@@ -505,6 +550,23 @@
   .workspace-chip {
     background: var(--bg-hover);
     color: var(--text-secondary);
+  }
+  .suggest-chip {
+    background: transparent;
+    border: 1px dashed var(--accent);
+    color: var(--accent-text);
+    cursor: pointer;
+  }
+  .suggest-chip:hover {
+    background: var(--accent-soft);
+  }
+  .agent-mark {
+    width: 8px;
+    height: 8px;
+    margin: 0 4px;
+    border: 1.25px solid var(--accent);
+    border-radius: 50%;
+    opacity: 0.7;
   }
   .editor-body {
     flex: 1;

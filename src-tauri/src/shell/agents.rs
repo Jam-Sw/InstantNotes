@@ -280,6 +280,51 @@ pub fn revert_agent_activity(
     Ok(row)
 }
 
+#[tauri::command(async)]
+pub fn end_agent_session(bridge: State<'_, AgentBridge>, session: String) -> CmdResult<()> {
+    let pid = session_pid(&session)
+        .filter(|&pid| serves_agents(pid))
+        .ok_or_else(|| CmdError::validation("not an agent session"))?;
+    if !session_alive(&bridge.db_path, &session) {
+        return Err(CmdError::validation("that agent is no longer connected"));
+    }
+    match end_process(pid) {
+        Ok(status) if status.success() => Ok(()),
+        _ => Err(CmdError::storage("could not end the agent's session")),
+    }
+}
+
+fn session_pid(session: &str) -> Option<u32> {
+    let (pid, started) = session.split_once('-')?;
+    u64::from_str_radix(started, 16).ok()?;
+    u32::from_str_radix(pid, 16).ok().filter(|&pid| pid > 1)
+}
+
+#[cfg(target_os = "linux")]
+fn serves_agents(pid: u32) -> bool {
+    std::fs::read(format!("/proc/{pid}/cmdline"))
+        .is_ok_and(|args| args.split(|&b| b == 0).nth(1) == Some(b"mcp".as_slice()))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn serves_agents(_pid: u32) -> bool {
+    true
+}
+
+#[cfg(unix)]
+fn end_process(pid: u32) -> std::io::Result<std::process::ExitStatus> {
+    std::process::Command::new("kill")
+        .arg(pid.to_string())
+        .status()
+}
+
+#[cfg(windows)]
+fn end_process(pid: u32) -> std::io::Result<std::process::ExitStatus> {
+    std::process::Command::new("taskkill")
+        .args(["/PID", &pid.to_string(), "/F"])
+        .status()
+}
+
 /// Forget the trace. Notes are untouched.
 #[tauri::command(async)]
 pub fn clear_agent_activity(state: State<'_, AppState>) -> CmdResult<()> {
@@ -288,7 +333,24 @@ pub fn clear_agent_activity(state: State<'_, AppState>) -> CmdResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{agent_exe, library_changed};
+    use super::{agent_exe, library_changed, session_pid};
+
+    #[test]
+    fn the_pid_comes_from_the_session_id_and_nothing_else() {
+        assert_eq!(session_pid("1f4a-19a0c3e2b11"), Some(0x1f4a));
+        assert_eq!(session_pid("1"), None);
+        assert_eq!(session_pid("1-19a0c3e2b11"), None);
+        assert_eq!(session_pid("zz-19a0c3e2b11"), None);
+        assert_eq!(session_pid("1f4a-later"), None);
+        assert_eq!(session_pid("agent-session:1f4a-19a0"), None);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn only_a_process_serving_agents_may_be_ended() {
+        assert!(!super::serves_agents(std::process::id()));
+        assert!(!super::serves_agents(1));
+    }
     use instantnotes_core::store::activity::AgentActivity;
 
     fn entry(seq: i64, kind: &str, status: &str) -> AgentActivity {

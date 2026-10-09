@@ -37,7 +37,7 @@ export const agentsSpace = {
   /** The conversation a synthetic note stands for, while the trace has it. */
   sessionFor(noteId: string | null | undefined): AgentConversation | null {
     const session = sessionOfNote(noteId);
-    return session ? (this.sessions.find((s) => s.session === session) ?? null) : null;
+    return session ? (this.sessions.find((s) => s.clocks.some((c) => c.session === session)) ?? null) : null;
   },
   /** Go to the Space, with the latest conversation open. */
   open(): void {

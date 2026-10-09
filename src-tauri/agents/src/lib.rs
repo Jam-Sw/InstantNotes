@@ -36,7 +36,7 @@ mod activity;
 mod protocol;
 mod tools;
 
-pub use access::{Access, ACCESS_KEY};
+pub use access::{Access, ACCESS_KEY, BLOCKED_KEY, TAGS_KEY};
 pub use protocol::{new_session, serve, serve_as};
 
 use instantnotes_core::store::activity::hold_session_lock;

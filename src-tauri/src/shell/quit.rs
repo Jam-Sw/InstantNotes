@@ -122,7 +122,7 @@ pub fn quit_app(app: AppHandle, window: tauri::WebviewWindow) {
 }
 
 #[tauri::command]
-pub fn get_shortcut_failure(state: State<'_, ShortcutStatus>) -> Option<String> {
+pub fn get_shortcut_failure(state: State<'_, ShortcutStatus>) -> Option<ShortcutFailure> {
     state.failed.clone()
 }
 

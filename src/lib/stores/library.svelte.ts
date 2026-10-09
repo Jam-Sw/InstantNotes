@@ -34,6 +34,7 @@ import {
 import type {
   Note,
   SearchResult,
+  SpaceSuggestion,
   Tag,
   TagWithCount,
   Workspace,
@@ -114,6 +115,7 @@ class LibraryStore {
   revisitCount = $state(0);
   /** Unfiled notes the graph can say a Space for; the Graph row's count. */
   suggestionCount = $state(0);
+  suggestions = $state<SpaceSuggestion[]>([]);
   searchText = $state("");
   notes = $state<Note[]>([]);
   searchResults = $state<SearchResult[] | null>(null);
@@ -319,6 +321,11 @@ class LibraryStore {
         if (token !== this.#refreshToken) return;
         this.searchResults = null;
         this.notes = notes;
+        const open = this.selected;
+        const listed = open && notes.find((n) => n.id === open.id);
+        if (open && listed && open.contentKind === "document" && listed.updatedAt > open.updatedAt) {
+          void this.#adoptExternalNote(open);
+        }
       }
       this.error = null;
       // In revisit mode the main list IS the revisit query, so the count
@@ -376,9 +383,34 @@ class LibraryStore {
    * resets those): the chip row, search, and the multi-selection.
    */
   #leaveView(): void {
+    this.#rememberOpen();
+    this.#collectPending();
+    this.#saveQueue.flushDebounce();
     this.workspaceTags = [];
     this.searchText = "";
     this.clearMultiSelect();
+  }
+
+  #openByView = new Map<string, string>();
+
+  #rememberOpen(): void {
+    const key = this.#nav.viewKey();
+    if (!key) return;
+    const id = this.selected?.id;
+    if (id && !isSyntheticNoteId(id) && this.multiSelected.size <= 1) {
+      this.#openByView.set(key, id);
+    } else {
+      this.#openByView.delete(key);
+    }
+  }
+
+  async #enterView(): Promise<void> {
+    const key = this.#nav.viewKey();
+    await this.refresh();
+    if (!key || key !== this.#nav.viewKey()) return;
+    if (this.selected || this.multiSelected.size > 0) return;
+    const id = this.#openByView.get(key);
+    if (id && this.notes.some((n) => n.id === id)) await this.select(id);
   }
 
   selectGraph(): void {
@@ -391,20 +423,20 @@ class LibraryStore {
   selectWorkspace(workspaceId: string | null): void {
     this.#leaveView();
     this.#nav.showWorkspace(workspaceId);
-    void this.refresh();
+    void this.#enterView();
   }
 
   /** Show the open loops: capture-born notes never opened in the library. */
   selectRevisit(): void {
     this.#leaveView();
     this.#nav.showRevisit();
-    void this.refresh();
+    void this.#enterView();
   }
 
   setTagFilter(tagId: string | null): void {
     this.#leaveView();
     this.#nav.showTag(tagId);
-    void this.refresh();
+    void this.#enterView();
   }
 
   /**
@@ -422,7 +454,8 @@ class LibraryStore {
   /** Re-count the suggestions (API.md section 4). Quiet like the revisit count. */
   async refreshSuggestionCount(): Promise<void> {
     try {
-      this.suggestionCount = (await spaceSuggestions()).length;
+      this.suggestions = await spaceSuggestions();
+      this.suggestionCount = this.suggestions.length;
     } catch {
     }
   }
@@ -1033,6 +1066,10 @@ class LibraryStore {
     const open = this.selected;
     if (!open || isSyntheticNoteId(open.id) || open.contentKind === "whiteboard") return;
     if (!mayHaveWritten(entries, open.id)) return;
+    await this.#adoptExternalNote(open);
+  }
+
+  async #adoptExternalNote(open: Note): Promise<void> {
     if (open.contentKind === "sheet") return this.#adoptExternalSheet(open.id);
     const shown = open.body;
     // The user may have typed, or moved on, while this was read.

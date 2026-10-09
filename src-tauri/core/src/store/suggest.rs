@@ -13,6 +13,8 @@ use std::collections::{HashMap, HashSet};
 /// Space ids the user said the note does not belong in.
 pub const DISMISSED_SETTING: &str = "graph.dismissed";
 
+pub const TAG_SUGGEST_SETTING: &str = "suggest.tags";
+
 struct Doc {
     id: String,
     title: String,
@@ -73,6 +75,55 @@ impl Store {
             });
         }
         Ok(out)
+    }
+
+    pub fn tag_suggestion(&self, note_id: &str) -> Result<Option<TagSuggestion>> {
+        let setting = self.get_setting(TAG_SUGGEST_SETTING)?;
+        let enabled = setting
+            .as_ref()
+            .and_then(|v| v.get("enabled"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        if !enabled {
+            return Ok(None);
+        }
+        let params = Params {
+            show_at: setting
+                .as_ref()
+                .and_then(|v| v.get("showAt"))
+                .and_then(|v| v.as_f64())
+                .map_or(Params::default().show_at, |at| at.clamp(0.3, 0.9)),
+            ..Params::default()
+        };
+        let docs = self.suggestion_docs(params)?;
+        let Some(target) = docs.iter().find(|d| d.id == note_id) else {
+            return Ok(None);
+        };
+        let has: HashSet<&str> = tag_names(&target.features).collect();
+        let taught: Vec<(Features, Vec<String>)> = docs
+            .iter()
+            .filter(|d| d.id != note_id)
+            .map(|d| {
+                let tags = tag_names(&d.features)
+                    .filter(|t| !has.contains(t))
+                    .map(str::to_string)
+                    .collect::<Vec<_>>();
+                (words(&d.features), tags)
+            })
+            .filter(|(_, tags)| !tags.is_empty())
+            .collect();
+        let examples: Vec<Example<'_>> = taught
+            .iter()
+            .map(|(features, classes)| Example { features, classes })
+            .collect();
+        let model = Model::fit(&examples, params);
+        Ok(model
+            .classify(&words(&target.features))
+            .map(|v| TagSuggestion {
+                tag: v.class,
+                probability: v.probability,
+                reasons: v.reasons,
+            }))
     }
 
     /// Record that a note does not belong in a Space, so the graph stops
@@ -246,4 +297,16 @@ impl Store {
             })
             .collect())
     }
+}
+
+fn tag_names(features: &Features) -> impl Iterator<Item = &str> {
+    features.keys().filter_map(|f| f.strip_prefix('#'))
+}
+
+fn words(features: &Features) -> Features {
+    features
+        .iter()
+        .filter(|(f, _)| !f.starts_with('#'))
+        .map(|(f, w)| (f.clone(), *w))
+        .collect()
 }

@@ -303,3 +303,54 @@ fn a_dismissal_survives_renames_and_goes_with_the_space() {
     let saved = s.get_setting("graph.dismissed").unwrap().unwrap();
     assert!(saved.as_object().unwrap().is_empty(), "{saved}");
 }
+
+#[test]
+fn a_note_gets_the_tag_its_words_share_with_tagged_notes() {
+    let mut s = store();
+    library(&mut s);
+    let n = create(&mut s, "Let the sauce simmer slowly");
+
+    let got = s.tag_suggestion(&n.id).unwrap().unwrap();
+    assert_eq!(got.tag, "pasta");
+    assert!(got.probability >= 0.5);
+    assert!(
+        got.reasons.contains(&"simmer".to_string()),
+        "{:?}",
+        got.reasons
+    );
+}
+
+#[test]
+fn tag_suggestions_follow_the_setting() {
+    let mut s = store();
+    library(&mut s);
+    let n = create(&mut s, "Let the sauce simmer slowly");
+
+    s.set_setting(
+        "suggest.tags",
+        serde_json::json!({ "enabled": false, "showAt": 0.5 }),
+    )
+    .unwrap();
+    assert!(s.tag_suggestion(&n.id).unwrap().is_none());
+
+    s.set_setting(
+        "suggest.tags",
+        serde_json::json!({ "enabled": true, "showAt": 0.5 }),
+    )
+    .unwrap();
+    assert!(s.tag_suggestion(&n.id).unwrap().is_some());
+}
+
+#[test]
+fn a_tag_the_note_already_has_is_never_suggested() {
+    let mut s = store();
+    library(&mut s);
+    let n = create(&mut s, "Let the sauce simmer slowly #pasta");
+
+    assert!(s
+        .tag_suggestion(&n.id)
+        .unwrap()
+        .is_none_or(|got| got.tag != "pasta"));
+    let other = create(&mut s, "Call the dentist");
+    assert_eq!(s.tag_suggestion(&other.id).unwrap(), None);
+}

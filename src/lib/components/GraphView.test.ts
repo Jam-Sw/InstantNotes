@@ -33,6 +33,8 @@ vi.mock("$lib/stores/library.svelte", () => ({
   },
 }));
 vi.mock("$lib/stores/toasts.svelte", () => ({ toasts: { show: vi.fn() } }));
+const agentsMock = vi.hoisted(() => ({ recent: [] as unknown[] }));
+vi.mock("$lib/stores/agents.svelte", () => ({ agents: agentsMock }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
 
 const lib = library as unknown as {
@@ -78,6 +80,7 @@ let handlers: Record<string, () => void> = {};
 
 beforeEach(() => {
   handlers = {};
+  agentsMock.recent = [];
   lib.selected = null;
   lib.select.mockReset();
   lib.setTagFilter.mockReset();
@@ -105,6 +108,17 @@ describe("GraphView", () => {
     expect(getByRole("button", { name: "Note: Beta" })).toBeTruthy();
     expect(getByRole("button", { name: "Tag: #ideas" })).toBeTruthy();
     expect(getByRole("button", { name: "Space: Research" })).toBeTruthy();
+  });
+
+  it("rings a note an agent wrote and says so", async () => {
+    agentsMock.recent = [
+      { kind: "write", status: "ok", client: "claude-code", revertedAt: null, noteIds: ["n1"] },
+      { kind: "write", status: "ok", client: "claude-code", revertedAt: 5, noteIds: ["n2"] },
+    ];
+    const { findByRole, getByRole } = render(GraphView);
+    const written = await findByRole("button", { name: "Note: Alpha, written by an agent" });
+    expect(written.querySelector(".agent-ring")).not.toBeNull();
+    expect(getByRole("button", { name: "Note: Beta" }).querySelector(".agent-ring")).toBeNull();
   });
 
   it("says how many notes it leaves out, and when suggestions will start", async () => {

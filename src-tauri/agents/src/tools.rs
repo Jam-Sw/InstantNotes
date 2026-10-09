@@ -9,7 +9,7 @@
 //! `append_sheet_rows` adds rows and nothing else, which is what keeps an
 //! agent's write mergeable with the user's unsaved cells in the app.
 
-use crate::access::Access;
+use crate::access::{Access, BLOCKED_KEY, TAGS_KEY};
 use crate::activity::{Kind, Scope, Trace};
 use crate::fail;
 use instantnotes_core::clients::{identify, parent_process, Client, ClientProcess};
@@ -403,8 +403,25 @@ impl<'a> Tools<'a> {
         let _ = self.store.close_agent_session(&self.session);
     }
 
-    pub(crate) fn store(&self) -> &Store {
-        self.store
+    pub(crate) fn check(&self, needed: Access) -> Result<(), String> {
+        if self.blocked() {
+            return Err(
+                "This agent is blocked in InstantNotes. The user can unblock it in Settings > Agents."
+                    .into(),
+            );
+        }
+        Access::check(self.store, needed)
+    }
+
+    fn blocked(&self) -> bool {
+        let kind = self.kind();
+        match self.store.get_setting(BLOCKED_KEY) {
+            Ok(Some(Value::Array(names))) => names
+                .iter()
+                .filter_map(Value::as_str)
+                .any(|n| n.eq_ignore_ascii_case(&kind)),
+            _ => false,
+        }
     }
 
     pub(crate) fn set_client(&mut self, name: &str) {
@@ -455,7 +472,7 @@ impl<'a> Tools<'a> {
         let outcome = match TOOLS.iter().find(|t| t.name == name) {
             None => Err(format!("Unknown tool: {name}")),
             // A refused call leaves no trace: off means off.
-            Some(def) => Access::check(self.store, def.level).and_then(|()| {
+            Some(def) => self.check(def.level).and_then(|()| {
                 let kind = match (def.level, def.name) {
                     (Access::Write, _) => Kind::Write,
                     (_, "search_notes") => Kind::Search,
@@ -794,6 +811,26 @@ impl<'a> Tools<'a> {
         Ok(view)
     }
 
+    fn kind(&self) -> String {
+        Client::from_name(&self.client)
+            .map_or_else(|| self.client.to_lowercase(), |c| c.as_str().to_string())
+    }
+
+    fn auto_tags(&self) -> Vec<String> {
+        match self.store.get_setting(TAGS_KEY) {
+            Ok(Some(Value::Object(by_client))) => by_client
+                .get(&self.kind())
+                .and_then(Value::as_array)
+                .map(|tags| {
+                    tags.iter()
+                        .filter_map(|t| t.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            _ => Vec::new(),
+        }
+    }
+
     fn create_note(&mut self, a: CreateArgs) -> ToolResult {
         // A note with no Space is lost in All Notes, and agents rarely file one afterwards.
         // Refuse, naming the Spaces that exist, so the retry is one call. A library with no
@@ -814,12 +851,14 @@ impl<'a> Tools<'a> {
                 ));
             }
         }
+        let mut tags = a.tags;
+        tags.extend(self.auto_tags());
         let note = self
             .store
             .create_note(CreateNoteInput {
                 title: a.title,
                 body: Some(a.body),
-                tags: a.tags,
+                tags,
             })
             .map_err(fail)?;
         let created = match &a.space {

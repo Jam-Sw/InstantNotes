@@ -106,6 +106,10 @@ pub(crate) fn toggle_capture_window(app: &AppHandle) {
     }
 }
 
+pub(crate) fn asks_for_capture<S: AsRef<str>>(args: &[S]) -> bool {
+    args.get(1).is_some_and(|arg| arg.as_ref() == "capture")
+}
+
 pub(crate) fn show_library_window(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("library") {
         let _ = w.show();
@@ -188,7 +192,15 @@ fn refresh_macos_icon(bundle: std::path::PathBuf) {
 
 #[cfg(test)]
 mod tests {
-    use super::icon_refresh_needed;
+    use super::{asks_for_capture, icon_refresh_needed};
+
+    #[test]
+    fn only_a_capture_argument_opens_the_capture_panel() {
+        assert!(asks_for_capture(&["instantnotes", "capture"]));
+        assert!(!asks_for_capture(&["instantnotes"]));
+        assert!(!asks_for_capture(&["instantnotes", "mcp", "capture"]));
+        assert!(!asks_for_capture(&["capture"]));
+    }
 
     #[test]
     fn icon_refresh_when_version_changed_or_unknown() {

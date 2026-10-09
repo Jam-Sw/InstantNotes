@@ -65,6 +65,7 @@ developer-facing description and is never shown to users verbatim.
 | `search_notes` | Full-text search over title and body (section 7 of DATA_MODEL.md). |
 | `library_graph` | Live notes, every tag and Space, and one link per note-to-tag or note-to-Space membership, for the Graph view. A tag link carries its `source` (`inline`, written in the text, or `manual`, added to the note); a Space link's is null. Derived on every call; nothing about the graph is stored. Trashed and archived notes are left out. |
 | `space_suggestions` | Where each live note in no Space most likely belongs (section 4.1): `noteId`, `noteTitle`, `spaceId`, `spaceName`, `probability` (0 to 1), and up to three `reasons` (`label`, `kind` = `tag` or `word`), newest note first. Empty until two Spaces hold notes. |
+| `tag_suggestion` | The one tag a note (`noteId`) most likely wants, from the words it shares with tagged notes: `tag`, `probability`, and up to three `reasons` (words), or null. Never a tag the note already has; the same model as `space_suggestions`, with tags as the classes and words as the only evidence. Follows the `suggest.tags` setting (`enabled`, default true, and `showAt`, 0.3 to 0.9, default 0.5). App only: no MCP tool reads or changes it. |
 | `dismiss_space_suggestion` / `restore_space_suggestion` | "Not this one" for a (`noteId`, `spaceId`) pair, and its undo. Device-local (DATA_MODEL.md section 8); an unknown note or Space is `NOT_FOUND` on dismiss. Neither emits a library event: nothing about a note changed. |
 
 `contentKind` is `document`, `whiteboard`, or `sheet`. `update_note` rejects
@@ -195,7 +196,11 @@ carry no note data beyond what the user explicitly exports. `export_note_file`
 writes `.md`, `.txt`, `.excalidraw` (a whiteboard's canvas), or `.csv` (a
 sheet's grid, from `sheet_csv`).
 `get_shortcut_failure` returns why the global capture shortcut could not be
-registered at launch, or `null`; the welcome screen shows it.
+registered at launch, or `null`: `{ label, wayland }`, where `wayland` is true
+when registration succeeded but the session cannot deliver the key (the
+`shortcut:failed` event carries the same object). The welcome screen shows it.
+`instantnotes capture` starts the app with the capture panel open, or opens
+it in the running app, so a desktop shortcut can be bound to it.
 
 The File menu announces itself to the library window with `menu:new-note`,
 `menu:new-whiteboard`, `menu:new-sheet`, `menu:export-note`, and
@@ -496,6 +501,7 @@ stores "no note", and reverting it trashes the note.
 | `agent_activity_before` | The snapshot a write row holds, or `null` for a create. |
 | `list_agent_sessions` | Every known agent connection, newest first: `session`, `client`, `connectedAt`, `disconnectedAt`, `label`, `clientSession`, `cwd`, `matched` (`exact` or `inferred`), and `connected` (the process holds its lock right now). The same list arrives as the `agents:sessions` event whenever it changes. |
 | `agent_activity_wire` | The raw exchange a row holds: `request` and `response`, each the whole JSON-RPC message as JSON text, or `null` where none was kept. |
+| `end_agent_session` | End a connected agent's server process (`session`). The pid comes from the session id alone, never from the client's own pid, and the process must still hold the session's lock (on Linux, it must also be running `mcp`), so a pid the system has since reused is never signalled. `VALIDATION_ERROR` for an ended or unknown session. The client may start a new server, which arrives as a new connection; Block stops that. |
 | `revert_agent_activity` | Put the note back as the row's snapshot has it (or trash a created note), mark the row reverted, and record the revert as a row of its own (client `instantnotes`, tool `revert`) with the state it replaced, so it can be reverted in turn. Returns that row; `CONFLICT` for a row already reverted. |
 | `clear_agent_activity` | Forget the trace. Notes are untouched. |
 

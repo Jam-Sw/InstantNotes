@@ -179,3 +179,32 @@ export function linkOpenHandler(open: (url: string) => void): Extension {
     },
   });
 }
+
+export function droppedLink(data: Pick<DataTransfer, "getData">): string | null {
+  const [mozUrl, mozTitle] = data.getData("text/x-moz-url").split("\n");
+  if (!mozUrl && !data.getData("text/uri-list")) return null;
+  const anchor = new DOMParser()
+    .parseFromString(data.getData("text/html"), "text/html")
+    .querySelector("a[href]");
+  const url = normalizeHref(
+    mozUrl || anchor?.getAttribute("href") || data.getData("text/uri-list").split("\n")[0] || "",
+  );
+  const title = (mozTitle || anchor?.textContent || "").replace(/\s+/g, " ").trim();
+  if (!url || !title || title === url) return null;
+  return `[${title.replace(/[[\]]/g, "\\$&")}](${url.replace(/[()\s]/g, encodeURIComponent)})`;
+}
+
+export function linkDrop(): Extension {
+  return EditorView.domEventHandlers({
+    drop(e, view) {
+      if (!e.dataTransfer || e.dataTransfer.files.length > 0) return false;
+      const insert = droppedLink(e.dataTransfer);
+      if (!insert) return false;
+      e.preventDefault();
+      const at = view.posAtCoords({ x: e.clientX, y: e.clientY }) ?? view.state.selection.main.from;
+      view.dispatch({ changes: { from: at, insert }, selection: { anchor: at + insert.length } });
+      view.focus();
+      return true;
+    },
+  });
+}

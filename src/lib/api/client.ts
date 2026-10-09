@@ -22,9 +22,11 @@ import type {
   Note,
   NoteFilter,
   SearchResult,
+  ShortcutFailure,
   SpaceSuggestion,
   StickyLevel,
   StickiesScan,
+  TagSuggestion,
   Tag,
   TagWithCount,
   UpdateNotePatch,
@@ -84,6 +86,8 @@ export const libraryGraph = () => call<LibraryGraph>("library_graph");
 // Where each live note in no Space most likely belongs, newest first.
 // Nothing is trained: filing the note is what teaches it.
 export const spaceSuggestions = () => call<SpaceSuggestion[]>("space_suggestions");
+export const tagSuggestion = (noteId: string) =>
+  call<TagSuggestion | null>("tag_suggestion", { noteId });
 // "Not this one": the pair stays out of the suggestions from then on, and
 // its Undo brings it back.
 export const dismissSpaceSuggestion = (noteId: string, spaceId: string) =>
@@ -292,7 +296,7 @@ export const restartApp = () => call<void>("restart_app");
 // A command rather than an event alone: the failure happens before the library
 // webview has listeners attached, so an event would be lost.
 export const getShortcutFailure = () =>
-  call<string | null>("get_shortcut_failure");
+  call<ShortcutFailure | null>("get_shortcut_failure");
 
 // ---- agents ----
 // The app executable (which is also the MCP server) and the live library, so
@@ -308,6 +312,7 @@ export const agentActivityBefore = (seq: number) =>
 // Every known agent connection, newest first, each with whether its process
 // is alive right now.
 export const listAgentSessions = () => call<AgentPresence[]>("list_agent_sessions");
+export const endAgentSession = (session: string) => call<void>("end_agent_session", { session });
 // The raw exchange behind a call: the JSON-RPC request and response as JSON
 // text, or null where none was kept.
 export const agentActivityWire = (seq: number) =>

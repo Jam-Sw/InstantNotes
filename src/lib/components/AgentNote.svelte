@@ -9,10 +9,12 @@
   import { agentsSpace } from "$lib/stores/agents-space";
   import { library } from "$lib/stores/library.svelte";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
-  import { agentActivityBefore, agentActivityWire } from "$lib/api/client";
+  import { toasts } from "$lib/stores/toasts.svelte";
+  import { agentActivityBefore, agentActivityWire, endAgentSession } from "$lib/api/client";
   import {
     canRevert,
     agentName,
+    clientLabel,
     clockTime,
     describeActivity,
     formatDuration,
@@ -35,6 +37,15 @@
   const session = $derived(agentsSpace.sessionFor(library.selected?.id));
   // The call this agent is in the middle of, if any.
   const doing = $derived(session ? agents.doing(session.session) : null);
+  const punchLabel = $derived(
+    (session?.clocks ?? [])
+      .flatMap((c) => [
+        c.inAt !== null ? `In ${new Date(c.inAt).toLocaleString()}` : null,
+        c.outAt !== null ? `Out ${new Date(c.outAt).toLocaleString()}` : null,
+      ])
+      .filter(Boolean)
+      .join(", "),
+  );
 
   // A long conversation is mostly reads; the filter brings out the rest.
   type Filter = "all" | "changes" | "failed";
@@ -107,6 +118,31 @@
     void library.select(e.noteIds[0]);
   }
 
+  function toggleBlock(client: string) {
+    const on = !agents.isBlocked(client);
+    agents.setBlocked(client, on);
+    toasts.show(
+      on
+        ? `${clientLabel(client)} is blocked. It can no longer read or change your notes.`
+        : `${clientLabel(client)} is unblocked.`,
+    );
+  }
+
+  async function endSession(session: string, client: string) {
+    const ok = await confirmDialog.ask({
+      title: `End this ${clientLabel(client)} session?`,
+      body: "Its connection to your notes closes now. The agent may start a new one; Block stops that.",
+      confirmLabel: "End Session",
+      tone: "danger",
+    });
+    if (!ok) return;
+    try {
+      await endAgentSession(session);
+    } catch (e) {
+      toasts.show(`Couldn't end the session. ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
   async function clearAll() {
     const ok = await confirmDialog.ask({
       title: "Clear the agent history?",
@@ -130,18 +166,19 @@
       <!-- The connection, as it is: this line is always here and only its
            words change, so the page below it never moves. -->
       <p class="status" role="status" aria-live="polite">
-        {#if session.connected}
-          <span class="live-dot" data-state={doing ? "working" : "connected"}></span>
-          <span class="status-main">{doing ? describeActivity(doing) : "Connected"}</span>
-          {#if session.connectedAt}<span title={new Date(session.connectedAt).toLocaleString()}>since {clockTime(session.connectedAt)}</span>{/if}
-        {:else}
-          <span class="live-dot" data-state="off"></span>
-          <span class="status-main">Not connected</span>
-          {#if session.disconnectedAt}
-            <span title={new Date(session.disconnectedAt).toLocaleString()}>ended {timeAgo(session.disconnectedAt, now)}</span>
-          {:else}
-            <span title={new Date(session.endedAt).toLocaleString()}>last call {timeAgo(session.endedAt, now)}</span>
-          {/if}
+        <span class="live-dot" data-state={!session.connected ? "off" : doing ? "working" : "connected"}></span>
+        {#if session.connected && doing}<span class="status-main">{describeActivity(doing)}</span>{/if}
+        {#if punchLabel}
+          <span class="punch" role="img" aria-label={punchLabel} title={punchLabel}>
+            {#each session.clocks as c (c.session)}
+              {#if c.inAt !== null}
+                <span class="punch-stamp"><span class="punch-hole"></span>{clockTime(c.inAt)}</span>
+              {/if}
+              {#if c.outAt !== null}
+                <span class="punch-stamp" data-out><span class="punch-hole"></span>{clockTime(c.outAt)}</span>
+              {/if}
+            {/each}
+          </span>
         {/if}
         <span class="status-access">
           {#if agents.access === "off"}
@@ -214,6 +251,9 @@
                 <span class="dur">{formatDuration(e.durationMs)}</span>
               </button>
               <!-- A change can be put back from its own line, without unfolding it. -->
+              {#if e.noteIds.length === 1}
+                <button class="btn go" onclick={() => openNote(e)}>Open note</button>
+              {/if}
               {#if canRevert(e)}
                 <button class="btn revert" onclick={() => revert(e)}>Revert</button>
               {/if}
@@ -256,14 +296,11 @@
                     {/if}
                   </div>
                 {/if}
-                <div class="actions">
-                  {#if e.noteIds.length === 1}
-                    <button class="btn" onclick={() => openNote(e)}>Open note</button>
-                  {/if}
-                  {#if e.revertedAt !== null}
+                {#if e.revertedAt !== null}
+                  <div class="actions">
                     <span class="muted">Reverted {timeAgo(e.revertedAt, now)}</span>
-                  {/if}
-                </div>
+                  </div>
+                {/if}
               </div>
             {/if}
           </li>
@@ -273,6 +310,12 @@
         {#if agents.hasMore}
           <button class="btn" onclick={() => agents.loadMore()}>Load older</button>
         {/if}
+        {#if session.connected}
+          <button class="btn quiet" onclick={() => endSession(session.session, session.client)}>End session</button>
+        {/if}
+        <button class="btn quiet" onclick={() => toggleBlock(session.client)}>
+          {agents.isBlocked(session.client) ? "Unblock" : "Block"} {clientLabel(session.client)}
+        </button>
         <button class="btn quiet" onclick={clearAll}>Clear history</button>
       </div>
     {:else}
@@ -320,6 +363,34 @@
   }
   .status-access {
     margin-left: auto;
+  }
+  .punch {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    font-family: var(--font-meta);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+  }
+  .punch-stamp {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 1px 7px;
+  }
+  .punch-stamp + .punch-stamp {
+    border-left: 1px dashed var(--border);
+  }
+  .punch-stamp[data-out] + .punch-stamp {
+    border-left-style: solid;
+  }
+  .punch-hole {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-tertiary);
   }
   .origin {
     display: grid;
@@ -483,6 +554,10 @@
     text-decoration: none;
     display: inline-block;
   }
+  .btn.go {
+    flex: none;
+    margin-right: 8px;
+  }
   .btn.revert {
     flex: none;
     margin-right: 8px;
@@ -565,6 +640,9 @@
     margin-left: auto;
     border-color: transparent;
     color: var(--text-secondary);
+  }
+  .btn.quiet + .btn.quiet {
+    margin-left: 0;
   }
   .foot {
     display: flex;

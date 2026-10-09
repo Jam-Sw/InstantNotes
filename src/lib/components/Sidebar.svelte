@@ -15,8 +15,16 @@
   import { AGENTS_SPACE_ID, AGENTS_SPACE_NAME } from "$lib/agents/space";
   import { LICENSE_SPACE_NAME, licenseSpace } from "$lib/stores/license-space.svelte";
   import type { TagWithCount, WorkspaceWithCount } from "$lib/api/types";
+  import { spacesShown } from "$lib/spaces-shown";
 
   let newSpaceInput = $state("");
+  let allSpaces = $state(false);
+  const shownSpaces = $derived(
+    allSpaces ? library.workspaces : spacesShown(library.workspaces, library.activeWorkspaceId),
+  );
+  const foldedSpaces = $derived(
+    library.workspaces.length - spacesShown(library.workspaces, library.activeWorkspaceId).length,
+  );
   let spacesHeader = $state<HTMLDivElement>();
   let tagsHeader = $state<HTMLDivElement>();
   // Space and tag management live behind a context menu (right-click /
@@ -220,7 +228,7 @@
             >{/if}{#if agents.unseen > 0}<span class="badge" aria-label="{agents.unseen} new changes">{agents.unseen}</span>{/if}{/snippet}
       </SidebarEntityRow>
     {/if}
-    {#each library.workspaces as ws (ws.id)}
+    {#each shownSpaces as ws (ws.id)}
       <SidebarEntityRow
         name={ws.name}
         count={ws.noteCount}
@@ -239,6 +247,11 @@
     {:else}
       <div class="empty-hint">A place for one project or topic</div>
     {/each}
+    {#if foldedSpaces > 0}
+      <button class="spaces-more" aria-expanded={allSpaces} onclick={() => (allSpaces = !allSpaces)}>
+        {allSpaces ? "Fewer" : `${foldedSpaces} more`}
+      </button>
+    {/if}
     <form onsubmit={submitNewSpace}>
       <input
         class="workspace-new"
@@ -391,6 +404,14 @@
   }
 
   /* spaces */
+  .spaces-more {
+    padding: 2px 10px;
+    font-size: 12px;
+    color: var(--text-tertiary);
+  }
+  .spaces-more:hover {
+    color: var(--text-secondary);
+  }
   .workspace-new {
     width: 100%;
     margin-top: 2px;

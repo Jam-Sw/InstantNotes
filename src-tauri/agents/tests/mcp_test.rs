@@ -1,7 +1,7 @@
 //! The MCP server driven the way a client drives it: JSON-RPC lines in,
 //! JSON-RPC lines out, against a real store.
 
-use instantnotes_agents::{serve, ACCESS_KEY};
+use instantnotes_agents::{serve, ACCESS_KEY, BLOCKED_KEY, TAGS_KEY};
 use instantnotes_core::store::activity::AgentActivity;
 use instantnotes_core::types::CreateNoteInput;
 use instantnotes_core::Store;
@@ -400,6 +400,77 @@ fn write_creates_files_and_appends_through_the_core_rules() {
         .as_str()
         .unwrap()
         .contains('\u{1}'));
+}
+
+#[test]
+fn a_note_an_agent_creates_gets_the_tags_set_for_its_kind() {
+    let mut store = store_with("write");
+    store
+        .set_setting(
+            TAGS_KEY,
+            json!({ "claude-code": ["claude", "ai"], "codex": ["codex"] }),
+        )
+        .unwrap();
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(
+                1,
+                "create_note",
+                json!({ "body": "Mine", "space": "Ideas", "tags": ["later"] }),
+            ),
+        ],
+    );
+    let (is_error, text, created) = result_of(&replies[1]);
+    assert!(!is_error, "{text}");
+    let mut tags: Vec<String> = serde_json::from_value(created["tags"].clone()).unwrap();
+    tags.sort();
+    assert_eq!(tags, ["ai", "claude", "later"]);
+
+    let replies = session(
+        &mut store,
+        &[modern(
+            1,
+            "tools/call",
+            json!({ "name": "create_note", "arguments": { "body": "Theirs", "space": "Ideas" } }),
+        )],
+    );
+    let (is_error, text, created) = result_of(&replies[0]);
+    assert!(!is_error, "{text}");
+    assert_eq!(created["tags"], json!(["codex"]));
+}
+
+#[test]
+fn a_blocked_kind_of_agent_is_refused_without_a_trace_and_the_others_are_not() {
+    let mut store = store_with("write");
+    store
+        .set_setting(BLOCKED_KEY, json!(["claude-code"]))
+        .unwrap();
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(1, "list_notes", json!({})),
+            json!({ "jsonrpc": "2.0", "id": 2, "method": "resources/list" }),
+        ],
+    );
+    let (is_error, text, _) = result_of(&replies[1]);
+    assert!(is_error);
+    assert!(text.contains("blocked"), "{text}");
+    assert!(replies[2].get("error").is_some());
+    assert!(trace(&store).is_empty());
+
+    let replies = session(
+        &mut store,
+        &[modern(
+            1,
+            "tools/call",
+            json!({ "name": "list_notes", "arguments": {} }),
+        )],
+    );
+    let (is_error, text, _) = result_of(&replies[0]);
+    assert!(!is_error, "{text}");
 }
 
 #[test]

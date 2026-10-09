@@ -15,6 +15,14 @@ pub fn space_suggestions(state: State<'_, AppState>) -> CmdResult<Vec<SpaceSugge
     Ok(locked(&state)?.space_suggestions()?)
 }
 
+#[tauri::command(async)]
+pub fn tag_suggestion(
+    state: State<'_, AppState>,
+    note_id: String,
+) -> CmdResult<Option<TagSuggestion>> {
+    Ok(locked(&state)?.tag_suggestion(&note_id)?)
+}
+
 /// The user said a note does not belong in a Space; stop suggesting it.
 /// Device-local UI state in the settings table, so no library event.
 #[tauri::command(async)]

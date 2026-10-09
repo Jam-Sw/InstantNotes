@@ -6,6 +6,7 @@
 
 import type { Note } from "$lib/api/types";
 import {
+  agentKind,
   agentName,
   describeActivity,
   type AgentActivity,
@@ -50,13 +51,17 @@ export function sessionSummary(s: AgentSession): string {
   return parts.join(" · ");
 }
 
+export interface AgentClock {
+  session: string;
+  inAt: number | null;
+  outAt: number | null;
+}
+
 /** A conversation: what an agent did (the trace) joined with whether it is
- *  still connected (its process). `connectedAt` is null for a conversation
- *  traced before connections were kept. */
+ *  still connected (its process). */
 export interface AgentConversation extends AgentSession {
   connected: boolean;
-  connectedAt: number | null;
-  disconnectedAt: number | null;
+  clocks: AgentClock[];
   /** The client's name for its session, its id for it, and where it runs,
    *  for a client that says (Claude Code does). */
   label: string | null;
@@ -83,8 +88,13 @@ export function joinConversations(
       // was known when the call was made.
       client: p?.client ?? s.client,
       connected: p?.connected ?? false,
-      connectedAt: p?.connectedAt ?? null,
-      disconnectedAt: p?.disconnectedAt ?? null,
+      clocks: [
+        {
+          session: s.session,
+          inAt: p?.connectedAt ?? null,
+          outAt: p?.connected ? null : (p?.disconnectedAt ?? s.endedAt),
+        },
+      ],
       label: p?.label ?? null,
       clientSession: p?.clientSession ?? null,
       cwd: p?.cwd ?? null,
@@ -104,17 +114,35 @@ export function joinConversations(
       writes: 0,
       errors: 0,
       connected: true,
-      connectedAt: p.connectedAt,
-      disconnectedAt: null,
+      clocks: [{ session: p.session, inAt: p.connectedAt, outAt: null }],
       label: p.label ?? null,
       clientSession: p.clientSession ?? null,
       cwd: p.cwd ?? null,
       inferred: p.matched === "inferred",
     });
   }
-  return out.sort(
-    (a, b) => Number(b.connected) - Number(a.connected) || b.endedAt - a.endedAt,
-  );
+  const order = (a: AgentConversation, b: AgentConversation) =>
+    Number(b.connected) - Number(a.connected) || b.endedAt - a.endedAt;
+  const leads = new Map<string, AgentConversation>();
+  const merged: AgentConversation[] = [];
+  for (const c of out.sort(order)) {
+    const key = c.clientSession && `${agentKind(c.client)}:${c.clientSession}`;
+    const lead = key ? leads.get(key) : undefined;
+    if (!lead) {
+      if (key) leads.set(key, c);
+      merged.push(c);
+      continue;
+    }
+    lead.entries = [...lead.entries, ...c.entries].sort((a, b) => b.seq - a.seq);
+    lead.startedAt = Math.min(lead.startedAt, c.startedAt);
+    lead.endedAt = Math.max(lead.endedAt, c.endedAt);
+    lead.reads += c.reads;
+    lead.writes += c.writes;
+    lead.errors += c.errors;
+    lead.clocks = [...lead.clocks, ...c.clocks];
+  }
+  for (const c of merged) c.clocks.sort((a, b) => (a.inAt ?? 0) - (b.inAt ?? 0));
+  return merged.sort(order);
 }
 
 /** One note per conversation. `doing` is the call a conversation is in the
@@ -126,7 +154,7 @@ export function buildAgentNotes(
   return conversations.map((s) => {
     const now = doing(s.session);
     return {
-      id: agentNoteId(s.session),
+      id: agentNoteId(s.clocks[0]?.session ?? s.session),
       title: agentName(s.client, s.label),
       // Only the list row ever shows this; opening the note renders the trace.
       body: now

@@ -285,6 +285,14 @@ pub struct SpaceSuggestion {
     pub reasons: Vec<SuggestionReason>,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TagSuggestion {
+    pub tag: String,
+    pub probability: f64,
+    pub reasons: Vec<String>,
+}
+
 /// One piece of evidence behind a suggestion: a tag the note carries
 /// (`kind` = `tag`, `label` with its `#`) or a word in its text (`word`).
 #[derive(Debug, Clone, Serialize, PartialEq)]

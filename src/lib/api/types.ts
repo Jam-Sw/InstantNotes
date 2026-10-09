@@ -109,6 +109,17 @@ export interface CaptureLatencySummary {
   samples: number;
 }
 
+export interface TagSuggestion {
+  tag: string;
+  probability: number;
+  reasons: string[];
+}
+
+export interface ShortcutFailure {
+  label: string;
+  wayland: boolean;
+}
+
 /** Aggregate library + attachment counts for the Settings dashboard. */
 export interface DashboardStats {
   notesTotal: number;

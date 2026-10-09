@@ -1077,6 +1077,25 @@ describe("graph view", () => {
   });
 });
 
+describe("space suggestions", () => {
+  it("keeps the suggestions along with their count", async () => {
+    const library = await load();
+    const { spaceSuggestions } = await import("$lib/api/client");
+    const suggestion = {
+      noteId: "n1",
+      noteTitle: "Lasagne",
+      spaceId: "ws1",
+      spaceName: "Recipes",
+      probability: 0.9,
+      reasons: [],
+    };
+    vi.mocked(spaceSuggestions).mockResolvedValueOnce([suggestion]);
+    await library.refreshSuggestionCount();
+    expect(library.suggestions).toEqual([suggestion]);
+    expect(library.suggestionCount).toBe(1);
+  });
+});
+
 describe("the update Space (synthetic)", () => {
   it("is never queried and holds no store rows of its own", async () => {
     const library = await load();
@@ -1199,5 +1218,79 @@ describe("stickies", () => {
     await library.deleteSelected();
     expect(mockPopInNote).toHaveBeenCalledTimes(2);
     expect(mockSoftDeleteNote).toHaveBeenCalledWith("n1");
+  });
+});
+
+describe("each view remembers its open note", () => {
+  it("reopens the note left open in a Space when that Space is shown again", async () => {
+    const library = await load();
+    mockListNotes.mockImplementation(async (f) =>
+      f?.workspaceId === "ws1" ? [mkNote("a"), mkNote("b")] : [mkNote("c")],
+    );
+    library.selectWorkspace("ws1");
+    await vi.advanceTimersByTimeAsync(0);
+    await selectNote(library, "b");
+
+    library.selectWorkspace("ws2");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.selected).toBeNull();
+
+    mockGetNote.mockResolvedValueOnce(mkNote("b"));
+    library.selectWorkspace("ws1");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.selected?.id).toBe("b");
+  });
+
+  it("does not reopen a note that has left the Space, or one closed before leaving", async () => {
+    const library = await load();
+    let ws1 = [mkNote("a")];
+    mockListNotes.mockImplementation(async (f) => (f?.workspaceId === "ws1" ? ws1 : []));
+    library.selectWorkspace("ws1");
+    await vi.advanceTimersByTimeAsync(0);
+    await selectNote(library, "a");
+    library.selectWorkspace("ws2");
+    await vi.advanceTimersByTimeAsync(0);
+
+    ws1 = [];
+    library.selectWorkspace("ws1");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.selected).toBeNull();
+
+    ws1 = [mkNote("a")];
+    library.selectWorkspace("ws2");
+    await vi.advanceTimersByTimeAsync(0);
+    library.selectWorkspace("ws1");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.selected).toBeNull();
+    expect(mockGetNote).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets a note opened right after the switch win over the remembered one", async () => {
+    const library = await load();
+    mockListNotes.mockResolvedValue([mkNote("a"), mkNote("x")]);
+    library.selectWorkspace(null);
+    await vi.advanceTimersByTimeAsync(0);
+    await selectNote(library, "a");
+    library.selectWorkspace("ws1");
+    await vi.advanceTimersByTimeAsync(0);
+
+    mockGetNote.mockResolvedValueOnce(mkNote("x"));
+    library.selectWorkspace(null);
+    const opening = library.select("x");
+    await vi.advanceTimersByTimeAsync(0);
+    await opening;
+    expect(library.selected?.id).toBe("x");
+    expect(mockGetNote).toHaveBeenLastCalledWith("x", true);
+  });
+
+  it("writes a pending edit before leaving the view", async () => {
+    const library = await load();
+    mockListNotes.mockResolvedValue([mkNote("a")]);
+    mockUpdateNote.mockResolvedValue(mkNote("a", { body: "typed" }));
+    await selectNote(library, "a");
+    library.editBody("typed");
+    expect(mockUpdateNote).not.toHaveBeenCalled();
+    library.selectWorkspace("ws1");
+    expect(mockUpdateNote).toHaveBeenCalledTimes(1);
   });
 });

@@ -6,6 +6,7 @@
   import { onMount } from "svelte";
   import { agents } from "$lib/stores/agents.svelte";
   import {
+    AGENT_KINDS,
     agentName,
     claudeCodeCommand,
     clientLabel,
@@ -19,6 +20,7 @@
     type AgentNotify,
   } from "$lib/agent-activity";
   import { toasts } from "$lib/stores/toasts.svelte";
+  import PrefRow from "$lib/components/settings/PrefRow.svelte";
   import SegmentedRow from "$lib/components/settings/SegmentedRow.svelte";
 
   const ACCESS_OPTIONS: { value: AgentAccess; label: string }[] = [
@@ -45,6 +47,14 @@
     all: "A toast for every call, reads and searches included.",
     off: "No toasts. The live marks on your notes and the Agents Space still show everything.",
   };
+
+  function saveTags(client: string, raw: string) {
+    const names = raw
+      .split(",")
+      .map((t) => t.trim().replace(/^#+/, ""))
+      .filter(Boolean);
+    agents.setTags(client, [...new Set(names)]);
+  }
 
   type Client = "claude" | "codex" | "hermes" | "json";
   let client = $state<Client>("claude");
@@ -110,6 +120,35 @@
     value={agents.notify}
     onchange={(v) => agents.setNotify(v)}
   />
+
+  <span class="group-label">Each agent</span>
+  {#each AGENT_KINDS as client (client)}
+    <PrefRow
+      label={clientLabel(client)}
+      sub="Tags it puts on every note it creates, separated by commas. Block refuses everything it asks for."
+    >
+      {#snippet control()}
+        <div class="kind-controls">
+          <input
+            class="tag-field"
+            placeholder="No tags"
+            value={(agents.tags[client] ?? []).join(", ")}
+            aria-label="Tags for {clientLabel(client)}"
+            onchange={(e) => saveTags(client, e.currentTarget.value)}
+          />
+          <label class="block-toggle">
+            <input
+              type="checkbox"
+              checked={agents.isBlocked(client)}
+              aria-label="Block {clientLabel(client)}"
+              onchange={(e) => agents.setBlocked(client, e.currentTarget.checked)}
+            />
+            Block
+          </label>
+        </div>
+      {/snippet}
+    </PrefRow>
+  {/each}
 
   <span class="group-label">Connect an agent</span>
   {#if agents.connection}
@@ -212,6 +251,31 @@
     letter-spacing: 0.4px;
     color: var(--text-tertiary);
     font-family: var(--font-meta);
+  }
+  .kind-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .block-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12.5px;
+    color: var(--text-secondary);
+  }
+  .tag-field {
+    width: 200px;
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-input);
+    color: var(--text);
+    font-size: 12.5px;
+    outline: none;
+  }
+  .tag-field:focus {
+    border-color: var(--accent);
   }
   .connect,
   .activity-card {

@@ -107,7 +107,8 @@ describe("SettingsView", () => {
     const { getByRole, queryByRole, getByLabelText } = open();
     const filter = getByLabelText("Find a setting");
     await fireEvent.input(filter, { target: { value: "mcp" } });
-    expect(getByRole("button", { name: /Agents/ })).toBeTruthy();
+    const nav = getByRole("navigation", { name: "Settings pages" });
+    expect(within(nav).getByRole("button", { name: /Agents/ })).toBeTruthy();
     expect(queryByRole("button", { name: /Editor/ })).toBeNull();
     await fireEvent.keyDown(filter, { key: "Enter" });
     const crumb = getByRole("navigation", { name: "Breadcrumb" });
@@ -117,7 +118,21 @@ describe("SettingsView", () => {
     filter.focus();
     await fireEvent.keyDown(window, { key: "Escape" });
     expect(getByRole("button", { name: /Editor/ })).toBeTruthy();
-    expect(within(crumb).getByText("Agents")).toBeTruthy();
+    expect(
+      within(getByRole("navigation", { name: "Breadcrumb" })).getByText("Agents"),
+    ).toBeTruthy();
+  });
+
+  it("lists matches with their description in the main pane and opens one on a click", async () => {
+    const { getByRole, getByLabelText } = open();
+    const filter = getByLabelText("Find a setting") as HTMLInputElement;
+    await fireEvent.input(filter, { target: { value: "dark" } });
+    const results = getByRole("region", { name: "Search results" });
+    expect(within(results).getByText("Theme, light or dark, and the body font.")).toBeTruthy();
+    await fireEvent.click(within(results).getByRole("button", { name: /Appearance/ }));
+    const crumb = getByRole("navigation", { name: "Breadcrumb" });
+    expect(within(crumb).getByText("Appearance")).toBeTruthy();
+    expect(filter.value).toBe("");
   });
 
   it("opens a page from the list and shows a breadcrumb back to Settings", async () => {

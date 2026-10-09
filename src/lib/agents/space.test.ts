@@ -113,4 +113,32 @@ describe("the Agents Space", () => {
     // A client that names nothing is just itself.
     expect(buildAgentNotes(joinConversations([session()], [presence()]))[0].title).toBe("Claude Code");
   });
+
+  it("keeps a client session that clocks back in as one conversation", () => {
+    const entry = (seq: number, at: number) => ({ seq, at }) as AgentActivity;
+    const convs = joinConversations(
+      [
+        session({ session: "first", startedAt: 1500, endedAt: 2000, entries: [entry(1, 1500)] }),
+        session({ session: "again", startedAt: 5000, endedAt: 6000, entries: [entry(2, 5500)] }),
+        session({ session: "other", endedAt: 3000 }),
+      ],
+      [
+        presence({ session: "first", clientSession: "c1", connectedAt: 1000, connected: false, disconnectedAt: 2500 }),
+        presence({ session: "again", clientSession: "c1", connectedAt: 4000 }),
+        presence({ session: "other", clientSession: "c2", connectedAt: 900, connected: false, disconnectedAt: 3000 }),
+      ],
+    );
+    expect(convs.map((c) => c.session)).toEqual(["again", "other"]);
+    const [back] = convs;
+    expect(back.connected).toBe(true);
+    expect(back.clocks).toEqual([
+      { session: "first", inAt: 1000, outAt: 2500 },
+      { session: "again", inAt: 4000, outAt: null },
+    ]);
+    expect(back.entries.map((e) => e.seq)).toEqual([2, 1]);
+    expect([back.reads, back.writes, back.errors]).toEqual([10, 6, 2]);
+    expect(back.startedAt).toBe(1500);
+    expect(back.endedAt).toBe(6000);
+    expect(buildAgentNotes(convs)[0].id).toBe(agentNoteId("first"));
+  });
 });
