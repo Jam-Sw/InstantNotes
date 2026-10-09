@@ -26,10 +26,12 @@ impl Store {
     pub fn list_tags(&self) -> Result<Vec<TagWithCount>> {
         let mut stmt = self.conn.prepare(
             "SELECT t.id, t.name, t.color, t.created_at, t.updated_at, \
-                    (SELECT COUNT(*) FROM note_tags nt \
-                       JOIN notes n ON n.id = nt.note_id \
-                      WHERE nt.tag_id = t.id AND n.is_deleted = 0) AS usage_count \
-             FROM tags t ORDER BY t.name",
+                    COALESCE(c.n, 0) AS usage_count \
+             FROM tags t \
+             LEFT JOIN (SELECT nt.tag_id, COUNT(*) AS n FROM note_tags nt \
+                          JOIN notes n ON n.id = nt.note_id \
+                         WHERE n.is_deleted = 0 GROUP BY nt.tag_id) c ON c.tag_id = t.id \
+             ORDER BY t.name",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(TagWithCount {

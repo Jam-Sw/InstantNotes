@@ -65,10 +65,13 @@ impl Store {
     pub fn list_workspaces(&self) -> Result<Vec<WorkspaceWithCount>> {
         let mut stmt = self.conn.prepare(
             "SELECT w.id, w.name, w.created_at, w.updated_at, \
-                    (SELECT COUNT(*) FROM note_workspaces nw \
-                       JOIN notes n ON n.id = nw.note_id \
-                      WHERE nw.workspace_id = w.id AND n.is_deleted = 0) AS note_count \
-             FROM workspaces w ORDER BY w.name COLLATE NOCASE",
+                    COALESCE(c.n, 0) AS note_count \
+             FROM workspaces w \
+             LEFT JOIN (SELECT nw.workspace_id, COUNT(*) AS n FROM note_workspaces nw \
+                          JOIN notes n ON n.id = nw.note_id \
+                         WHERE n.is_deleted = 0 GROUP BY nw.workspace_id) c \
+                    ON c.workspace_id = w.id \
+             ORDER BY w.name COLLATE NOCASE",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(WorkspaceWithCount {
