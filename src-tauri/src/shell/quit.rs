@@ -57,6 +57,7 @@ pub(crate) fn flush_before_exit(app: &AppHandle) {
     let _ = app.emit(events::APP_QUIT_REQUESTED, ());
     wait_for_answers(&AWAITING, Duration::from_millis(QUIT_FLUSH_GRACE_MS));
     flush_vault_now(app, Some(QUIT_VAULT_CHUNKS));
+    close_session();
 }
 
 fn wait_for_answers(awaiting: &Mutex<HashSet<String>>, grace: Duration) {

@@ -1,10 +1,23 @@
 use crate::domain;
 use crate::error::{AppError, Result};
 use crate::types::*;
-use chrono::{SecondsFormat, Utc};
+use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
+
+const ALWAYS_VERIFY_BELOW_BYTES: u64 = 4 * 1024 * 1024;
+const VERIFY_EVERY_DAYS: i64 = 7;
+const RECORD_REFRESH_DAYS: i64 = 1;
+const INTEGRITY_CHECKED_KEY: &str = "integrity.checked_at";
+const SUSPECT_SUFFIX: &str = ".verify";
+const SESSION_SUFFIX: &str = ".open";
+
+fn sibling(path: &Path, suffix: &str) -> PathBuf {
+    let mut name = path.as_os_str().to_os_string();
+    name.push(suffix);
+    PathBuf::from(name)
+}
 
 pub const MIGRATIONS: &[&str] = &[
     r#"
@@ -391,6 +404,62 @@ fn fts_match_expr_with(text: &str, any_term: bool) -> Option<String> {
 
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
+        Self::open_policy(path, true, ALWAYS_VERIFY_BELOW_BYTES)
+    }
+
+    pub fn open_for_agent(path: &Path) -> Result<Self> {
+        Self::open_policy(path, false, ALWAYS_VERIFY_BELOW_BYTES)
+    }
+
+    pub fn mark_library_suspect(path: &Path) {
+        let _ = std::fs::write(sibling(path, SUSPECT_SUFFIX), b"");
+    }
+
+    pub fn mark_session_open(path: &Path) {
+        let _ = std::fs::write(sibling(path, SESSION_SUFFIX), b"");
+    }
+
+    pub fn mark_session_closed(path: &Path) {
+        let _ = std::fs::remove_file(sibling(path, SESSION_SUFFIX));
+    }
+
+    fn last_integrity_check(conn: &Connection) -> Option<DateTime<Utc>> {
+        let raw: String = conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = ?1",
+                params![INTEGRITY_CHECKED_KEY],
+                |r| r.get(0),
+            )
+            .ok()?;
+        let stamp: String = serde_json::from_str(&raw).ok()?;
+        DateTime::parse_from_rfc3339(&stamp)
+            .ok()
+            .map(|at| at.with_timezone(&Utc))
+    }
+
+    fn needs_integrity_check(
+        path: &Path,
+        last: Option<DateTime<Utc>>,
+        own_session: bool,
+        always_below: u64,
+    ) -> bool {
+        let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+        if size < always_below
+            || sibling(path, SUSPECT_SUFFIX).exists()
+            || (own_session && sibling(path, SESSION_SUFFIX).exists())
+        {
+            return true;
+        }
+        match last {
+            Some(at) => {
+                let age = Utc::now().signed_duration_since(at);
+                age > Duration::days(VERIFY_EVERY_DAYS) || age < Duration::days(-1)
+            }
+            None => true,
+        }
+    }
+
+    fn open_policy(path: &Path, own_session: bool, always_below: u64) -> Result<Self> {
         let conn = Connection::open(path)
             .map_err(|e| AppError::Storage(format!("cannot open database: {e}")))?;
         conn.busy_timeout(std::time::Duration::from_secs(5))
@@ -403,8 +472,21 @@ impl Store {
         }
         conn.pragma_update(None, "synchronous", "NORMAL")
             .map_err(|e| AppError::Storage(format!("cannot set synchronous mode: {e}")))?;
+        let last = Self::last_integrity_check(&conn);
+        let verify = Self::needs_integrity_check(path, last, own_session, always_below);
         Self::backup_before_migration(path, &conn)?;
-        Self::init(conn)
+        let mut store = Self::init(conn, verify)?;
+        if verify {
+            let _ = std::fs::remove_file(sibling(path, SUSPECT_SUFFIX));
+            let due = last.is_none_or(|at| {
+                Utc::now().signed_duration_since(at) > Duration::days(RECORD_REFRESH_DAYS)
+            });
+            if due {
+                let _ =
+                    store.set_setting(INTEGRITY_CHECKED_KEY, serde_json::Value::String(now_iso()));
+            }
+        }
+        Ok(store)
     }
 
     pub fn open_or_recover(path: &Path) -> Result<(Self, bool)> {
@@ -432,17 +514,19 @@ impl Store {
     pub fn open_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()
             .map_err(|e| AppError::Storage(format!("cannot open database: {e}")))?;
-        Self::init(conn)
+        Self::init(conn, true)
     }
 
-    fn init(mut conn: Connection) -> Result<Self> {
+    fn init(mut conn: Connection, verify: bool) -> Result<Self> {
         conn.pragma_update(None, "foreign_keys", "ON")?;
         conn.set_transaction_behavior(rusqlite::TransactionBehavior::Immediate);
-        let check: String = conn.query_row("PRAGMA quick_check", [], |r| r.get(0))?;
-        if check != "ok" {
-            return Err(AppError::Corruption(format!(
-                "database integrity check failed: {check}"
-            )));
+        if verify {
+            let check: String = conn.query_row("PRAGMA quick_check", [], |r| r.get(0))?;
+            if check != "ok" {
+                return Err(AppError::Corruption(format!(
+                    "database integrity check failed: {check}"
+                )));
+            }
         }
         let mut store = Store { conn, vault: None };
         store.migrate()?;
@@ -593,6 +677,122 @@ mod pragma_tests {
             .query_row("PRAGMA synchronous", [], |r| r.get(0))
             .unwrap();
         assert_eq!(synchronous, 1);
+    }
+}
+
+#[cfg(test)]
+mod integrity_tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn library(path: &Path) {
+        let mut s = Store::open_policy(path, true, 0).unwrap();
+        for i in 0..400 {
+            s.create_note(CreateNoteInput {
+                body: Some(format!("note {i} {}", "filler ".repeat(40))),
+                ..Default::default()
+            })
+            .unwrap();
+        }
+    }
+
+    fn damage(path: &Path) {
+        let mut bytes = std::fs::read(path).unwrap();
+        let from = bytes.len() / 2;
+        for b in &mut bytes[from..from + 8192] {
+            *b = 0x5A;
+        }
+        std::fs::write(path, bytes).unwrap();
+    }
+
+    fn backdate_record(path: &Path, days: i64) {
+        let at = (Utc::now() - Duration::days(days)).to_rfc3339_opts(SecondsFormat::Millis, true);
+        let conn = Connection::open(path).unwrap();
+        conn.execute(
+            "UPDATE settings SET value = ?1 WHERE key = ?2",
+            params![serde_json::to_string(&at).unwrap(), INTEGRITY_CHECKED_KEY],
+        )
+        .unwrap();
+    }
+
+    fn is_corruption(result: Result<Store>) -> bool {
+        matches!(result, Err(e) if e.is_corruption())
+    }
+
+    #[test]
+    fn a_recent_check_lets_a_large_library_open_without_scanning() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("library.db");
+        library(&path);
+        damage(&path);
+        assert!(Store::open_policy(&path, true, 0).is_ok());
+    }
+
+    #[test]
+    fn a_small_library_is_always_scanned() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("library.db");
+        library(&path);
+        damage(&path);
+        assert!(is_corruption(Store::open_policy(&path, true, u64::MAX)));
+    }
+
+    #[test]
+    fn a_suspect_marker_forces_the_scan() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("library.db");
+        library(&path);
+        damage(&path);
+        Store::mark_library_suspect(&path);
+        assert!(is_corruption(Store::open_policy(&path, true, 0)));
+        assert!(is_corruption(Store::open_policy(&path, false, 0)));
+    }
+
+    #[test]
+    fn an_unclean_session_forces_the_scan_for_the_app_only() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("library.db");
+        library(&path);
+        damage(&path);
+        Store::mark_session_open(&path);
+        assert!(is_corruption(Store::open_policy(&path, true, 0)));
+        assert!(Store::open_policy(&path, false, 0).is_ok());
+        Store::mark_session_closed(&path);
+        assert!(Store::open_policy(&path, true, 0).is_ok());
+    }
+
+    #[test]
+    fn a_week_old_record_forces_the_scan() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("library.db");
+        library(&path);
+        backdate_record(&path, VERIFY_EVERY_DAYS + 1);
+        damage(&path);
+        assert!(is_corruption(Store::open_policy(&path, true, 0)));
+    }
+
+    #[test]
+    fn a_record_from_the_future_forces_the_scan() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("library.db");
+        library(&path);
+        backdate_record(&path, -3);
+        damage(&path);
+        assert!(is_corruption(Store::open_policy(&path, true, 0)));
+    }
+
+    #[test]
+    fn a_passed_scan_clears_the_suspect_marker_and_records_the_time() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("library.db");
+        library(&path);
+        backdate_record(&path, VERIFY_EVERY_DAYS + 1);
+        Store::mark_library_suspect(&path);
+        let store = Store::open_policy(&path, true, 0).unwrap();
+        assert!(!sibling(&path, SUSPECT_SUFFIX).exists());
+        let stamp = store.get_setting(INTEGRITY_CHECKED_KEY).unwrap().unwrap();
+        let at = DateTime::parse_from_rfc3339(stamp.as_str().unwrap()).unwrap();
+        assert!(Utc::now().signed_duration_since(at) < Duration::minutes(1));
     }
 }
 

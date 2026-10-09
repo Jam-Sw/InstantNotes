@@ -31,7 +31,7 @@ pub fn run_from_args(mut args: impl Iterator<Item = OsString>) -> Option<i32> {
     let Some(db) = db else {
         return Some(usage());
     };
-    let mut store = match Store::open(&db) {
+    let mut store = match Store::open_for_agent(&db) {
         Ok(store) => store,
         Err(e) => {
             eprintln!("instantnotes mcp: cannot open the library: {e}");

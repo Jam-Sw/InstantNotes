@@ -9,6 +9,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tauri_plugin_opener::OpenerExt;
 
+pub(crate) static LIBRARY_DB: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+
 struct AppState {
     store: Mutex<Store>,
     reader: Mutex<Store>,
@@ -21,6 +23,12 @@ fn locked<'a>(
         .store
         .lock()
         .map_err(|_| CmdError::storage("internal state lock poisoned"))
+}
+
+pub(crate) fn close_session() {
+    if let Some(path) = LIBRARY_DB.get() {
+        Store::mark_session_closed(path);
+    }
 }
 
 fn locked_reader<'a>(
@@ -127,6 +135,8 @@ pub fn run() {
             if store.attach_saved_vault().is_err() {
                 eprintln!("vault mirror setting unreadable; mirroring stays off");
             }
+            let _ = LIBRARY_DB.set(db_path.clone());
+            Store::mark_session_open(&db_path);
             let reader =
                 Store::open_reader(&db_path).map_err(|e| format!("cannot open reader: {e}"))?;
             app.manage(AppState {
@@ -494,12 +504,14 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app, event| {
-            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+        .run(|app, event| match event {
+            tauri::RunEvent::ExitRequested { api, .. } => {
                 if !QUIT_READY.load(Ordering::Acquire) {
                     api.prevent_exit();
                     request_quit(app);
                 }
             }
+            tauri::RunEvent::Exit => close_session(),
+            _ => {}
         });
 }

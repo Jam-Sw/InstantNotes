@@ -72,6 +72,11 @@ impl CmdError {
 
 impl From<AppError> for CmdError {
     fn from(e: AppError) -> Self {
+        if e.is_corruption() {
+            if let Some(path) = crate::LIBRARY_DB.get() {
+                instantnotes_core::Store::mark_library_suspect(path);
+            }
+        }
         let code = match &e {
             AppError::NotFound(_) => ErrorCode::NotFound,
             AppError::Validation(_) => ErrorCode::Validation,
@@ -110,6 +115,19 @@ mod tests {
             );
             assert_eq!(CmdError::from(e).code().as_str(), code);
         }
+    }
+
+    #[test]
+    fn a_corruption_error_marks_the_library_for_a_full_check() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("library.db");
+        let _ = crate::LIBRARY_DB.set(db.clone());
+        let marker = dir.path().join("library.db.verify");
+        assert!(!marker.exists());
+        let _ = CmdError::from(AppError::Storage("x".into()));
+        assert!(!marker.exists());
+        let _ = CmdError::from(AppError::Corruption("x".into()));
+        assert!(marker.exists());
     }
 
     #[test]
