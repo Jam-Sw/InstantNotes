@@ -11,6 +11,15 @@ describe("preview", () => {
   it("is empty for blank input", () => {
     expect(preview("   \n\t ")).toBe("");
   });
+  it("matches a full collapse on long bodies", () => {
+    const words = Array.from({ length: 4000 }, (_, i) => `w${i}`).join("  \n ");
+    const full = words.replace(/\s+/g, " ").trim().slice(0, 90);
+    expect(preview(words)).toBe(full);
+  });
+  it("looks past a long run of leading whitespace", () => {
+    const body = `${" \n".repeat(2000)}hello  world${"z ".repeat(2000)}`;
+    expect(preview(body)).toBe(body.replace(/\s+/g, " ").trim().slice(0, 90));
+  });
 });
 
 describe("sheetPreview", () => {

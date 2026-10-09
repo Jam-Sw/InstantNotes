@@ -221,7 +221,7 @@ export function startLayout(
       const n = Math.min(ticks, LAYOUT_TICKS - done);
       for (let i = 0; i < n; i++) sim.tick();
       done += n;
-      return done >= LAYOUT_TICKS || nodes.length === 0;
+      return done >= LAYOUT_TICKS || nodes.length === 0 || sim.alpha() < sim.alphaMin();
     },
     snapshot() {
       return {

@@ -46,7 +46,7 @@
   // dashed edges of the rows on screen only.
   const PAGE = 25;
 
-  let graph = $state<Graph | null>(null);
+  let graph = $state.raw<Graph | null>(null);
   let failed = $state(false);
   let suggestions = $state<SpaceSuggestion[]>([]);
   let pages = $state(1);
@@ -139,8 +139,10 @@
     return placeLabels(candidates, discs);
   });
 
+  const labelsOn = $derived(view.k >= NOTE_LABEL_ZOOM);
+
   function showLabel(n: GraphNode): boolean {
-    return n.kind !== "note" || view.k >= NOTE_LABEL_ZOOM || !!lit?.has(n.id);
+    return n.kind !== "note" || labelsOn || !!lit?.has(n.id);
   }
 
   function nodeName(n: GraphNode): string {
@@ -180,7 +182,7 @@
       frame = null;
       const started = performance.now();
       let rested = false;
-      while (!rested && performance.now() - started < FRAME_BUDGET_MS) rested = run.step(4);
+      while (!rested && performance.now() - started < FRAME_BUDGET_MS) rested = run.step(1);
       graph = run.snapshot();
       positions = new Map(graph.nodes.map((n) => [n.id, { x: n.x, y: n.y, z: n.z }]));
       if (!userMoved) frameView();

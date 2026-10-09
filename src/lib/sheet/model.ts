@@ -145,15 +145,16 @@ export function setCell(sheet: Sheet, r: number, c: number, value: string): Shee
 }
 
 export function clearCells(sheet: Sheet, range: Range): Sheet {
-  let out = sheet;
+  let rows: string[][] | null = null;
   for (let r = range.r0; r <= range.r1; r++) {
     if (!sheet.rows[r]) continue;
     if (sheet.rows[r].slice(range.c0, range.c1 + 1).every((v) => v === "")) continue;
     const row = sheet.rows[r].slice();
     for (let c = range.c0; c <= Math.min(range.c1, row.length - 1); c++) row[c] = "";
-    out = withRow(out, r, row);
+    rows ??= sheet.rows.slice();
+    rows[r] = row;
   }
-  return out;
+  return rows ? { cols: sheet.cols, rows } : sheet;
 }
 
 /** The cells of a range, row by row, for the clipboard. */
@@ -184,11 +185,25 @@ export function pasteBlock(
   let out = sheet;
   if (colsAfter > sheet.cols.length) out = insertCols(out, sheet.cols.length, colsAfter - sheet.cols.length);
   if (rowsAfter > sheet.rows.length) out = insertRows(out, sheet.rows.length, rowsAfter - sheet.rows.length);
+  let rows: string[][] | null = null;
   for (let i = 0; i < block.length && r + i < rowsAfter; i++) {
+    let row = out.rows[r + i];
+    let copied = false;
     for (let j = 0; j < block[i].length && c + j < colsAfter; j++) {
-      out = setCell(out, r + i, c + j, block[i][j]);
+      const next = clipCell(block[i][j]);
+      if (row[c + j] === undefined || row[c + j] === next) continue;
+      if (!copied) {
+        row = row.slice();
+        copied = true;
+      }
+      row[c + j] = next;
+    }
+    if (copied) {
+      rows ??= out.rows.slice();
+      rows[r + i] = row;
     }
   }
+  if (rows) out = { cols: out.cols, rows };
   return { sheet: out, clipped: wantRows > rowsAfter || wantCols > colsAfter };
 }
 

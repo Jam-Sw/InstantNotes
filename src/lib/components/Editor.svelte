@@ -33,7 +33,7 @@
     allowImageFile,
   } from "$lib/api/client";
   import { toasts } from "$lib/stores/toasts.svelte";
-  import { applyExternalEdit, externalEdit } from "$lib/external-edit";
+  import { applyExternalEdit, externalEdit, minimalChange } from "$lib/external-edit";
 
   let {
     value = "",
@@ -242,9 +242,10 @@
     if (!view) return;
     const main = view.state.selection.main;
     const sel: Sel = { from: main.from, to: main.to };
-    const edit = formatEdit(view.state.doc.toString(), sel, kind);
+    const before = view.state.doc.toString();
+    const edit = formatEdit(before, sel, kind);
     view.dispatch({
-      changes: { from: 0, to: view.state.doc.length, insert: edit.text },
+      changes: minimalChange(before, edit.text) ?? [],
       selection: { anchor: edit.selection.from, head: edit.selection.to },
     });
     view.focus();

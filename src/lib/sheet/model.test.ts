@@ -143,6 +143,23 @@ describe("edits", () => {
     expect(wide.sheet.cols.length).toBe(MAX_COLS);
     expect(wide.sheet.rows[0][MAX_COLS - 1]).toBe("x");
   });
+
+  it("keeps untouched rows by reference and the same sheet for a no-op paste", () => {
+    const s = setCell(emptySheet(3, 4), 0, 0, "a");
+    const { sheet: t } = pasteBlock(s, 2, 0, [["x", "y"]]);
+    expect(t.rows[0]).toBe(s.rows[0]);
+    expect(t.rows[1]).toBe(s.rows[1]);
+    expect(t.rows[2]).toEqual(["x", "y", ""]);
+    expect(pasteBlock(t, 2, 0, [["x", "y"]]).sheet).toBe(t);
+  });
+
+  it("pastes a large block in one pass", () => {
+    const block = Array.from({ length: 2000 }, (_, i) => Array.from({ length: 20 }, (_, j) => `${i}:${j}`));
+    const started = performance.now();
+    const { sheet: t } = pasteBlock(emptySheet(20, 1), 0, 0, block);
+    expect(performance.now() - started).toBeLessThan(500);
+    expect(t.rows[1999][19]).toBe("1999:19");
+  });
 });
 
 describe("append and merge", () => {
