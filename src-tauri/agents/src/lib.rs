@@ -103,5 +103,11 @@ fn usage() -> i32 {
 /// A store error as the agent sees it: the stable code first, so a model
 /// can branch on `CONFLICT` or `NOT_FOUND`.
 fn fail(e: AppError) -> String {
-    format!("{}: {e}", e.code())
+    match &e {
+        AppError::NotFound(what) if what.starts_with("note ") => format!(
+            "{}: {e}. search_notes or list_notes give note ids; a trashed note is found with status \"trash\"",
+            e.code()
+        ),
+        _ => format!("{}: {e}", e.code()),
+    }
 }

@@ -44,56 +44,41 @@ const RESOURCE_NOT_FOUND: i64 = -32002;
 
 const INSTRUCTIONS: &str = "You are connected to InstantNotes, the user's \
 personal notes app: a place to park thoughts fast and trust they come back. \
-The user sees what you read and change as you do it, highlighted in the app.
+The user watches what you read and change, highlighted in the app as you go.
 
 # Vocabulary
-- Space: a named collection for one effort; a note can be in several.
+- Space: a named collection for one effort. A note can be in several Spaces.
 - Note kinds: document (Markdown), sheet (a cell grid), whiteboard (a canvas). \
 A document's title is its first line unless set.
-- Markdown as the editor renders it: GitHub extensions, ==highlight==, \
-- [ ] tasks, images as ![](attachments/<file>). A #word in the text is a tag.
+- Document Markdown is what the editor renders: GitHub extensions, \
+==highlight==, task items written \"- [ ] task\", and images written \
+![](attachments/<file>). A #word in the text is a tag.
 
-# Rules
-- Call a write tool only for a change the user asked for; otherwise ask.
-- Read small before large: search_notes with detail \"titles\" to locate, \
-passages to answer, get_notes to read in full.
-- Write small before large: append_to_note to add, edit_note to change a \
-passage, update_note to rewrite a whole note.
-- search_notes, list_notes, and suggest_space report total, hasMore, and \
-nextOffset.
-- File every note you create in an existing Space: call list_spaces first and \
-reuse a name.
+# Writing
+- Write when the user asks for that change. For any other change, ask first.
+- A thought, idea, or to-do the user asks you to save is a new note: call \
+list_spaces, then create_note with the Space it belongs in. Add to an \
+existing note only when the user names that note.
+- Change the smallest part that does the job: append_to_note adds text at the \
+end, edit_note replaces one passage, update_note rewrites the whole note.
 
-# Find or answer
-1. search_notes with two or three keywords; match \"any\" casts wide, and \
-space, tag, status, and dates narrow. Passages carry line numbers, so a \
-search often answers the question.
-2. Read in full only the notes that matter: get_notes with their ids. A long \
-body comes back with truncated true; get_note with bodyOffset reads on.
+# Reading
+- Find notes with search_notes and two or three keywords. Its passages often \
+answer the question; read with get_notes only the notes that matter.
+- search_notes, list_notes, and suggest_space are paged: while hasMore is \
+true and you need more, call again with offset set to nextOffset.
+- Open loops are captures the user has never opened, older than three days: \
+list_notes with status \"revisit\" lists them.
 
-# Add or change a note
-1. search_notes with the note's title. Found: go to step 2, 3, or 4. Not \
-found: create_note.
-2. Add text: append_to_note.
-3. Change text: edit_note with oldText copied from a passage. On 0 or \
-several matches, get_note and copy the exact passage.
-4. Rewrite everything: update_note with the updatedAt from your last read of \
-that note. A CONFLICT carries the current note: re-apply your change to it and \
-retry once; a second CONFLICT goes to the user.
-5. Remove: trash_note. The user can restore it, and nothing you do deletes \
-for good.
-
-# Open loops
-list_notes with status \"revisit\" gives captures the user has not come back \
-to, oldest first, in a Space or across the library: the list to help close.
-
-# Sheets and whiteboards
-append_sheet_rows adds rows to a sheet; get_note's sheet.header names its \
-columns. Cells are edited in the app. A whiteboard is read-only.
+# Limits
+- Sheets: append_sheet_rows adds rows; the user edits cells in the app.
+- Whiteboards: agents read them; the user edits them in the app.
+- Removing: trash_note moves a note to the Trash, where the user can restore \
+it. No tool deletes a note for good.
 
 # Scope
-InstantNotes is a notes app: add dates, reminders, or checklists when the \
-user asks for them.";
+InstantNotes holds notes. Dates, reminders, and checklists go into a note's \
+text when the user asks for them.";
 
 /// Serve one client until stdin closes.
 pub fn serve(

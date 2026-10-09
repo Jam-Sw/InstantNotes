@@ -1609,7 +1609,7 @@ fn search_titles_return_only_the_locating_fields() {
     let (_, _, titles) = result_of(&replies[1]);
     assert_eq!(
         keys_of(&titles["results"][0]),
-        vec!["id", "spaces", "title", "updatedAt"]
+        vec!["id", "kind", "spaces", "title", "updatedAt"]
     );
     let (_, _, passages) = result_of(&replies[2]);
     assert!(passages["results"][0].get("excerpt").is_none());
@@ -1796,6 +1796,80 @@ fn the_instructions_name_only_tools_that_exist() {
     for token in mentioned {
         assert!(names.contains(&token), "{token} is not a tool");
     }
+}
+
+#[test]
+fn a_whiteboard_is_named_in_search_and_its_refusals_point_to_the_app() {
+    let mut store = store_with("write");
+    let board = note(&mut store, "Garden plan\n\ntomatoes by the fence");
+    store
+        .update_note(
+            &board,
+            instantnotes_core::types::UpdateNotePatch {
+                content_kind: Some("whiteboard".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(1, "search_notes", json!({ "query": "garden" })),
+            call(
+                2,
+                "append_sheet_rows",
+                json!({ "id": board, "rows": [["a"]] }),
+            ),
+            call(
+                3,
+                "edit_note",
+                json!({ "id": board, "oldText": "tomatoes", "newText": "garlic" }),
+            ),
+        ],
+    );
+    let (_, _, found) = result_of(&replies[1]);
+    assert_eq!(found["results"][0]["kind"], "whiteboard");
+    let (is_error, text, _) = result_of(&replies[2]);
+    assert!(
+        is_error && text.contains("in the app") && !text.contains("append_to_note"),
+        "{text}"
+    );
+    let (is_error, text, _) = result_of(&replies[3]);
+    assert!(
+        is_error && text.contains("whiteboard") && text.contains("in the app"),
+        "{text}"
+    );
+}
+
+#[test]
+fn the_revisit_age_in_the_text_is_the_store_rule() {
+    let days = instantnotes_core::store::REVISIT_AFTER_MS / (24 * 60 * 60 * 1000);
+    let words = [
+        "zero", "one", "two", "three", "four", "five", "six", "seven",
+    ];
+    let said = format!("older than {} days", words[days as usize]);
+    let mut store = store_with("off");
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }),
+        ],
+    );
+    let instructions = replies[0]["result"]["instructions"].as_str().unwrap();
+    assert!(instructions.contains(&said), "{instructions}");
+    let list = replies[1]["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == "list_notes")
+        .unwrap();
+    assert!(list["description"].as_str().unwrap().contains(&said));
+    assert!(list["inputSchema"]["properties"]["status"]["description"]
+        .as_str()
+        .unwrap()
+        .contains(&said));
 }
 
 #[test]

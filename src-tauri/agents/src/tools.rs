@@ -38,9 +38,7 @@ const MAX_PASSAGES: usize = 3;
 const PASSAGE_LINE_CHARS: usize = 240;
 /// append_to_note re-reads and retries when the user saves in between.
 const APPEND_ATTEMPTS: usize = 3;
-// this search page size supported by https://www.anthropic.com/engineering/writing-tools-for-agents (pagination with sensible default values)
 const SEARCH_LIMIT: i64 = 10;
-// these body caps supported by https://www.anthropic.com/engineering/writing-tools-for-agents (truncation with sensible defaults; Claude Code caps tool output at 25,000 tokens)
 const NOTE_CHARS: usize = 12_000;
 const MAX_NOTE_CHARS: usize = 100_000;
 const MIN_NOTE_CHARS: usize = 1_000;
@@ -86,7 +84,7 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Read,
         destructive: false,
         idempotent: true,
-        description: "Full-text search over note titles and bodies: the way to find what matters without reading every note. Use two or three keywords, not a sentence. Each result carries id, title, spaces, tags, createdAt, and updatedAt (enough to call update_note directly), and with detail \"passages\" the matching lines with their line numbers and the lines around them. Narrow by space, tag, status, or when a note last changed. Results are paged: total says how many notes match in all, hasMore whether to ask again with nextOffset. Trashed notes are searched only with status \"trash\".",
+        description: "Full-text search over note titles and bodies. Use two or three keywords, not a sentence; a word also matches words that begin with it. match \"any\" casts wide; space, tag, status, updatedAfter, and updatedBefore narrow. Each result has id, title, kind, spaces, and updatedAt. With detail \"passages\" (the default) a result also has tags, createdAt, and up to three passages: a matching line with its line number and the lines around it (a long line is clipped with …), plus matchingLines, the count of every matching line. Pass updatedAt to update_note as expectedUpdatedAt. A search with no match returns a hint saying what to loosen. Paged: total, hasMore, nextOffset, limit (default 10). Trashed notes are searched only with status \"trash\".",
         schema: || object(json!({
             "query": { "type": "string", "description": "Words to search for. A word also matches words that begin with it." },
             "match": {
@@ -99,7 +97,7 @@ const TOOLS: &[ToolDef] = &[
                 "type": "string",
                 "enum": ["titles", "passages"],
                 "default": "passages",
-                "description": "titles: id, title, spaces, and updatedAt only, to locate a note cheaply. passages: also the matching lines."
+                "description": "titles: id, title, kind, spaces, and updatedAt only, to locate a note cheaply. passages: also tags, createdAt, and the matching lines."
             },
             "space": space_param(),
             "tag": tag_param(),
@@ -121,7 +119,7 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Read,
         destructive: false,
         idempotent: true,
-        description: "List notes, most recently updated first, optionally within a space or tag or a span of time. Returns summaries, not full bodies: read the ones that matter with get_notes. Paged: total says how many notes match in all, hasMore whether to ask again with nextOffset.",
+        description: "List notes. Pinned notes come first (except in the Trash), then the most recently updated; with status \"revisit\", captures never opened in the app and older than three days, oldest first. Filter by space, tag, updatedAfter, and updatedBefore. Space and tag names come from list_spaces and list_tags. Each note has id, title, kind, a snippet of the body, createdAt, updatedAt, isPinned, isArchived, and isDeleted; read whole bodies with get_notes. Paged: total, hasMore, nextOffset, limit (default 50).",
         schema: || object(json!({
             "space": space_param(),
             "tag": tag_param(),
@@ -143,7 +141,7 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Read,
         destructive: false,
         idempotent: true,
-        description: "Read one note: body, tags, spaces, and updatedAt (pass it to update_note). A body longer than maxChars comes back cut, with truncated true, totalChars, and nextBodyOffset: pass that as bodyOffset to read on. A sheet also returns sheet: its column count, its rows holding data, and header, its first row. Reading does not mark the note as opened.",
+        description: "Read one note by id (from search_notes or list_notes): body, kind, tags, spaces, and updatedAt (pass it to update_note as expectedUpdatedAt). A body longer than maxChars (default 12,000) comes back cut, with truncated true, totalChars, and nextBodyOffset: call again with bodyOffset set to nextBodyOffset to read on. A sheet also returns sheet: cols (its column count), rows (rows holding data), and, once a row holds data, header (its first row, each cell cut at 60 characters). Reading leaves the note unopened, so it stays in Revisit.",
         schema: || object(json!({
             "id": id_param(),
             "maxChars": max_chars_param(NOTE_CHARS),
@@ -156,7 +154,7 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Read,
         destructive: false,
         idempotent: true,
-        description: "Read several notes in one call, in the order asked: what get_note returns, for each id, with the bodies cut to share one budget (the more ids, the shorter each). A cut note says truncated true: read on with get_note and bodyOffset. Ids that name no note come back in missing rather than failing the call. Reading does not mark a note as opened.",
+        description: "Read several notes in one call (ids from search_notes or list_notes), in the order asked: what get_note returns, for each id. The bodies share one budget of 60,000 characters, so the more ids, the shorter each body (never under 1,000). A cut note says truncated true: read on with get_note and bodyOffset. Ids that name no note are listed in missing; the other notes still come back. Reading leaves the notes unopened, so they stay in Revisit.",
         schema: || object(json!({
             "ids": {
                 "type": "array",
@@ -174,7 +172,7 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Read,
         destructive: false,
         idempotent: true,
-        description: "Every tag with how many notes use it.",
+        description: "Every tag, each with name and notes, how many notes outside the Trash use it.",
         schema: || object(json!({}), &[]),
     },
     ToolDef {
@@ -183,8 +181,7 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Read,
         destructive: false,
         idempotent: true,
-        description: "Every Space with how many notes it holds. Call this before create_note, so the note \
-                      is filed in an existing Space instead of a new or missing one.",
+        description: "Every Space, each with name and notes, how many notes outside the Trash it holds. Call this before create_note and add_to_space, and pass one of these names, so the note is filed in an existing Space.",
         schema: || object(json!({}), &[]),
     },
     ToolDef {
@@ -193,7 +190,7 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Read,
         destructive: false,
         idempotent: true,
-        description: "Suggests a Space for notes that are in none; files nothing (use add_to_space if a suggestion is right). One Space per note with a probability and up to three reasons, from the same model as the app's Graph. Pass an id for one note, or nothing for every unfiled note, newest first. A note is listed only when the evidence clearly favours a Space, so an empty answer means the library does not say; a note already in a Space is never listed. Paged like list_notes: total, hasMore, nextOffset.",
+        description: "Suggests a Space for notes that are in none, from the same model as the app's Graph; it files nothing. Pass id for one note, or no id for every unfiled note, newest first. Each suggestion has id, title, space, probability, and up to three reasons. A note is listed only when the evidence clearly favours a Space, and a suggestion the user dismissed is not listed again. The list stays empty until at least two Spaces hold notes; otherwise an empty list means the library does not say. To file a suggestion you agree with, call add_to_space. Paged: total, hasMore, nextOffset, limit (default 50).",
         schema: || object(json!({
             "id": id_param(),
             "limit": limit_param(DEFAULT_LIMIT),
@@ -206,15 +203,12 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Write,
         destructive: false,
         idempotent: false,
-        description: "Create a note. The title is taken from the first line unless given. #words in the body \
-                      become tags. Always file it: pass `space` with the existing Space it belongs in \
-                      (call list_spaces first). A note without a space is lost in All Notes. Returns the \
-                      note without its body; createdSpace is true when `space` named a new Space.",
+        description: "Create a document note. The title is its first line unless title is given; #words in the body become tags, and the user may have set tags that are added to every note this agent creates. File it: set space to the existing Space it belongs in, a name from list_spaces. While the library has any Space, a call without space is refused and saves nothing; the refusal lists the Spaces. Returns the note without its body; createdSpace is true when space named a new Space.",
         schema: || object(json!({
             "body": { "type": "string", "description": "Markdown." },
             "title": { "type": "string", "description": "Only to override the first line as the title." },
             "tags": { "type": "array", "items": tag_param() },
-            "space": { "type": "string", "description": "The existing Space this note belongs in (names from list_spaces). A new name creates a new Space, so reuse an existing one when it fits. Required whenever the library has any Space." }
+            "space": { "type": "string", "description": "The existing Space this note belongs in, a name from list_spaces. A name that matches no Space creates a new one; create one only when the user asks for it or no existing Space covers the note. Required whenever the library has any Space." }
         }), &["body"]),
     },
     ToolDef {
@@ -223,7 +217,7 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Write,
         destructive: true,
         idempotent: true,
-        description: "Replace a note's title and/or whole body; to change part of a body use edit_note. expectedUpdatedAt is the updatedAt from search_notes, list_notes, or get_note; no need to read the note first. A CONFLICT means the user changed it since, and carries the current note (its body cut at 12,000 characters) to retry from. Documents only: a sheet or whiteboard body is refused. Returns the note without its body.",
+        description: "Replace a document's title, its whole body, or both; to change one passage use edit_note, to add at the end use append_to_note. Set expectedUpdatedAt to the updatedAt from search_notes, list_notes, or get_note; there is no need to read the note first. A CONFLICT means the note changed since then and carries the current note (body cut at 12,000 characters): apply your change to that text and call once more with its updatedAt; on a second CONFLICT, tell the user. That body may be cut (truncated true): before passing body, read the rest with get_note and bodyOffset, since body replaces the whole text. A sheet's or whiteboard's body is refused: for a sheet use append_sheet_rows; a whiteboard is edited by the user in the app. Returns the note without its body.",
         schema: || object(json!({
             "id": id_param(),
             "expectedUpdatedAt": { "type": "string", "description": "The note's updatedAt, exactly as search_notes, list_notes, or get_note returned it." },
@@ -237,7 +231,7 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Write,
         destructive: true,
         idempotent: false,
-        description: "Replace one exact passage of a note's body. oldText must appear exactly once: copy it from a search passage or get_note, with enough surrounding text to be unique; otherwise the call fails and says how many matches it found. Prefer this to update_note for any change smaller than the whole note. Documents only: a sheet or whiteboard body is refused. Returns the note without its body.",
+        description: "Replace one exact passage of a document's body and leave the rest as it is. Copy oldText from get_note, or from a search passage without its … marks, with enough surrounding text that it appears exactly once. If it appears 0 times, nothing changes: read the note with get_note and copy the exact text. If it appears several times, nothing changes and the error says how many: add surrounding text. Use this for any change smaller than the whole note. Example: oldText \"Known issue: the fan curve resets after every reboot.\" with newText \"Known issue: fixed in firmware 2.1.\" changes that line only. A sheet's or whiteboard's body is refused: for a sheet use append_sheet_rows; a whiteboard is edited by the user in the app. Returns the note without its body.",
         schema: || object(json!({
             "id": id_param(),
             "oldText": { "type": "string", "minLength": 1, "description": "The exact text to replace, appearing once in the body." },
@@ -250,7 +244,7 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Write,
         destructive: false,
         idempotent: false,
-        description: "Add text to the end of a note on a new line, without replacing what is there. Documents only: for a sheet use append_sheet_rows; a whiteboard is refused. Returns the note without its body.",
+        description: "Add text to the end of a document, on a new line, keeping what is there. For a sheet use append_sheet_rows; a whiteboard is refused, since the user edits it in the app. Returns the note without its body.",
         schema: || object(json!({
             "id": id_param(),
             "text": { "type": "string", "description": "Markdown." }
@@ -262,7 +256,7 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Write,
         destructive: false,
         idempotent: false,
-        description: "Add rows to the bottom of a sheet note (kind \"sheet\"), after its last row holding data. Each row is a list of cell strings in column order; a short row is padded, a row wider than the sheet is refused. get_note's `sheet` says how many columns it has.",
+        description: "Add rows to the bottom of a sheet (a note whose kind is \"sheet\"), after its last row holding data. Each row is a list of cell strings in column order; a shorter row is padded, a row wider than the sheet, a cell over 10,000 characters, or rows past 5,000 are refused. Call get_note first: its sheet.cols is the column count and sheet.header, when a row holds data, names the columns. Returns the note without its body, plus appended: firstRow (as the app numbers rows) and count.",
         schema: || object(json!({
             "id": id_param(),
             "rows": {
@@ -279,7 +273,7 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Write,
         destructive: false,
         idempotent: true,
-        description: "Add a tag to a note.",
+        description: "Add a tag to a note. A tag that does not exist yet is created. Returns the note without its body.",
         schema: || object(json!({ "id": id_param(), "tag": tag_param() }), &["id", "tag"]),
     },
     ToolDef {
@@ -288,7 +282,7 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Write,
         destructive: true,
         idempotent: true,
-        description: "Remove a tag from a note. A #tag still written in the body comes back on the next edit.",
+        description: "Remove a tag from a note. A #word written in the body adds the tag back on the next edit, so also remove that #word with edit_note. Returns the note without its body.",
         schema: || object(json!({ "id": id_param(), "tag": tag_param() }), &["id", "tag"]),
     },
     ToolDef {
@@ -297,9 +291,7 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Write,
         destructive: false,
         idempotent: true,
-        description: "Add an existing note to a Space. Use it to file a note that has no Space, or one \
-                      suggest_space matched. A name that matches no Space creates one (createdSpace true \
-                      in the result), so call list_spaces first and reuse an existing name.",
+        description: "Add an existing note to a Space: to file a note that is in none, or one suggest_space matched. Pass a name from list_spaces. A name that matches no Space creates one, and the result then has createdSpace true; create one only when the user asks for it or no existing Space covers the note. Returns the note without its body.",
         schema: || object(json!({ "id": id_param(), "space": space_param() }), &["id", "space"]),
     },
     ToolDef {
@@ -308,7 +300,7 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Write,
         destructive: true,
         idempotent: true,
-        description: "Take a note out of a space. The note itself is kept.",
+        description: "Take a note out of a Space. The note itself is kept, along with its other Spaces. Returns the note without its body.",
         schema: || object(json!({ "id": id_param(), "space": space_param() }), &["id", "space"]),
     },
     ToolDef {
@@ -317,7 +309,7 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Write,
         destructive: true,
         idempotent: true,
-        description: "Move a note to the Trash. The user can restore it; nothing is deleted for good.",
+        description: "Move a note to the Trash, the only way to remove one. The user can restore it, and so can restore_note; no tool deletes a note for good. Returns the note without its body.",
         schema: || object(json!({ "id": id_param() }), &["id"]),
     },
     ToolDef {
@@ -326,7 +318,7 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Write,
         destructive: false,
         idempotent: true,
-        description: "Bring a note back from the Trash.",
+        description: "Bring a note back from the Trash (find its id with search_notes or list_notes and status \"trash\"). Returns the note without its body.",
         schema: || object(json!({ "id": id_param() }), &["id"]),
     },
 ];
@@ -336,11 +328,11 @@ fn id_param() -> Value {
 }
 
 fn tag_param() -> Value {
-    json!({ "type": "string", "description": "Tag name, with or without #." })
+    json!({ "type": "string", "description": "Tag name, with or without #, as list_tags or a note's tags give it." })
 }
 
 fn space_param() -> Value {
-    json!({ "type": "string", "description": "Space name; case does not matter." })
+    json!({ "type": "string", "description": "Space name, as list_spaces or a note's spaces give it; case does not matter." })
 }
 
 fn date_param(description: &str) -> Value {
@@ -406,7 +398,7 @@ impl<'a> Tools<'a> {
     pub(crate) fn check(&self, needed: Access) -> Result<(), String> {
         if self.blocked() {
             return Err(
-                "This agent is blocked in InstantNotes. The user can unblock it in Settings > Agents."
+                "This agent is blocked in InstantNotes, so nothing was read or changed. The user can unblock it in Settings > Agents."
                     .into(),
             );
         }
@@ -470,7 +462,9 @@ impl<'a> Tools<'a> {
     pub(crate) fn call(&mut self, name: &str, args: Value) -> Value {
         self.traced = None;
         let outcome = match TOOLS.iter().find(|t| t.name == name) {
-            None => Err(format!("Unknown tool: {name}")),
+            None => Err(format!(
+                "Unknown tool: {name}. tools/list names every tool this server has."
+            )),
             // A refused call leaves no trace: off means off.
             Some(def) => self.check(def.level).and_then(|()| {
                 let kind = match (def.level, def.name) {
@@ -622,6 +616,7 @@ impl<'a> Tools<'a> {
                 results.push(json!({
                     "id": hit.note_id,
                     "title": hit.title,
+                    "kind": hit.content_kind,
                     "spaces": hit_spaces,
                     "updatedAt": hit.updated_at,
                 }));
@@ -637,6 +632,7 @@ impl<'a> Tools<'a> {
             results.push(json!({
                 "id": hit.note_id,
                 "title": hit.title,
+                "kind": hit.content_kind,
                 "spaces": hit_spaces,
                 "tags": tags.iter().map(|t| &t.name).collect::<Vec<_>>(),
                 "passages": found,
@@ -689,7 +685,9 @@ impl<'a> Tools<'a> {
 
     fn get_notes(&mut self, a: IdsArgs) -> ToolResult {
         if a.ids.is_empty() {
-            return Err("give at least one id".into());
+            return Err(
+                "ids is empty; give at least one note id from search_notes or list_notes".into(),
+            );
         }
         if a.ids.len() > MAX_READ {
             return Err(format!(
@@ -874,7 +872,7 @@ impl<'a> Tools<'a> {
 
     fn update_note(&mut self, a: UpdateArgs) -> ToolResult {
         if a.title.is_none() && a.body.is_none() {
-            return Err("give a title, a body, or both".into());
+            return Err("Nothing to change: give title, body, or both".into());
         }
         let current = self.store.get_note(&a.id, false).map_err(fail)?;
         if a.body.is_some() {
@@ -911,14 +909,14 @@ impl<'a> Tools<'a> {
             match current.body.matches(a.old_text.as_str()).count() {
                 0 => {
                     return Err(
-                        "NOT_FOUND: oldText does not appear in this note; get_note shows its current text"
+                        "NOT_FOUND: oldText does not appear in this note, so nothing changed. Read it with get_note and copy the exact passage"
                             .into(),
                     )
                 }
                 1 => {}
                 n => {
                     return Err(format!(
-                        "oldText appears {n} times; add surrounding text so it appears exactly once"
+                        "Nothing changed: oldText appears {n} times. Add surrounding text so it appears exactly once"
                     ))
                 }
             }
@@ -933,7 +931,7 @@ impl<'a> Tools<'a> {
                 Err(e) => return Err(fail(e)),
             }
         }
-        Err("CONFLICT: the note kept changing while editing; try again".into())
+        Err("CONFLICT: the note kept changing while editing, so nothing changed; call edit_note again".into())
     }
 
     fn append_to_note(&mut self, a: AppendArgs) -> ToolResult {
@@ -952,7 +950,7 @@ impl<'a> Tools<'a> {
                 Err(e) => return Err(fail(e)),
             }
         }
-        Err("CONFLICT: the note kept changing while appending; try again".into())
+        Err("CONFLICT: the note kept changing while appending, so nothing was added; call append_to_note again".into())
     }
 
     /// Rows go after the sheet's last row holding data; the store derives
@@ -962,14 +960,20 @@ impl<'a> Tools<'a> {
     fn append_sheet_rows(&mut self, a: SheetRowsArgs) -> ToolResult {
         for _ in 0..APPEND_ATTEMPTS {
             let current = self.store.get_note(&a.id, false).map_err(fail)?;
+            if current.content_kind == CONTENT_KIND_WHITEBOARD {
+                return Err(
+                    "this note is a whiteboard, not a sheet, so no rows were added: the user edits whiteboards in the app. Tell the user, or offer to put the rows in a document note"
+                        .into(),
+                );
+            }
             if current.content_kind != CONTENT_KIND_SHEET {
                 return Err(format!(
-                    "this note is a {}, not a sheet; append_to_note adds text to it",
+                    "this note is a {}, not a sheet, so no rows were added; append_to_note adds text to it",
                     current.content_kind
                 ));
             }
             let mut sheet = Sheet::parse(current.surface_data.as_deref().unwrap_or_default())
-                .map_err(|e| format!("this sheet's grid cannot be read: {e}"))?;
+                .map_err(|e| format!("this sheet's grid cannot be read, so no rows were added: {e}. Tell the user; the app can open and repair it"))?;
             let first = sheet.append_rows(a.rows.clone())?;
             let patch = UpdateNotePatch {
                 surface_data: Some(sheet.serialize()),
@@ -987,7 +991,7 @@ impl<'a> Tools<'a> {
                 Err(e) => return Err(fail(e)),
             }
         }
-        Err("CONFLICT: the sheet kept changing while appending; try again".into())
+        Err("CONFLICT: the sheet kept changing while appending, so no rows were added; call append_sheet_rows again".into())
     }
 
     pub(crate) fn resources(&mut self) -> Result<Vec<Value>, String> {
@@ -1031,7 +1035,7 @@ impl<'a> Tools<'a> {
         let id = uri
             .strip_prefix(NOTE_URI_PREFIX)
             .filter(|id| !id.is_empty())
-            .ok_or_else(|| format!("unknown resource: {uri}"))?;
+            .ok_or_else(|| format!("unknown resource: {uri}. Note resources are instantnotes://notes/<id>, with an id from resources/list, search_notes, or list_notes"))?;
         let trace = Trace::start(
             "resources/read",
             Kind::Read,
@@ -1103,7 +1107,8 @@ impl<'a> Tools<'a> {
     }
 
     fn tag_id(&self, raw: &str) -> Result<String, String> {
-        let name = normalize_tag_name(raw).ok_or("tag name must not be empty")?;
+        let name = normalize_tag_name(raw)
+            .ok_or("tag name is empty; list_tags gives the existing tags")?;
         self.store
             .find_tag(&name)
             .map_err(fail)?
@@ -1114,7 +1119,8 @@ impl<'a> Tools<'a> {
     }
 
     fn space_id(&self, raw: &str) -> Result<String, String> {
-        let name = normalize_workspace_name(raw).ok_or("space name must not be empty")?;
+        let name = normalize_workspace_name(raw)
+            .ok_or("space name is empty; list_spaces gives the existing Spaces")?;
         self.store
             .find_workspace(&name)
             .map_err(fail)?
@@ -1147,10 +1153,10 @@ fn summary(note: &Note) -> Value {
 fn refuse_derived_body(note: &Note) -> Result<(), String> {
     match note.content_kind.as_str() {
         CONTENT_KIND_WHITEBOARD => {
-            Err("this note is a whiteboard; its text can only be edited in the app".into())
+            Err("this note is a whiteboard, so its text was not changed: the user edits whiteboards in the app. Tell the user, or offer to put the text in a document note".into())
         }
         CONTENT_KIND_SHEET => Err(
-            "this note is a sheet; its body is its grid. Use append_sheet_rows to add rows; cells are edited in the app"
+            "this note is a sheet, so its body was not changed: the body is its grid. Use append_sheet_rows to add rows; the user edits cells in the app"
                 .into(),
         ),
         _ => Ok(()),
@@ -1301,7 +1307,8 @@ fn compact(value: &Value) -> String {
 }
 
 fn parse<T: DeserializeOwned>(args: Value) -> Result<T, String> {
-    serde_json::from_value(args).map_err(|e| format!("invalid arguments: {e}"))
+    serde_json::from_value(args)
+        .map_err(|e| format!("invalid arguments: {e}. tools/list gives this tool's inputSchema"))
 }
 
 #[derive(Deserialize)]
@@ -1415,4 +1422,81 @@ struct TagArgs {
 struct SpaceArgs {
     id: String,
     space: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn grouped(n: usize) -> String {
+        let digits = n.to_string();
+        let mut out = String::new();
+        for (i, c) in digits.chars().enumerate() {
+            if i > 0 && (digits.len() - i).is_multiple_of(3) {
+                out.push(',');
+            }
+            out.push(c);
+        }
+        out
+    }
+
+    fn tool(name: &str) -> &'static ToolDef {
+        TOOLS.iter().find(|t| t.name == name).unwrap()
+    }
+
+    fn default_of(name: &str, param: &str) -> Value {
+        (tool(name).schema)()["properties"][param]["default"].clone()
+    }
+
+    #[test]
+    fn quoted_numbers_match_the_constants() {
+        let says = |name: &str, text: String| {
+            assert!(
+                tool(name).description.contains(&text),
+                "{name} does not say {text:?}"
+            )
+        };
+        says("search_notes", format!("limit (default {SEARCH_LIMIT})"));
+        says("list_notes", format!("limit (default {DEFAULT_LIMIT})"));
+        says("suggest_space", format!("limit (default {DEFAULT_LIMIT})"));
+        says(
+            "get_note",
+            format!("maxChars (default {})", grouped(NOTE_CHARS)),
+        );
+        says(
+            "update_note",
+            format!("body cut at {} characters", grouped(NOTE_CHARS)),
+        );
+        says(
+            "get_notes",
+            format!("budget of {} characters", grouped(READ_BUDGET_CHARS)),
+        );
+        says(
+            "get_notes",
+            format!("never under {}", grouped(MIN_NOTE_CHARS)),
+        );
+        says("get_note", format!("cut at {HEADER_CELL_CHARS} characters"));
+        says(
+            "append_sheet_rows",
+            format!(
+                "a cell over {} characters",
+                grouped(instantnotes_core::sheet::MAX_CELL_CHARS)
+            ),
+        );
+        says(
+            "append_sheet_rows",
+            format!("rows past {}", grouped(instantnotes_core::sheet::MAX_ROWS)),
+        );
+        assert_eq!(MAX_PASSAGES, 3);
+        says("search_notes", "up to three passages".into());
+    }
+
+    #[test]
+    fn schema_defaults_are_the_constants() {
+        assert_eq!(default_of("search_notes", "limit"), json!(SEARCH_LIMIT));
+        assert_eq!(default_of("list_notes", "limit"), json!(DEFAULT_LIMIT));
+        assert_eq!(default_of("suggest_space", "limit"), json!(DEFAULT_LIMIT));
+        assert_eq!(default_of("get_note", "maxChars"), json!(NOTE_CHARS));
+        assert_eq!(default_of("get_notes", "maxChars"), json!(NOTE_CHARS));
+    }
 }

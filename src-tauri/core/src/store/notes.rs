@@ -454,7 +454,7 @@ impl Store {
         let sql = format!(
             "SELECT n.id, n.title, n.body, \
                     snippet(notes_fts, 1, '\u{1}', '\u{2}', '…', 16), \
-                    n.created_at, n.updated_at, n.is_archived \
+                    n.created_at, n.updated_at, n.is_archived, n.content_kind \
              {from} WHERE {filter} \
              ORDER BY lower(n.title) = lower(?) DESC, bm25(notes_fts), n.id LIMIT {} OFFSET {}",
             q.limit.clamp(1, 500),
@@ -473,6 +473,7 @@ impl Store {
                     created_at: row.get(4)?,
                     updated_at: row.get(5)?,
                     is_archived: row.get::<_, i64>(6)? != 0,
+                    content_kind: row.get(7)?,
                 })
             },
         )?;

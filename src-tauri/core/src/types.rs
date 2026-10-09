@@ -204,6 +204,7 @@ pub struct NoteMatch {
     pub created_at: String,
     pub updated_at: String,
     pub is_archived: bool,
+    pub content_kind: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]

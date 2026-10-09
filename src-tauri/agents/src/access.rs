@@ -36,15 +36,15 @@ impl Access {
         let granted = Access::of(store);
         if granted < needed {
             return Err(match granted {
-                Access::Off => "Agent access is off. The user can turn it on in InstantNotes, Settings > Agents.",
-                _ => "Agent access is read only. The user can allow writing in InstantNotes, Settings > Agents.",
+                Access::Off => "Agent access is off, so nothing was read or changed. The user can turn it on in InstantNotes, Settings > Agents.",
+                _ => "Agent access is read only, so nothing was changed. The user can allow writing in InstantNotes, Settings > Agents.",
             }
             .into());
         }
         // A newer app that migrated the file since this process opened it
         // owns the schema now; this build's writes could be wrong for it.
         if needed == Access::Write && !store.schema_is_current().map_err(fail)? {
-            return Err("InstantNotes was updated since this connection started. Restart the connection to keep writing.".into());
+            return Err("InstantNotes was updated since this connection started, so nothing was changed. Restart the connection to keep writing.".into());
         }
         Ok(())
     }

@@ -446,7 +446,7 @@ false`, since a tool only ever touches this library.
 An agent is meant to search, then read only what matters. `search_notes`
 takes `query` (at least one word; an empty one is refused), `match` (`all` or
 `any` of the words), `detail` (`passages`, or `titles` for `id`, `title`,
-`spaces`, `updatedAt` only), `space`, `tag`, `status` (`active`, `archived`,
+`kind`, `spaces`, `updatedAt` only), `space`, `tag`, `status` (`active`, `archived`,
 `pinned`, `trash`, `all`), `updatedAfter` and `updatedBefore` (a date or a UTC
 timestamp), `limit` (default 10, at most 200), and `offset`. A search with no
 match returns a `hint`: how many notes match any of the words, or what to
@@ -467,7 +467,9 @@ many match in all, `hasMore` whether to ask again, `nextOffset` from where, and
 `list_notes` with `status: "revisit"` is the Revisit view's filter. Reads never
 set `lastOpenedAt`. There is no permanent delete, no settings, no vault, and
 no whiteboard canvas at any access level; writing a whiteboard's text is
-refused. A sheet's body is refused too (it is derived from the grid):
+refused, and every refusal names the next step (a sheet: `append_sheet_rows`;
+a whiteboard: the user edits it in the app). Every search result carries
+`kind`, so an agent knows a sheet or whiteboard before it writes. A sheet's body is refused too (it is derived from the grid):
 `get_note` on a sheet returns the Markdown table and
 `sheet: { cols, rows, header }` (its width, how many rows hold data, and the
 first row), and `append_sheet_rows` is the one

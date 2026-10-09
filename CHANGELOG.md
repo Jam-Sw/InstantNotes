@@ -31,6 +31,7 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Agents: writes return the note without its body; `get_note` and `get_notes` cut bodies at `maxChars` (12,000, 60,000 shared per `get_notes`).
 - Agents: `search_notes` defaults to 10 results, refuses an empty query, and returns a `hint` on no match; every page echoes `limit`.
 - Agents: `create_note` and `add_to_space` return `createdSpace`; resource reads are traced; a sheet's view returns `sheet.header`.
+- Agents: `INSTRUCTIONS`, every tool description and refusal rewritten: a saved thought is a new note via `create_note` (not appended to an existing one), each refusal names the next step; `search_notes` results carry `kind`.
 - Graph: labels never overlap: placed by priority (open note, hovered, lit,
   hubs by degree, nearest) under or else over their node (`rbush`), above all nodes.
 

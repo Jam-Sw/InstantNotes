@@ -40,3 +40,30 @@ Built on `0.9.4-pre`, after `feat/mcp-file-notes` merged.
       `edit_note`, each changing exactly 18 characters. Answer task 6/6 both.
 - [ ] In the app: the activity feed lights the touched notes and words every
       tool (needs the window)
+
+## Prompt text pass
+
+Findings distilled from the meta-prompting corpus (distill-corpus run
+`wf_cd0c1c19-445`), applied by hand and gated on the eval.
+
+- [x] `INSTRUCTIONS`: labelled sections, positive rules, no emphasis words; a
+      saved thought is a new note (`list_spaces`, then `create_note`), added to
+      an existing note only when the user names it; per-tool procedure moved
+      into the descriptions
+- [x] Every description names the tool that supplies its ids and values, its
+      return shape, its defaults, and the next step after each refusal;
+      `edit_note` carries one worked example
+- [x] Refusals say what went wrong, that nothing changed, and the fix;
+      `fail` points a missing note id to `search_notes` and `list_notes`
+- [x] `search_notes` results carry `kind` (`NoteMatch.content_kind`), so a
+      sheet or whiteboard is known before a write
+- [x] Tests pin every number quoted in the text to its constant
+      (`quoted_numbers_match_the_constants`, `schema_defaults_are_the_constants`,
+      `the_revisit_age_in_the_text_is_the_store_rule`)
+- [x] A separate reviewer listed 20 mismatches between text and code; each
+      was checked against the code and fixed
+- [x] Eval, Haiku, 21 tasks (15 capture, 6 surface; c13 to c15, s05, s06 held
+      out), 1 run each: 19/21 before, 21/21 after. c07 had appended to an
+      existing note; after, 5/5 `list_spaces` then `create_note`. c14 (held
+      out) 5/5 after. Capture calls per run 3.1 before, 2.2 after. Sonnet not
+      run.

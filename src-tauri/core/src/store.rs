@@ -662,6 +662,8 @@ mod tags;
 mod vault;
 mod workspaces;
 
+pub use notes::REVISIT_AFTER_MS;
+
 #[cfg(test)]
 mod pragma_tests {
     use super::Store;
