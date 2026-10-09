@@ -195,6 +195,7 @@ a copy at export time regardless of storage mode; see
 carry no note data beyond what the user explicitly exports. `export_note_file`
 writes `.md`, `.txt`, `.excalidraw` (a whiteboard's canvas), or `.csv` (a
 sheet's grid, from `sheet_csv`).
+`set_window_theme` takes the `variant` (`light` or `dark`) and an optional `background` (a `#rrggbb` colour). On Linux and Windows it paints the library window and its web view in that colour, and keeps the pair in a small `window-paint` file in the app data folder so the next launch can paint the window before the page loads; macOS ignores `background`. The library window starts hidden and is shown at the top of setup, painted from that file when it exists.
 `get_shortcut_failure` returns why the global capture shortcut could not be
 registered at launch, or `null`: `{ label, wayland }`, where `wayland` is true
 when registration succeeded but the session cannot deliver the key (the

@@ -119,6 +119,7 @@ pub fn run() {
                 .path()
                 .app_data_dir()
                 .expect("cannot resolve app data directory");
+            show_painted_library(app.handle(), &dir);
             std::fs::create_dir_all(&dir)?;
             let db_path = std::env::var_os("INSTANTNOTES_DB_PATH")
                 .map(std::path::PathBuf::from)

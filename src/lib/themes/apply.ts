@@ -34,7 +34,6 @@ function tokensFor(theme: Theme, variant: Variant): TokenSet {
   return (v === "dark" ? theme.dark : theme.light) as TokenSet;
 }
 
-/** @internal */
 export function themeToVars(theme: Theme, variant: Variant): Record<string, string> {
   const tokens = tokensFor(theme, variant);
   const vars: Record<string, string> = {};

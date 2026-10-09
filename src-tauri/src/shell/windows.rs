@@ -1,4 +1,6 @@
 use crate::shell::capture::CaptureMetrics;
+#[cfg(not(target_os = "macos"))]
+use crate::shell::paint;
 use crate::*;
 
 #[tauri::command]
@@ -44,7 +46,7 @@ pub fn set_window_vibrancy(app: AppHandle, material: Option<String>) {
 }
 
 #[tauri::command]
-pub fn set_window_theme(app: AppHandle, variant: String) {
+pub fn set_window_theme(app: AppHandle, variant: String, background: Option<String>) {
     use tauri::Theme;
     let theme = match variant.as_str() {
         "light" => Theme::Light,
@@ -53,7 +55,34 @@ pub fn set_window_theme(app: AppHandle, variant: String) {
     };
     if let Some(win) = app.get_webview_window("library") {
         let _ = win.set_theme(Some(theme));
+        #[cfg(not(target_os = "macos"))]
+        if let Some(paint) = background
+            .as_deref()
+            .and_then(|hex| paint::WindowPaint::from_parts(&variant, hex))
+        {
+            let _ = win.set_background_color(Some(paint.color()));
+            if let Ok(dir) = app.path().app_data_dir() {
+                paint::remember(&dir, &paint);
+            }
+        }
+        #[cfg(target_os = "macos")]
+        let _ = background;
     }
+}
+
+pub(crate) fn show_painted_library(app: &AppHandle, dir: &std::path::Path) {
+    let Some(win) = app.get_webview_window("library") else {
+        return;
+    };
+    #[cfg(not(target_os = "macos"))]
+    if let Some(paint) = paint::read(dir) {
+        let _ = win.set_theme(Some(paint.theme()));
+        let _ = win.set_background_color(Some(paint.color()));
+    }
+    #[cfg(target_os = "macos")]
+    let _ = dir;
+    let _ = win.show();
+    let _ = win.set_focus();
 }
 
 #[tauri::command]

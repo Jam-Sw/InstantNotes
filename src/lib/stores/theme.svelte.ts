@@ -1,5 +1,6 @@
 import { getSetting, setSetting, setWindowVibrancy, setWindowTheme } from "$lib/api/client";
 import { applyTheme } from "$lib/themes/apply";
+import { bootSnapshot, rememberBoot, windowBackground } from "$lib/themes/boot";
 import { BUILTIN_THEMES, DEFAULT_THEME_ID } from "$lib/themes/builtin";
 import { validateTheme } from "$lib/themes/validate";
 import { BODY_FONTS, type BodyFontId } from "$lib/themes/fonts";
@@ -23,6 +24,7 @@ class ThemeStore {
   systemDark = $state(true);
 
   #initialized = false;
+  #loaded = false;
 
   get allThemes(): Theme[] {
     return [...BUILTIN_THEMES, ...this.customThemes];
@@ -47,11 +49,11 @@ class ThemeStore {
         if (this.mode === "auto") this.#apply();
       });
     }
-    await this.#load();
+    this.#loaded = await this.#load();
     this.#apply();
   }
 
-  async #load(): Promise<void> {
+  async #load(): Promise<boolean> {
     try {
       const [active, mode, custom, bodyFont] = await Promise.all([
         getSetting<string>(KEY_ACTIVE),
@@ -70,16 +72,23 @@ class ThemeStore {
       if (bodyFont && BODY_FONTS.some((f) => f.id === bodyFont)) {
         this.bodyFontId = bodyFont as BodyFontId;
       }
+      return true;
     } catch {
+      return false;
     }
   }
 
   #apply(): void {
     applyTheme(this.activeTheme, this.resolvedVariant);
+    let bodyFont: string | null = null;
     if (this.bodyFontId) {
       const font = BODY_FONTS.find((f) => f.id === this.bodyFontId);
-      if (font) document.documentElement.style.setProperty("--font-body", font.value);
+      if (font) {
+        bodyFont = font.value;
+        document.documentElement.style.setProperty("--font-body", font.value);
+      }
     }
+    if (this.#loaded) rememberBoot(bootSnapshot(this.activeTheme, this.mode, bodyFont));
     void this.#syncVibrancy();
     void this.#syncWindowTheme();
   }
@@ -105,7 +114,10 @@ class ThemeStore {
   async #syncWindowTheme(): Promise<void> {
     if (location.pathname.startsWith("/capture")) return;
     try {
-      await setWindowTheme(this.resolvedVariant);
+      await setWindowTheme(
+        this.resolvedVariant,
+        windowBackground(this.activeTheme, this.resolvedVariant),
+      );
     } catch {
     }
   }

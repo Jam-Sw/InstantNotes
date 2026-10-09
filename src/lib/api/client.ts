@@ -157,8 +157,8 @@ export const installUpdate = (
 };
 export const setWindowVibrancy = (material: string | null) =>
   call<void>("set_window_vibrancy", { material });
-export const setWindowTheme = (variant: "light" | "dark") =>
-  call<void>("set_window_theme", { variant });
+export const setWindowTheme = (variant: "light" | "dark", background: string | null = null) =>
+  call<void>("set_window_theme", { variant, background });
 
 export const popOutNote = (id: string) => call<void>("pop_out_note", { id });
 export const popInNote = (id: string) => call<void>("pop_in_note", { id });

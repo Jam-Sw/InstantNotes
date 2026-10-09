@@ -2,6 +2,8 @@ pub(crate) mod agents;
 pub(crate) mod capture;
 pub(crate) mod files;
 pub(crate) mod mirror;
+#[cfg(not(target_os = "macos"))]
+pub(crate) mod paint;
 pub(crate) mod quit;
 pub(crate) mod stickies;
 pub(crate) mod update;
