@@ -231,6 +231,17 @@ describe("construct parity", () => {
     expect(listFolds.map((h) => doc.slice(h.from, h.to))).toEqual(["- ", "12. "]);
   });
 
+  it("marks every list item line for a hanging indent", () => {
+    const doc = "- bullet\n\n12. numbered";
+    const starts: number[] = [];
+    tableOf(stateOf(doc))
+      .decorations([{ from: doc.length, to: doc.length }])
+      .between(0, doc.length, (from, _to, deco) => {
+        if (deco.spec.class === "cm-wysiwyg-list-item") starts.push(from);
+      });
+    expect(starts).toEqual([0, doc.indexOf("12.")]);
+  });
+
   it("keeps a checked task struck in both modes and its marker a widget in preview", () => {
     const doc = "- [x] shipped";
     const state = stateOf(doc);

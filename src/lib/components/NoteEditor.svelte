@@ -135,9 +135,10 @@
   </div>
 {:else if library.selected}
   <!-- The header holds what is done to the note, in two groups kept apart:
-       what goes into the text, then what becomes of the note. The note's own
-       name and where it is filed belong to the page below. -->
+       what goes into the text, then what becomes of the note. Where it is
+       filed belongs to the page below. -->
   <header class="pane-header editor-header" data-tauri-drag-region>
+    <span class="header-title" data-tauri-drag-region>{library.selected.title || "Untitled"}</span>
     {#if !isVirtual}
       {#if library.selected.isDeleted}
         <div class="icon-group">
@@ -431,6 +432,16 @@
     justify-content: flex-end;
     gap: 0;
   }
+  .header-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-family: var(--font-ui);
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
   /* The note: its name, where it is filed, then its text, all in one column
      of reading width. The column is measured in the editor's own type, so
      the heading lines up with the text at every zoom. */
@@ -448,6 +459,7 @@
     max-width: calc(var(--measure) + 32px * var(--density));
     margin: 0 auto;
     padding: 8px calc(16px * var(--density)) 0;
+    container-type: inline-size;
   }
   /* A whiteboard or a sheet runs edge to edge, so its heading does too. */
   .doc.wide .doc-head {
@@ -469,6 +481,11 @@
     resize: none;
     overflow: hidden;
     overflow-wrap: anywhere;
+  }
+  @container (max-width: 440px) {
+    .title-input {
+      font-size: 1.4em;
+    }
   }
   .action {
     padding: 4px 10px;

@@ -86,7 +86,7 @@ export function buildCommands(): Command[] {
     },
     {
       id: "view.sidebar",
-      title: sidebar.collapsed ? "Show sidebar" : "Hide sidebar",
+      title: sidebar.hidden ? "Show sidebar" : "Hide sidebar",
       group: "View",
       shortcut: `${modKey}\\`,
       run: () => sidebar.toggle(),

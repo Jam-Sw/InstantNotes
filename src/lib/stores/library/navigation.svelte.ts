@@ -75,7 +75,7 @@ export class NavigationModel {
     if (this.graphMode) return null;
     if (this.revisitMode) return "revisit";
     if (this.activeTagId) return `tag:${this.activeTagId}`;
-    return `space:${this.activeWorkspaceId ?? "all"}:${this.statusFilter}`;
+    return `space:${this.activeWorkspaceId ?? "all"}:${this.statusFilter}:${this.scopedTagId ?? ""}`;
   }
 
   filter(): NoteFilter {

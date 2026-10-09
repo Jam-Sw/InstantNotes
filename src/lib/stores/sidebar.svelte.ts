@@ -14,8 +14,14 @@ const SIDEBAR_DEFAULT = 190;
 class SidebarState {
   width = $state(SIDEBAR_DEFAULT);
   collapsed = $state(false);
+  narrow = $state(false);
+  narrowOpen = $state(false);
 
   #loaded = false;
+
+  get hidden(): boolean {
+    return this.narrow ? !this.narrowOpen : this.collapsed;
+  }
 
   async init(): Promise<void> {
     if (this.#loaded) return;
@@ -51,7 +57,16 @@ class SidebarState {
     this.commitWidth();
   }
 
+  setNarrow(narrow: boolean): void {
+    this.narrow = narrow;
+    this.narrowOpen = false;
+  }
+
   toggle(): void {
+    if (this.narrow) {
+      this.narrowOpen = !this.narrowOpen;
+      return;
+    }
     this.collapsed = !this.collapsed;
     void setSetting(KEY_COLLAPSED, this.collapsed);
   }

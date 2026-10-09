@@ -121,6 +121,20 @@ describe("GraphView", () => {
     expect(getByRole("button", { name: "Note: Beta" }).querySelector(".agent-ring")).toBeNull();
   });
 
+  it("shortens a long title on the canvas and keeps the whole name for screen readers", async () => {
+    const title = "A".repeat(60);
+    vi.mocked(libraryGraph).mockResolvedValue({
+      ...GRAPH,
+      notes: [...GRAPH.notes, note("n5", title)],
+      links: [...GRAPH.links, { noteId: "n5", targetId: "t1", kind: "tag", source: "inline" }],
+    });
+    lib.selected = { id: "n5" };
+    const { findByRole, container } = render(GraphView);
+    await findByRole("button", { name: `Note: ${title}` });
+    const drawn = [...container.querySelectorAll("text")].map((t) => t.textContent);
+    expect(drawn).toContain(`${"A".repeat(27)}…`);
+  });
+
   it("says how many notes it leaves out, and when suggestions will start", async () => {
     const { findByText } = render(GraphView);
     expect(

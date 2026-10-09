@@ -231,6 +231,10 @@ textarea:focus-visible,
 .cm-editor .cm-line {
   padding: 0 calc(16px * var(--density));
 }
+.cm-editor .cm-line.cm-wysiwyg-list-item {
+  padding-left: calc(16px * var(--density) + 1.35em);
+  text-indent: -1.35em;
+}
 .cm-tag {
   color: var(--tag);
   font-weight: 500;

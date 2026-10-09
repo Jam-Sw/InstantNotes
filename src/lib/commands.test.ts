@@ -20,7 +20,7 @@ const stores = vi.hoisted(() => ({
     flushPendingEdits: vi.fn(),
     toggleSticky: vi.fn(),
   },
-  sidebar: { collapsed: false, toggle: vi.fn() },
+  sidebar: { collapsed: false, hidden: false, toggle: vi.fn() },
   theme: {
     allThemes: [
       { id: "manuscript", name: "Manuscript" },
@@ -98,6 +98,7 @@ beforeEach(() => {
   stores.library.selectedTags = [];
   stores.library.isSticky.mockImplementation(() => false);
   stores.sidebar.collapsed = false;
+  stores.sidebar.hidden = false;
   stores.theme.activeId = "manuscript";
   stores.theme.bodyFontId = null;
   stores.theme.resolvedVariant = "dark";
@@ -152,7 +153,7 @@ describe("buildCommands with no note open", () => {
 
   it("names the sidebar command for what it will do", () => {
     expect(find(buildCommands(), "view.sidebar").title).toBe("Hide sidebar");
-    stores.sidebar.collapsed = true;
+    stores.sidebar.hidden = true;
     expect(find(buildCommands(), "view.sidebar").title).toBe("Show sidebar");
   });
 

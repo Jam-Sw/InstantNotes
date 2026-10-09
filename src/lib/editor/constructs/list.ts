@@ -43,6 +43,7 @@ class NumberWidget extends WidgetType {
 }
 
 const bulletDeco = Decoration.replace({ widget: new BulletWidget() });
+const listLine = Decoration.line({ class: "cm-wysiwyg-list-item" });
 
 const LIST_RE = /^(\s*)([-*+]|\d+\.)\s+/;
 
@@ -54,6 +55,7 @@ export class ListSpec implements ConstructSpec {
     const line = cx.state.doc.lineAt(node.from);
     const m = line.text.match(LIST_RE);
     if (!m) return false;
+    emit.line(line.from, listLine);
     // The marker range covers marker char(s) plus trailing space, after any
     // indent.
     const from = line.from + m[1].length;

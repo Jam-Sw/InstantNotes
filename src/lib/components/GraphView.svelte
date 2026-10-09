@@ -28,7 +28,7 @@
     type GraphNode,
   } from "$lib/graph/layout";
   import { FRONT, centroid, projector, turn, type Orbit } from "$lib/graph/projection";
-  import { nodeLabel, placeLabels } from "$lib/graph/labels";
+  import { clampLabel, nodeLabel, placeLabels } from "$lib/graph/labels";
 
   // Layout work per animation frame, so a large library settles over a few
   // frames instead of freezing the view while it does.
@@ -127,9 +127,16 @@
         n.id === currentId ? 4 : n.id === hovered ? 3 : lit?.has(n.id) ? 2 : 0;
       const hub = n.kind === "note" ? 0 : 1e4 + n.degree * 10;
       const r = nodeRadius(n) * p.scale;
-      candidates.push(nodeLabel(n.id, n.label, p.x, p.y, r, focus * 1e6 + hub - p.depth));
+      candidates.push({
+        ...nodeLabel(n.id, n.label, p.x, p.y, r, focus * 1e6 + hub - p.depth),
+        pinned: focus >= 3,
+      });
     }
-    return placeLabels(candidates);
+    const discs = (graph?.nodes ?? []).map((n) => {
+      const p = projected.get(n.id)!;
+      return { x: p.x, y: p.y, r: nodeRadius(n) * p.scale };
+    });
+    return placeLabels(candidates, discs);
   });
 
   function showLabel(n: GraphNode): boolean {
@@ -449,7 +456,7 @@
                   class:hub={n.kind !== "note"}
                   class:dim={lit && !lit.has(n.id)}
                   x={at.x}
-                  y={at.y}>{n.label}</text
+                  y={at.y}>{clampLabel(n.label)}</text
                 >
               {/if}
             {/each}
@@ -553,7 +560,7 @@
     font-weight: 700;
   }
   .graph-counts {
-    color: var(--text-tertiary);
+    color: var(--text-secondary);
     font-size: 12px;
     font-family: var(--font-meta);
   }
@@ -706,7 +713,8 @@
     width: 280px;
     min-height: 0;
     overflow-y: auto;
-    border-left: 1px solid var(--border);
+    background: var(--surface-list);
+    border-left: 1px solid var(--divider);
     padding: 10px 12px 12px;
     font-size: 12.5px;
   }
@@ -720,7 +728,7 @@
     color: var(--text);
   }
   .sug-count {
-    color: var(--text-tertiary);
+    color: var(--text-secondary);
     font-family: var(--font-meta);
     font-weight: 500;
   }
@@ -773,7 +781,7 @@
     font-weight: 600;
   }
   .sug-pct {
-    color: var(--text-tertiary);
+    color: var(--text-secondary);
     font-family: var(--font-meta);
     font-size: 11px;
   }
@@ -823,7 +831,7 @@
     margin: 0;
     padding: 6px 16px;
     border-top: 1px solid var(--border);
-    color: var(--text-tertiary);
+    color: var(--text-secondary);
     font-size: 11px;
     font-family: var(--font-meta);
   }

@@ -9,6 +9,9 @@ import { EditorView } from "@codemirror/view";
 export const kernelTheme = EditorView.baseTheme({
   // Lists
   ".cm-wysiwyg-bullet, .cm-wysiwyg-number": {
+    display: "inline-block",
+    minWidth: "1em",
+    textIndent: "0",
     color: "var(--text)",
     marginRight: "0.35em",
     userSelect: "none",

@@ -372,10 +372,11 @@ class LibraryStore {
   setStatusFilter(filter: StatusFilter): void {
     // Status (All / Archived / Trash) composes with the active space or tag,
     // so it clears revisit and search but keeps the space/tag scope.
+    this.#rememberOpen();
     this.#nav.setStatus(filter);
     this.searchText = "";
     this.clearMultiSelect();
-    void this.refresh();
+    void this.#enterView();
   }
 
   /**
@@ -392,16 +393,16 @@ class LibraryStore {
   }
 
   #openByView = new Map<string, string>();
+  #carried: string | null = null;
 
   #rememberOpen(): void {
+    const id = this.selected?.id;
+    const open = id && !isSyntheticNoteId(id) && this.multiSelected.size <= 1 ? id : null;
+    this.#carried = open;
     const key = this.#nav.viewKey();
     if (!key) return;
-    const id = this.selected?.id;
-    if (id && !isSyntheticNoteId(id) && this.multiSelected.size <= 1) {
-      this.#openByView.set(key, id);
-    } else {
-      this.#openByView.delete(key);
-    }
+    if (open) this.#openByView.set(key, open);
+    else this.#openByView.delete(key);
   }
 
   async #enterView(): Promise<void> {
@@ -409,8 +410,10 @@ class LibraryStore {
     await this.refresh();
     if (!key || key !== this.#nav.viewKey()) return;
     if (this.selected || this.multiSelected.size > 0) return;
-    const id = this.#openByView.get(key);
-    if (id && this.notes.some((n) => n.id === id)) await this.select(id);
+    const id = [this.#carried, this.#openByView.get(key)].find(
+      (c) => c && this.notes.some((n) => n.id === c),
+    );
+    if (id) await this.select(id);
   }
 
   selectGraph(): void {
@@ -462,9 +465,10 @@ class LibraryStore {
 
   /** Toggle a chip: filter the active workspace's list by one of its tags. */
   toggleScopedTag(tagId: string): void {
+    this.#rememberOpen();
     if (!this.#nav.toggleScopedTag(tagId)) return;
     this.clearMultiSelect();
-    void this.refresh();
+    void this.#enterView();
   }
 
   /**

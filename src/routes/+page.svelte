@@ -156,7 +156,12 @@
     window.addEventListener("blur", flush);
     window.addEventListener("keydown", onKeydown);
     window.addEventListener("keydown", onBoardPaletteKey, true);
+    const narrow = window.matchMedia("(max-width: 960px)");
+    const onNarrow = () => sidebar.setNarrow(narrow.matches);
+    onNarrow();
+    narrow.addEventListener("change", onNarrow);
     return () => {
+      narrow.removeEventListener("change", onNarrow);
       updater.stop();
       unlistenCheck?.();
       unlistenSettings?.();
@@ -388,11 +393,11 @@
 {:else}
   <div
     class="layout"
-    style:grid-template-columns={sidebar.collapsed
+    style:grid-template-columns={sidebar.hidden
       ? "280px 1fr"
       : `${sidebar.width}px 280px 1fr`}
   >
-    {#if !sidebar.collapsed}
+    {#if !sidebar.hidden}
       <Sidebar />
       <!-- Sits on the sidebar/list border; drag resizes, double-click resets,
            arrows nudge. Collapse/expand lives on ⌘\ and the command palette.

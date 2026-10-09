@@ -1283,6 +1283,60 @@ describe("each view remembers its open note", () => {
     expect(mockGetNote).toHaveBeenLastCalledWith("x", true);
   });
 
+  it("carries the open note into a Space that lists it", async () => {
+    const library = await load();
+    mockListNotes.mockImplementation(async (f) =>
+      f?.workspaceId === "ws1" ? [mkNote("b")] : [mkNote("a"), mkNote("b")],
+    );
+    library.selectWorkspace(null);
+    await vi.advanceTimersByTimeAsync(0);
+    await selectNote(library, "b");
+
+    mockGetNote.mockResolvedValueOnce(mkNote("b"));
+    library.selectWorkspace("ws1");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.selected?.id).toBe("b");
+  });
+
+  it("returns to the open note after a status pill round trip", async () => {
+    const library = await load();
+    mockListNotes.mockImplementation(async (f) =>
+      f?.isArchived || f?.isDeleted ? [] : [mkNote("a")],
+    );
+    library.selectWorkspace(null);
+    await vi.advanceTimersByTimeAsync(0);
+    await selectNote(library, "a");
+
+    library.setStatusFilter("archived");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.selected).toBeNull();
+
+    mockGetNote.mockResolvedValueOnce(mkNote("a"));
+    library.setStatusFilter("active");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.selected?.id).toBe("a");
+  });
+
+  it("returns to the open note when its chip is toggled off", async () => {
+    const library = await load();
+    mockListWorkspaceTags.mockResolvedValue([mkTagWithCount("t1", "one")]);
+    mockListNotes.mockImplementation(async (f) =>
+      f?.tagIds ? [] : [mkNote("a")],
+    );
+    library.selectWorkspace("ws1");
+    await vi.advanceTimersByTimeAsync(0);
+    await selectNote(library, "a");
+
+    library.toggleScopedTag("t1");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.selected).toBeNull();
+
+    mockGetNote.mockResolvedValueOnce(mkNote("a"));
+    library.toggleScopedTag("t1");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.selected?.id).toBe("a");
+  });
+
   it("writes a pending edit before leaving the view", async () => {
     const library = await load();
     mockListNotes.mockResolvedValue([mkNote("a")]);
