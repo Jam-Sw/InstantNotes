@@ -26,6 +26,32 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Graph: 3D layout (`d3-force-3d`, held to a slab by `forceZ`, Barnes-Hut
   `theta` 1.2); right-drag, Shift+drag or arrow keys turn it about the framed
   nodes, drawn in perspective back to front. Pan, zoom and lens unchanged.
+- Agents: Settings > Agents lists each kind of agent (Claude Code, Codex and so
+  on) with two controls. Tags are put on every note it creates, separated by
+  commas. Block refuses everything it asks for, leaves no trace in its history,
+  and can be undone from the same row or from the agent's own page.
+- Agents: an agent's page shows a punch card of when it clocked in and clocked
+  out. An agent that reconnects under the same session stays one conversation
+  with every clock-in listed, instead of splitting into several. Each activity
+  entry has an "Open note" button, and a connected agent has "End session",
+  which asks first and then disconnects it.
+- Agents: a note an agent last changed carries a small mark in the editor
+  ("Last changed by Claude Code"), and in the graph it gets a ring and is read
+  out as written by an agent.
+- Notes: the open note can suggest a tag from its own words and tags. One tap
+  adds it; hovering shows how sure it is and why. Settings > Editor turns the
+  suggestions off and sets how sure they must be (Eager, Balanced, Careful).
+- Notes: drag a link from a browser onto a note and it lands as a Markdown link
+  carrying the page's title.
+- Capture: under the box, the notes you had open recently. Tab cycles through
+  them and Enter adds the capture to that note instead of making a new one.
+- Capture (Linux, Wayland): the welcome screen now says the built-in capture
+  shortcut only reaches InstantNotes while an X11 app is focused, and points to
+  binding a key to `instantnotes capture` in your desktop's keyboard settings.
+- Settings: the search box lists every matching setting across all pages, with
+  the page it lives on. Click one to go there.
+- Sidebar: with many Spaces, it shows the six with the most notes plus the open
+  one, and "N more" opens the rest.
 
 ### Changed
 - Agents: writes return the note without its body; `get_note` and `get_notes` cut bodies at `maxChars` (12,000, 60,000 shared per `get_notes`).
@@ -39,6 +65,16 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Updater: the installed-update note offers "Restart now" (`restart_app`: quit
   handshake, then `request_restart`); closing the window only hid to the tray,
   so the old version kept running.
+- Layout: a window narrower than 960px hides the sidebar, and the sidebar toggle
+  brings it back over the list.
+- Editor: a long list item that wraps now hangs under its own text, not under
+  its bullet. In a narrow editor the title shrinks instead of squashing, and
+  the open note's title shows in the top bar.
+- Spaces and filters: switching Space or filter keeps the note you had open
+  whenever that note is also in the new view.
+- Graph: long labels are cut at 28 characters with an ellipsis, labels keep off
+  other nodes unless the note is open, hovered or lit, the side panel has a
+  solid background, and its small grey text is darker.
 
 ## [0.9.3] - 2026-10-02
 
