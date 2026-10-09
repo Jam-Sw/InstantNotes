@@ -1,6 +1,3 @@
-// The theme store: what it reads back from settings (and what it refuses),
-// how auto resolves against the system appearance, and custom themes.
-
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getSetting, setSetting, setWindowTheme, setWindowVibrancy } from "$lib/api/client";
 import { manuscript } from "$lib/themes/builtin/manuscript";
@@ -21,8 +18,6 @@ const mockSetWindowVibrancy = vi.mocked(setWindowVibrancy);
 
 const custom: Theme = { ...manuscript, id: "custom-1", name: "Custom One" };
 
-// The OS appearance jsdom does not model: what matchMedia answers, and the
-// listener the store hangs on it so a change can be driven by hand.
 let systemDark = true;
 let onSystemChange: ((e: { matches: boolean }) => void) | null = null;
 
@@ -30,7 +25,6 @@ function settings(values: Record<string, unknown>) {
   mockGetSetting.mockImplementation(async (key: string) => values[key] ?? null);
 }
 
-/** Fresh module graph so the singleton store starts clean. */
 async function load() {
   const mod = await import("./theme.svelte");
   return mod.theme;

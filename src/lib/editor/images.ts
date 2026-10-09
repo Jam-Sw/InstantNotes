@@ -1,21 +1,5 @@
-// Attachment storage plumbing and image capture (paste/drop).
-//
-// Rendering lives in constructs/image.ts; this module owns the pure path
-// resolution (unit-tested) and the capture flow: pasting or dropping an
-// image file saves it as an attachment (bytes go to Rust, which owns the
-// attachments directory) and inserts the relative markdown reference at the
-// caret/drop point.
-
 import { EditorView } from "@codemirror/view";
 import { StateEffect, StateField, type Extension } from "@codemirror/state";
-
-// ---------------------------------------------------------------------------
-// Attachments base directory
-//
-// The absolute directory arrives async from Rust after the view exists, so it
-// lives in a state field seeded by an effect. Until it lands, attachment
-// images simply stay as markdown text.
-// ---------------------------------------------------------------------------
 
 export const setAttachmentsBase = StateEffect.define<string>();
 
@@ -29,18 +13,9 @@ export const attachmentsBaseField = StateField.define<string | null>({
   },
 });
 
-// ---------------------------------------------------------------------------
-// Pure helpers (unit-tested without a view)
-// ---------------------------------------------------------------------------
-
 const ATTACHMENT_PREFIX = "attachments/";
 
-/**
- * Resolve a markdown image URL to something the webview can load, or null
- * when it can't be rendered. Only relative attachment paths resolve; the
- * `convert` parameter is Tauri's convertFileSrc, injected so this stays pure.
- * @internal
- */
+/** @internal */
 export function attachmentSrc(
   url: string,
   base: string | null,
@@ -49,20 +24,13 @@ export function attachmentSrc(
   const u = url.trim();
   if (!u.startsWith(ATTACHMENT_PREFIX)) return null;
   const name = u.slice(ATTACHMENT_PREFIX.length);
-  // A traversal like attachments/../notes.db must never reach the resolver.
   if (!name || name.includes("/") || name.includes("\\") || name.includes("..")) {
     return null;
   }
   return base ? convert(`${base}/${name}`) : null;
 }
 
-/**
- * A local filesystem path this reference points at, or null when it is not a
- * local file (stored attachment, remote URL, or data URL). Used for the "link
- * the original file" image mode: an absolute POSIX path, a `file://` URL, or a
- * Windows drive path all resolve; everything else does not.
- * @internal
- */
+/** @internal */
 export function localFilePath(url: string): string | null {
   const u = url.trim();
   if (u.startsWith(ATTACHMENT_PREFIX)) return null;
@@ -79,12 +47,6 @@ export function localFilePath(url: string): string | null {
   return null;
 }
 
-/**
- * Resolve any renderable image reference to a webview-loadable src, or null
- * when it can't render inline. Handles both stored attachments (relative,
- * needs the base dir) and linked local files (absolute, rendered through the
- * asset protocol once the path has been allowed into the asset scope).
- */
 export function imageSrc(
   url: string,
   base: string | null,
@@ -96,8 +58,6 @@ export function imageSrc(
   return local ? convert(local) : null;
 }
 
-/** Absolute local paths of every linked (non-attachment) image in a body, so
- *  the caller can allow them into the asset scope before they render. */
 export function linkedImagePaths(body: string): string[] {
   const out = new Set<string>();
   const re = /!\[[^\]]*\]\(([^)\s]+)\)/g;
@@ -109,10 +69,7 @@ export function linkedImagePaths(body: string): string[] {
   return [...out];
 }
 
-/**
- * File extension for a pasteable image MIME type, or null to skip the file.
- * @internal
- */
+/** @internal */
 export function extForMime(mime: string): string | null {
   switch (mime) {
     case "image/png":
@@ -128,7 +85,6 @@ export function extForMime(mime: string): string | null {
   }
 }
 
-/** The markdown inserted for a stored attachment. */
 export function attachmentMarkdown(name: string): string {
   return `![](${ATTACHMENT_PREFIX}${name})`;
 }
@@ -138,12 +94,7 @@ function imageFiles(data: DataTransfer | null): File[] {
   return [...data.files].filter((f) => extForMime(f.type) !== null);
 }
 
-// ---------------------------------------------------------------------------
-// Paste / drop capture
-// ---------------------------------------------------------------------------
-
 export interface ImageCaptureOpts {
-  /** Persist one image; resolves to the stored filename. */
   save: (bytes: Uint8Array, ext: string) => Promise<string>;
   onError?: (message: string) => void;
 }
@@ -158,8 +109,6 @@ export function imageCapture(opts: ImageCaptureOpts): Extension {
         const bytes = new Uint8Array(await file.arrayBuffer());
         const name = await opts.save(bytes, ext);
         const insert = attachmentMarkdown(name);
-        // The document may have changed while the save was in flight; clamp
-        // rather than dispatch out of range.
         const clamped = Math.min(pos, view.state.doc.length);
         view.dispatch({
           changes: { from: clamped, insert },

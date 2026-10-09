@@ -1,17 +1,8 @@
-// The one test that crosses the Rust/TypeScript boundary. Types cannot reach
-// across IPC, so every fact both sides must agree on is asserted here against
-// the Rust source itself: the error codes, the event names, and the rule that
-// neither is ever written as a loose literal again.
-//
-// It reads source files rather than a generated artifact so it needs no build
-// step and cannot pass against a stale one.
-
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { ERROR_CODES } from "./error-codes";
 import { EVENTS } from "./events";
 
-// vitest runs from the project root (jsdom leaves import.meta.url a http URL).
 const root = `${process.cwd()}/`;
 const read = (path: string) => readFileSync(root + path, "utf8");
 
@@ -24,7 +15,6 @@ function sourceFiles(dir: string, exts: string[]): string[] {
 }
 
 describe("error codes", () => {
-  // The core's AppError::code() is the authority for the strings.
   const core = read("src-tauri/core/src/error.rs");
   const codeArms = core
     .slice(core.indexOf("pub fn code("), core.indexOf("pub fn is_corruption("))
@@ -49,8 +39,6 @@ describe("error codes", () => {
   });
 
   it("is the only way a command error names a code", () => {
-    // `code:` as a literal is how "VALIDATION" (never a real code) reached
-    // eight call sites and broke the friendly copy for every validation error.
     const literal = new RegExp('code:\\s*"');
     for (const file of sourceFiles("src-tauri/src", [".rs"])) {
       expect(literal.test(read(file)), file).toBe(false);

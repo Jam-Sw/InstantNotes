@@ -1,5 +1,3 @@
-//! Tag commands.
-
 use crate::*;
 
 #[tauri::command(async)]

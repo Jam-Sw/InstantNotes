@@ -1,39 +1,11 @@
-//! Which session of which client an agent connection belongs to.
-//!
-//! An MCP server is started by its client as a child process, and none of
-//! Claude Code, Codex or Hermes names its session in the handshake, so each
-//! has an adapter here behind one question, "which session is this?":
-//!
-//! - Claude Code puts its session id and project folder in the server's
-//!   environment and keeps `~/.claude/sessions/<pid>.json` for each running
-//!   instance, with the session's name (what `/rename` sets). Exact.
-//! - Codex gives a server nothing. Its sessions are on disk: a rollout file
-//!   per thread under `~/.codex/sessions`, whose first line says where it
-//!   runs and when it began, and `session_index.jsonl` with thread names.
-//!   The thread is the one this Codex process began. Inferred.
-//! - Hermes gives a server nothing, and calls itself `mcp`. Its sessions are
-//!   rows in `~/.hermes/state.db`, with a title. The session is the one this
-//!   Hermes process began. Inferred.
-//!
-//! A client, or a wrapper around one, that wants to say outright can set
-//! `INSTANTNOTES_SESSION_ID` and `INSTANTNOTES_SESSION_NAME` in the server's
-//! environment; that wins over every adapter.
-//!
-//! These files belong to the clients, not to us. Every read is best effort:
-//! a missing file or an unfamiliar shape is "unknown", never an error, and
-//! nothing here ever writes to them.
-
 use crate::store::activity::ClientSession;
 #[cfg(unix)]
 use crate::store::now_ms;
 use std::path::{Path, PathBuf};
 
-/// How a session was identified: told outright, or matched from the outside.
 pub const EXACT: &str = "exact";
 pub const INFERRED: &str = "inferred";
 
-/// How far before a client process's own start one of its sessions may
-/// claim to have begun: clocks and the order of startup work are not exact.
 const START_SLACK_MS: i64 = 5_000;
 const NAME_CHARS: usize = 80;
 
@@ -45,7 +17,6 @@ pub enum Client {
 }
 
 impl Client {
-    /// The name the trace files this client's calls under.
     pub fn as_str(self) -> &'static str {
         match self {
             Client::ClaudeCode => "claude-code",
@@ -54,7 +25,6 @@ impl Client {
         }
     }
 
-    /// From the name a client gives in the handshake (or the one stored).
     pub fn from_name(name: &str) -> Option<Client> {
         let name = name.to_ascii_lowercase();
         if name.starts_with("claude-code") {
@@ -68,8 +38,6 @@ impl Client {
         }
     }
 
-    /// From the command line of the process that started the server, for a
-    /// client whose handshake name says nothing (Hermes sends `mcp`).
     pub fn from_command(command: &str) -> Option<Client> {
         let command = command.to_ascii_lowercase();
         let program = command.split_whitespace().next().unwrap_or_default();
@@ -86,18 +54,14 @@ impl Client {
     }
 }
 
-/// The process that started this server: the client.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClientProcess {
     pub pid: i64,
     pub command: String,
     pub cwd: Option<String>,
-    /// Epoch milliseconds.
     pub started_at: Option<i64>,
 }
 
-/// This process's parent, as the operating system describes it. Unix only;
-/// elsewhere there is no cheap, dependency-free way to ask.
 pub fn parent_process() -> Option<ClientProcess> {
     #[cfg(unix)]
     {
@@ -123,7 +87,6 @@ fn describe_process(pid: i64) -> Option<ClientProcess> {
     let started_at = run("ps", &["-o", "etime=", "-p", &pid_arg])
         .and_then(|e| elapsed_ms(&e))
         .map(|elapsed| now_ms() - elapsed);
-    // Linux says where a process runs in /proc; macOS needs lsof.
     let cwd = std::fs::read_link(format!("/proc/{pid}/cwd"))
         .ok()
         .map(|p| p.to_string_lossy().into_owned())
@@ -140,7 +103,6 @@ fn describe_process(pid: i64) -> Option<ClientProcess> {
     })
 }
 
-/// `ps -o etime`: `[[dd-]hh:]mm:ss`, as milliseconds.
 pub fn elapsed_ms(etime: &str) -> Option<i64> {
     let etime = etime.trim();
     let (days, clock) = match etime.split_once('-') {
@@ -165,15 +127,12 @@ fn clean(name: &str) -> Option<String> {
     (!name.is_empty()).then(|| name.chars().take(NAME_CHARS).collect())
 }
 
-/// What a session is called and which one it is.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Found {
     pub label: Option<String>,
     pub id: Option<String>,
 }
 
-/// Which session this connection belongs to, asked once when the server
-/// starts. `env` reads the server's own environment.
 pub fn identify(
     client: Option<Client>,
     process: Option<&ClientProcess>,
@@ -182,7 +141,6 @@ pub fn identify(
     identify_in(home().as_deref(), client, process, env)
 }
 
-/// `identify`, with the clients' files looked for under a given home.
 pub fn identify_in(
     home: Option<&Path>,
     client: Option<Client>,
@@ -209,7 +167,6 @@ pub fn identify_in(
             let file = home.zip(process).and_then(|(h, p)| claude_code(h, p.pid));
             if let Some(found) = file {
                 about.label = found.label;
-                // The file follows a resumed session; the environment does not.
                 about.client_session = found.id.or(about.client_session);
             }
             if about.client_session.is_some() {
@@ -235,13 +192,10 @@ pub fn identify_in(
     about
 }
 
-/// The session's name as it is now: a client may rename its session at any
-/// time. `None` when there is nothing newer to say.
 pub fn current(client: Client, pid: Option<i64>, session: Option<&str>) -> Option<Found> {
     current_in(&home()?, client, pid, session)
 }
 
-/// `current`, under a given home.
 pub fn current_in(
     home: &Path,
     client: Client,
@@ -281,8 +235,6 @@ fn claude_code(home: &Path, pid: i64) -> Option<Found> {
     })
 }
 
-/// The Codex thread this Codex process began: the newest rollout that runs
-/// in the same folder and began no earlier than the process did.
 fn codex_thread(home: &Path, process: &ClientProcess) -> Option<Found> {
     let since = process.started_at? - START_SLACK_MS;
     let cwd = process.cwd.as_deref()?;
@@ -302,7 +254,6 @@ fn codex_thread(home: &Path, process: &ClientProcess) -> Option<Found> {
     })
 }
 
-/// Rollout files of the two most recent days Codex has any for.
 fn recent_rollouts(sessions: &Path) -> Vec<PathBuf> {
     let newest = |dir: &Path, take: usize| -> Vec<PathBuf> {
         let mut entries: Vec<PathBuf> = std::fs::read_dir(dir)
@@ -329,7 +280,6 @@ fn recent_rollouts(sessions: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-/// A rollout's first line: (thread id, when it began in epoch ms, where).
 fn rollout_head(file: &Path) -> Option<(String, i64, String)> {
     use std::io::BufRead;
     let mut line = String::new();
@@ -345,7 +295,6 @@ fn rollout_head(file: &Path) -> Option<(String, i64, String)> {
     Some((text("id")?.to_string(), began, text("cwd")?.to_string()))
 }
 
-/// A thread's name, from Codex's index: the last line that names it wins.
 fn codex_thread_name(home: &Path, id: &str) -> Option<String> {
     let index = std::fs::read_to_string(home.join(".codex").join("session_index.jsonl")).ok()?;
     index
@@ -362,9 +311,6 @@ fn hermes_db(home: &Path) -> Option<rusqlite::Connection> {
     rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).ok()
 }
 
-/// The Hermes session this Hermes process began: the newest one still open
-/// that began no earlier than the process did, in the same folder when the
-/// session says where it runs.
 fn hermes_session(home: &Path, process: &ClientProcess) -> Option<Found> {
     let since = (process.started_at? - START_SLACK_MS) as f64 / 1000.0;
     let conn = hermes_db(home)?;

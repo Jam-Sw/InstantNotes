@@ -1,14 +1,8 @@
-// Release notes from CHANGELOG.md, for the release workflow.
-//
-//   node .github/release-notes.mjs 0.9.4
-//
-// The notes are the [0.9.4] section when there is one, else [Unreleased].
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const CHANGELOG = new URL("../CHANGELOG.md", import.meta.url);
 
-/** Body of the `## [name]` section, without its heading, trimmed. */
 export function section(md, name) {
   const lines = md.split(/\r?\n/);
   const start = lines.findIndex((l) => l.startsWith(`## [${name}]`));
@@ -17,7 +11,6 @@ export function section(md, name) {
   return lines.slice(start + 1, end < 0 ? undefined : end).join("\n").trim();
 }
 
-/** What's new in `version`, as the updater and the release page show it. */
 export function notes(md, version) {
   return (
     section(md, version) ||

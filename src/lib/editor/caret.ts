@@ -1,19 +1,3 @@
-// CaretGuard: the only module allowed to influence selection placement.
-//
-// CM6's atomic ranges (wired in kernel.ts) already keep cursor MOTION and
-// deletion out of folded markup. Pointer placement is the remaining gap:
-// with `](url)` folded away, the DOM's last caret position on the line sits
-// at the end of the visible link text, so a click in the blank space to the
-// right of the line resolves just before the `]` and typing would extend the
-// link. The guard detects exactly that case (everything between the resolved
-// position and the end of the line is folded, and the click landed past the
-// last glyph) and places the caret at the true end of the line instead:
-// where the eye says it clicked.
-//
-// Implemented with EditorView.mouseSelectionStyle, the sanctioned hook, so
-// drag selections keep working: every drag event maps through the same
-// correction.
-
 import { EditorView, type MouseSelectionStyle } from "@codemirror/view";
 import { EditorSelection, type Extension } from "@codemirror/state";
 import { previewModeField, type Kernel } from "./kernel";
@@ -28,7 +12,6 @@ export class CaretGuard {
   }
 
   #style(view: EditorView, event: MouseEvent): MouseSelectionStyle | null {
-    // Multi-clicks are word/line selection; leave them native.
     if (event.button !== 0 || event.detail > 1) return null;
     if (!(view.state.field(previewModeField, false) ?? false)) return null;
     const start = this.#corrected(view, event);
@@ -56,12 +39,6 @@ export class CaretGuard {
     );
   }
 
-  /**
-   * The position this event should place the caret at, or null when the
-   * native mapping is already truthful. Foldedness is judged against the
-   * selection at click time, because that is what was on screen when the
-   * user aimed.
-   */
   #corrected(view: EditorView, e: MouseEvent): number | null {
     const k = view.plugin(this.kernel);
     if (!k) return null;

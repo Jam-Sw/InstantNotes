@@ -1,8 +1,3 @@
-// Command registry for the ⌘K palette. Commands are built fresh each time the
-// palette opens so the theme list and selection-dependent labels are current.
-// The run() callbacks delegate to existing stores so the palette holds no
-// logic of its own.
-
 import { library } from "$lib/stores/library.svelte";
 import { sidebar } from "$lib/stores/sidebar.svelte";
 import { theme } from "$lib/stores/theme.svelte";
@@ -25,7 +20,6 @@ export {
   resolveActivation,
 } from "$lib/command-filter";
 
-/** One leaf per curated body font, parented to the "font.body" folder command. */
 function buildBodyFontCommands(): Command[] {
   const reset: Command = {
     id: "font.body.default",
@@ -48,7 +42,6 @@ function buildBodyFontCommands(): Command[] {
   return [reset, ...picks];
 }
 
-/** One leaf per installed theme, parented to the "themes" folder command. */
 function buildThemeCommands(): Command[] {
   return theme.allThemes.map((t) => ({
     id: `theme.set.${t.id}`,
@@ -61,7 +54,6 @@ function buildThemeCommands(): Command[] {
   }));
 }
 
-/** Build the current command set. Reads store state, so call on palette open. */
 export function buildCommands(): Command[] {
   const commands: Command[] = [
     { id: "note.new", title: "New note", group: "Notes", shortcut: `${modKey}N`, run: () => library.newNote() },
@@ -149,7 +141,6 @@ export function buildCommands(): Command[] {
         run: () => library.toggleSticky(),
       });
     }
-    // One-way, so only documents offer it, and it confirms first.
     if (!n.isDeleted && n.contentKind !== "whiteboard" && !library.isSticky(n.id)) {
       commands.push({
         id: "note.toWhiteboard",
@@ -169,16 +160,12 @@ export function buildCommands(): Command[] {
       run: () => {},
     },
     ...buildBodyFontCommands(),
-    // Folder: has children (the theme leaves below), so the palette descends
-    // into it on run rather than calling this no-op.
     {
       id: "themes",
       title: "Themes",
       group: "Theme",
       run: () => {},
     },
-    // Listed before the theme leaves so it sits at the top of the sub-view, and
-    // flagged emphasis + an icon so it reads as a mode switch, not a theme.
     {
       id: "theme.toggle",
       title: "Toggle light / dark",

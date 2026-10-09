@@ -1,7 +1,3 @@
-// The sticky window's note: it is the note's only editor while popped out, so
-// its guarantees are the ones the library's save queue gives, plus one of its
-// own: a change event never replaces the body being typed.
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, getNote, updateNote } from "$lib/api/client";
 import type { Note } from "$lib/api/types";
@@ -65,7 +61,6 @@ describe("StickyNote", () => {
     sticky.editBody("milk, eggs");
 
     expect(await sticky.flush()).toBe(true);
-    // Based on the version it opened, so an agent's write in between is seen.
     expect(mockUpdateNote).toHaveBeenCalledWith("n1", {
       body: "milk, eggs",
       expectedUpdatedAt: "2026-01-01T00:00:00Z",
@@ -120,7 +115,6 @@ describe("StickyNote", () => {
     mockGetNote.mockRejectedValueOnce(new ApiError("NOT_FOUND", "gone"));
     await destroyed.refreshMeta();
     expect(destroyed.gone).toBe(true);
-    // Nothing is left queued against a row that no longer exists.
     expect(await destroyed.flush()).toBe(true);
     expect(mockUpdateNote).not.toHaveBeenCalled();
   });
@@ -161,7 +155,6 @@ describe("StickyNote when an agent writes its note", () => {
     await sticky.adoptExternal([write("n1")]);
     expect(sticky.note?.body).toBe("milk\n- bread");
 
-    // The next save is based on the agent's version: no conflict, no toast.
     mockUpdateNote.mockResolvedValueOnce(mkNote({ body: "milk\n- bread!" }));
     sticky.editBody("milk\n- bread!");
     await sticky.flush();
@@ -188,7 +181,6 @@ describe("StickyNote when an agent writes its note", () => {
     const toast = toasts.items.at(-1)!;
     expect(toast.message).toBe("Claude Code's change to this note was replaced by your typing.");
 
-    // Restoring is an ordinary edit in this window.
     mockUpdateNote.mockResolvedValueOnce(mkNote({ body: theirs }));
     toast.action!.run();
     expect(sticky.note?.body).toBe(theirs);

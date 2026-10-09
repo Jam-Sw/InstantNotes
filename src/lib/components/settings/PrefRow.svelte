@@ -1,11 +1,4 @@
 <script lang="ts">
-  // The shell every settings row shares: a label with an optional second line
-  // on the left, one control on the right. Defined once so a new kind of row
-  // gets the layout for free and no page restates it.
-  //
-  // `subId` is the id the row gives its sub line; a control that owns this row
-  // points its aria-describedby at it, so the explanation a sighted user reads
-  // is the one a screen reader announces.
   import type { Snippet } from "svelte";
   let {
     label,
@@ -50,8 +43,6 @@
     color: var(--text-tertiary);
     font-size: 11.5px;
   }
-  /* Dimming the whole row, label included, so a setting that does not apply
-     right now reads as unavailable rather than as merely unresponsive. */
   .pref-row.disabled .pref-label {
     opacity: 0.5;
   }

@@ -1,17 +1,3 @@
-//! The MCP stdio transport: newline-delimited JSON-RPC 2.0, served in both
-//! eras of the specification (a "dual-era" server, 2026-07-28 versioning.md):
-//!
-//! - Modern (2026-07-28): stateless. Every request names its protocol version
-//!   in `params._meta`, `server/discover` describes the server, and every
-//!   result carries `resultType`.
-//! - Legacy (2025-11-25 back to 2024-11-05): an `initialize` handshake picks
-//!   the version for the rest of the process. 2025-03-26 also lets a client
-//!   send a batch (a JSON array of messages) on one line.
-//!
-//! A request is modern exactly when its `_meta` names a modern version. The
-//! methods are few and stable, so this is written against `serde_json`
-//! directly rather than pulling in an async SDK and its runtime.
-
 use crate::access::Access;
 use crate::tools::{session_id, Tools, NOTE_URI_PREFIX};
 use instantnotes_core::Store;
@@ -19,21 +5,15 @@ use serde_json::{json, Map, Value};
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
 
-/// Stateless revisions: the version travels on every request.
 const MODERN_VERSIONS: &[&str] = &["2026-07-28"];
-/// Handshake revisions, newest first. `initialize` asking for one of them
-/// gets it back; any other gets the newest.
 const LEGACY_VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 
 const VERSION_META: &str = "io.modelcontextprotocol/protocolVersion";
 const CLIENT_META: &str = "io.modelcontextprotocol/clientInfo";
 const SERVER_META: &str = "io.modelcontextprotocol/serverInfo";
 
-/// How long a client may keep `tools/list` and `server/discover`: both are
-/// fixed for the life of this binary.
 const CACHE_TTL_MS: u64 = 60 * 60 * 1000;
 
-// JSON-RPC error codes, and the one MCP adds.
 const PARSE_ERROR: i64 = -32700;
 const INVALID_REQUEST: i64 = -32600;
 const METHOD_NOT_FOUND: i64 = -32601;
@@ -80,7 +60,6 @@ it. No tool deletes a note for good.
 InstantNotes holds notes. Dates, reminders, and checklists go into a note's \
 text when the user asks for them.";
 
-/// Serve one client until stdin closes.
 pub fn serve(
     store: &mut Store,
     attachments_dir: Option<PathBuf>,
@@ -90,13 +69,10 @@ pub fn serve(
     serve_as(store, attachments_dir, new_session(), input, output)
 }
 
-/// A name for this process's connection, for `serve_as`.
 pub fn new_session() -> String {
     session_id()
 }
 
-/// `serve`, under a session id the caller already holds (the entry point
-/// takes the session's lock before the first message is read).
 pub fn serve_as(
     store: &mut Store,
     attachments_dir: Option<PathBuf>,
@@ -112,7 +88,6 @@ pub fn serve_as(
             tools.disconnect();
             return Ok(());
         }
-        // A line that is not UTF-8 is one bad message, not a dead server.
         let reply = match std::str::from_utf8(&line) {
             Ok(text) if text.trim().is_empty() => continue,
             Ok(text) => handle_line(&mut tools, text),
@@ -126,7 +101,6 @@ pub fn serve_as(
     }
 }
 
-/// One line: a message or a batch of them, to at most one line back.
 fn handle_line(tools: &mut Tools, line: &str) -> Option<Value> {
     match serde_json::from_str(line) {
         Err(_) => Some(error(Value::Null, PARSE_ERROR, "parse error")),
@@ -141,12 +115,6 @@ fn handle_line(tools: &mut Tools, line: &str) -> Option<Value> {
     }
 }
 
-/// One message to at most one reply. Notifications, and responses (this
-/// server sends no requests, so any response answers nothing), get none.
-///
-/// A panic inside a request (a bug in one tool, a corrupt row) is caught and
-/// answered as an internal error, so one bad call never takes the whole
-/// connection, and the agent's conversation, down with it.
 fn handle(tools: &mut Tools, message: Value) -> Option<Value> {
     let id = message.get("id").cloned().unwrap_or(Value::Null);
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -173,7 +141,6 @@ fn handle_unguarded(tools: &mut Tools, message: Value) -> Option<Value> {
     let id = match msg.get("id") {
         None => None,
         Some(id @ (Value::String(_) | Value::Number(_))) => Some(id.clone()),
-        // MCP request ids are strings or integers, never null.
         Some(_) => return Some(error(Value::Null, INVALID_REQUEST, "invalid request id")),
     };
     let well_formed = msg.get("jsonrpc").and_then(Value::as_str) == Some("2.0");
@@ -186,8 +153,6 @@ fn handle_unguarded(tools: &mut Tools, message: Value) -> Option<Value> {
         Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
         Err(err) => json!({ "jsonrpc": "2.0", "id": id, "error": err }),
     };
-    // The trace keeps the whole exchange, so the user can read exactly what
-    // an agent sent and what it was told.
     if matches!(method, "tools/call" | "resources/list" | "resources/read") {
         if let (Ok(sent), Ok(answered)) =
             (serde_json::to_string(&msg), serde_json::to_string(&reply))
@@ -198,12 +163,10 @@ fn handle_unguarded(tools: &mut Tools, message: Value) -> Option<Value> {
     Some(reply)
 }
 
-/// A request's result, or its JSON-RPC error object.
 fn request(tools: &mut Tools, method: &str, params: &Value) -> Result<Value, Value> {
     let modern = match params.get("_meta").and_then(|m| m.get(VERSION_META)) {
         None => false,
         Some(Value::String(v)) if MODERN_VERSIONS.contains(&v.as_str()) => true,
-        // A legacy client that names its version anyway.
         Some(Value::String(v)) if LEGACY_VERSIONS.contains(&v.as_str()) => false,
         Some(requested) => {
             return Err(json!({
@@ -220,7 +183,6 @@ fn request(tools: &mut Tools, method: &str, params: &Value) -> Result<Value, Val
         }
     }
     let mut result = match method {
-        // The probe a dual-era client sends first, so it answers in any era.
         "server/discover" => {
             return Ok(complete(json!({
                 "supportedVersions": supported_versions(),
@@ -238,9 +200,6 @@ fn request(tools: &mut Tools, method: &str, params: &Value) -> Result<Value, Val
         "ping" => json!({}),
         "tools/list" => json!({ "tools": tools.list() }),
         "tools/call" => call(tools, params)?,
-        // Notes as resources, read-gated like the read tools. A client that
-        // prefers resources to tool calls (Claude Desktop's picker) gets
-        // the same notes the same way.
         "resources/list" => {
             tools
                 .check(Access::Read)
@@ -281,9 +240,6 @@ fn request(tools: &mut Tools, method: &str, params: &Value) -> Result<Value, Val
     Ok(result)
 }
 
-/// `tools/call`. A request that fails the call's own schema, or names a tool
-/// that does not exist, is a protocol error; anything the tool itself
-/// refuses is a result with `isError`, which the model sees and can fix.
 fn call(tools: &mut Tools, params: &Value) -> Result<Value, Value> {
     let Some(name) = params.get("name").and_then(Value::as_str) else {
         return Err(error_object(INVALID_PARAMS, "tools/call needs a name"));
@@ -315,7 +271,6 @@ fn initialize(params: &Value) -> Value {
     })
 }
 
-/// A modern result: `resultType`, and who answered.
 fn complete(mut result: Value) -> Value {
     let Value::Object(fields) = &mut result else {
         return result;
@@ -337,7 +292,6 @@ fn supported_versions() -> Vec<&'static str> {
 }
 
 fn capabilities() -> Value {
-    // Neither list changes while the process lives: no listChanged.
     json!({ "tools": {}, "resources": {} })
 }
 

@@ -1,7 +1,3 @@
-// Conformance: this app's gate follows the shared rules. The cases are
-// installers/gate/conformance.json, copied next to agreements.json by
-// installers/scripts/apply.mjs; never edit the copy.
-
 import { describe, expect, it } from 'vitest';
 import conformance from '../../src-tauri/installer/agreements.conformance.json';
 import manifest from '../../src-tauri/installer/agreements.json';

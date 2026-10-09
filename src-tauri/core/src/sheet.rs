@@ -1,37 +1,14 @@
-//! Sheet notes: a cell grid that stays a note. The grid lives in
-//! `surface_data` as a versioned envelope; this module is the one place it
-//! is read and written on the Rust side, so every writer (the grid in the
-//! app, `append_sheet_rows` over MCP) produces the same Markdown body and
-//! the same CSV sidecar. Design: openspec/changes/feat-note-sheet/design.md.
-//!
-//! Stored shape:
-//!
-//! ```json
-//! { "v": 1, "engine": "grid", "data": {
-//!     "cols": [{ "w": 120 }, { "w": 120 }],
-//!     "rows": [["Date", "ms"], ["2026-10-03", "412"]] } }
-//! ```
-//!
-//! `rows` is dense: every row holds exactly `cols.len()` strings, each a
-//! cell's raw input. Strings only, on purpose: typed values are what a
-//! formula engine produces, and none ships yet.
-
 use serde::{Deserialize, Serialize};
 
 pub const SHEET_ENGINE: &str = "grid";
-/// Columns A to AZ.
 pub const MAX_COLS: usize = 52;
 pub const MAX_ROWS: usize = 5_000;
-/// Without a cell cap the row and column caps bound nothing.
 pub const MAX_CELL_CHARS: usize = 10_000;
 pub const DEFAULT_COLS: usize = 3;
 pub const DEFAULT_ROWS: usize = 20;
 pub const DEFAULT_COL_WIDTH: f64 = 120.0;
-/// A sheet's title is frozen on creation; this is what it freezes to when
-/// the note had no words of its own.
 pub const DEFAULT_TITLE: &str = "Untitled sheet";
 
-/// Per-column view state: the width in CSS pixels.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Column {
     pub w: f64,
@@ -56,7 +33,6 @@ struct Data {
     rows: Vec<Vec<String>>,
 }
 
-/// The spreadsheet letter(s) of column `c` (0-based): A..Z, AA..AZ.
 pub fn column_name(c: usize) -> String {
     let letter = |n: usize| (b'A' + (n % 26) as u8) as char;
     if c < 26 {
@@ -71,7 +47,6 @@ fn row_is_empty(row: &[String]) -> bool {
 }
 
 impl Sheet {
-    /// An all-empty grid.
     pub fn empty(cols: usize, rows: usize) -> Sheet {
         Sheet {
             cols: vec![
@@ -84,14 +59,10 @@ impl Sheet {
         }
     }
 
-    /// What a new sheet holds.
     pub fn new_default() -> Sheet {
         Sheet::empty(DEFAULT_COLS, DEFAULT_ROWS)
     }
 
-    /// Read a stored envelope, refusing anything that is not a well-formed
-    /// grid within the limits. The message is for the writer, in words an
-    /// agent can act on.
     pub fn parse(raw: &str) -> Result<Sheet, String> {
         let envelope: Envelope = serde_json::from_str(raw)
             .map_err(|e| format!("a sheet's surface must be a grid envelope: {e}"))?;
@@ -156,9 +127,6 @@ impl Sheet {
         serde_json::to_string(&envelope).expect("a sheet always serializes")
     }
 
-    /// How many rows hold data: the index of the last non-empty row plus
-    /// one. Appends land here, so a new sheet's trailing empty rows are
-    /// filled before any are added.
     pub fn filled_rows(&self) -> usize {
         self.rows
             .iter()
@@ -166,11 +134,6 @@ impl Sheet {
             .map_or(0, |i| i + 1)
     }
 
-    /// The grid as a GitHub-flavored Markdown table: row 1 is the header,
-    /// trailing empty rows and columns are trimmed, pipes and newlines are
-    /// escaped. An all-empty sheet is an empty string. This is the note's
-    /// `body`, so search, inline `#tags`, previews, and the vault's Markdown
-    /// file see what the sheet holds.
     pub fn markdown(&self) -> String {
         let rows = &self.rows[..self.filled_rows()];
         let Some(width) = rows
@@ -196,9 +159,6 @@ impl Sheet {
         out
     }
 
-    /// The grid as RFC 4180 CSV: CRLF line ends, UTF-8 without a BOM,
-    /// trailing empty rows trimmed, every column kept. The vault's sidecar
-    /// and Export Note.
     pub fn csv(&self) -> String {
         let mut out = String::new();
         for row in &self.rows[..self.filled_rows()] {
@@ -209,10 +169,6 @@ impl Sheet {
         out
     }
 
-    /// Add `rows` after the last row holding data, reusing the empty rows at
-    /// the bottom before growing the grid. A row shorter than the sheet is
-    /// padded; one wider is refused, so a writer cannot change the sheet's
-    /// shape. Returns the 0-based index of the first appended row.
     pub fn append_rows(&mut self, rows: Vec<Vec<String>>) -> Result<usize, String> {
         if rows.is_empty() {
             return Err("give at least one row".into());
@@ -262,8 +218,6 @@ fn check_cells(row: &[String], r: usize) -> Result<(), String> {
     Ok(())
 }
 
-/// A cell's text inside a Markdown table row: a pipe would end the cell and
-/// a newline the row.
 fn escape_cell(cell: &str) -> String {
     cell.replace('\\', "\\\\")
         .replace('|', "\\|")

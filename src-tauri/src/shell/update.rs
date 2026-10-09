@@ -1,18 +1,8 @@
-//! Installs an app update the user accepted. The download and its signature
-//! check are the updater plugin's. This adds one fallback, for an AppImage the
-//! user cannot write: one installed into a root-owned folder (a pacman/AUR
-//! repack under /opt, or a `sudo cp` into /usr/local/bin). There the plugin's
-//! in-place swap fails with EACCES and offers no way to grant access (#64), so
-//! the verified AppImage is staged in the temp dir and swapped in through
-//! `pkexec`, which asks for the password in the system's own polkit dialog.
-
 use crate::*;
 use tauri::ipc::Channel;
 use tauri::{ResourceId, Webview};
 use tauri_plugin_updater::Update;
 
-/// The plugin's own `DownloadEvent` shape, so the store reads progress exactly
-/// as it did from `Update.downloadAndInstall`.
 #[derive(Clone, Serialize)]
 #[serde(tag = "event", content = "data")]
 pub enum UpdateEvent {
@@ -27,8 +17,6 @@ pub enum UpdateEvent {
     Finished,
 }
 
-/// Download, verify, and install the update `rid` names (the resource the JS
-/// `check()` returned). The app relaunches into it on the next restart.
 #[tauri::command]
 pub async fn install_update(
     webview: Webview,
@@ -57,8 +45,6 @@ pub async fn install_update(
         .await
         .map_err(|e| CmdError::storage(e.to_string()))?;
 
-    // Windows: install() hands off to the installer and exits the process
-    // itself, so pending edits are saved first.
     if cfg!(windows) {
         let app = webview.app_handle().clone();
         tauri::async_runtime::spawn_blocking(move || flush_before_exit(&app))
@@ -93,10 +79,6 @@ mod elevated {
     use std::path::Path;
     use std::process::{Command, ExitStatus};
 
-    /// Run as root by pkexec with the staged and target paths as `$1` and `$2`
-    /// (never spliced into the script). The copy lands beside the target and is
-    /// renamed over it: the running AppImage cannot be written in place (ETXTBSY),
-    /// and a rename leaves either the old file or the new one, never half of one.
     pub(super) const SWAP: &str = r#"install -m 755 -- "$1" "$2.new" && mv -f -- "$2.new" "$2" || { rm -f -- "$2.new"; exit 1; }"#;
 
     pub(super) fn install(bytes: &[u8], target: &Path) -> CmdResult<()> {
@@ -119,8 +101,6 @@ mod elevated {
         outcome(status, &target)
     }
 
-    /// Turn pkexec's exit into what the update note says. 126 is a dismissed
-    /// or refused password dialog; 127 is no polkit agent to show one.
     pub(super) fn outcome(status: std::io::Result<ExitStatus>, target: &Path) -> CmdResult<()> {
         let manual = format!(
             "Install it by hand with: sudo install -m 755 <downloaded AppImage> {}",

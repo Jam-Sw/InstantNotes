@@ -82,7 +82,6 @@ describe("agent activity", () => {
       describeActivity(entry({ tool: "append_sheet_rows", status: "error", error: "x" })),
     ).toBe("Tried to add rows to a sheet, but it failed");
     expect(clientLabel("instantnotes")).toBe("You");
-    // A failed call says what was tried, never a made-up outcome.
     expect(
       describeActivity(entry({ tool: "update_note", status: "error", error: "NOT_FOUND: gone" })),
     ).toBe("Tried to edit a note, but it failed");

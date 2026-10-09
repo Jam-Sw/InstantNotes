@@ -1,11 +1,3 @@
-// The library store when an agent writes to the library from another process
-// (instantnotes mcp): the open note takes the agent's edit when the user has
-// nothing unsaved, and a save that meets an agent's edit keeps the user's
-// typing, says so, and offers the agent's version back.
-//
-// Same harness as library.svelte.test.ts: client and events mocked, fake
-// timers, a fresh module graph per test.
-
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
@@ -95,7 +87,6 @@ const write = (noteId: string): AgentActivity => ({
   reverts: null,
 });
 
-/** Load a fresh store, run init, and hand back the external-change listener. */
 async function setup() {
   const { library } = await import("$lib/stores/library.svelte");
   const { toasts } = await import("$lib/stores/toasts.svelte");
@@ -136,7 +127,6 @@ describe("an agent writes to the open note", () => {
     expect(mockGetNote).toHaveBeenLastCalledWith("n1", false);
     expect(library.selected?.body).toBe("Plan\n- agent step");
 
-    // The next save is based on the agent's version, so it is no conflict.
     mockUpdateNote.mockResolvedValueOnce(mkNote("n1", { body: "Plan\n- agent step!", updatedAt: T2 }));
     library.editBody("Plan\n- agent step!");
     await vi.advanceTimersByTimeAsync(400);
@@ -195,7 +185,6 @@ describe("an agent appends rows to the open sheet", () => {
 
     expect(library.selected?.surfaceData).toBe(THEIRS);
     expect(library.selected?.body).toBe("table");
-    // The next save is based on the agent's version, so it is no conflict.
     mockUpdateNote.mockResolvedValueOnce(mkNote("s1", { contentKind: "sheet", updatedAt: T2 }));
     library.editSheet("s1", grid([["Date", "ms"], ["d1", "1"], ["a1", "9"], ["d2", "2"]]));
     await vi.advanceTimersByTimeAsync(400);
@@ -266,7 +255,6 @@ describe("a save meets an agent's edit", () => {
     expect(toast.message).toBe("Claude Code's change to this note was replaced by your typing.");
     expect(toast.action?.label).toBe("Restore theirs");
 
-    // Restoring is an ordinary edit, based on the version just written.
     mockUpdateNote.mockResolvedValueOnce(mkNote("n1", { body: theirs, updatedAt: "2026-01-01T00:07:00.000000Z" }));
     toast.action!.run();
     expect(library.selected?.body).toBe(theirs);
@@ -279,7 +267,6 @@ describe("a save meets an agent's edit", () => {
     mockUpdateNote
       .mockRejectedValueOnce(new ApiError("CONFLICT" as never, "changed"))
       .mockResolvedValueOnce(mkNote("n1", { body: "Plan, mine", updatedAt: T2 }));
-    // Pinned elsewhere: newer version, same body.
     mockGetNote.mockResolvedValueOnce(mkNote("n1", { isPinned: true, updatedAt: T1 }));
 
     library.editBody("Plan, mine");

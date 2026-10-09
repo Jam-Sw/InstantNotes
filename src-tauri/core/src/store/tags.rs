@@ -1,5 +1,3 @@
-//! Tag CRUD and note-tag associations.
-
 use super::*;
 
 impl Store {
@@ -7,8 +5,6 @@ impl Store {
         tag_get_or_create(&self.conn, name)
     }
 
-    /// The tag with this (normalized) name, if any. One indexed lookup: for
-    /// a caller that only needs an id, cheaper than listing every tag.
     pub fn find_tag(&self, raw_name: &str) -> Result<Option<Tag>> {
         let Some(name) = domain::normalize_tag_name(raw_name) else {
             return Ok(None);
@@ -93,7 +89,6 @@ impl Store {
             .map_err(Into::into)
     }
 
-    /// Removes the tag and its associations; notes are untouched.
     pub fn delete_tag(&mut self, id: &str) -> Result<()> {
         let affected = self
             .conn
@@ -108,9 +103,6 @@ impl Store {
         self.fetch_note(note_id)?;
         let tag = tag_get_or_create(&self.conn, name)?;
         attach_tag(&self.conn, note_id, &tag.id, "manual")?;
-        // attach_tag is INSERT OR IGNORE, so an edge already present as 'inline'
-        // keeps that source. An explicit add is a pin, so promote it to
-        // 'manual' and inline reconciliation will no longer detach it.
         self.conn.execute(
             "UPDATE note_tags SET source = 'manual' \
              WHERE note_id = ?1 AND tag_id = ?2 AND source = 'inline'",

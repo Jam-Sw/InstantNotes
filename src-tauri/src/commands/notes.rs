@@ -1,5 +1,3 @@
-//! Note commands: create, read, update, delete, list, search.
-
 use crate::*;
 use instantnotes_core::sheet::Sheet;
 
@@ -30,14 +28,10 @@ pub fn update_note(
     let mut note = locked(&state)?.update_note(&id, patch)?;
     emit_notes_changed(&app);
     emit_tags_changed(&app);
-    // The caller already holds the canvas it just saved; echoing it back
-    // would ship the whole board, pasted images included, on every save.
     note.surface_data = None;
     Ok(note)
 }
 
-/// A sheet's grid as CSV, for Export Note: the same bytes the vault mirror
-/// writes beside the note, from the one serializer (core `sheet.rs`).
 #[tauri::command(async)]
 pub fn sheet_csv(state: State<'_, AppState>, id: String) -> CmdResult<String> {
     let note = locked(&state)?.get_note(&id, false)?;
@@ -81,10 +75,6 @@ pub fn search_notes(
 ) -> CmdResult<Vec<SearchResult>> {
     Ok(locked_reader(&state)?.search_notes(&text, limit.unwrap_or(50))?)
 }
-
-// ---- bulk commands ----
-// One transaction and one change event for a whole multi-select, instead of
-// one round trip per note.
 
 #[tauri::command(async)]
 pub fn set_notes_flags(
@@ -137,11 +127,6 @@ pub fn destroy_notes(
     Ok(())
 }
 
-/// Destroy notes for good, and with them the images only they used. The
-/// store stays locked from reading their references to removing the files,
-/// so no save can start referencing an image in between. A cleanup failure
-/// never fails the delete: the note is gone either way, and a stray file is
-/// what Settings > Images offers to clean up.
 fn destroy_with_attachments(
     state: &State<'_, AppState>,
     app: &AppHandle,

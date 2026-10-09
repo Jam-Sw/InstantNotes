@@ -1,5 +1,3 @@
-// Small presentation helpers shared by the library views.
-
 const timeFormat = new Intl.DateTimeFormat([], { hour: "numeric", minute: "2-digit" });
 const shortDateFormat = new Intl.DateTimeFormat([], { month: "short", day: "numeric" });
 const exactFormat = new Intl.DateTimeFormat([], {
@@ -10,8 +8,6 @@ const exactFormat = new Intl.DateTimeFormat([], {
   minute: "2-digit",
 });
 
-/** Today shows a time (e.g. "3:04 PM"); any other day shows a short date
- *  (e.g. "Jun 5"). */
 export function formatDate(iso: string): string {
   const d = new Date(iso);
   const today = new Date();
@@ -22,15 +18,10 @@ export function formatDate(iso: string): string {
   return sameDay ? timeFormat.format(d) : shortDateFormat.format(d);
 }
 
-/** Full local date and time to the minute (e.g. "Jul 11, 2026, 2:55 PM").
- *  The always-available exact stamp: shown inline when the user opts in, and
- *  offered on hover everywhere the short `formatDate` is displayed. */
 export function formatExact(iso: string): string {
   return exactFormat.format(new Date(iso));
 }
 
-/** Human byte size (e.g. "0 B", "340 KB", "1.2 MB"). Base-1024, one decimal
- *  once past kilobytes. */
 export function formatBytes(n: number): string {
   if (!Number.isFinite(n) || n <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -40,7 +31,6 @@ export function formatBytes(n: number): string {
   return `${shown} ${units[i]}`;
 }
 
-/** One-line note preview: collapse all whitespace, trim, cap at 90 chars. */
 export function preview(body: string): string {
   const head = body.length > 1024 ? body.slice(0, 1024) : body;
   const collapsed = head.replace(/\s+/g, " ").trim();
@@ -48,8 +38,6 @@ export function preview(body: string): string {
   return body.replace(/\s+/g, " ").trim().slice(0, 90);
 }
 
-/** A sheet's body is its grid as a Markdown table; its preview is the cells
- *  in reading order, without the table's own pipes and rule. */
 export function sheetPreview(body: string): string {
   const cells = body
     .split("\n")
@@ -60,7 +48,6 @@ export function sheetPreview(body: string): string {
   return cells.join(" · ").slice(0, 90);
 }
 
-/** Whitespace-delimited word count; 0 for a blank body. */
 export function wordCount(body: string): number {
   const trimmed = body.trim();
   return trimmed ? trimmed.split(/\s+/).length : 0;

@@ -1,7 +1,3 @@
-//! The vault format: a note as Markdown + YAML frontmatter, and back.
-//! This file holds the pure format; `write` and `export` do the filesystem
-//! I/O, and the stage 2 flush lives on `Store` (`store/vault.rs`). Design: openspec/changes/feat-portable-vault-sync/design.md §3.2.
-
 pub mod export;
 pub mod manifest;
 pub mod mirror;
@@ -25,8 +21,6 @@ pub use write::{atomic_write, copy_dir_recursive, copy_missing_files};
 
 use serde::{Deserialize, Serialize};
 
-/// The YAML frontmatter shape, shared by the serializer and the parser so
-/// the two can never drift out of step with each other.
 #[derive(Serialize, Deserialize)]
 struct Frontmatter {
     id: String,
@@ -34,7 +28,6 @@ struct Frontmatter {
     updated: String,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     title: Option<String>,
-    /// `whiteboard` or `sheet`; omitted for a document, the default.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     kind: Option<String>,
     #[serde(skip_serializing_if = "is_false", default)]
@@ -53,15 +46,6 @@ fn is_false(b: &bool) -> bool {
     !*b
 }
 
-/// A note in the shape the vault format carries. Deliberately narrower than
-/// `types::Note`: `last_opened_at` is device-local and never written to the
-/// vault (design.md §7.2), and `is_deleted` is implied by `deleted_at` (the
-/// store keeps them in lockstep) plus, from stage 2 on, by the note's
-/// location under `trash/` rather than by a frontmatter field.
-///
-/// `title: None` means the title is auto-derived from the body (design.md
-/// §3.2). This replaces a separate `title_is_auto` bool so the type can't
-/// represent the contradictory state of a bool and a string disagreeing.
 #[derive(Debug, Clone, PartialEq)]
 pub struct VaultNote {
     pub id: String,
@@ -74,12 +58,7 @@ pub struct VaultNote {
     pub deleted_at: Option<String>,
     pub tags: Vec<String>,
     pub spaces: Vec<String>,
-    /// `document`, `whiteboard`, or `sheet` (`types::CONTENT_KIND_*`).
     pub kind: String,
-    /// A surface note's second file (a whiteboard's `.excalidraw`, a
-    /// sheet's `.csv`; `surface::surface_ext` names it), written beside the
-    /// note file and never inside it, so parsing a note file always yields
-    /// `None`.
     pub surface: Option<String>,
 }
 
@@ -105,8 +84,6 @@ mod round_trip_tests {
         }
     }
 
-    /// Every combination of the boolean/optional fields, plus edge-case
-    /// strings, round-trips exactly through serialize -> parse.
     #[test]
     fn round_trips_every_flag_combination() {
         for pinned in [false, true] {

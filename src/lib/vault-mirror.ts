@@ -1,11 +1,6 @@
-// The live vault mirror (stage 2 of openspec/changes/feat-portable-vault-sync):
-// picking its folder, and turning a verify report into sentences for the
-// Vault settings page. The writing itself happens in Rust.
-
 import { pickFolder, type FolderChoice } from "$lib/folder-picker";
 import type { VaultReport } from "$lib/api/types";
 
-/** Prompt for the folder the mirror writes into. */
 export function chooseVaultFolder(): Promise<FolderChoice> {
   return pickFolder({ title: "Choose a vault folder" });
 }
@@ -22,7 +17,6 @@ function count(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-/** One sentence per finding, clean result first-class rather than silent. */
 export function describeVaultReport(r: VaultReport): string[] {
   const lines: string[] = [];
   if (r.diverged.length) {

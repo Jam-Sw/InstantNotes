@@ -1,7 +1,3 @@
-// Pure helpers for the in-app feedback flow: the category set, the diagnostics
-// snapshot format, and the prefilled GitHub issue URL. Kept free of runes and
-// Tauri so it is unit-testable; the component supplies live values.
-
 export type FeedbackCategory = "bug" | "idea" | "other";
 
 export const FEEDBACK_CATEGORIES: { value: FeedbackCategory; label: string }[] = [
@@ -10,8 +6,6 @@ export const FEEDBACK_CATEGORIES: { value: FeedbackCategory; label: string }[] =
   { value: "other", label: "Other" },
 ];
 
-/** The optional diagnostics snapshot a user can attach. Exactly these fields
- *  are shown in the preview and stored, so nothing is sent that was not seen. */
 export interface FeedbackDiagnostics {
   appVersion: string;
   platform: string;
@@ -19,7 +13,6 @@ export interface FeedbackDiagnostics {
   attachments: number;
 }
 
-/** Human-readable diagnostics block, used both in the preview and the issue. */
 export function diagnosticsMarkdown(d: FeedbackDiagnostics): string {
   return [
     `- App version: ${d.appVersion || "unknown"}`,
@@ -43,21 +36,9 @@ const LABEL: Record<FeedbackCategory, string> = {
   other: "feedback",
 };
 
-// A GitHub "new issue" URL is handed to the OS shell (`open_url`), whose
-// length limits are far stricter than a browser's address bar in some
-// environments. The full message is always in the local feedback.jsonl
-// record regardless, so it is safe to truncate what rides in the URL.
 const MAX_URL_BODY_CHARS = 1500;
 const TRUNCATION_NOTE = "\n\n[message truncated — the full text is saved locally]";
 
-/**
- * Build a prefilled GitHub "new issue" URL from a feedback submission. The
- * title is derived from the first line of the message; the diagnostics, when
- * present, are appended under a divider. The message is truncated past
- * `MAX_URL_BODY_CHARS` so a long report cannot produce a URL the OS shell
- * refuses to open; the diagnostics block is never truncated, since it is
- * always short.
- */
 export function githubIssueUrl(opts: {
   category: FeedbackCategory;
   message: string;

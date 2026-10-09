@@ -1,7 +1,3 @@
-//! SQLite-backed store: the single writer for all persistent state.
-//! FTS5 is kept in sync by triggers; tag search goes through note_tags joins,
-//! never FTS.
-
 use crate::domain;
 use crate::error::{AppError, Result};
 use crate::types::*;
@@ -10,10 +6,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
-/// Ordered schema migrations; user_version tracks how many have run. Public so
-/// tests can build fixtures at a historical schema version.
 pub const MIGRATIONS: &[&str] = &[
-    // v1 — initial schema
     r#"
 CREATE TABLE notes (
   seq            INTEGER PRIMARY KEY,
@@ -81,7 +74,6 @@ CREATE TRIGGER notes_au AFTER UPDATE OF title, body ON notes BEGIN
   INSERT INTO notes_fts(rowid, title, body) VALUES (new.seq, new.title, new.body);
 END;
 "#,
-    // v2 — workspaces: named note collections, many-to-many like tags
     r#"
 CREATE TABLE workspaces (
   id         TEXT PRIMARY KEY,
@@ -98,27 +90,15 @@ CREATE TABLE note_workspaces (
 );
 CREATE INDEX idx_note_workspaces_ws ON note_workspaces(workspace_id);
 "#,
-    // v3: drop the unused sync scaffolding (written, never read).
     r#"
 ALTER TABLE notes DROP COLUMN sync_state;
 ALTER TABLE notes DROP COLUMN version;
 ALTER TABLE notes DROP COLUMN last_synced_at;
 "#,
-    // v4: note surface mode, document (markdown) or whiteboard (canvas
-    // host). Pre-release builds shipped these columns, so libraries they
-    // touched are already at v4 with them: v4 must mean this everywhere.
     r#"
 ALTER TABLE notes ADD COLUMN content_kind TEXT NOT NULL DEFAULT 'document';
 ALTER TABLE notes ADD COLUMN surface_data TEXT;
 "#,
-    // v5: the vault mirror (feat-portable-vault-sync stage 2, design.md §5).
-    // vault_path is where the note's file was last written, relative to the
-    // vault root; file_sha is the sha256 of those bytes. vault_dirty is set
-    // by the triggers below in the same transaction as any write that
-    // changes what the note's file holds, so a crash between the commit and
-    // the file write still leaves the note marked for the next flush.
-    // last_opened_at is deliberately absent from the watched columns: it is
-    // device-local and never written to the vault (design.md §7.2).
     r#"
 ALTER TABLE notes ADD COLUMN vault_path  TEXT;
 ALTER TABLE notes ADD COLUMN file_sha    TEXT;
@@ -174,12 +154,6 @@ CREATE TRIGGER workspaces_vault_au AFTER UPDATE OF name ON workspaces
     WHERE id IN (SELECT note_id FROM note_workspaces WHERE workspace_id = new.id);
 END;
 "#,
-    // v6: whiteboards in the vault. A board's canvas is a `.excalidraw` file
-    // beside its note file (vault/board.rs); board_sha is the sha256 of the
-    // canvas bytes last written, so the canvas gets the same "only remove
-    // what still holds our bytes" rule as the note file. The update trigger
-    // now also watches the whiteboard columns, and a hard delete queues the
-    // canvas for removal alongside the note file.
     r#"
 ALTER TABLE notes ADD COLUMN board_sha TEXT;
 
@@ -202,11 +176,6 @@ CREATE TRIGGER notes_vault_ad AFTER DELETE ON notes
     WHERE old.board_sha IS NOT NULL;
 END;
 "#,
-    // v7: the agent activity trace (API.md section 15). Every call an agent
-    // makes through the MCP server is one row; a write also carries `before`,
-    // the note as it was (fields, tags, Spaces) as JSON, so the app can put
-    // it back. Written by the MCP process, read by the app, which appends
-    // its own `revert` rows. Pruned to the newest ACTIVITY_KEEP rows.
     r#"
 CREATE TABLE agent_activity (
   seq              INTEGER PRIMARY KEY,
@@ -230,18 +199,10 @@ CREATE TABLE agent_activity (
   reverts          INTEGER
 );
 "#,
-    // v8: the raw exchange behind a traced call. `request` is the JSON-RPC
-    // message the agent sent and `response` the one it got back, whole, so
-    // the app can show exactly what crossed the wire. NULL on rows from
-    // before this, and on the app's own `revert` rows, which no agent sent.
     r#"
 ALTER TABLE agent_activity ADD COLUMN request TEXT;
 ALTER TABLE agent_activity ADD COLUMN response TEXT;
 "#,
-    // v9: agent connections. One row per MCP server process: who connected
-    // and when, and when it said goodbye. A process that dies without saying
-    // so is found out by the lock it held (`store/activity.rs`), and the app
-    // closes its row.
     r#"
 CREATE TABLE agent_sessions (
   session         TEXT PRIMARY KEY,
@@ -250,27 +211,15 @@ CREATE TABLE agent_sessions (
   disconnected_at INTEGER
 );
 "#,
-    // v10: which instance of the client a connection is. `label` is the
-    // name the client gives its own session (Claude Code's `/rename`),
-    // `client_session` that session's id, `cwd` where it runs, and
-    // `client_pid` the client's process, which is how its name is looked up
-    // while it lives. All NULL for a client that tells us none of it.
     r#"
 ALTER TABLE agent_sessions ADD COLUMN label TEXT;
 ALTER TABLE agent_sessions ADD COLUMN client_session TEXT;
 ALTER TABLE agent_sessions ADD COLUMN cwd TEXT;
 ALTER TABLE agent_sessions ADD COLUMN client_pid INTEGER;
 "#,
-    // v11: how a connection's session was identified. `exact` when the
-    // client said so itself (Claude Code); `inferred` when it was matched
-    // from the client's own records (Codex, Hermes; see `clients.rs`).
     r#"
 ALTER TABLE agent_sessions ADD COLUMN matched TEXT;
 "#,
-    // v12: sheets in the vault. A sheet's surface file is a `.csv` beside
-    // its note file (vault/surface.rs), tracked by the same `board_sha` as
-    // a whiteboard's canvas. The hard-delete trigger now queues the sidecar
-    // under the extension its kind writes, instead of `.excalidraw` always.
     r#"
 DROP TRIGGER notes_vault_ad;
 CREATE TRIGGER notes_vault_ad AFTER DELETE ON notes
@@ -289,8 +238,6 @@ END;
 const NOTE_COLUMNS: &str = "id, title, body, created_at, updated_at, last_opened_at, \
      is_pinned, is_archived, is_deleted, deleted_at, content_kind, surface_data";
 
-/// `NOTE_COLUMNS` for list queries: the whiteboard canvas stays out of list
-/// rows (see `Note::surface_data`).
 const LIST_COLUMNS: &str = "id, title, body, created_at, updated_at, last_opened_at, \
      is_pinned, is_archived, is_deleted, deleted_at, content_kind, NULL";
 
@@ -303,7 +250,6 @@ fn now_iso() -> String {
     iso(std::time::SystemTime::now())
 }
 
-/// The one clock every row and session stamp shares. Zero if the system clock sits before 1970.
 pub fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -311,8 +257,6 @@ pub fn now_ms() -> i64 {
         .unwrap_or_default()
 }
 
-/// The one timestamp format the store writes (and callers show), which also
-/// sorts as text.
 pub fn iso(t: std::time::SystemTime) -> String {
     chrono::DateTime::<Utc>::from(t).to_rfc3339_opts(SecondsFormat::Micros, true)
 }
@@ -423,16 +367,10 @@ fn attach_tag(conn: &Connection, note_id: &str, tag_id: &str, source: &str) -> R
     Ok(())
 }
 
-/// Build an FTS5 MATCH expression from raw user text. Tokens are reduced to
-/// word characters so user input can never produce FTS syntax errors. Other
-/// punctuation splits words, as the unicode61 tokenizer does when indexing:
-/// "CachyOS/Arch" is indexed as `cachyos` `arch`, so it must be queried that
-/// way, not as `CachyOSArch`.
 fn fts_match_expr(text: &str) -> Option<String> {
     fts_match_expr_with(text, false)
 }
 
-/// `fts_match_expr`, optionally matching any of the words instead of all.
 fn fts_match_expr_with(text: &str, any_term: bool) -> Option<String> {
     let tokens: Vec<&str> = text
         .split(|c: char| !(c.is_alphanumeric() || c == '-' || c == '_'))
@@ -452,40 +390,23 @@ fn fts_match_expr_with(text: &str, any_term: bool) -> Option<String> {
 }
 
 impl Store {
-    /// Open (creating if needed) the database, applying migrations.
     pub fn open(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)
             .map_err(|e| AppError::Storage(format!("cannot open database: {e}")))?;
-        // Wait for a competing writer instead of failing immediately with
-        // SQLITE_BUSY. The same file is legitimately opened by more than one
-        // process (a dev build alongside the installed release, or a second
-        // launch), so a writer can briefly hold the lock; without a timeout that
-        // surfaces to the user as a hard "database is locked" error.
         conn.busy_timeout(std::time::Duration::from_secs(5))
             .map_err(|e| AppError::Storage(format!("cannot set busy timeout: {e}")))?;
-        // A filesystem that refuses WAL (some network mounts) leaves the
-        // connection silently in rollback mode, defeating the crash-safety this
-        // app relies on; treat that as an unusable storage location.
         let journal_mode: String = conn.query_row("PRAGMA journal_mode = WAL", [], |r| r.get(0))?;
         if !journal_mode.eq_ignore_ascii_case("wal") {
             return Err(AppError::Storage(format!(
                 "storage location does not support WAL journaling (got '{journal_mode}')"
             )));
         }
-        // NORMAL is the standard, crash-safe pairing with WAL: fsync at
-        // checkpoints rather than on every commit. Safe against app crashes; only
-        // an OS crash or power loss can drop commits still sitting in the WAL.
         conn.pragma_update(None, "synchronous", "NORMAL")
             .map_err(|e| AppError::Storage(format!("cannot set synchronous mode: {e}")))?;
         Self::backup_before_migration(path, &conn)?;
         Self::init(conn)
     }
 
-    /// Open the store, recovering from a corrupt database file by setting it
-    /// aside and starting fresh. The returned bool is true only when recovery
-    /// happened. Non-corruption failures (permissions, a WAL-hostile mount)
-    /// propagate unchanged so a transient or fixable problem never discards
-    /// good data.
     pub fn open_or_recover(path: &Path) -> Result<(Self, bool)> {
         match Self::open(path) {
             Ok(store) => Ok((store, false)),
@@ -498,8 +419,6 @@ impl Store {
         }
     }
 
-    /// A second connection that only reads, so a heavy query never waits
-    /// behind a save or holds one up. It sees every commit the writer has made.
     pub fn open_reader(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)
             .map_err(|e| AppError::Storage(format!("cannot open database: {e}")))?;
@@ -510,7 +429,6 @@ impl Store {
         Ok(Store { conn, vault: None })
     }
 
-    /// In-memory store for tests that don't need restart semantics.
     pub fn open_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()
             .map_err(|e| AppError::Storage(format!("cannot open database: {e}")))?;
@@ -519,11 +437,6 @@ impl Store {
 
     fn init(mut conn: Connection) -> Result<Self> {
         conn.pragma_update(None, "foreign_keys", "ON")?;
-        // Take the write lock when a transaction begins, not at its first
-        // write. The library is also opened by agent processes
-        // (`instantnotes mcp`); a deferred transaction that reads and then
-        // writes fails at once with SQLITE_BUSY on the upgrade instead of
-        // waiting out the busy timeout.
         conn.set_transaction_behavior(rusqlite::TransactionBehavior::Immediate);
         let check: String = conn.query_row("PRAGMA quick_check", [], |r| r.get(0))?;
         if check != "ok" {
@@ -540,9 +453,6 @@ impl Store {
         let current: i64 = self
             .conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        // A user_version past the last known migration means this file was
-        // written by a newer build; its schema is unknown to us, so refuse
-        // rather than run queries that assume the older shape.
         if current > MIGRATIONS.len() as i64 {
             return Err(AppError::SchemaTooNew {
                 found: current,
@@ -568,9 +478,6 @@ impl Store {
         Ok(())
     }
 
-    /// Copy an existing library aside before migrating it. Runs only for a
-    /// file that already carries an older schema (0 < v < len). A backup
-    /// failure fails the open rather than migrating without a net.
     fn backup_before_migration(path: &Path, conn: &Connection) -> Result<()> {
         let current: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         if current <= 0 || current >= MIGRATIONS.len() as i64 {
@@ -579,19 +486,13 @@ impl Store {
         let mut backup = path.as_os_str().to_os_string();
         backup.push(format!(".backup-v{current}"));
         let backup_path = PathBuf::from(backup);
-        // VACUUM INTO refuses to overwrite; clear any leftover from a prior
-        // interrupted attempt first.
         if backup_path.exists() {
             std::fs::remove_file(&backup_path)
                 .map_err(|e| AppError::Storage(format!("cannot clear stale backup: {e}")))?;
         }
-        // The path is interpolated as a SQL string literal, so double any single
-        // quotes it contains.
         let escaped = backup_path.to_string_lossy().replace('\'', "''");
         conn.execute_batch(&format!("VACUUM INTO '{escaped}'"))
             .map_err(|e| match AppError::from(e) {
-                // A corrupt source keeps its classification so open_or_recover
-                // can still set the file aside instead of giving up.
                 AppError::Corruption(msg) => {
                     AppError::Corruption(format!("pre-migration backup failed: {msg}"))
                 }
@@ -600,8 +501,6 @@ impl Store {
         Ok(())
     }
 
-    /// Rename a corrupt database and its WAL/SHM siblings to a free
-    /// ".corrupt-N" suffix, without clobbering the salvaged file.
     fn move_corrupt_aside(path: &Path) -> Result<()> {
         let mut n = 1;
         let target = loop {
@@ -615,8 +514,6 @@ impl Store {
         };
         std::fs::rename(path, &target)
             .map_err(|e| AppError::Storage(format!("cannot set corrupt database aside: {e}")))?;
-        // WAL/SHM belong to the corrupt file; move them out of the way too so
-        // the fresh database starts clean. They may be absent.
         for ext in ["-wal", "-shm"] {
             let mut sibling = path.as_os_str().to_os_string();
             sibling.push(ext);
@@ -630,19 +527,12 @@ impl Store {
         Ok(())
     }
 
-    /// SQLite's `data_version`: moves only when another connection (an agent
-    /// process, say) commits to this file. This connection's own writes never
-    /// move it, so a change means someone else wrote.
     pub fn data_version(&self) -> Result<i64> {
         Ok(self
             .conn
             .query_row("PRAGMA data_version", [], |r| r.get(0))?)
     }
 
-    /// Whether the file is still at the schema this build migrated it to. A
-    /// long-lived second process (an agent server) checks this before each
-    /// write, so a newer app that migrated the file meanwhile is never
-    /// written to through older code.
     pub fn schema_is_current(&self) -> Result<bool> {
         let version: i64 = self
             .conn
@@ -681,8 +571,6 @@ mod pragma_tests {
     use super::Store;
     use tempfile::tempdir;
 
-    /// An on-disk database must be WAL with a non-zero busy timeout, so a
-    /// competing writer is waited for rather than failing with SQLITE_BUSY.
     #[test]
     fn open_sets_concurrency_pragmas() {
         let dir = tempdir().unwrap();
@@ -700,7 +588,6 @@ mod pragma_tests {
             .unwrap();
         assert_eq!(busy_timeout, 5000);
 
-        // 1 == NORMAL
         let synchronous: i64 = store
             .conn
             .query_row("PRAGMA synchronous", [], |r| r.get(0))
@@ -725,8 +612,6 @@ mod migration_tests {
         cols
     }
 
-    /// A v2 database still carries the sync columns; the v3 migration drops
-    /// them without losing a note.
     #[test]
     fn v3_drops_sync_columns_and_preserves_notes() {
         let dir = tempdir().unwrap();
@@ -761,8 +646,6 @@ mod migration_tests {
         assert!(all.iter().any(|n| n.id == "n1"));
     }
 
-    /// A pre-release library at v4 (content_kind, surface_data) must open,
-    /// not be refused as too new, and gain the vault columns.
     #[test]
     fn a_whiteboard_v4_library_migrates_to_the_vault_schema() {
         let dir = tempdir().unwrap();
@@ -802,8 +685,6 @@ mod migration_tests {
         assert_eq!(store.get_note("n1", false).unwrap().body, "the body");
     }
 
-    /// A library at v5 (the vault mirror without whiteboards) gains the
-    /// canvas hash column, and a board's canvas is tombstoned with its note.
     #[test]
     fn v6_tracks_whiteboard_canvases_in_the_vault() {
         let dir = tempdir().unwrap();
@@ -844,8 +725,6 @@ mod migration_tests {
         );
     }
 
-    /// A library at v11 (before sheets) learns to tombstone a sheet's `.csv`
-    /// under its own extension; a whiteboard's canvas is queued as before.
     #[test]
     fn v12_tombstones_a_sheet_csv_beside_a_board_canvas() {
         let dir = tempdir().unwrap();
@@ -889,8 +768,6 @@ mod migration_tests {
         );
     }
 
-    /// A v3 library gains the vault mirror columns on open; its notes
-    /// survive and start clean (nothing is pending until a vault is configured).
     #[test]
     fn v3_library_gains_vault_columns_and_preserves_notes() {
         let dir = tempdir().unwrap();

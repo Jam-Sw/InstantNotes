@@ -1,6 +1,3 @@
-//! Integration tests against real SQLite (tempfile / in-memory).
-//! Synthetic fixtures only, per TEST_PLAN.md §5.
-
 use instantnotes_core::store::MIGRATIONS;
 use instantnotes_core::types::*;
 use instantnotes_core::{AppError, Store};
@@ -17,8 +14,6 @@ fn create(store: &mut Store, body: &str) -> Note {
         })
         .expect("create note")
 }
-
-// ---- create ----
 
 #[test]
 fn create_sets_defaults_per_data_model() {
@@ -69,8 +64,6 @@ fn create_attaches_explicit_tags_normalized() {
     assert_eq!(tags[0].name, "travel");
 }
 
-// ---- get ----
-
 #[test]
 fn get_missing_note_is_not_found() {
     let mut s = store();
@@ -86,8 +79,6 @@ fn get_with_touch_sets_last_opened_at() {
     let opened = s.get_note(&n.id, true).unwrap();
     assert!(opened.last_opened_at.is_some());
 }
-
-// ---- update ----
 
 #[test]
 fn update_body_persists_new_body() {
@@ -145,7 +136,6 @@ fn removing_inline_token_detaches_tag_but_keeps_tag_row() {
         .map(|t| t.name)
         .collect();
     assert_eq!(names, vec!["beta".to_string()]);
-    // The tag itself survives, just unused.
     let alpha = s
         .list_tags()
         .unwrap()
@@ -154,7 +144,6 @@ fn removing_inline_token_detaches_tag_but_keeps_tag_row() {
         .expect("alpha tag row should survive detachment");
     assert_eq!(alpha.usage_count, 0);
 
-    // A body with no tokens at all clears every inline edge.
     s.update_note(
         &n.id,
         UpdateNotePatch {
@@ -192,7 +181,6 @@ fn manually_added_tag_survives_body_edits() {
 fn explicit_add_promotes_inline_tag_past_token_removal() {
     let mut s = store();
     let n = create(&mut s, "working on #keeper today");
-    // The explicit add pins the already-inline tag against body edits.
     s.add_tag_to_note(&n.id, "keeper").unwrap();
     s.update_note(
         &n.id,
@@ -308,8 +296,6 @@ fn update_missing_note_is_not_found() {
     assert_eq!(err.code(), "NOT_FOUND");
 }
 
-// ---- delete / restore ----
-
 #[test]
 fn soft_delete_hides_from_default_list_and_restore_brings_back() {
     let mut s = store();
@@ -348,15 +334,11 @@ fn permanent_delete_removes_note_and_associations() {
     let n = create(&mut s, "to be purged #gone");
     s.permanently_delete_note(&n.id, true).unwrap();
     assert_eq!(s.get_note(&n.id, false).unwrap_err().code(), "NOT_FOUND");
-    // tag survives but unused
     let tags = s.list_tags().unwrap();
     let gone = tags.iter().find(|t| t.tag.name == "gone").unwrap();
     assert_eq!(gone.usage_count, 0);
-    // and search no longer finds it
     assert!(s.search_notes("purged", 10).unwrap().is_empty());
 }
-
-// ---- list ----
 
 #[test]
 fn list_excludes_archived_by_default() {
@@ -443,16 +425,12 @@ fn list_supports_limit_offset_and_title_sort() {
     assert_eq!(titles, vec!["banana", "cherry"]);
 }
 
-/// Rows tied on the sort column must still come back in one fixed order, or
-/// LIMIT/OFFSET paging (the vault export pages through every note) can skip
-/// or repeat a row that lands on a page boundary. The id breaks the tie.
 #[test]
 fn list_breaks_sort_ties_by_id_so_paging_is_stable() {
     let mut s = store();
     let mut ids: Vec<String> = (0..20)
         .map(|i| create(&mut s, &format!("note {i}")).id)
         .collect();
-    // One bulk statement stamps every note with the same updated_at.
     s.set_notes_flags(&ids, Some(false), None).unwrap();
     ids.sort();
 
@@ -473,8 +451,6 @@ fn list_breaks_sort_ties_by_id_so_paging_is_stable() {
     }
     assert_eq!(paged, ids);
 }
-
-// ---- search ----
 
 #[test]
 fn search_finds_by_body_word() {
@@ -616,8 +592,6 @@ fn search_title_without_a_match_carries_no_sentinels() {
     assert_eq!(hits[0].title, "Travel checklist");
 }
 
-// ---- tags ----
-
 #[test]
 fn get_or_create_tag_is_idempotent_and_normalized() {
     let mut s = store();
@@ -692,8 +666,6 @@ fn add_and_remove_tag_on_note() {
     assert!(s.tags_for_note(&n.id).unwrap().is_empty());
 }
 
-// ---- settings ----
-
 #[test]
 fn settings_roundtrip_json() {
     let mut s = store();
@@ -713,8 +685,6 @@ fn settings_roundtrip_json() {
     s.delete_setting("appearance.theme").unwrap();
     assert!(s.get_setting("appearance.theme").unwrap().is_none());
 }
-
-// ---- persistence across reopen (restart simulation) ----
 
 #[test]
 fn notes_survive_reopen() {
@@ -737,14 +707,10 @@ fn notes_survive_reopen() {
     assert_eq!(names, vec!["idea".to_string()]);
 }
 
-// ---- migrations / recovery ----
-
 #[test]
 fn migrate_refuses_user_version_above_known_migrations() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("future.db");
-    // A file stamped by a newer build: valid but with a schema version this
-    // build has never heard of.
     {
         let conn = rusqlite::Connection::open(&path).unwrap();
         conn.pragma_update(None, "user_version", (MIGRATIONS.len() + 1) as i64)
@@ -760,9 +726,6 @@ fn migrate_refuses_user_version_above_known_migrations() {
 
 #[test]
 fn open_or_recover_does_not_treat_a_future_schema_as_corruption() {
-    // A future-schema file is intact, just unreadable by this build. Moving
-    // it aside and starting fresh, the way open_or_recover does for a
-    // genuinely corrupt file, would silently sideline a real library.
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("future.db");
     {
@@ -775,8 +738,6 @@ fn open_or_recover_does_not_treat_a_future_schema_as_corruption() {
         Err(e) => e,
     };
     assert!(err.is_schema_too_new());
-    // Untouched at its original path, not moved aside the way a corrupt file
-    // would be.
     assert!(path.exists());
     let mut moved_aside = path.as_os_str().to_os_string();
     moved_aside.push(".corrupt-1");
@@ -787,18 +748,14 @@ fn open_or_recover_does_not_treat_a_future_schema_as_corruption() {
 fn open_migrates_v1_schema_and_leaves_backup() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("legacy.db");
-    // v1 fixture: only the first migration applied, user_version pinned at 1,
-    // exactly as an older build would have left the file.
     {
         let conn = rusqlite::Connection::open(&path).unwrap();
         conn.execute_batch(MIGRATIONS[0]).unwrap();
         conn.pragma_update(None, "user_version", 1).unwrap();
     }
     let mut s = Store::open(&path).unwrap();
-    // The v2 migration ran: workspaces (added in v2) is usable.
     s.get_or_create_workspace("Migrated").unwrap();
     assert_eq!(s.list_workspaces().unwrap().len(), 1);
-    // And the pre-migration snapshot sits next to the database.
     let backup = dir.path().join("legacy.db.backup-v1");
     assert!(
         backup.exists(),
@@ -820,21 +777,14 @@ fn open_or_recover_sets_corrupt_file_aside_and_starts_fresh() {
     assert!(recovered);
     let n = create(&mut s, "fresh start");
     assert_eq!(s.get_note(&n.id, false).unwrap().id, n.id);
-    // The unreadable original was set aside, not destroyed.
     assert!(dir.path().join("garbage.db.corrupt-1").exists());
 }
 
-// keep AppError import used even if individual asserts change
 #[allow(dead_code)]
 fn _uses(_: AppError) {}
 
-// ---- capture write-path perf smoke ----
-
 #[test]
 fn create_note_stays_fast_enough_for_capture() {
-    // An order-of-magnitude regression net for the capture write path, not a
-    // benchmark: the bound is generous so CI runners never flake, but an
-    // accidental full-table rescan or per-insert reindex would blow through it.
     let mut s = store();
     for i in 0..200 {
         create(&mut s, &format!("warmup note {i} #tag{}", i % 7));
@@ -848,14 +798,11 @@ fn create_note_stays_fast_enough_for_capture() {
     );
 }
 
-// ---- revisit filter (never opened + created before) ----
-
 #[test]
 fn never_opened_filter_releases_notes_once_touched() {
     let mut s = store();
     let seen = create(&mut s, "capture that got read");
     let unseen = create(&mut s, "capture still waiting");
-    // Opening with touch stamps last_opened_at and releases the note.
     s.get_note(&seen.id, true).unwrap();
 
     let filter = NoteFilter {
@@ -866,7 +813,6 @@ fn never_opened_filter_releases_notes_once_touched() {
     let ids: Vec<_> = loops.iter().map(|n| n.id.as_str()).collect();
     assert_eq!(ids, vec![unseen.id.as_str()]);
 
-    // A plain get without touch must NOT release it.
     s.get_note(&unseen.id, false).unwrap();
     let filter = NoteFilter {
         never_opened: Some(true),
@@ -899,8 +845,6 @@ fn created_before_filter_is_a_strict_cutoff() {
         .unwrap();
     assert!(hits.is_empty());
 }
-
-// ---- workspaces ----
 
 #[test]
 fn get_or_create_workspace_is_idempotent_by_name() {
@@ -984,7 +928,6 @@ fn delete_workspace_returns_every_member_id_for_undo() {
     expected.sort();
     assert_eq!(member_ids, expected);
 
-    // The returned ids are enough to rebuild the space with full fidelity.
     let again = s.get_or_create_workspace("Disbanded").unwrap();
     for id in &member_ids {
         s.add_note_to_workspace(id, &again.id).unwrap();
@@ -1011,11 +954,8 @@ fn list_workspace_tags_scopes_counts_to_visible_members() {
         .iter()
         .map(|t| (t.tag.name.as_str(), t.usage_count))
         .collect();
-    // #car counts one member (the trashed one is invisible); the note
-    // outside the workspace never contributes to #school.
     assert_eq!(summary, vec![("car", 1), ("school", 1)]);
 
-    // Archived members drop out of the chips too.
     s.update_note(
         &car.id,
         UpdateNotePatch {
@@ -1038,7 +978,6 @@ fn workspace_membership_roundtrip() {
     let ws = s.get_or_create_workspace("Research").unwrap();
     let n = create(&mut s, "a note");
     s.add_note_to_workspace(&n.id, &ws.id).unwrap();
-    // idempotent
     s.add_note_to_workspace(&n.id, &ws.id).unwrap();
     let memberships = s.workspaces_for_note(&n.id).unwrap();
     assert_eq!(memberships.len(), 1);
@@ -1147,8 +1086,6 @@ fn bulk_destroy_requires_confirm() {
     assert!(s.get_note(&a.id, false).is_err());
 }
 
-// ---- title_is_auto (read by the vault serializer, design.md §3.2) ----
-
 #[test]
 fn title_is_auto_true_for_a_derived_title() {
     let mut s = store();
@@ -1193,10 +1130,6 @@ fn title_is_auto_missing_note_is_not_found() {
         Err(AppError::NotFound(_))
     ));
 }
-
-// ---- vault export against a real store (SEQUENCE.md unit 7's done
-// condition: exporting the full library and re-parsing it reproduces every
-// field of every note) ----
 
 mod vault_export {
     use super::*;
@@ -1260,10 +1193,6 @@ mod vault_export {
 
         let (notes, manifest) = collect_from_store(&s).unwrap();
         assert_eq!(notes.len(), 4);
-        // The explicit-title note carries its inline tag and its Space
-        // membership: the one path this whole test exists to prove, since
-        // both live outside the `notes` table and are easy to leave out of
-        // `collect_from_store` without any other assertion noticing.
         let explicit_collected = notes.iter().find(|n| n.id == explicit.id).unwrap();
         assert_eq!(explicit_collected.tags, vec!["errands".to_string()]);
         assert_eq!(explicit_collected.spaces, vec!["Engineering".to_string()]);
@@ -1274,9 +1203,6 @@ mod vault_export {
         let texts = read_all_md(dir.path());
         assert_eq!(texts.len(), 4);
 
-        // SEQUENCE.md unit 7's done condition, verbatim: re-parsing the
-        // export reproduces every field of every note, not just the ones a
-        // spot-check happens to look at.
         let collected_by_id: std::collections::HashMap<String, VaultNote> =
             notes.into_iter().map(|n| (n.id.clone(), n)).collect();
         let mut seen_ids: HashSet<String> = HashSet::new();
@@ -1306,8 +1232,6 @@ mod vault_export {
 
     #[test]
     fn collects_more_notes_than_a_single_list_notes_page() {
-        // list_notes defaults to a 500-row page; collect_from_store must
-        // page through, not silently truncate a library bigger than that.
         let mut s = store();
         for i in 0..520 {
             create(&mut s, &format!("note {i}"));

@@ -1,26 +1,14 @@
-// Finish a release: write latest.json for the in-app updater from whichever
-// platforms uploaded an artifact and its signature, name any platform still
-// missing in the release notes, and publish. Run again after a missing
-// platform's job is re-run, and the manifest and notes catch up.
-//
-//   node .github/release-manifest.mjs 0.9.4     (needs GH_TOKEN and gh)
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { INSTALL_FOOTER, notes } from "./release-notes.mjs";
 
-/** Each platform's updater artifact, and the manifest keys it answers to. */
 export const PLATFORMS = [
   { name: "Linux", file: (v) => `InstantNotes_${v}_amd64.AppImage`, keys: ["linux-x86_64", "linux-x86_64-appimage"] },
   { name: "Windows", file: (v) => `InstantNotes_${v}_x64-setup.exe`, keys: ["windows-x86_64", "windows-x86_64-nsis"] },
   { name: "macOS", file: (v) => `InstantNotes_${v}_aarch64.app.tar.gz`, keys: ["darwin-aarch64", "darwin-aarch64-app"] },
 ];
 
-/**
- * The updater manifest for the platforms whose artifact and signature are both
- * among `assets`; `signature(file)` reads a `.sig`. Returns the manifest and
- * the names of the platforms left out.
- */
 export function manifest({ version, assets, repo, body, signature, now }) {
   const platforms = {};
   const missing = [];

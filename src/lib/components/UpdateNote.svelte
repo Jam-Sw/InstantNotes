@@ -1,9 +1,4 @@
 <script lang="ts">
-  // The update note: the one special page in the update Space, where the
-  // install lives. It shows the version jump and the size delta above a single
-  // Update button (the old dialog's primary button, not a new one), then turns
-  // into a progress bar and finally "Restart now" or "Later".
-  // Nothing here is persisted; the note vanishes with the Space.
   import { updater } from "$lib/stores/updater.svelte";
   import { sizeDeltaLine, updateNoteTitle } from "$lib/update/space";
 
@@ -70,7 +65,6 @@
     min-height: 0;
     overflow-y: auto;
   }
-  /* Mirrors the note editor's title row, so the page reads as a note. */
   .update-toolbar {
     display: flex;
     align-items: center;
@@ -136,7 +130,6 @@
     display: flex;
     gap: 8px;
   }
-  /* The old update dialog's primary button, kept as the one Update button. */
   .btn {
     padding: 6px 14px;
     border-radius: var(--radius);

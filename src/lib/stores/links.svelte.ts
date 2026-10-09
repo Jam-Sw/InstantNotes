@@ -1,8 +1,3 @@
-// Link preferences (Svelte 5 runes): how links look and open inside notes.
-// Persisted to the settings KV like editorPrefs. The editor consumes these
-// through a CodeMirror state field (see src/lib/editor/links.ts), synced by
-// Editor.svelte whenever a value changes, so edits apply live.
-
 import { getSetting, setSetting } from "$lib/api/client";
 import {
   DEFAULT_LINK_PREFS,
@@ -39,11 +34,9 @@ class LinkPrefsStore {
       if (typeof tip === "boolean") this.tooltip = tip;
       if (typeof ext === "boolean") this.externalIndicator = ext;
     } catch {
-      // Settings are best-effort; fall back to defaults silently.
     }
   }
 
-  /** Plain object for dispatching into CodeMirror (no reactive proxies). */
   snapshot(): LinkPrefsSnapshot {
     return {
       openWith: this.openWith,

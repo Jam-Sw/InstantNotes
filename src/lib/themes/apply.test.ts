@@ -28,7 +28,6 @@ describe("themeToVars", () => {
   });
 
   it("derives the optional tokens from the palette when a theme omits them", () => {
-    // A theme written before the optional tokens existed: required set only.
     const { success: _s, warning: _w, ...required } = manuscript.dark!;
     const bare: Theme = { ...manuscript, dark: required };
     const vars = themeToVars(bare, "dark");
@@ -48,7 +47,6 @@ describe("themeToVars", () => {
 
   it("resolves font slots and metrics", () => {
     const vars = themeToVars(manuscript, "dark");
-    // Manuscript uses mono metadata, sans body.
     expect(vars["--font-meta"]).toBe(manuscript.fonts.mono);
     expect(vars["--font-body"]).toBe(manuscript.fonts.ui);
     expect(vars["--radius"]).toBe("8px");
@@ -56,7 +54,6 @@ describe("themeToVars", () => {
   });
 
   it("emits new metric vars with defaults when not set by the theme", () => {
-    // A bare theme that omits the optional metrics exercises the default fallback.
     const bare: Theme = { ...manuscript, metrics: { radius: "8px", density: 1.15 } };
     const vars = themeToVars(bare, "dark");
     expect(vars["--radius-lg"]).toBe("calc(8px + 4px)");

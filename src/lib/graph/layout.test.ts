@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { LAYOUT_TICKS, buildGraph, neighbors, startLayout, type Graph } from "./layout";
 
-/** A layout run to rest in one go (`ticks: 0` gives the starting positions). */
 function layoutGraph(
   graph: Graph,
   options: { previous?: Map<string, { x: number; y: number; z: number }>; ticks?: number } = {},
@@ -75,7 +74,6 @@ describe("buildGraph", () => {
     expect(edge("n2")).toMatchObject({ kind: "tag", tagSource: "manual" });
     expect(edge("n3")).toMatchObject({ kind: "space" });
     expect(edge("n3")?.tagSource).toBeUndefined();
-    // A link written before sources were sent reads as added.
     const lib = library();
     delete lib.links[0].source;
     expect(buildGraph(lib).edges.find((e) => e.source === "n1")?.tagSource).toBe("manual");
@@ -87,7 +85,6 @@ describe("buildGraph", () => {
     expect(g.edges.find((e) => e.kind === "suggested")).toMatchObject({ source: "lone", target: "s1" });
     const byId = new Map(g.nodes.map((n) => [n.id, n]));
     expect(byId.get("lone")).toMatchObject({ suggested: true, degree: 0 });
-    // A Space is as big as what it holds; a suggestion does not grow it.
     expect(byId.get("s1")?.degree).toBe(1);
     expect(g.unconnectedNotes).toBe(0);
     expect(g.populatedSpaces).toBe(1);
@@ -167,7 +164,6 @@ describe("refreshing a laid-out library", () => {
     const moved = first.nodes.map((n) => Math.hypot(after.get(n.id)!.x - n.x, after.get(n.id)!.y - n.y, after.get(n.id)!.z - n.z));
     const mean = moved.reduce((a, b) => a + b, 0) / moved.length;
     expect(mean).toBeLessThan(4);
-    // The newcomer still lands by the tag it carries.
     const newcomer = after.get("new")!;
     const hub = after.get("t1")!;
     expect(Math.hypot(newcomer.x - hub.x, newcomer.y - hub.y, newcomer.z - hub.z)).toBeLessThan(90);
@@ -198,8 +194,6 @@ describe("neighbors", () => {
   it("at two hops is the lens: a note's hubs and the notes they gather", () => {
     const g = buildGraph(library(), [suggestion("lone")]);
     expect([...neighbors(g, "n1", 2)].sort()).toEqual(["n1", "n2", "t1"]);
-    // A suggested edge is a path too: the lens on n3 reaches the note
-    // suggested for its Space.
     expect([...neighbors(g, "n3", 2)].sort()).toEqual(["lone", "n3", "s1"]);
   });
 });

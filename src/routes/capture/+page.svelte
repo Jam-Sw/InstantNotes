@@ -1,7 +1,4 @@
 <script lang="ts">
-  // Capture panel: the product promise. Bare textarea on the latency-critical
-  // path, no editor framework here. Enter saves and dismisses, Shift+Enter is
-  // a newline, and Esc dismisses the window while preserving the draft.
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -26,8 +23,6 @@
   import LicenseLocked from "$lib/components/LicenseLocked.svelte";
 
   const DRAFT_KEY = "capture.draft";
-  // One visible beat of "Saved" before the panel hides, so success reads as more
-  // than the window merely closing. Small on purpose so it adds no real latency.
   const SAVED_HINT_MS = 300;
   const RECENT = 3;
 
@@ -37,10 +32,7 @@
   let errorMsg = $state<string | null>(null);
   let recent = $state<Note[]>([]);
   let target = $state<Note | null>(null);
-  // Absent while the license gate stands in for it (LicenseLocked).
   let textarea = $state<HTMLTextAreaElement>();
-  // Set while we hide the panel ourselves so the blur that hiding triggers does
-  // not fire a second dismiss; cleared when focus returns on the next reveal.
   let hiding = false;
 
   const persistDraft = debounce((value: string) => {
@@ -59,31 +51,21 @@
     void restoreDraft();
     void loadRecent();
     const unlisten = listen(EVENTS.CAPTURE_SHOWN, () => {
-      // Re-read the theme: it may have changed in the library while hidden.
       void theme.init();
       void restoreDraft();
       target = null;
       void loadRecent();
       textarea?.focus();
-      // After the next paint the textarea is genuinely accepting input;
-      // report it so the shell can close this reveal's latency sample.
       requestAnimationFrame(() => void captureInputReady());
     });
-    // Dismiss on outside click like Spotlight/Raycast/Things: this panel is
-    // always-on-top on every Space, so a click elsewhere would otherwise strand
-    // a floating window. dismiss(false) persists the draft, making this safe.
     const unfocus = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
       if (focused) {
         hiding = false;
         return;
       }
-      // Never dismiss mid-save, nor react to the blur our own hide just caused.
       if (saving || hiding) return;
       void dismiss(false);
     });
-    // Quit handshake: push a debounced draft write through before the process
-    // exits, so the draft is not 300ms stale on the next launch. Only the
-    // library window and stickies answer with quit_app.
     const unlistenQuit = listen(EVENTS.APP_QUIT_REQUESTED, () => {
       persistDraft.flush();
     });
@@ -100,7 +82,6 @@
       const draft = await getSetting<string>(DRAFT_KEY);
       if (draft && !text) text = draft;
     } catch {
-      // Draft restore is best-effort; capture must never block on it.
     }
     textarea?.focus();
   }
@@ -140,9 +121,6 @@
   async function save(openLibraryAfter = false) {
     const body = text.trim();
     if (!body) {
-      // Nothing to save; still honor the shortcut's intent to reveal the library.
-      // Mark the hide first: the library stealing focus fires a blur that would
-      // otherwise run a second, concurrent dismiss.
       hiding = true;
       if (openLibraryAfter) await openLibrary();
       await dismiss(true);
@@ -156,7 +134,6 @@
       target = null;
       persistDraft.cancel();
       void deleteSetting(DRAFT_KEY);
-      // Hold "Saved" for one beat; the textarea stays disabled via `saving`.
       saved = true;
       await new Promise<void>((resolve) => setTimeout(resolve, SAVED_HINT_MS));
       if (openLibraryAfter) await openLibrary();
@@ -169,7 +146,6 @@
     }
   }
 
-  // Hide the panel ourselves, marking the hide so the blur it triggers is ignored.
   async function hidePanel() {
     hiding = true;
     await hideCapture();
@@ -188,7 +164,6 @@
   function onKeydown(e: KeyboardEvent) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      // Cmd/Ctrl+Enter also opens the library after saving (ctrl for win/linux parity).
       void save(e.metaKey || e.ctrlKey);
     } else if (e.key === "Tab" && !e.shiftKey && recent.length > 0) {
       e.preventDefault();

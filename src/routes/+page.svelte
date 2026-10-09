@@ -1,7 +1,4 @@
 <script lang="ts">
-  // Library window composition root: lays out the three panes and owns the
-  // app-chrome state (command palette, settings) plus the global keyboard
-  // shortcuts. Each pane lives in its own component under $lib/components.
   import { onMount } from "svelte";
   import { getVersion } from "@tauri-apps/api/app";
   import { listen } from "@tauri-apps/api/event";
@@ -48,9 +45,6 @@
   let paletteOpen = $state(false);
   let settingsOpen = $state(false);
 
-  // The update Space is synthetic: once the update is gone (installed and
-  // answered, or no longer offered) there is no note behind it, so leave it
-  // rather than render a pane pointing at something that does not exist.
   $effect(() => {
     if (updateSpace.visible) return;
     if (
@@ -61,19 +55,15 @@
     }
   });
 
-  // The agents store cannot reach the library (the library imports it), so
-  // the way to the Agents Space is handed to it from here.
   agents.show = () => {
     if (licenseSpace.locked) return;
     settingsOpen = false;
     agentsSpace.open();
   };
-  // While the Agents Space is on screen its changes are seen as they land.
   $effect(() => {
     agents.setWatching(!settingsOpen && isAgentsSpaceId(library.activeWorkspaceId));
   });
 
-  /** Take the welcome pill or a tray check into the update Space. */
   function openUpdate() {
     settingsOpen = false;
     library.selectWorkspace(UPDATE_SPACE_ID);
@@ -82,8 +72,6 @@
   }
 
   onMount(() => {
-    // On macOS the library's title bar is an overlay: the traffic lights sit
-    // over the page, and the leading pane header keeps clear of them.
     if (isMac) document.documentElement.dataset.chrome = "overlay";
     void library.init();
     void editorPrefs.init();
@@ -94,18 +82,13 @@
     void agents.init();
     void getVersion().then((v) => (appVersion = v));
     updater.start();
-    // Tray "Check for Updates…": run a manual check, then show the update
-    // Space if one turned up. The check itself toasts either outcome.
     let unlistenCheck: (() => void) | undefined;
     void listen(EVENTS.UPDATER_CHECK, async () => {
       await updater.checkNow({ manual: true });
       if (updater.pendingUpdate) openUpdate();
     }).then((un) => (unlistenCheck = un));
 
-    // Menu bar events.
     let unlistenSettings: (() => void) | undefined;
-    // The menu bar's entry points stand down until the license and EULA are
-    // agreed (licenseSpace.locked), the same as the keyboard's.
     void listen(EVENTS.SETTINGS_OPEN, () => {
       if (licenseSpace.locked) return;
       settingsOpen = true;
@@ -144,8 +127,6 @@
       void library.toggleSticky();
     }).then((un) => (unlistenSticky = un));
 
-    // Quit handshake: persist the debounced edit, then tell Rust to exit for
-    // real. If this webview is hung the Rust-side fallback exits anyway.
     let unlistenQuit: (() => void) | undefined;
     void listen(EVENTS.APP_QUIT_REQUESTED, async () => {
       await library.flushPendingEdits();
@@ -177,9 +158,6 @@
     };
   });
 
-  // A sheet's grid counts as typing: it stops only the keys it handles
-  // itself (sheet/keys.ts), so the list keys below must stand aside for it
-  // while the global keys above still run.
   function isTypingTarget(t: EventTarget | null): t is HTMLElement {
     return (
       t instanceof HTMLElement &&
@@ -190,9 +168,6 @@
     );
   }
 
-  // ⌘K on a board is still the palette. Excalidraw binds it to "add link"
-  // and hears keys before the window does, so claim it on the way down;
-  // stopping it here also keeps onKeydown from toggling the palette twice.
   function onBoardPaletteKey(e: KeyboardEvent) {
     if (licenseSpace.locked) return;
     if ((e.metaKey || e.ctrlKey) && e.key === "k" && isWhiteboardTarget(e.target)) {
@@ -203,34 +178,25 @@
   }
 
   function onKeydown(e: KeyboardEvent) {
-    // The confirm dialog stops propagation itself, but that only covers keys
-    // dispatched through it; this guard catches the rest (focus on body after
-    // an invoker unmounted) so nothing moves under an open modal.
     if (confirmDialog.request) return;
-    // Until the license and EULA are agreed, no shortcut does its work.
     if (licenseSpace.locked) return;
     const mod = e.metaKey || e.ctrlKey;
-    // ⌘K toggles the command palette from anywhere, including input fields.
     if (mod && e.key === "k") {
       e.preventDefault();
       paletteOpen = !paletteOpen;
       return;
     }
-    // ⌘⇧A goes to the Agents Space from anywhere, and back out of it.
     if (mod && e.shiftKey && (e.key === "a" || e.key === "A")) {
       e.preventDefault();
       if (agents.watching) library.selectWorkspace(null);
       else agents.show();
       return;
     }
-    // ⌘\ toggles the sidebar from anywhere, including input fields and boards.
     if (mod && e.key === "\\") {
       e.preventDefault();
       sidebar.toggle();
       return;
     }
-    // Every other key aimed at a whiteboard is the board's: arrows, ⌘A, and
-    // ⌘= act on shapes there, not on the note list or the text zoom.
     if (isWhiteboardTarget(e.target)) return;
     if (mod && (e.key === "=" || e.key === "+")) {
       e.preventDefault();
@@ -248,7 +214,6 @@
       return;
     }
     if (isTypingTarget(e.target)) {
-      // Escape in the search field clears the search; everything else is typing.
       if (
         e.key === "Escape" &&
         e.target instanceof HTMLInputElement &&
@@ -259,7 +224,6 @@
       }
       return;
     }
-    // The note list is hidden behind the graph; its keys would act unseen.
     if (library.graphMode) return;
     switch (e.key) {
       case "ArrowDown":
@@ -288,7 +252,6 @@
     }
   }
 
-  // Arrow-key navigation must keep the active row visible in the list.
   async function moveAndReveal(delta: number, extend: boolean) {
     const id = await library.moveSelection(delta, extend);
     if (!id) return;
@@ -310,8 +273,6 @@
     if (!note) return;
     await library.flushPendingEdits();
     const filename = (note.title || "Untitled").replace(/[/\\?%*:|"<>]/g, "-");
-    // A board exports as the drawing itself, openable in Excalidraw; a sheet
-    // as CSV, openable in any spreadsheet.
     const board = note.contentKind === "whiteboard";
     const sheet = note.contentKind === "sheet";
     const [ext, filter] = board
@@ -321,9 +282,6 @@
         : ["md", { name: "Markdown", extensions: ["md"] }];
     const path = await save({ defaultPath: `${filename}.${ext}`, filters: [filter] });
     if (!path) return;
-    // `note`, not library.selected: the selection can move while the dialog
-    // is open, and the flush above already brought `note` up to date. The
-    // CSV comes from the store, the one serializer the vault writes with.
     const contents = board
       ? excalidrawFile(parseBoard(note.surfaceData))
       : sheet
@@ -332,8 +290,6 @@
     await exportNoteFile(path, contents);
   }
 
-  // Sidebar resize: pointer capture keeps the gesture on the handle even when
-  // the pointer outruns it; width persists once at release, not per move.
   let draggingSidebar = $state(false);
 
   function startSidebarDrag(e: PointerEvent) {
@@ -364,9 +320,6 @@
   }
 
   async function confirmBulkDestroy() {
-    // Snapshot the ids when the dialog opens: the selection could otherwise
-    // drift while it is up (menu events, cross-window refreshes) and the
-    // confirm would destroy whatever is selected at resolve time instead.
     const ids = [...library.multiSelected];
     if (ids.length === 0) return;
     const what = ids.length === 1 ? "this note" : `these ${ids.length} notes`;
@@ -399,10 +352,6 @@
   >
     {#if !sidebar.hidden}
       <Sidebar />
-      <!-- Sits on the sidebar/list border; drag resizes, double-click resets,
-           arrows nudge. Collapse/expand lives on ⌘\ and the command palette.
-           WAI-ARIA window-splitter: a focusable separator with arrow-key
-           resizing is the canonical widget, which the a11y lint doesn't know. -->
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <div
@@ -420,7 +369,6 @@
       ></div>
     {/if}
     {#if library.graphMode && !licenseSpace.locked}
-      <!-- The graph takes the list and editor columns together. -->
       <section class="graph-span">
         <GraphView />
       </section>
@@ -428,7 +376,6 @@
       <NoteList />
       <section class="editor-pane">
         {#if !licenseSpace.locked && library.multiSelected.size <= 1 && library.selected && !isUpdateNoteId(library.selected.id) && !isAgentNoteId(library.selected.id)}
-          <!-- The editor brings its own header, with the note's actions. -->
           <NoteEditor />
         {:else}
           <div class="pane-header" data-tauri-drag-region></div>
@@ -456,18 +403,12 @@
 <style>
   .layout {
     display: grid;
-    /* Columns come from inline style: the sidebar column is drag-resizable
-       and drops out entirely when collapsed (⌘\). */
-    /* Pin the single row to the viewport so each pane scrolls internally
-       instead of growing the row and clipping content below the fold. */
     grid-template-rows: minmax(0, 1fr);
     height: 100vh;
     overflow: hidden;
     position: relative;
   }
 
-  /* Invisible 6px hit strip straddling the sidebar border. The border itself
-     stays the visual affordance; the strip only tints while engaged. */
   .sidebar-handle {
     position: absolute;
     top: 0;
@@ -488,7 +429,6 @@
     flex-direction: column;
     min-width: 0;
     min-height: 0;
-    /* The page: the top surface, and opaque over the window material. */
     background: var(--bg);
   }
   .graph-span {

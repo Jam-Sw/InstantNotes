@@ -1,27 +1,10 @@
 #!/usr/bin/env node
-// Dev launcher for `npm run tauri:dev`.
-//
-// Why this exists: the app hides to the tray on window-close (lib.rs:606) and
-// uses tauri-plugin-single-instance (lib.rs:465). So a plain `tauri dev` re-run
-// does NOT start fresh - single-instance detects the still-alive tray instance
-// and just re-surfaces its window. That window is the webview from the FIRST
-// launch: frozen on the frontend it loaded then, with its HMR socket pointing at
-// a Vite server that has since died. Result: edits never show, no matter how
-// many times you run it.
-//
-// So before launching, we kill any prior dev instance and free the Vite port,
-// guaranteeing every run is a genuinely fresh process that loads the latest UI
-// from a live Vite (with working hot-reload). Points the dev build at the real
-// notes DB so the same notes show as the installed app.
 
 import { execSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-// This project's Vite dev port. Keep in sync with vite.config.js and
-// src-tauri/tauri.conf.json (build.devUrl). Each Tauri project uses its own
-// port so several can run side by side.
 const DEV_PORT = 1422;
 
 function sh(cmd) {
@@ -39,15 +22,10 @@ function killPid(pid, label) {
     process.kill(n, "SIGTERM");
     console.log(`[tauri:dev] stopped ${label} (pid ${n})`);
   } catch {
-    /* already gone */
   }
 }
 
-// 1 + 2) Stale-process cleanup needs ps/lsof, so it runs on macOS and Linux
-// only. On Windows the single-instance plugin still reloads the surviving
-// webview (lib.rs), so a re-run is stale-frontend-safe, just not force-fresh.
 if (process.platform !== "win32") {
-  // 1) Kill any running dev binary by PID (never signal this script itself).
   for (const line of sh("ps -axo pid=,args=").split("\n")) {
     if (
       line.includes("target/debug/instantnotes") &&
@@ -58,15 +36,10 @@ if (process.platform !== "win32") {
     }
   }
 
-  // 2) Free this project's Vite dev port so a fresh server is used (not a
-  // stale one). Only InstantNotes' own port is touched, so dev servers of
-  // other Tauri projects - each on their own port - keep running.
   const onPort = sh(`lsof -ti tcp:${DEV_PORT}`).trim();
   if (onPort) for (const pid of onPort.split("\n")) killPid(pid, `stale dev server on :${DEV_PORT}`);
 }
 
-// 3) Launch fresh, pointed at the real notes DB (the installed app's
-// app_data_dir for this platform, matching Tauri's path resolver).
 const appDataRoot =
   process.platform === "darwin"
     ? join(homedir(), "Library", "Application Support")
@@ -91,7 +64,6 @@ const child = spawn(
         ? { WEBKIT_DISABLE_DMABUF_RENDERER: "1" }
         : {}),
     },
-    // .cmd shims only execute through a shell.
     shell: process.platform === "win32",
   },
 );

@@ -1,10 +1,4 @@
 <script lang="ts" generics="T extends string">
-  // A labeled segmented choice: the shared multi-option control used across
-  // settings pages, matching the segmented control on the Links page.
-  //
-  // It is a real radio group, not a row of buttons: the selected segment is the
-  // group's single tab stop and the arrow keys move the selection, which is
-  // what the role promises and what a native segmented control does.
   import PrefRow from "./PrefRow.svelte";
   type Option = { value: T; label: string };
   let {
@@ -28,12 +22,6 @@
 
   const selected = $derived(Math.max(0, options.findIndex((o) => o.value === value)));
 
-  // Keyboard selection moves focus with it, because the segment that is
-  // selected is the one that is tabbable; leaving focus behind would strand it
-  // on an element that is no longer in the tab order.
-  // The guard is not redundant with the disabled attribute: that stops a real
-  // click, this keeps "onchange never fires while disabled" true of the
-  // component itself, whoever dispatches the event.
   function selectAt(i: number) {
     const o = options[i];
     if (disabled || !o) return;
@@ -63,8 +51,6 @@
       bind:this={group}
     >
       {#each options as o, i (o.value)}
-        <!-- The keys live on the segments, not the group: the selected segment
-             is what holds focus, so it is what receives the key. -->
         <button
           class="seg-btn"
           type="button"
@@ -105,8 +91,6 @@
     color: var(--accent-text);
     font-weight: 500;
   }
-  /* The selected segment already carries an accent background, so focus needs
-     a ring of its own to stay legible. */
   .seg-btn:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: -2px;

@@ -1,8 +1,4 @@
 <script lang="ts">
-  // Settings > Agents: whether agents may connect, what they may do, how
-  // you hear about it, how to connect one, and a glance at what they have
-  // done. The live view of an agent at work is on the notes themselves
-  // (agents.svelte.ts); the full trace, with Revert, is the Agents Space.
   import { onMount } from "svelte";
   import { agents } from "$lib/stores/agents.svelte";
   import {

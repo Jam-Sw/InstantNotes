@@ -1,8 +1,3 @@
-// The kernel's experience contract, enforced as properties over a corpus of
-// every construct (see ARCHITECTURE.md). These are not per-feature tests:
-// they assert the invariants that make "typing into invisible markup"
-// structurally impossible, for every construct at every caret position.
-
 import { describe, it, expect } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
@@ -23,8 +18,6 @@ import { TaskSpec } from "./constructs/task";
 import { ImageSpec } from "./constructs/image";
 import { TagSpec } from "./constructs/tags";
 
-// Mirrors the registry in index.ts, with a fake asset converter so no Tauri
-// runtime is needed.
 function makeScanner(): ConstructScanner {
   return new ConstructScanner(
     [
@@ -64,8 +57,6 @@ function tableOf(state: EditorState, preview = true): ConstructTable {
   );
 }
 
-// One line (or block) per construct the kernel supports, blank-line
-// separated so blocks terminate the way they do in real notes.
 const CORPUS = [
   "plain text with #tag inline",
   "",
@@ -115,7 +106,7 @@ describe("kernel invariants", () => {
     for (let pos = 0; pos <= CORPUS.length; pos++) {
       const folded = table.foldedHides([{ from: pos, to: pos }]);
       for (const h of folded) {
-        if (h.widget) continue; // widgets are visible objects, guarded by atomic ranges
+        if (h.widget) continue;
         expect(
           h.to < pos || h.from > pos,
           `invisible hidden range [${h.from},${h.to}] "${CORPUS.slice(h.from, h.to)}" touches caret at ${pos}`,
@@ -146,11 +137,8 @@ describe("kernel invariants", () => {
     const doc = "trailing [LINK_CLICK_ME](https://example.com/x)";
     const table = tableOf(stateOf(doc));
     const textEnd = doc.indexOf("LINK_CLICK_ME") + "LINK_CLICK_ME".length;
-    const away = [{ from: 0, to: 0 }]; // caret elsewhere, link folded
-    // From the last visible glyph to the line end is pure hidden markup, so
-    // CaretGuard snaps such a click to the line end.
+    const away = [{ from: 0, to: 0 }];
     expect(table.allHiddenBetween(textEnd, doc.length, away)).toBe(true);
-    // One glyph earlier is visible text: no snapping.
     expect(table.allHiddenBetween(textEnd - 1, doc.length, away)).toBe(false);
   });
 
@@ -194,8 +182,6 @@ describe("construct parity", () => {
   });
 
   it("folds inline emphasis marks, including inside link text", () => {
-    // Prefixed so the caret at 0 sits before the constructs (as the link and
-    // autolink cases above do); a caret touching a construct reveals it.
     expect(hiddenTexts("a **b** [*i*](https://x.dev)")).toEqual([
       "**",
       "**",
@@ -207,7 +193,6 @@ describe("construct parity", () => {
   });
 
   it("folds the heading prefix", () => {
-    // Caret in the body, off the heading line: on the line, the prefix reveals.
     expect(hiddenTexts("# Title\n\nbody", [{ from: 9, to: 9 }])).toEqual(["# "]);
   });
 
@@ -218,7 +203,6 @@ describe("construct parity", () => {
   it("folds the quote prefix per line: the caret's line opens, others stay", () => {
     const doc = "> first\n> second";
     const table = tableOf(stateOf(doc));
-    // Caret on the first quote line: its > opens, the second stays folded.
     const folded = table.foldedHides([{ from: 2, to: 2 }]);
     expect(folded.map((h) => h.from)).toEqual([doc.indexOf("> second")]);
   });
@@ -260,13 +244,11 @@ describe("construct parity", () => {
   });
 
   it("renders attachment images as widgets once the base directory lands", () => {
-    // Lead-in text keeps the caret-at-0 selection off the image so it folds.
     const doc = "pic:\n\n![alt](attachments/pic.png)";
     const caret = [{ from: 0, to: 0 }];
     const isImage = (h: { widget: boolean; from: number; to: number }) =>
       h.widget && doc.slice(h.from, h.to).startsWith("![");
 
-    // Before the async base directory arrives: markdown text, no widget.
     expect(tableOf(stateOf(doc)).foldedHides(caret).some(isImage)).toBe(false);
 
     const withBase = stateOf(doc).update({
@@ -293,7 +275,6 @@ describe("construct parity", () => {
     const state = stateOf(doc);
     const table = tableOf(state);
     const folded = table.foldedHides([{ from: 0, to: 0 }]);
-    // Caret inside the fence reveals the backticks (whole-fence construct).
     expect(folded).toEqual([]);
     const away = tableOf(
       stateOf(`intro\n\n${doc}`),

@@ -1,19 +1,14 @@
-//! Note CRUD, listing, and full-text search.
-
 use super::*;
 use crate::sheet::{self, Sheet};
 
 pub(super) struct NewNote<'a> {
     pub body: &'a str,
-    /// Set explicitly; otherwise derived from the body.
     pub title: Option<String>,
     pub created_at: &'a str,
     pub updated_at: &'a str,
     pub last_opened_at: Option<&'a str>,
 }
 
-/// The one place a note row is inserted, inside the caller's transaction,
-/// with its inline `#tags`. Returns the new note's id.
 pub(super) fn insert_note(conn: &Connection, note: NewNote<'_>) -> Result<String> {
     let explicit_title = note
         .title
@@ -45,19 +40,12 @@ pub(super) fn insert_note(conn: &Connection, note: NewNote<'_>) -> Result<String
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct UpdatePlan {
     pub kind: String,
-    /// A new title, or `None` to keep the column as it is.
     pub title: Option<String>,
-    /// A new `title_is_auto`, or `None` to keep the column as it is.
     pub title_is_auto: Option<bool>,
-    /// The body to write, or `None` to keep it. The patch's for a document
-    /// or a whiteboard; derived from the grid for a sheet.
     pub body: Option<String>,
-    /// The surface to write, or `None` to keep it.
     pub surface_data: Option<String>,
 }
 
-/// The rules of an update, apart from the rows. `Ok(None)` when the patch
-/// changes nothing; validation errors are the ones the caller sees.
 pub(super) fn plan_update(
     existing: &Note,
     title_is_auto: bool,
@@ -82,7 +70,6 @@ pub(super) fn plan_update(
             )))
         }
     };
-    // Converting is one-way, and only a document converts.
     if has_surface(&existing.content_kind) && kind != existing.content_kind {
         let back = if kind == CONTENT_KIND_DOCUMENT {
             " back"
@@ -101,9 +88,6 @@ pub(super) fn plan_update(
         ));
     }
 
-    // A sheet's body is its grid as a Markdown table, derived here so every
-    // writer produces the same one; a body sent with a sheet is ignored. A
-    // note that converts without a grid gets the default one.
     let (body, surface_data) = if kind == CONTENT_KIND_SHEET {
         match &patch.surface_data {
             Some(raw) => {
@@ -125,10 +109,6 @@ pub(super) fn plan_update(
         .as_deref()
         .map(str::trim)
         .filter(|t| !t.is_empty());
-    // A surface note's body is derived (the text on a canvas, a sheet's
-    // grid) and rewritten by every save, so its title stops following the
-    // body the moment it converts. A sheet born from an empty note takes a
-    // name of its own rather than "Untitled".
     let becomes_sheet = kind == CONTENT_KIND_SHEET && existing.content_kind != CONTENT_KIND_SHEET;
     let (title, new_title_is_auto) = match (explicit_title, &body) {
         (Some(t), _) => (Some(t.to_string()), Some(false)),
@@ -150,18 +130,12 @@ pub(super) fn plan_update(
     }))
 }
 
-/// How old a capture must be before Revisit lists it: newer ones are often
-/// still in the user's head.
 pub const REVISIT_AFTER_MS: i64 = 3 * 24 * 60 * 60 * 1000;
 
-/// A filter asking for `revisit` becomes never-opened, capture-born notes
-/// older than `REVISIT_AFTER_MS`, oldest first: one rule for the app and
-/// the MCP tool.
 pub(super) fn expand_revisit(mut filter: NoteFilter, now: chrono::DateTime<Utc>) -> NoteFilter {
     if filter.revisit {
         let cutoff = now - chrono::Duration::milliseconds(REVISIT_AFTER_MS);
         filter.never_opened = Some(true);
-        // Same form as stored timestamps, which compare as strings.
         filter.created_before = Some(cutoff.to_rfc3339_opts(SecondsFormat::Micros, true));
         filter.sort_by = Some("createdAt".into());
         filter.sort_order = Some("asc".into());
@@ -192,8 +166,6 @@ impl Store {
         self.fetch_note(&id)
     }
 
-    /// Whether the title is still auto-derived from its body. Not on `Note`:
-    /// IPC callers never need it; the vault serializer does (design.md §3.2).
     pub fn title_is_auto(&self, id: &str) -> Result<bool> {
         self.conn
             .query_row(
@@ -206,7 +178,6 @@ impl Store {
             .ok_or_else(|| AppError::NotFound(format!("note {id} not found")))
     }
 
-    /// Fetch a note. When `touch` is true, updates `last_opened_at`.
     pub fn get_note(&mut self, id: &str, touch: bool) -> Result<Note> {
         if touch {
             self.conn.execute(
@@ -218,7 +189,6 @@ impl Store {
     }
 
     pub fn update_note(&mut self, id: &str, patch: UpdateNotePatch) -> Result<Note> {
-        // Ensure existence first for a clean NOT_FOUND.
         let existing = self.fetch_note(id)?;
         let title_is_auto: bool = self
             .conn
@@ -228,8 +198,6 @@ impl Store {
                 |r| r.get::<_, i64>(0),
             )
             .map(|v| v != 0)?;
-        // An empty patch is a no-op: skip the UPDATE so updated_at is not
-        // bumped and recency-sorted lists keep their order.
         let Some(plan) = plan_update(&existing, title_is_auto, &patch)? else {
             return Ok(existing);
         };
@@ -243,8 +211,6 @@ impl Store {
 
         let now = now_iso();
         let tx = self.conn.transaction()?;
-        // Checked inside the (immediate) transaction, so no other writer can
-        // land between the check and the update.
         if let Some(expected) = &patch.expected_updated_at {
             let current: String = tx.query_row(
                 "SELECT updated_at FROM notes WHERE id = ?1",
@@ -281,10 +247,6 @@ impl Store {
             ],
         )?;
         if let Some(body) = &new_body {
-            // Reconcile inline tags with the new body: attach the tags it now
-            // mentions, then detach any inline-sourced edge whose #token is
-            // gone so removing a tag chip is not undone by the next save.
-            // Manual edges are pinned and never touched by a body edit.
             let mut kept_ids: Vec<String> = Vec::new();
             for name in domain::extract_inline_tags(body) {
                 let tag = tag_get_or_create(&tx, &name)?;
@@ -336,7 +298,6 @@ impl Store {
         self.fetch_note(id)
     }
 
-    /// Permanent deletion requires `confirm == true` (VALIDATION_ERROR otherwise).
     pub fn permanently_delete_note(&mut self, id: &str, confirm: bool) -> Result<()> {
         if !confirm {
             return Err(AppError::Validation(
@@ -344,14 +305,11 @@ impl Store {
             ));
         }
         self.fetch_note(id)?;
-        // FK cascade removes note_tags; the AFTER DELETE trigger removes FTS rows.
         self.conn
             .execute("DELETE FROM notes WHERE id = ?1", params![id])?;
         Ok(())
     }
 
-    /// Default filter excludes archived and deleted notes; sorts by
-    /// updatedAt desc.
     pub fn list_notes(&self, filter: NoteFilter) -> Result<Vec<Note>> {
         let filter = expand_revisit(filter, Utc::now());
         let (conditions, args) = note_conditions(&filter);
@@ -370,10 +328,6 @@ impl Store {
         let limit = filter.limit.unwrap_or(500).clamp(1, 5000);
         let offset = filter.offset.unwrap_or(0).max(0);
 
-        // Pinned notes float to the top of every live list; trash keeps
-        // plain recency order. The id is a final tiebreaker so rows equal on
-        // the sort column keep one fixed order, which LIMIT/OFFSET paging
-        // needs to never skip or repeat a row across a page boundary.
         let pinned_first = if deleted { "" } else { "is_pinned DESC, " };
         let sql = format!(
             "SELECT {LIST_COLUMNS} FROM notes WHERE {} \
@@ -389,8 +343,6 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
-    /// How many notes a filter matches in all, whatever its limit and offset,
-    /// so a pager knows how far there is to go.
     pub fn count_notes(&self, filter: &NoteFilter) -> Result<i64> {
         let filter = expand_revisit(filter.clone(), Utc::now());
         let (conditions, args) = note_conditions(&filter);
@@ -405,9 +357,6 @@ impl Store {
         )?)
     }
 
-    /// Full-text search for a caller that needs to know where it stands:
-    /// filtered, paged, with the total and each note's body so the caller can
-    /// cut its own passages. Never returns trashed notes.
     pub fn search_notes_page(&self, q: &NoteSearch) -> Result<NoteSearchPage> {
         let Some(match_expr) = fts_match_expr_with(&q.text, q.any_term) else {
             return Ok(NoteSearchPage::default());
@@ -432,8 +381,6 @@ impl Store {
             conditions.push("n.id IN (SELECT note_id FROM note_tags WHERE tag_id = ?)".into());
             args.push(Box::new(id.clone()));
         }
-        // Stored timestamps are UTC ISO-8601 and compare as text, so a bare
-        // date ("2026-09-01") is a valid bound.
         if let Some(after) = &q.updated_after {
             conditions.push("n.updated_at >= ?".into());
             args.push(Box::new(after.clone()));
@@ -449,8 +396,6 @@ impl Store {
             rusqlite::params_from_iter(args.iter().map(|a| a.as_ref())),
             |r| r.get(0),
         )?;
-        // A query that is a note's exact title finds that note first, then
-        // best match; the id settles ties so paging never skips or repeats.
         let sql = format!(
             "SELECT n.id, n.title, n.body, \
                     snippet(notes_fts, 1, '\u{1}', '\u{2}', '…', 16), \
@@ -484,7 +429,6 @@ impl Store {
     }
 }
 
-/// The WHERE clauses a `NoteFilter` asks for, with their arguments in order.
 fn note_conditions(filter: &NoteFilter) -> (Vec<String>, Vec<Box<dyn rusqlite::ToSql>>) {
     let mut conditions: Vec<String> = Vec::new();
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
@@ -511,9 +455,6 @@ fn note_conditions(filter: &NoteFilter) -> (Vec<String>, Vec<Box<dyn rusqlite::T
     }
 
     if let Some(created_before) = &filter.created_before {
-        // Timestamps are stored as UTC ISO-8601, so string comparison is
-        // chronological; differing sub-second precision only moves the
-        // boundary within a second, which no caller depends on.
         conditions.push("created_at < ?".into());
         args.push(Box::new(created_before.clone()));
     }
@@ -554,23 +495,12 @@ fn note_conditions(filter: &NoteFilter) -> (Vec<String>, Vec<Box<dyn rusqlite::T
 }
 
 impl Store {
-    /// Full-text search over title+body. Always excludes deleted notes;
-    /// excludes archived notes. Special characters in `text` must not error.
-    /// Title and excerpt matches are bracketed with U+0001 (start) / U+0002
-    /// (end) sentinels rather than HTML: both are control characters a user
-    /// can never type, so the frontend can split on them unambiguously to
-    /// highlight hits as plain-text segments (see `highlight.ts`).
     pub fn search_notes(&self, text: &str, limit: i64) -> Result<Vec<SearchResult>> {
         let Some(match_expr) = fts_match_expr(text) else {
             return Ok(Vec::new());
         };
         let limit = limit.clamp(1, 500);
         let mut stmt = self.conn.prepare(
-            // 16 tokens: the list row is single-line and CSS-truncated
-            // regardless, so a wider window costs nothing visually and gives
-            // multi-word queries room for more than one term.
-            // highlight() (not snippet()) for the title: titles are short, so
-            // the whole column is what the row renders anyway.
             "SELECT n.id, highlight(notes_fts, 0, '\u{1}', '\u{2}'), \
                     snippet(notes_fts, 1, '\u{1}', '\u{2}', '…', 16), \
                     bm25(notes_fts), n.updated_at \
@@ -585,7 +515,6 @@ impl Store {
                 note_id: row.get(0)?,
                 title: row.get(1)?,
                 excerpt: row.get(2)?,
-                // bm25: lower is better (negative); expose higher-is-better.
                 score: -row.get::<_, f64>(3)?,
                 updated_at: row.get(4)?,
             })
@@ -593,16 +522,10 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
-    // ---- bulk operations ----
-    // One statement over an id set, so a multi-select action is a single
-    // transaction and a single change event instead of one per note.
-
     fn id_placeholders(ids: &[String]) -> String {
         vec!["?"; ids.len()].join(", ")
     }
 
-    /// Set pin and/or archive flags on many notes at once. `None` leaves a
-    /// flag untouched.
     pub fn set_notes_flags(
         &mut self,
         ids: &[String],
@@ -631,7 +554,6 @@ impl Store {
         Ok(())
     }
 
-    /// Move many notes to trash at once.
     pub fn soft_delete_notes(&mut self, ids: &[String]) -> Result<()> {
         if ids.is_empty() {
             return Ok(());
@@ -650,7 +572,6 @@ impl Store {
         Ok(())
     }
 
-    /// Restore many trashed notes at once.
     pub fn restore_notes(&mut self, ids: &[String]) -> Result<()> {
         if ids.is_empty() {
             return Ok(());
@@ -669,8 +590,6 @@ impl Store {
         Ok(())
     }
 
-    /// Permanently delete many notes at once. Requires `confirm == true`
-    /// (VALIDATION_ERROR otherwise); cascades clear tag and workspace edges.
     pub fn destroy_notes(&mut self, ids: &[String], confirm: bool) -> Result<()> {
         if !confirm {
             return Err(AppError::Validation(
@@ -693,7 +612,6 @@ impl Store {
 
 #[cfg(test)]
 mod tests {
-    //! The update rules on plain values: no store, no connection.
     use super::*;
 
     fn note(kind: &str) -> Note {
@@ -910,7 +828,6 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(plan.body.as_deref().unwrap().starts_with("| Date | ms |"));
-        // A body alone changes nothing on a sheet.
         let plan = plan_update(&note(CONTENT_KIND_SHEET), false, &body("words"))
             .unwrap()
             .unwrap();

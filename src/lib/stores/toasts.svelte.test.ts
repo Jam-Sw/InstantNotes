@@ -1,11 +1,3 @@
-// Queue, timer, and eviction tests for the toast store. No component is
-// mounted here: the store's timer/queue logic is pure enough to drive with
-// fake timers directly, per the toast host's own design note.
-//
-// Fresh module per test via vi.resetModules() + dynamic import (mirrors
-// library.svelte.test.ts), so the module-level singleton starts clean and
-// state never bleeds between tests.
-
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 async function load() {
@@ -40,8 +32,6 @@ describe("toasts queue", () => {
     toasts.dismiss(id);
     expect(toasts.items).toHaveLength(0);
 
-    // If the timer were not cancelled it would try to dismiss an already-gone
-    // toast; nothing should throw and the list stays empty either way.
     await vi.advanceTimersByTimeAsync(5000);
     expect(toasts.items).toHaveLength(0);
   });
@@ -52,12 +42,10 @@ describe("toasts queue", () => {
 
     await vi.advanceTimersByTimeAsync(4000);
     toasts.pause(id);
-    // Paused: well past the original 5s deadline, the toast must still be there.
     await vi.advanceTimersByTimeAsync(5000);
     expect(toasts.items).toHaveLength(1);
 
     toasts.resume(id);
-    // ~1s of the original countdown remained when it was paused.
     await vi.advanceTimersByTimeAsync(999);
     expect(toasts.items).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(1);
@@ -83,9 +71,6 @@ describe("toasts queue", () => {
     const c = toasts.show("third");
     const d = toasts.show("fourth");
 
-    // Just short of the surviving toasts' own 5s auto-dismiss: if the
-    // evicted toast's timer were left running it would be a harmless no-op
-    // at worst, but the stack must still hold exactly [b, c, d] until then.
     await vi.advanceTimersByTimeAsync(4999);
     expect(toasts.items.map((t) => t.id)).toEqual([b, c, d]);
   });

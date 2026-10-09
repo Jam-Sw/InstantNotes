@@ -1,31 +1,10 @@
-//! Which Space a note belongs in, judged from the notes already filed. Pure:
-//! no SQL, no I/O. `store/suggest.rs` builds the examples from the library
-//! and reads the verdicts; `tests/suggest_bench_test.rs` measures this model
-//! against the alternatives on synthetic libraries, and records why this one.
-//!
-//! The model is a Dirichlet-Multinomial naive Bayes over a note's features:
-//! the tags it carries (`#name`, weighted by how they got there) and the
-//! words in its text (`domain::content_words`). Each Space's feature
-//! likelihoods are smoothed with `alpha` pseudo-counts, so two notes make a
-//! well-defined Space; the posterior is the softmax of log prior plus
-//! log-likelihood. Two guards keep it honest: a note's evidence is averaged
-//! past `evidence_cap` informative features, so a long note is not certain
-//! just because it is long, and a Space is suggested only when the evidence
-//! itself favours it, not its size through the prior. Every reason it gives
-//! is a feature's weight of evidence for the Space against the rest.
-
 use std::collections::{HashMap, HashSet};
 
-/// The tunables, with the values the benchmark settled on.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Params {
-    /// Dirichlet prior per feature per Space.
     pub alpha: f64,
-    /// Below this posterior nothing is suggested.
     pub show_at: f64,
-    /// Past this many informative features a note's evidence is averaged.
     pub evidence_cap: usize,
-    /// Weight of a tag written in the text, and of one added to the note.
     pub inline_weight: f64,
     pub manual_weight: f64,
 }
@@ -42,14 +21,10 @@ impl Default for Params {
     }
 }
 
-/// How many reasons a verdict names.
 pub const REASONS: usize = 3;
 
-/// A note as the model sees it: feature to weight. A tag is keyed with its
-/// `#`, a word without, so the two never collide.
 pub type Features = HashMap<String, f64>;
 
-/// One filed note: its features and the Spaces it is in.
 pub struct Example<'a> {
     pub features: &'a Features,
     pub classes: &'a [String],
@@ -62,7 +37,6 @@ struct Class {
     total: f64,
 }
 
-/// The fitted model: one count table per Space with members.
 pub struct Model {
     params: Params,
     classes: Vec<Class>,
@@ -70,21 +44,14 @@ pub struct Model {
     vocabulary: HashSet<String>,
 }
 
-/// The model's answer for one note.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Verdict {
     pub class: String,
-    /// The posterior probability of the Space, 0 to 1.
     pub probability: f64,
-    /// Features for the Space against the rest, strongest first, at most
-    /// `REASONS`.
     pub reasons: Vec<String>,
 }
 
 impl Model {
-    /// Count the filed notes. A note in several Spaces teaches each. The
-    /// classes come out sorted by id, so verdicts are stable whatever order
-    /// the examples arrive in.
     pub fn fit(examples: &[Example<'_>], params: Params) -> Model {
         let mut classes: Vec<Class> = Vec::new();
         let mut vocabulary = HashSet::new();
@@ -131,7 +98,6 @@ impl Model {
         }
     }
 
-    /// How many Spaces hold notes. Below two there is nothing to decide.
     pub fn class_count(&self) -> usize {
         self.classes.len()
     }
@@ -142,9 +108,6 @@ impl Model {
         ((count + alpha) / (class.total + alpha * self.vocabulary.len() as f64)).ln()
     }
 
-    /// The posterior over every Space for a note, with the per-Space
-    /// evidence sums, or None when the note shares no feature with any
-    /// filed note. The benchmark reads this; `classify` applies the policy.
     pub fn posterior(&self, features: &Features) -> Option<Posterior> {
         if self.classes.len() < 2 {
             return None;
@@ -184,7 +147,6 @@ impl Model {
         })
     }
 
-    /// The Space a note belongs in, if the model is sure enough to say.
     pub fn classify(&self, features: &Features) -> Option<Verdict> {
         let post = self.posterior(features)?;
         let (best, &probability) = post
@@ -192,7 +154,6 @@ impl Model {
             .iter()
             .enumerate()
             .max_by(|a, b| a.1.total_cmp(b.1))?;
-        // The words have to point there, not just the Space's size.
         let evidence_leads = post
             .evidence_sums
             .iter()
@@ -208,9 +169,6 @@ impl Model {
         })
     }
 
-    /// Each feature's weight of evidence for the Space against the rest, the
-    /// rest taken as a mixture in proportion to their priors; the strongest
-    /// `REASONS` that favour the Space, ties broken by weight then name.
     fn reasons(&self, features: &Features, best: usize) -> Vec<String> {
         let class = &self.classes[best];
         let rest_prior: f64 = self
@@ -248,24 +206,18 @@ impl Model {
             .collect()
     }
 
-    /// The Space ids, in the order `posterior` reports them.
     pub fn class_ids(&self) -> Vec<&str> {
         self.classes.iter().map(|c| c.id.as_str()).collect()
     }
 }
 
-/// The model's full answer for one note, before the show policy.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Posterior {
-    /// One probability per Space, in `class_ids` order.
     pub probabilities: Vec<f64>,
-    /// Each Space's summed log-likelihood of the note's informative features.
     pub evidence_sums: Vec<f64>,
-    /// How many of the note's features any filed note shares.
     pub informative: usize,
 }
 
-/// A note's features from its tags and text. Tags come as (name, source).
 pub fn features(text: &str, tags: &[(String, String)], params: Params) -> Features {
     let mut out = Features::new();
     for word in crate::domain::content_words(text) {

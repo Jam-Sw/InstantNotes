@@ -1,8 +1,3 @@
-// Blockquote construct: quoted lines get the accent border treatment and
-// the `>` prefix folds per line. The construct span is the line, not the
-// whole quote, so a long quote does not flicker open as the caret crosses
-// one of its lines.
-
 import { Decoration } from "@codemirror/view";
 import type { SyntaxNodeRef } from "@lezer/common";
 import type { ConstructSpec, Emit, ScanContext } from "../types";

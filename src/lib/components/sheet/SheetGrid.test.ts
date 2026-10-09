@@ -1,7 +1,4 @@
 // @vitest-environment jsdom
-// The grid's save path and its keyboard contract, driven as keys and
-// clipboard events on the real DOM: what reaches the owner, and when; what
-// the grid stops, and what it lets through to the window.
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { tick } from "svelte";
 import { cleanup, fireEvent, render } from "@testing-library/svelte";
@@ -104,7 +101,6 @@ describe("SheetGrid", () => {
 
     const sheet = lastSheet(onchange);
     expect(sheet.rows[2]).toEqual(["2026-10-04", "b2c4", "398"]);
-    // Enter on the last row added one, and went back to where the Tab run began.
     expect(sheet.rows.length).toBe(4);
     expect(cell(host, 3, 0).classList.contains("active")).toBe(true);
     expect(document.activeElement).toBe(catcher);
@@ -166,7 +162,7 @@ describe("SheetGrid", () => {
 
     await key(catcher, "ArrowDown");
     await key(catcher, "ArrowDown");
-    await key(catcher, "ArrowDown"); // stays on the last row
+    await key(catcher, "ArrowDown");
     await key(catcher, "ArrowLeft");
     expect(cell(host, 2, 0).classList.contains("active")).toBe(true);
     const paste = new Event("paste", { bubbles: true, cancelable: true }) as Event & {

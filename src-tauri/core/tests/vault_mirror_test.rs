@@ -1,8 +1,3 @@
-//! Stage 2 of the portable vault: the live mirror (dual-write). SQLite stays
-//! authoritative; every note write is mirrored into a vault folder by
-//! `flush_vault`. Real SQLite (in-memory or tempfile) and a real tempdir
-//! vault throughout.
-
 use instantnotes_core::types::*;
 use instantnotes_core::vault::{
     collect_from_store, export_vault, parse_manifest, parse_note, VaultNote,
@@ -53,7 +48,6 @@ fn retitle(s: &mut Store, id: &str, title: &str) {
     .unwrap();
 }
 
-/// Visible `.md` filenames directly inside `dir`, sorted.
 fn md_files(dir: &Path) -> Vec<String> {
     let Ok(entries) = fs::read_dir(dir) else {
         return Vec::new();
@@ -73,8 +67,6 @@ fn read_note(path: &Path) -> VaultNote {
 fn pending(s: &Store) -> i64 {
     s.vault_status().unwrap().pending
 }
-
-// ---- writing and dirty tracking ----
 
 #[test]
 fn flush_writes_a_created_note_that_parses_back_to_the_note() {
@@ -106,8 +98,6 @@ fn every_note_write_leaves_the_note_pending_until_flushed() {
     assert_eq!(pending(&s), 1);
 }
 
-/// design.md §7.2: `last_opened_at` is device-local and never written to the
-/// vault, so opening a note must not dirty its file.
 #[test]
 fn opening_a_note_does_not_dirty_the_vault() {
     let (mut s, _dir) = mirrored();
@@ -129,8 +119,6 @@ fn flush_in_chunks_reports_what_remains() {
     flush(&mut s);
 }
 
-// ---- filenames and moves ----
-
 #[test]
 fn an_explicit_retitle_moves_the_file() {
     let (mut s, dir) = mirrored();
@@ -142,9 +130,6 @@ fn an_explicit_retitle_moves_the_file() {
     assert_eq!(read_note(&dir.path().join("New.md")).id, n.id);
 }
 
-/// On a case-insensitive filesystem (macOS default) `notes.md` and
-/// `Notes.md` are one file: removing the "old" path after writing the new
-/// one would delete the note's only file.
 #[test]
 fn a_case_only_retitle_leaves_one_file_under_the_new_name() {
     let (mut s, dir) = mirrored();
@@ -229,8 +214,6 @@ fn permanent_deletes_remove_the_files() {
     assert!(md_files(dir.path()).is_empty());
 }
 
-/// A file the user edited after we wrote it is theirs now: destroying the
-/// note must not take their edit with it.
 #[test]
 fn a_permanent_delete_leaves_a_file_edited_outside_the_app() {
     let (mut s, dir) = mirrored();
@@ -244,8 +227,6 @@ fn a_permanent_delete_leaves_a_file_edited_outside_the_app() {
         "edited by hand"
     );
 }
-
-// ---- tags and spaces ----
 
 #[test]
 fn tag_changes_rewrite_the_frontmatter_of_every_carrying_note() {
@@ -265,7 +246,6 @@ fn tag_changes_rewrite_the_frontmatter_of_every_carrying_note() {
     flush(&mut s);
     assert!(read_note(&file).tags.is_empty());
 
-    // Deleting a tag reaches its notes only through the note_tags cascade.
     let tag = s.add_tag_to_note(&n.id, "gone").unwrap();
     flush(&mut s);
     s.delete_tag(&tag.id).unwrap();
@@ -315,8 +295,6 @@ fn space_changes_rewrite_the_frontmatter_of_every_member_note() {
     assert!(read_note(&file).spaces.is_empty());
 }
 
-// ---- files we don't own ----
-
 #[test]
 fn a_foreign_file_at_the_target_name_is_never_overwritten() {
     let dir = tempfile::tempdir().unwrap();
@@ -337,9 +315,6 @@ fn a_foreign_file_at_the_target_name_is_never_overwritten() {
     );
 }
 
-/// A folder that already holds a stage 1 export of the same library: the
-/// files carry the same ids, so they are ours and get adopted in place
-/// rather than duplicated under suffixed names.
 #[test]
 fn an_earlier_export_of_the_same_library_is_adopted_in_place() {
     let dir = tempfile::tempdir().unwrap();
@@ -355,8 +330,6 @@ fn an_earlier_export_of_the_same_library_is_adopted_in_place() {
     assert_eq!(md_files(dir.path()), vec!["Plan.md"]);
     assert_eq!(md_files(&dir.path().join("trash")), vec!["Old.md"]);
 }
-
-// ---- lifecycle ----
 
 #[test]
 fn pending_writes_survive_a_restart() {
@@ -375,8 +348,6 @@ fn pending_writes_survive_a_restart() {
     assert_eq!(md_files(vault.path()), vec!["Unflushed.md"]);
 }
 
-/// An unmounted drive must not be recreated as an empty folder on the boot
-/// disk, and nothing may be lost while it is away.
 #[test]
 fn a_missing_vault_folder_pauses_the_mirror_without_losing_work() {
     let parent = tempfile::tempdir().unwrap();
@@ -420,7 +391,6 @@ fn switching_folders_writes_everything_into_the_new_one() {
     s.configure_vault(Some(second.path())).unwrap();
     flush(&mut s);
     assert_eq!(md_files(second.path()), vec!["A.md", "B.md"]);
-    // The old folder is left exactly as it was.
     assert_eq!(md_files(first.path()), vec!["A.md", "B.md"]);
 }
 
@@ -436,10 +406,6 @@ fn stopping_the_mirror_leaves_the_files_and_writes_nothing_more() {
     assert!(s.vault_status().unwrap().path.is_none());
 }
 
-// ---- verify ----
-
-/// The stage 2 proof: a library covering every field mirrors to a vault
-/// whose every file parses back to exactly its note.
 #[test]
 fn a_whole_library_mirrors_and_verifies_clean() {
     let (mut s, dir) = mirrored();
@@ -499,14 +465,6 @@ fn verify_reports_missing_diverged_and_orphan_files() {
     assert_eq!(report.orphans, vec!["Stray.md"]);
 }
 
-/// The stage 2 proof on a real library. Run by hand against a COPY (opening
-/// migrates the file, so never point this at a live library):
-///
-/// ```sh
-/// sqlite3 -readonly <library.db> ".backup /tmp/copy.db"
-/// INSTANTNOTES_VAULT_TEST_DB=/tmp/copy.db \
-///   cargo test -p instantnotes-core --test vault_mirror_test -- --ignored --nocapture
-/// ```
 #[test]
 #[ignore = "needs INSTANTNOTES_VAULT_TEST_DB pointing at a copy of a real library"]
 fn a_real_library_copy_mirrors_and_verifies_clean() {
@@ -547,7 +505,6 @@ fn a_real_library_copy_mirrors_and_verifies_clean() {
     expected.sort_by(|x, y| x.id.cmp(&y.id));
     assert_eq!(found, expected);
 
-    // One note edited and flushed, the autosave path.
     let id = expected[0].id.clone();
     let mut single = Vec::new();
     for i in 0..20 {

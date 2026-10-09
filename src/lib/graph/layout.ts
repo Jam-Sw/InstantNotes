@@ -1,8 +1,3 @@
-// The Graph view's model: which nodes and edges to draw, and where, in three
-// dimensions. Pure, so the picture is the same on every visit: the force
-// layout starts from positions seeded by each node's id and draws its jitter
-// from a seeded generator, never Math.random.
-
 import {
   forceCollide,
   forceLink,
@@ -25,44 +20,29 @@ export interface GraphNode {
   color?: string | null;
   pinned?: boolean;
   board?: boolean;
-  /** A note drawn only because a Space is suggested for it: it has no tag
-   *  and no Space of its own yet. */
   suggested?: boolean;
-  /** How many memberships touch the node; a hub's size follows it.
-   *  Suggestions do not count: a Space is as big as what it holds. */
   degree: number;
   x: number;
   y: number;
   z: number;
 }
 
-/** What an edge is: a tag the note carries, a Space it is in, or a Space
- *  the model suggests for it. A tag edge also says how the tag got there. */
 type EdgeKind = "tag" | "space" | "suggested";
 
 interface GraphEdge {
   source: string;
   target: string;
   kind: EdgeKind;
-  /** For a tag edge: written in the text (`inline`) or added (`manual`). */
   tagSource?: "inline" | "manual" | null;
 }
 
 export interface Graph {
   nodes: GraphNode[];
   edges: GraphEdge[];
-  /** Live notes with no tag, no Space, and no suggestion: real, but nothing
-   *  to connect. */
   unconnectedNotes: number;
-  /** How many Spaces hold at least one note. Suggestions start at two. */
   populatedSpaces: number;
 }
 
-/**
- * The drawable graph: every note, tag, and Space with at least one link,
- * plus a dashed edge for each suggestion whose note and Space are drawn. The
- * caller passes only the suggestions it shows, so the canvas matches the panel.
- */
 export function buildGraph(lib: LibraryGraph, suggestions: SpaceSuggestion[] = []): Graph {
   const notes = new Map(lib.notes.map((n) => [n.id, n]));
   const targets = new Map<string, { label: string; kind: NodeKind; color?: string | null }>([
@@ -117,14 +97,12 @@ export function buildGraph(lib: LibraryGraph, suggestions: SpaceSuggestion[] = [
   return { nodes, edges, unconnectedNotes, populatedSpaces };
 }
 
-/** A 32-bit hash of a string (FNV-1a), for seeding. */
 function hash(s: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
   return h >>> 0;
 }
 
-/** A small seeded generator (mulberry32) for the simulation's jitter. */
 function seeded(seed: number): () => number {
   let a = seed;
   return () => {
@@ -135,7 +113,6 @@ function seeded(seed: number): () => number {
   };
 }
 
-/** Drawn radius of a node, shared with the view so collisions match. */
 export function nodeRadius(n: Pick<GraphNode, "kind" | "degree">): number {
   return n.kind === "note" ? 5 : 7 + Math.min(14, Math.sqrt(n.degree) * 3);
 }
@@ -143,32 +120,17 @@ export function nodeRadius(n: Pick<GraphNode, "kind" | "degree">): number {
 type SimNode = GraphNode & SimulationNodeDatum3D;
 type SimLink = SimulationLinkDatum<SimNode> & { kind: EdgeKind };
 
-/** How far from the plane a new node starts, and how hard the layout pulls it
- *  back: the graph settles as a slab about a third as deep as it is wide. */
 const DEPTH_SEED = 120;
 const DEPTH_PULL = 0.12;
 
-/**
- * Ticks a layout runs to reach rest.
- * @internal
- */
+/** @internal */
 export const LAYOUT_TICKS = 300;
 
 export interface LayoutRun {
-  /** Advance up to `ticks` steps; true once the layout has come to rest. */
   step(ticks: number): boolean;
-  /** The graph with every node where the layout has it now. */
   snapshot(): Graph;
 }
 
-/**
- * Start a force layout. Nodes placed by an earlier layout (`previous`) start
- * where they were, so a refresh after an edit moves little; new ones start at
- * a spot seeded by their id. The caller drives it with `step`, so a large
- * library can settle across animation frames instead of freezing the view.
- * A suggested edge pulls gently and from further out: the note hovers near
- * the Space it may join without sitting among its members.
- */
 export function startLayout(
   graph: Graph,
   previous?: Map<string, { x: number; y: number; z: number }>,
@@ -196,8 +158,6 @@ export function startLayout(
         .distance((l) => (l.kind === "suggested" ? 80 : 46))
         .strength((l) => (l.kind === "suggested" ? 0.25 : 0.7)),
     )
-    // theta 1.2 (d3's default is 0.9) trades a little Barnes-Hut accuracy for
-    // about a quarter of the layout time, which a third axis otherwise costs.
     .force(
       "charge",
       forceManyBody<SimNode>()
@@ -207,12 +167,8 @@ export function startLayout(
     .force("collide", forceCollide<SimNode>((d) => nodeRadius(d) + 3))
     .force("x", forceX<SimNode>(0).strength(0.04))
     .force("y", forceY<SimNode>(0).strength(0.04))
-    // Held flatter than wide: from the front the graph reads as it always
-    // has, and turning it shows what sits behind what.
     .force("z", forceZ<SimNode>(0).strength(DEPTH_PULL))
     .stop();
-  // A refresh of a laid-out library starts cool: the known nodes are already
-  // at rest, and only the newcomers need to find their place.
   const known = previous ? graph.nodes.filter((n) => previous.has(n.id)).length : 0;
   if (known * 2 >= graph.nodes.length && known > 0) sim.alpha(0.1);
   let done = 0;
@@ -244,11 +200,6 @@ export function startLayout(
   };
 }
 
-/**
- * A node and everything within `hops` links of it, suggested edges included.
- * One hop is a note's own tags and Spaces; two is the lens the view opens
- * on: those, and the other notes they gather.
- */
 export function neighbors(graph: Graph, id: string, hops = 1): Set<string> {
   const out = new Set([id]);
   let frontier = [id];

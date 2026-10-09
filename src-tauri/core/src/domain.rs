@@ -1,8 +1,3 @@
-//! Pure domain logic: tag semantics and title derivation.
-//! No I/O, no SQL, no Tauri — per the dependency rule.
-
-/// Normalize a tag name per DATA_MODEL.md §2.2: trim, strip leading `#`,
-/// lowercase, collapse repeated whitespace. Returns `None` for empty results.
 pub fn normalize_tag_name(raw: &str) -> Option<String> {
     let stripped = raw.trim().trim_start_matches('#');
     let collapsed = stripped
@@ -17,9 +12,6 @@ pub fn normalize_tag_name(raw: &str) -> Option<String> {
     }
 }
 
-/// Normalize a workspace name: trim and collapse repeated whitespace,
-/// preserving case (workspaces are display names, unlike lowercase tags).
-/// Returns `None` for empty results.
 pub fn normalize_workspace_name(raw: &str) -> Option<String> {
     let collapsed = raw.split_whitespace().collect::<Vec<_>>().join(" ");
     if collapsed.is_empty() {
@@ -29,10 +21,6 @@ pub fn normalize_workspace_name(raw: &str) -> Option<String> {
     }
 }
 
-/// Extract inline `#tag` tokens from note body text. A tag starts with `#`
-/// at the start of the text or after whitespace, followed by one or more
-/// alphanumeric / `-` / `_` characters. Results are normalized and deduped,
-/// in order of first appearance.
 pub fn extract_inline_tags(body: &str) -> Vec<String> {
     let chars: Vec<char> = body.chars().collect();
     let mut out: Vec<String> = Vec::new();
@@ -66,12 +54,6 @@ pub fn extract_inline_tags(body: &str) -> Vec<String> {
     out
 }
 
-/// Derive a note title from the first line of the body with words on it
-/// (see DATA_MODEL.md section 6), passing over blank lines and lines that
-/// are only images: strip leading markdown markers (`#`, `-`, `*`, `>`), the
-/// emphasis markers around words (`**`, `*`, `~~`, `==`, `` ` ``), and inline
-/// `#` tag prefixes, collapse whitespace, truncate to 80 chars (char
-/// boundary). A body with no such line yields "Untitled".
 pub fn derive_title(body: &str) -> String {
     const UNTITLED: &str = "Untitled";
     const EMPHASIS: [char; 4] = ['*', '~', '=', '`'];
@@ -96,7 +78,6 @@ pub fn derive_title(body: &str) -> String {
     joined.chars().take(80).collect()
 }
 
-/// A line holding nothing but Markdown images: `![alt](path)`, one or more.
 fn is_image_line(line: &str) -> bool {
     let mut rest = line.trim();
     if rest.is_empty() {
@@ -117,9 +98,6 @@ fn is_image_line(line: &str) -> bool {
     true
 }
 
-/// Words that carry no signal about what a note is about: function words,
-/// and the tokens Markdown and links leave behind. Lowercase, as
-/// `content_words` lowercases before looking here.
 const STOP_WORDS: &[&str] = &[
     "the",
     "and",
@@ -294,12 +272,6 @@ fn is_stop_word(word: &str) -> bool {
     SET.contains(word)
 }
 
-/// The words a note's text is about, for the Graph's filing suggestions
-/// (API.md section 4): lowercase runs of letters and digits, three
-/// characters or longer, that are not all digits and not stop words, each
-/// listed once in order of first appearance. A `#tag` token is skipped: tags
-/// are their own channel, so a tag written inline is not also counted as a
-/// word.
 pub fn content_words(text: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut seen = std::collections::HashSet::new();
@@ -331,12 +303,9 @@ pub fn content_words(text: &str) -> Vec<String> {
             prev_is_boundary = false;
             continue;
         }
-        if c == '-' || c == '_' {
-            // Inside a tag these join the token; inside a word they split it.
-            if in_tag {
-                prev_is_boundary = false;
-                continue;
-            }
+        if (c == '-' || c == '_') && in_tag {
+            prev_is_boundary = false;
+            continue;
         }
         in_tag = false;
         flush(&mut word, &mut out, &mut seen);
@@ -349,8 +318,6 @@ pub fn content_words(text: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // -- normalize_tag_name --
 
     #[test]
     fn normalize_lowercases_and_trims() {
@@ -378,8 +345,6 @@ mod tests {
         assert_eq!(normalize_tag_name("#"), None);
         assert_eq!(normalize_tag_name("##  "), None);
     }
-
-    // -- extract_inline_tags --
 
     #[test]
     fn extracts_tags_at_start_and_after_whitespace() {
@@ -418,8 +383,6 @@ mod tests {
         );
     }
 
-    // -- derive_title --
-
     #[test]
     fn title_from_first_nonempty_line() {
         assert_eq!(derive_title("\n\nBuy milk\nand coffee"), "Buy milk");
@@ -443,7 +406,6 @@ mod tests {
             "Two shots"
         );
         assert_eq!(derive_title("![](attachments/a.png)"), "Untitled");
-        // An image inside a line of words is part of the title line.
         assert_eq!(derive_title("See ![](a.png) here"), "See ![](a.png) here");
     }
 
@@ -458,7 +420,6 @@ mod tests {
             derive_title("~~old plan~~ ==new== `plan`"),
             "old plan new plan"
         );
-        // Inside a word they are the word.
         assert_eq!(derive_title("C++ and a*b"), "C++ and a*b");
     }
 
@@ -496,8 +457,6 @@ mod tests {
             content_words("#my-tag_1 is 2026 ok, the ONE! It's 20 min"),
             vec!["min"]
         );
-        // A `#` inside a word is punctuation, not a tag; the rest of the word
-        // stays.
         assert_eq!(content_words("C#minor a#b"), vec!["minor"]);
     }
 

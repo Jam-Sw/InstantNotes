@@ -36,15 +36,12 @@
 
   const isBoard = $derived(library.selected?.contentKind === "whiteboard");
   const isSheet = $derived(library.selected?.contentKind === "sheet");
-  // A surface note (board, sheet) has no text toolbar and runs edge to edge.
   const isSurface = $derived(isBoard || isSheet);
   const sheetShape = $derived.by(() => {
     if (!isSheet) return null;
     const grid = parseSheet(library.selected?.surfaceData);
     return { rows: filledRows(grid), cols: grid.cols.length };
   });
-  // A synthetic note (the update Space's release notes) is not user data: its
-  // body can be typed in, but it has no tags, no Space, and no lifecycle.
   const isVirtual = $derived(isSyntheticNoteId(library.selected?.id));
   const suggestion = $derived(library.suggestions.find((s) => s.noteId === library.selected?.id));
   const lastWriter = $derived(library.selected ? agents.lastWriter(library.selected.id) : null);
@@ -68,14 +65,8 @@
       () => {},
     );
   });
-  // The board follows the app's light or dark look, including themes that
-  // only come in one of the two.
   const boardTheme = $derived(effectiveVariant(theme.activeTheme, theme.resolvedVariant));
 
-  // Insert an image from a file the user picks. Honors the storage setting:
-  // "copy" reads it into the attachments folder; "link" references it in place
-  // (allowed into the asset scope so it renders). Pasting or dropping still
-  // captures images directly in the editor.
   async function insertImage() {
     const picked = await open({
       multiple: false,
@@ -108,8 +99,6 @@
   }
 
   async function confirmDestroy() {
-    // Snapshot the id when the dialog opens: the selection could otherwise
-    // drift while it is up, and the confirm must act on the note it named.
     const id = library.selected?.id;
     if (!id) return;
     const ok = await confirmDialog.ask({
@@ -123,7 +112,6 @@
 </script>
 
 {#if library.selected && library.isSticky(library.selected.id)}
-  <!-- The sticky is this note's only editor while it is out. -->
   {@const id = library.selected.id}
   <div class="pane-header" data-tauri-drag-region></div>
   <div class="popped-out">
@@ -139,9 +127,6 @@
     </div>
   </div>
 {:else if library.selected}
-  <!-- The header holds what is done to the note, in two groups kept apart:
-       what goes into the text, then what becomes of the note. Where it is
-       filed belongs to the page below. -->
   <header class="pane-header editor-header" data-tauri-drag-region>
     <span class="header-title" data-tauri-drag-region>{library.selected.title || "Untitled"}</span>
     {#if !isVirtual}
@@ -234,8 +219,6 @@
     style="--editor-zoom: {editorPrefs.zoom}; --image-max-height: {imagePrefs.maxPreviewHeight}px"
   >
   <div class="doc-head">
-    <!-- A textarea, so a long title wraps in the column instead of being
-         clipped. Still one line of text: Enter commits, breaks become spaces. -->
     <textarea
       class="title-input"
       rows="1"
@@ -324,7 +307,6 @@
   </div>
   {#if isBoard}
     <div class="editor-body board-body">
-      <!-- One canvas per note: a new id mounts a fresh board. -->
       {#key library.selected.id}
         <WhiteboardCanvas
           noteId={library.selected.id}
@@ -339,7 +321,6 @@
     </div>
   {:else if isSheet}
     <div class="editor-body sheet-body" data-agent={agents.noteMark(library.selected.id)}>
-      <!-- One grid per note: a new id mounts a fresh sheet. -->
       {#key library.selected.id}
         <SheetGrid
           noteId={library.selected.id}
@@ -432,7 +413,6 @@
     color: var(--accent-text);
     border-color: var(--accent);
   }
-  /* Layout comes from .pane-header (app.css); actions sit at the far end. */
   .editor-header {
     justify-content: flex-end;
     gap: 0;
@@ -447,9 +427,6 @@
     font-size: 13px;
     color: var(--text-secondary);
   }
-  /* The note: its name, where it is filed, then its text, all in one column
-     of reading width. The column is measured in the editor's own type, so
-     the heading lines up with the text at every zoom. */
   .doc {
     flex: 1;
     min-height: 0;
@@ -466,12 +443,9 @@
     padding: 8px calc(16px * var(--density)) 0;
     container-type: inline-size;
   }
-  /* A whiteboard or a sheet runs edge to edge, so its heading does too. */
   .doc.wide .doc-head {
     max-width: none;
   }
-  /* Wraps within the column; the textarea is sized to its lines by
-     `autosize`, so it never scrolls or shows a resize grip. */
   .title-input {
     display: block;
     width: 100%;
@@ -508,7 +482,6 @@
     color: var(--text-secondary);
     font-style: italic;
   }
-  /* Retries exhausted; the edit stays queued and flushes keep attempting it. */
   .save-state.failed {
     color: var(--danger);
     font-weight: 500;
@@ -526,7 +499,6 @@
       opacity: 0;
     }
   }
-  /* Where the note is filed: a quiet row under its name, closed by a rule. */
   .tag-bar {
     display: flex;
     flex-wrap: wrap;

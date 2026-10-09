@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-// `editorPrefs.init()`'s read-from-settings path (and the touched-field race
-// guard) is covered directly in stores/editor.svelte.test.ts; this file only
-// covers what the page renders and persists, following SettingsImages.test.ts's
-// convention of resetting the singleton's $state fields directly per test.
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, fireEvent, cleanup } from "@testing-library/svelte";
 import SettingsEditor from "./SettingsEditor.svelte";
@@ -49,7 +45,6 @@ describe("SettingsEditor", () => {
     const sw = await findByRole("switch", { name: "Open the formatting toolbar by default" });
     await fireEvent.click(sw);
     expect(vi.mocked(setSetting)).toHaveBeenCalledWith("editor.toolbarOpen", true);
-    // The other toggle must not have moved.
     expect(
       (await findByRole("switch", { name: "Show exact save time" })).getAttribute(
         "aria-checked",

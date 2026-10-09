@@ -1,8 +1,4 @@
 <script lang="ts">
-  // A sticky: one note popped out of the library into its own small window,
-  // which floats, sits like any window, or lies on the desktop. While it is
-  // open it is the note's only editor (see stores/sticky.svelte.ts). Its
-  // window label carries the note id, so the page needs no route parameter.
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -42,11 +38,8 @@
   const sticky = new StickyNote();
 
   const LEVELS: { id: StickyLevel; label: string; path: string }[] = [
-    // Pin: floats above every window.
     { id: "float", label: "Keep on top", path: "M8 2v6M5 8h6l-1 3H6zM8 11v3" },
-    // Two stacked windows: an ordinary window.
     { id: "normal", label: "Normal window", path: "M3 5h8v7H3zM5 3h8v7" },
-    // A window lying on a base line: on the desktop, under everything.
     { id: "desktop", label: "On the desktop", path: "M4 4h8v6H4zM2 13h12" },
   ];
 
@@ -54,8 +47,6 @@
   let collapsed = $state(false);
   const boardTheme = $derived(effectiveVariant(theme.activeTheme, theme.resolvedVariant));
 
-  // Geometry is read from the window by the backend; this only says "now",
-  // once the drag or resize has settled.
   const persistGeometry = debounce(() => void saveStickyGeometry(), 400);
 
   async function chooseLevel(next: StickyLevel) {
@@ -69,10 +60,6 @@
     }
   }
 
-  // The header behaves as Stickies' title bar does: press and drag moves the
-  // window, double-click rolls it up to the header and back. Owned here
-  // rather than by data-tauri-drag-region, whose double-click zooms the
-  // window to fill the screen.
   function onHeaderMousedown(e: MouseEvent) {
     if (e.button !== 0 || (e.target as HTMLElement).closest("button")) return;
     e.preventDefault();
@@ -89,7 +76,6 @@
     }
   }
 
-  // Stickies shows when a note was made and last edited on its title bar.
   const header = $derived(
     sticky.note
       ? `Created ${formatExact(sticky.note.createdAt)}\nEdited ${formatExact(sticky.note.updatedAt)}\nDouble-click to ${collapsed ? "expand" : "collapse"}`
@@ -98,8 +84,6 @@
 
   async function bringBack() {
     try {
-      // Resolves after this window has flushed and answered; by then the
-      // window is gone, so nothing runs after it on success.
       await popInNote(noteId);
       await openLibrary();
     } catch (e) {
@@ -112,15 +96,12 @@
     void editorPrefs.init();
     void imagePrefs.init();
     void linkPrefs.init();
-    // Names the agent when typing here replaces its edit.
     void agents.init();
     void getStickyView()
       .then((v) => ({ level, collapsed } = v))
       .catch(() => {});
 
     const unlisteners = [
-      // Pop in: hand everything to disk, then say whether it made it. A
-      // sticky whose note is gone has nothing left to save.
       listen(EVENTS.STICKY_CLOSE_REQUESTED, async () => {
         const saved = sticky.gone || (await sticky.flush());
         await answerPopIn(saved);
@@ -135,7 +116,6 @@
       }),
       win.onMoved(() => persistGeometry()),
       win.onResized(() => persistGeometry()),
-      // Theme may have changed in the library while this sat unfocused.
       win.onFocusChanged(({ payload: focused }) => {
         if (focused) void theme.init();
         else void sticky.flush();
@@ -147,8 +127,6 @@
     };
   });
 
-  // A note trashed or destroyed behind this window closes it: there is no
-  // longer a note here to edit.
   $effect(() => {
     if (sticky.gone) void popInNote(noteId).catch(() => {});
   });
@@ -186,7 +164,6 @@
   </header>
 
   {#if !agreements.done && !collapsed}
-    <!-- A sticky restored after a new license or EULA version waits for it. -->
     <LicenseLocked />
   {:else if sticky.note && !collapsed}
     {#if sticky.note.contentKind === "whiteboard"}
@@ -251,8 +228,6 @@
     overflow: hidden;
   }
 
-  /* 30px total with the frame's border: STRIP_HEIGHT in shell/stickies.rs,
-     the whole window once collapsed. Arrow cursor, as on any title bar. */
   header {
     display: flex;
     align-items: center;

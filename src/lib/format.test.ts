@@ -39,8 +39,6 @@ describe("sheetPreview", () => {
 
 describe("formatExact", () => {
   it("includes the year, month, day, and minute-precise time", () => {
-    // A fixed instant; assert the pieces rather than an exact locale string so
-    // the test is not tied to one runtime's formatting.
     const s = formatExact("2026-07-11T14:55:00.000Z");
     const d = new Date("2026-07-11T14:55:00.000Z");
     expect(s).toContain(String(d.getFullYear()));

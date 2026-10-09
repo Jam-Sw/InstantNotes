@@ -1,9 +1,3 @@
-//! Whiteboards in the vault. A board's note file carries `kind: whiteboard`
-//! and the text on the canvas; the canvas itself is a standard `.excalidraw`
-//! file beside it with the same name, openable in Excalidraw. The sidecar
-//! follows its note through renames, the trash, and deletes, under the same
-//! ownership rules as the note files.
-
 use instantnotes_core::types::*;
 use instantnotes_core::vault::{collect_from_store, export_vault, parse_note};
 use instantnotes_core::Store;
@@ -42,7 +36,6 @@ fn rect(id: &str) -> Value {
     json!({ "id": id, "type": "rectangle", "x": 0, "y": 0, "width": 10, "height": 10 })
 }
 
-/// A whiteboard titled `title` holding one rectangle.
 fn board(s: &mut Store, title: &str) -> Note {
     let n = s
         .create_note(CreateNoteInput {
@@ -74,7 +67,6 @@ fn save_board(s: &mut Store, id: &str, elements: Value) {
     .unwrap();
 }
 
-/// Visible filenames directly inside `dir`, sorted, skipping folders.
 fn files(dir: &Path) -> Vec<String> {
     let Ok(entries) = fs::read_dir(dir) else {
         return Vec::new();
@@ -268,8 +260,6 @@ fn verify_checks_the_canvas_too() {
     assert_eq!(report.orphans, vec!["Loose.excalidraw"]);
 }
 
-/// Formatting is not content: a canvas file reindented by another tool
-/// still matches.
 #[test]
 fn verify_compares_the_canvas_by_content_not_bytes() {
     let (mut s, dir) = mirrored();
@@ -293,8 +283,6 @@ fn an_export_writes_the_canvas_too() {
     assert_eq!(canvas["elements"], json!([rect("r1")]));
 }
 
-/// A board saved before the store ever wrote a canvas (or with an envelope
-/// it does not recognize) still mirrors: its canvas file is an empty scene.
 #[test]
 fn an_unreadable_canvas_mirrors_as_an_empty_scene() {
     let (mut s, dir) = mirrored();

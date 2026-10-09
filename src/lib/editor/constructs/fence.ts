@@ -1,8 +1,3 @@
-// Code fence construct: block chrome on every fence line, the backtick
-// fence marks fold, and the language word stays as a small label. Touching
-// the fence reveals the backticks; the chrome stays either way, so the block
-// reads as a block even while being edited.
-
 import { Decoration } from "@codemirror/view";
 import type { SyntaxNodeRef } from "@lezer/common";
 import type { ConstructSpec, Emit, ScanContext } from "../types";

@@ -1,11 +1,4 @@
 <script lang="ts">
-  // In-place settings, laid out the way a desktop preferences window is: a
-  // list of pages down the left, grouped and filterable, and the page itself
-  // on the right. The first page is an Overview (the "under the hood" view):
-  // live library stats, what's new in the installed version, and the state
-  // of the things that run on their own (vault, agents, theme). Each other
-  // page is its own component under settings/. Escape steps back to the
-  // Overview first, then closes the whole view.
   import { onMount } from "svelte";
   import SettingsAbout from "$lib/components/settings/SettingsAbout.svelte";
   import SettingsAppearance from "$lib/components/settings/SettingsAppearance.svelte";
@@ -34,9 +27,7 @@
   }: {
     appVersion: string;
     onBack: () => void;
-    /** Leave Settings for a Space (after an import fills one). */
     onShowSpace: (workspaceId: string) => void;
-    /** The page to open on; the Overview by default. */
     initialPage?: Page;
   } = $props();
 
@@ -61,7 +52,6 @@
     id: Page;
     title: string;
     desc: string;
-    /** Words a filter may use besides the title. */
     keywords: string;
   }
   interface Group {
@@ -85,7 +75,6 @@
       entries: [
         { id: "vault", title: "Vault", desc: "Your notes as plain Markdown files in a folder.", keywords: "export backup sync folder markdown files" },
         { id: "contexting", title: "Contexting", desc: "Shape what copying a note hands to other tools and AI.", keywords: "copy context clipboard ai" },
-        // Its only source is Apple Stickies, so it exists where Stickies does.
         ...(isMac
           ? [{ id: "import" as const, title: "Import", desc: "Bring in your Apple Stickies as notes.", keywords: "stickies apple migrate" }]
           : []),
@@ -110,8 +99,6 @@
     GROUPS.flatMap((g) => g.entries.map((e) => [e.id, e.title])),
   ) as Record<Page, string>;
 
-  /** Groups with only the entries matching the filter; a group with none
-   *  drops out. An empty filter shows everything. */
   const shownGroups = $derived.by(() => {
     const q = filter.trim().toLowerCase();
     if (!q) return GROUPS;
@@ -135,7 +122,6 @@
 
   let stats = $state<DashboardStats | null>(null);
   let captureMs = $state<number | null>(null);
-  // The installed version's changelog section, parsed from the bundled file.
   const release = $derived(parseChangelog(changelogRaw, appVersion));
 
   onMount(() => {
@@ -148,7 +134,6 @@
 
     function onKeydown(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        // The filter clears first, so Escape in it does the usual thing.
         if (document.activeElement === filterInput && filter) {
           e.preventDefault();
           filter = "";
@@ -164,7 +149,6 @@
   });
 
   function onFilterKeydown(e: KeyboardEvent) {
-    // Enter opens the first match, so typing "vau⏎" is a way to get there.
     if (e.key === "Enter") {
       const first = shownGroups[0]?.entries[0];
       if (first) openPage(first.id);
@@ -276,8 +260,6 @@
           </div>
         </section>
 
-        <!-- The things that run on their own, in one line each. Not buttons:
-             the pages are one click away in the list, and these only report. -->
         <section class="status-row" aria-label="Status">
           <div class="status">
             <span class="status-key">Theme</span>
@@ -360,7 +342,6 @@
     background: var(--bg);
   }
 
-  /* ---- page list ---- */
   .settings-nav {
     display: flex;
     flex-direction: column;
@@ -486,14 +467,12 @@
     font-family: var(--font-meta);
   }
 
-  /* ---- content ---- */
   .settings-main {
     display: flex;
     flex-direction: column;
     min-height: 0;
     min-width: 0;
   }
-  /* Layout comes from .pane-header (app.css). */
   .page-head {
     gap: 12px;
     padding: 0 40px;
@@ -565,7 +544,6 @@
     color: var(--text-secondary);
   }
 
-  /* ---- overview ---- */
   .settings-home {
     flex: 1;
     min-height: 0;
@@ -657,7 +635,6 @@
     color: var(--success);
   }
 
-  /* ---- what's new ---- */
   .whatsnew {
     border: 1px solid var(--border);
     border-radius: var(--radius);

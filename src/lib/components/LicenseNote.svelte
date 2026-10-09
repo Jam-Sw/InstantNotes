@@ -1,8 +1,4 @@
 <script lang="ts">
-  // A document in the License Space, read like a note: its title in the
-  // editor's title row, its full text below, and at the foot its own
-  // agreement, one per document (installers README, "The agreement gate").
-  // Declining quits, since the app is not to be used without both.
   import { quitApp } from "$lib/api/client";
   import { agreements } from "$lib/agreements.svelte";
   import { licenseSpace } from "$lib/stores/license-space.svelte";
@@ -16,8 +12,6 @@
     <div class="license-toolbar">
       <h1 class="license-title" id="license-title">{doc.title}</h1>
     </div>
-    <!-- Focusable so the text scrolls from the keyboard: a scrollable region,
-         the one case a non-interactive element takes a tab stop. -->
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <div class="license-text" tabindex="0" role="document">{doc.text}</div>
     <footer class="license-foot">
@@ -41,7 +35,6 @@
     flex: 1;
     min-height: 0;
   }
-  /* Mirrors the note editor's title row, so the page reads as a note. */
   .license-toolbar {
     display: flex;
     align-items: center;
@@ -86,7 +79,6 @@
     color: var(--accent-text);
     font-size: 13px;
   }
-  /* The update page's buttons, so both system notes act alike. */
   .btn {
     padding: 6px 14px;
     border-radius: var(--radius);

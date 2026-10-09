@@ -1,9 +1,3 @@
-// Which inline/block marks the caret or selection currently sits inside, so the
-// format toolbar can light up what's applied (active states follow the cursor).
-// Tree-driven, not text-driven: the markdown parser resolves marker overlap
-// (e.g. ***bold italic***) correctly, which a marker-scan cannot. Pure over an
-// EditorState, so it is unit-testable without a live view.
-
 import { syntaxTree, ensureSyntaxTree } from "@codemirror/language";
 import type { EditorState } from "@codemirror/state";
 
@@ -27,7 +21,6 @@ export const NO_MARKS: ActiveMarks = {
   task: false,
 };
 
-// Lezer-markdown node names → the toolbar mark they represent.
 function mark(name: string, marks: ActiveMarks): void {
   switch (name) {
     case "StrongEmphasis":
@@ -56,16 +49,9 @@ function mark(name: string, marks: ActiveMarks): void {
   }
 }
 
-/**
- * Marks active at the current selection. Resolves the syntax tree at both
- * selection ends, from both sides, and unions every enclosing mark - so a caret
- * just inside a span, or a selection that exactly covers one, both register.
- */
 export function activeMarks(state: EditorState): ActiveMarks {
   const sel = state.selection.main;
   const marks: ActiveMarks = { ...NO_MARKS };
-  // Force a parse up to the selection (cheap for note-sized docs); fall back to
-  // whatever is parsed if the budget lapses, rather than reporting nothing.
   const upto = Math.max(sel.from, sel.to);
   const tree = ensureSyntaxTree(state, upto, 50) ?? syntaxTree(state);
 

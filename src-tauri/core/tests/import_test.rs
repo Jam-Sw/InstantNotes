@@ -1,7 +1,3 @@
-//! Import from Apple Stickies: the RTF converter against RTF written by
-//! Cocoa itself (fixtures/stickies/README.md), the folder reader, and the
-//! store's all-or-nothing import.
-
 use instantnotes_core::import::rtf::to_markdown;
 use instantnotes_core::import::stickies::{read_folder, resolve_folder};
 use instantnotes_core::types::{ImportItem, NoteFilter};
@@ -26,7 +22,6 @@ fn convert(rtf: &[u8]) -> String {
     to_markdown(rtf, |name| Some(format!("![](attachments/{name})")))
 }
 
-/// The fixture folder, copied somewhere the test may change it.
 fn folder() -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     copy_dir(&fixtures(), dir.path());
@@ -45,8 +40,6 @@ fn copy_dir(from: &Path, to: &Path) {
         }
     }
 }
-
-// ---- the converter, on Cocoa's own RTF ----
 
 #[test]
 fn formatting_lists_links_and_escapes_become_markdown() {
@@ -115,8 +108,6 @@ fn a_windows_checkout_with_crlf_reads_the_same() {
     assert_eq!(convert(&crlf), convert(&lf));
 }
 
-// ---- the converter, on the edges ----
-
 #[test]
 fn emphasis_markers_never_touch_whitespace() {
     assert_eq!(convert(br"{\rtf1 a\b  bold \b0 c}"), "a **bold** c");
@@ -140,11 +131,8 @@ fn tables_metadata_and_starred_groups_are_not_text() {
 
 #[test]
 fn unicode_escapes_follow_the_rtf_rules() {
-    // Negative values wrap to 16 bits; this pair is U+1F680.
     assert_eq!(convert(br"{\rtf1\uc0 \u-10179 \u-8576 }"), "\u{1f680}");
-    // \uc1: one fallback character follows and is skipped.
     assert_eq!(convert(br"{\rtf1\uc1 caf\u233 e!}"), "caf\u{e9}!");
-    // A lone half of a pair is dropped, not turned into garbage.
     assert_eq!(convert(br"{\rtf1\uc0 a\u-10179 b}"), "ab");
 }
 
@@ -163,12 +151,9 @@ fn a_line_break_inside_a_list_item_stays_in_the_item() {
 #[test]
 fn broken_input_ends_without_a_panic() {
     assert_eq!(convert(br"}}}{\b x"), "**x**");
-    // A broken hex escape is dropped; the text after it is kept, not lost.
     assert_eq!(convert(br"{\rtf1 \'zz\u"), "zz");
     assert_eq!(convert(b""), "");
 }
-
-// ---- the folder reader ----
 
 #[test]
 fn only_packages_with_text_are_stickies_and_colors_come_from_the_state_file() {
@@ -239,8 +224,6 @@ fn an_unreadable_state_file_only_costs_the_colors() {
     assert!(stickies.iter().all(|s| s.color.is_none()));
 }
 
-// ---- the store ----
-
 fn item(id: &str, body: &str, created: u64, updated: u64) -> ImportItem {
     let at = |secs: u64| SystemTime::UNIX_EPOCH + Duration::from_secs(secs);
     ImportItem {
@@ -251,7 +234,6 @@ fn item(id: &str, body: &str, created: u64, updated: u64) -> ImportItem {
     }
 }
 
-// 2024-01-01T00:00:00Z and 2024-02-01T00:00:00Z.
 const JAN: u64 = 1_704_067_200;
 const FEB: u64 = 1_706_745_600;
 
@@ -309,7 +291,6 @@ fn a_sticky_is_imported_once_until_its_note_is_destroyed() {
         ["A".to_string(), "B".to_string()].into()
     );
 
-    // In the Trash it still counts; destroyed for good, it can come back.
     let a = store
         .list_notes(Default::default())
         .unwrap()
@@ -344,8 +325,6 @@ fn no_space_is_made_when_nothing_lands_or_none_is_named() {
     assert!(store.list_workspaces().unwrap().is_empty());
 }
 
-/// The whole path `import_stickies` takes, less the app: a Stickies folder
-/// read, converted, and imported, twice.
 #[test]
 fn a_stickies_folder_lands_as_notes_once() {
     let dir = folder();

@@ -1,8 +1,4 @@
 <script lang="ts">
-  // Settings > Import: Apple Stickies in as notes (macOS only; SettingsView
-  // leaves the page out elsewhere). Choosing the folder is the permission,
-  // the board shows every sticky as it looks, and the chosen ones come in
-  // together. See openspec/changes/feat-stickies-import.
   import { importStickies, openUrl, scanStickies } from "$lib/api/client";
   import type { ImportOutcome, StickiesScan, StickyPreview } from "$lib/api/types";
   import { formatExact } from "$lib/format";
@@ -353,8 +349,6 @@
     color: var(--text-tertiary);
   }
 
-  /* The board: each sticky as it looks on the desktop. Paper and ink are the
-     sticky's own, not the theme's, in light and dark alike. */
   .board {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));

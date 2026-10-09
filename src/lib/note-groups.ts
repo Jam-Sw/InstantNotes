@@ -1,8 +1,3 @@
-// Time-bucketed sections for the note list (the macOS-native grouping:
-// Pinned, Today, Yesterday, Previous 7 Days, Previous 30 Days, month names
-// for this year, then plain years). Pure and clock-injected so tests pin
-// every boundary.
-
 import type { Note } from "$lib/api/types";
 
 export interface NoteGroup {
@@ -15,8 +10,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const monthName = new Intl.DateTimeFormat(undefined, { month: "long" });
 
 function bucketLabel(note: Note, now: Date, startOfToday: Date): string {
-  // Pinned floats as its own section, except in the trash, where the list
-  // is plain recency order and a leftover pin flag must not reorder it.
   if (note.isPinned && !note.isDeleted) return "Pinned";
 
   const t = new Date(note.updatedAt);
@@ -30,12 +23,6 @@ function bucketLabel(note: Note, now: Date, startOfToday: Date): string {
   return String(t.getFullYear());
 }
 
-/**
- * Group a note list into labeled sections, preserving the incoming order.
- * Adjacent notes with the same label share a section; the caller's sort
- * (pinned first, then updatedAt desc) makes the labels monotonic, so each
- * label appears exactly once.
- */
 export function groupNotes(notes: Note[], now: Date): NoteGroup[] {
   const groups: NoteGroup[] = [];
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());

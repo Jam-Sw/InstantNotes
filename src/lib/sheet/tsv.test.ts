@@ -1,4 +1,3 @@
-// The clipboard format shared with Sheets, Excel, and Numbers.
 import { describe, expect, it } from "vitest";
 import { fromTsv, toTsv } from "./tsv";
 

@@ -1,7 +1,3 @@
-// Editor preferences (Svelte 5 runes): the text zoom level and whether the
-// format toolbar is open. Persisted to the existing settings KV so they survive
-// restarts, mirroring the theme store.
-
 import { getSetting, setSetting } from "$lib/api/client";
 
 const KEY_ZOOM = "editor.zoom";
@@ -14,14 +10,9 @@ const STEP = 0.1;
 class EditorPrefs {
   zoom = $state(1);
   toolbarOpen = $state(false);
-  // Show the full minute-precise save time inline in the editor status bar.
-  // The exact time is always available on hover regardless of this toggle.
   showExactTime = $state(false);
 
   #loaded = false;
-  // A setter called while init()'s read is still in flight must win: without
-  // this, the read resolving afterward would silently overwrite the user's
-  // change back to the old persisted value.
   #touched = new Set<string>();
 
   async init(): Promise<void> {
@@ -43,7 +34,6 @@ class EditorPrefs {
         this.showExactTime = exact;
       }
     } catch {
-      // Settings are best-effort; fall back to defaults silently.
     }
   }
 

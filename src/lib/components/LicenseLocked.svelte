@@ -1,7 +1,4 @@
 <script lang="ts">
-  // What the capture panel and a sticky show until the license and EULA are
-  // agreed: no editor, one way to the library, where the License Space is
-  // (installers README, "The agreement gate", rule 3).
   import { openLibrary } from "$lib/api/client";
 </script>
 

@@ -1,8 +1,3 @@
-// The frontend's one definition of the event names the backend emits. The
-// Rust mirror is src-tauri/src/events.rs; `contract.test.ts` holds the two
-// lists equal, so renaming one side alone fails a test instead of silently
-// dropping a listener.
-
 export const EVENTS = {
   NOTES_CHANGED: "notes:changed",
   TAGS_CHANGED: "tags:changed",
@@ -24,8 +19,6 @@ export const EVENTS = {
   AGENT_SESSIONS: "agents:sessions",
 } as const;
 
-/** The three events that mean "the library changed, re-query it". Anything
- *  drawing the whole library (the store, the graph) listens to all three. */
 export const LIBRARY_CHANGED_EVENTS = [
   EVENTS.NOTES_CHANGED,
   EVENTS.TAGS_CHANGED,

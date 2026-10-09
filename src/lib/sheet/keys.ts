@@ -1,12 +1,3 @@
-// What a key means to the grid, as a table: keydown in, intent out. Pure, so
-// the two modes' tables (design.md §3) are tested as tables, and so the one
-// rule that matters outside the grid can be asserted against the app's own
-// shortcuts: the grid claims only the keys here, and lets everything else,
-// above all every Cmd/Ctrl chord it does not list, pass through untouched.
-//
-// Copy, cut, and paste are not here: the grid takes them as clipboard events
-// on its focused element, so the Edit menu and the keys both reach it.
-
 export interface KeyLike {
   key: string;
   metaKey: boolean;
@@ -22,8 +13,6 @@ export type SelectIntent =
   | { type: "page"; dir: 1 | -1; extend: boolean }
   | { type: "edge"; where: "rowStart" | "rowEnd" | "first" | "last"; extend: boolean }
   | { type: "tab"; back: boolean }
-  /** Start editing the active cell; `replaceWith` is the typed key that
-   *  replaces its contents, else the caret goes to the end of what is there. */
   | { type: "edit"; replaceWith?: string }
   | { type: "clear" }
   | { type: "selectAll" }
@@ -45,8 +34,6 @@ const ARROWS: Record<string, [number, number]> = {
 
 const mod = (e: KeyLike) => e.metaKey || e.ctrlKey;
 
-/** A key while a cell is selected and no caret is up. Null means the grid
- *  does not handle it, and the event goes on to the window. */
 export function selectIntent(e: KeyLike): SelectIntent | null {
   if (e.isComposing) return null;
   const extend = e.shiftKey;
@@ -56,8 +43,6 @@ export function selectIntent(e: KeyLike): SelectIntent | null {
     return mod(e) ? { type: "jump", dr, dc, extend } : { type: "move", dr, dc, extend };
   }
   if (mod(e)) {
-    // The grid's own chords, and nothing else with Cmd/Ctrl: the palette,
-    // new note, pop-out, zoom, and every future app shortcut pass through.
     switch (e.key) {
       case "a":
       case "A":
@@ -98,14 +83,10 @@ export function selectIntent(e: KeyLike): SelectIntent | null {
     default:
       break;
   }
-  // Any printable key starts editing, replacing the cell with it. Option
-  // combinations are printable on macOS (⌥e is ´), so Alt is not a chord.
   if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) return { type: "edit", replaceWith: e.key };
   return null;
 }
 
-/** A key while a caret is in a cell. Null means the input handles it (the
- *  caret moves, text is typed, native undo and clipboard apply). */
 export function editIntent(e: KeyLike): EditIntent | null {
   if (e.isComposing) return null;
   switch (e.key) {
@@ -121,8 +102,6 @@ export function editIntent(e: KeyLike): EditIntent | null {
   }
 }
 
-/** Whether the grid would swallow this key in either mode: the predicate the
- *  shortcut-collision test checks the app's registry against. */
 export function claimsKey(e: KeyLike): boolean {
   return selectIntent(e) !== null || editIntent(e) !== null;
 }

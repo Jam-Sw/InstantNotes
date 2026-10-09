@@ -1,8 +1,3 @@
-//! Settings > Import: Apple Stickies into the library. Reading a Stickies
-//! folder and converting its RTF live in `instantnotes_core::import`; this
-//! module copies in the images a sticky refers to and hands the notes to the
-//! store. Nothing here ever writes under the chosen folder.
-
 use crate::*;
 use instantnotes_core::domain::derive_title;
 use instantnotes_core::import::{rtf, stickies};
@@ -11,20 +6,14 @@ use std::collections::HashSet;
 use std::io;
 use std::path::{Component, Path, PathBuf};
 
-/// The name the store records these imports under (`import.stickies`).
 const SOURCE: &str = "stickies";
-/// A sticky's image larger than this is left out, and the note says so.
 const MAX_IMAGE_BYTES: u64 = 50 * 1024 * 1024;
-/// Enough of a sticky's text to fill its miniature.
 const PREVIEW_CHARS: usize = 400;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StickiesScan {
-    /// Where the stickies were found: the chosen folder, or the Stickies
-    /// folder inside it. `import_stickies` takes this back.
     folder: String,
-    /// False when macOS refused to let the app read the folder.
     readable: bool,
     stickies: Vec<StickyPreview>,
 }
@@ -34,19 +23,14 @@ pub struct StickiesScan {
 pub struct StickyPreview {
     id: String,
     title: String,
-    /// The start of the note's Markdown.
     text: String,
-    /// `#rrggbb`, the sticky's paper.
     color: Option<String>,
     created_at: String,
     updated_at: String,
     images: usize,
-    /// Imported before, and its note still exists.
     imported: bool,
 }
 
-/// Where Stickies keeps its notes, for the folder picker to open at. `None`
-/// off macOS, where there is no Stickies.
 #[tauri::command(async)]
 pub fn stickies_location(app: AppHandle) -> Option<String> {
     if !cfg!(target_os = "macos") {
@@ -60,7 +44,6 @@ pub fn stickies_location(app: AppHandle) -> Option<String> {
     )
 }
 
-/// Every sticky in the folder the user picked, converted, for the preview.
 #[tauri::command(async)]
 pub fn scan_stickies(state: State<'_, AppState>, folder: String) -> CmdResult<StickiesScan> {
     let dir = chosen_folder(&folder)?;
@@ -103,9 +86,6 @@ pub fn scan_stickies(state: State<'_, AppState>, folder: String) -> CmdResult<St
     })
 }
 
-/// Import the stickies `ids` from `folder` as notes, filed in the Space named
-/// `space` (none when blank). Read again from disk, not from the preview, so
-/// what lands is each sticky as it is now.
 #[tauri::command(async)]
 pub fn import_stickies(
     state: State<'_, AppState>,
@@ -116,8 +96,6 @@ pub fn import_stickies(
 ) -> CmdResult<ImportOutcome> {
     let dir = chosen_folder(&folder)?;
     let wanted: HashSet<String> = ids.iter().map(|id| id.to_uppercase()).collect();
-    // Leave out what is already in before copying any image for it; the
-    // store checks again inside its transaction.
     let done = locked(&state)?.imported_ids(SOURCE)?;
     let found = stickies::read_folder(&dir).map_err(unreadable)?;
     let attachments = attachments_dir(&app)?;
@@ -142,7 +120,6 @@ pub fn import_stickies(
         .collect();
     let mut outcome = locked(&state)?.import_notes(SOURCE, items, space.as_deref())?;
     outcome.skipped += already;
-    // Best effort, as after a paste: the next launch mirrors what this misses.
     let _ = mirror_attachments(&app);
     if outcome.imported > 0 {
         emit_notes_changed(&app);
@@ -152,7 +129,6 @@ pub fn import_stickies(
     Ok(outcome)
 }
 
-/// The folder the picker returned, where its stickies are.
 fn chosen_folder(folder: &str) -> CmdResult<PathBuf> {
     let path = Path::new(folder);
     if !path.is_absolute() {
@@ -169,10 +145,6 @@ fn unreadable(e: io::Error) -> CmdError {
     }
 }
 
-/// Copy the image a sticky names into the attachments folder, returning its
-/// stored name. The name comes from a file, so it must be a plain file name
-/// inside the sticky's own package, a regular file (a link is not
-/// followed), no larger than `MAX_IMAGE_BYTES`, and an image.
 fn copy_image(attachments: &Path, package: &Path, name: &str) -> Option<String> {
     if !is_one_component(name) {
         return None;
@@ -186,9 +158,6 @@ fn copy_image(attachments: &Path, package: &Path, name: &str) -> Option<String> 
     store_image(attachments, &bytes).ok()
 }
 
-/// Looser on purpose than the attachments folder's own name rule
-/// (`instantnotes_core::attachments`): a Stickies image is called whatever
-/// the user pasted ("Pasted Graphic 2.tiff"), and is renamed on the way in.
 fn is_one_component(name: &str) -> bool {
     let mut parts = Path::new(name).components();
     matches!(

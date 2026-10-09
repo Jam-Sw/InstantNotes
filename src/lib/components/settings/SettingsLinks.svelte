@@ -17,9 +17,6 @@
     { value: "never", label: "Never" },
   ];
 
-  // Track whether a Cmd/Ctrl modifier is held so the sample link shows the
-  // pointer cursor exactly when a modifier-click would open it, mirroring the
-  // editor's behavior in the "open with Cmd/Ctrl+Click" mode.
   let modHeld = $state(false);
   onMount(() => {
     void linkPrefs.init();
@@ -35,8 +32,6 @@
     };
   });
 
-  // The sample link mirrors the reading (preview) behavior so trying it here
-  // feels exactly like clicking in a note.
   function sampleLinkClick(e: MouseEvent) {
     if (linkPrefs.openWith === "modclick" && !(e.metaKey || e.ctrlKey)) return;
     void openUrl("https://example.com");
@@ -50,8 +45,6 @@
     browser, never inside InstantNotes.
   </p>
 
-  <!-- Live sample: real classes, real click behavior, so a change is
-       felt here before a note is ever touched. -->
   <span class="field-label">Sample</span>
   <div class="link-sample">
     Ship notes beat status meetings, see
@@ -134,8 +127,6 @@
     line-height: 1.6;
     color: var(--text);
   }
-  /* The sample link wears the same treatments the editor theme applies, so
-     what is shown here is what a note shows. */
   .sample-link {
     color: var(--accent);
     font-size: inherit;

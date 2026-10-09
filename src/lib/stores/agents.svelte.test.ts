@@ -56,13 +56,11 @@ describe("agents presence", () => {
     expect(agents.spaceActive("ideas")).toBe(true);
     expect(agents.tagActive("plan")).toBe(true);
     expect(agents.current?.tool).toBe("append_to_note");
-    // Each conversation has its own "doing right now".
     expect(agents.working).toBe(true);
     expect(agents.doing("s1")?.tool).toBe("append_to_note");
     expect(agents.recent[0].tool).toBe("append_to_note");
     expect(agents.lastWriter("b")).toBe("claude-code");
 
-    // A later call on "a" keeps it lit past the first call's time.
     agents.play([entry({ noteIds: ["a"] })], t0 + PRESENCE_MS - 1);
     agents.expire(t0 + PRESENCE_MS);
     expect(agents.noteMark("a")).toBe("read");
@@ -130,8 +128,6 @@ describe("agents presence", () => {
     const toast = toasts.items.at(-1)!;
     expect(toast.message).toBe("Reverted Claude Code's change to “Plan”.");
     expect(toast.action?.label).toBe("Undo");
-    // The shell echoes the revert as an external change: folded in once,
-    // and the row it undid stays marked. No toast for the app's own row.
     const before = toasts.items.length;
     agents.play([revertRow]);
     expect(agents.recent.filter((e) => e.seq === revertRow.seq)).toHaveLength(1);

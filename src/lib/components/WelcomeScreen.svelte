@@ -9,10 +9,6 @@
   let { appVersion, onOpenUpdate }: { appVersion: string; onOpenUpdate: () => void } =
     $props();
 
-  // Set when the global capture hotkey could not be registered at startup
-  // (another app owns it); without this notice the core feature would just
-  // silently not exist. Queried, not event-driven: the failure happens before
-  // this webview has listeners attached.
   let shortcutConflict = $state<ShortcutFailure | null>(null);
   let conflictDismissed = $state(false);
 
@@ -20,7 +16,6 @@
     getShortcutFailure()
       .then((label) => (shortcutConflict = label))
       .catch(() => {
-        // Best-effort notice; the welcome screen must render regardless.
       });
   });
 </script>
@@ -101,7 +96,6 @@
     font-size: 12px;
     opacity: 0.8;
   }
-  /* Same warning orange as the beta badge; a conflict is a caution, not an error. */
   .shortcut-notice {
     font-size: 12px;
     color: #e8923a;
@@ -116,7 +110,6 @@
     font-size: 10px;
     cursor: pointer;
   }
-  /* Orange marks beta builds. */
   .version-badge {
     display: inline-block;
     vertical-align: middle;
@@ -131,7 +124,6 @@
     font-style: italic;
     letter-spacing: 0.3px;
   }
-  /* Sits beside the version badge; same shape, accent color marks action. */
   .update-pill {
     display: inline-block;
     vertical-align: middle;

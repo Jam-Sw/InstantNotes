@@ -1,9 +1,3 @@
-// `imagePrefs` is a module-level singleton whose `init()` only reads settings
-// once (guarded by a private #loaded flag), so — like `library` in
-// library.svelte.test.ts — each test loads a fresh copy of the module via
-// vi.resetModules() + dynamic import rather than reusing one instance across
-// tests. Unlike the settings-page component tests, this exercises the
-// init()-reads-a-persisted-value path directly, without rendering Svelte.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getSetting, setSetting } from "$lib/api/client";
 
@@ -80,7 +74,7 @@ describe("imagePrefs", () => {
     const prefs = await load();
     await prefs.init();
     await prefs.init();
-    expect(mockGetSetting).toHaveBeenCalledTimes(2); // storage + height, once each
+    expect(mockGetSetting).toHaveBeenCalledTimes(2);
   });
 
   it("falls back to defaults silently when the settings read fails", async () => {

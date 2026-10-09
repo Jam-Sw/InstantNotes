@@ -1,7 +1,3 @@
-// Table construct: tables read as tables in preview. Monospace lines so
-// columns align, bold header row, dimmed delimiter row. Structure only; the
-// pipes stay, because a full grid rebuild would fight the caret.
-
 import { Decoration } from "@codemirror/view";
 import type { SyntaxNodeRef } from "@lezer/common";
 import type { ConstructSpec, Emit, ScanContext } from "../types";

@@ -1,8 +1,3 @@
-// Agent access, the parts with no runes: the activity row the MCP server
-// writes (core store/activity.rs), how it reads in plain words, and the
-// commands that connect an agent.
-
-/** Settings keys owned by this surface. */
 export const AGENT_ACCESS_KEY = "agents.access";
 export const AGENT_NOTIFY_KEY = "agents.notify";
 export const AGENT_TAGS_KEY = "agents.tags";
@@ -19,48 +14,32 @@ export type AgentTags = Record<string, string[]>;
 
 export type AgentAccess = "off" | "read" | "write";
 
-/** Which agent calls raise a toast: every write (default), everything, or
- *  nothing (the trace and the live marks still show). */
 export type AgentNotify = "writes" | "all" | "off";
 
 export type AgentKind = "read" | "search" | "write";
 
-/** One agent call, as the server traces it. */
 export interface AgentActivity {
-  /** Monotonic row id; newer rows have larger seqs. */
   seq: number;
-  /** Epoch milliseconds. */
   at: number;
-  /** The MCP process that made the call: one conversation's calls share it. */
   session: string;
-  /** The client's own name from the MCP handshake, e.g. "claude-code"; or
-   *  "instantnotes" for a revert made in the app. */
   client: string;
   tool: string;
   kind: AgentKind;
   status: "ok" | "error";
-  /** What the tool refused with, when status is "error". */
   error: string | null;
   durationMs: number;
   noteIds: string[];
   noteCount: number;
-  /** The first few touched notes' titles. */
   titles: string[];
   space: string | null;
   tag: string | null;
   query: string | null;
-  /** The note's updatedAt once this write landed. */
   afterUpdatedAt: string | null;
-  /** A snapshot exists to go back to (or the note was created and can be
-   *  trashed). */
   revertable: boolean;
-  /** Epoch ms when this row was reverted; it cannot be reverted again. */
   revertedAt: number | null;
-  /** For a revert row: the seq of the row it undid. */
   reverts: number | null;
 }
 
-/** The note as it was before a write, from `agent_activity_before`. */
 export interface NoteSnapshot {
   id: string;
   title: string;
@@ -97,7 +76,6 @@ export function parseTags(value: unknown): AgentTags {
   return out;
 }
 
-/** Keep only well-formed rows: the trace is data another process wrote. */
 export function parseActivityLog(value: unknown): AgentActivity[] {
   if (!Array.isArray(value)) return [];
   return value.filter(
@@ -112,29 +90,18 @@ export function parseActivityLog(value: unknown): AgentActivity[] {
   );
 }
 
-/** One agent connection, from `list_agent_sessions` and `agents:sessions`:
- *  an MCP server process, and whether it is alive right now. */
 export interface AgentPresence {
   session: string;
   client: string;
-  /** Epoch milliseconds. */
   connectedAt: number;
   disconnectedAt: number | null;
   connected: boolean;
-  /** The name the client gives this session of its own (Claude Code's
-   *  `/rename`), when it has one. */
   label?: string | null;
-  /** The client's own id for the session. */
   clientSession?: string | null;
-  /** Where the client is running. */
   cwd?: string | null;
-  /** How the session was identified: "exact" (the client said so itself) or
-   *  "inferred" (matched from the client's own records). */
   matched?: string | null;
 }
 
-/** Who a conversation is, as a person would say it: "Claude Code: bob" when
- *  the client names its session, else just "Claude Code". */
 export function agentName(client: string, label?: string | null): string {
   const who = clientLabel(client);
   return label ? `${who}: ${label}` : who;
@@ -153,9 +120,6 @@ export function parsePresence(value: unknown): AgentPresence[] {
   );
 }
 
-/** Whether a batch of outside writes may have changed this note. No rows
- *  means a write the trace does not describe (a second copy of the app),
- *  which may have touched anything. */
 export function mayHaveWritten(entries: AgentActivity[], noteId: string): boolean {
   return (
     entries.length === 0 ||
@@ -163,7 +127,6 @@ export function mayHaveWritten(entries: AgentActivity[], noteId: string): boolea
   );
 }
 
-/** A write that changed a note and can still be put back. */
 export function canRevert(e: AgentActivity): boolean {
   return e.kind === "write" && e.status === "ok" && e.revertable && e.revertedAt === null;
 }
@@ -185,7 +148,6 @@ const KNOWN_CLIENTS: Record<string, string> = {
   zed: "Zed",
 };
 
-/** A client's handshake name as a person would say it. */
 export function clientLabel(raw: string): string {
   const name = raw.trim();
   const known = KNOWN_CLIENTS[name.toLowerCase()];
@@ -200,8 +162,6 @@ export function clientLabel(raw: string): string {
 
 const quote = (s: string) => `“${s || "Untitled"}”`;
 
-/** What the call did, in words: "Reading “Groceries”". A failed call says
- *  what it tried: "Tried to read a note". */
 export function describeActivity(e: AgentActivity): string {
   const title = quote(e.titles[0] ?? "");
   const more = e.noteCount > 1 ? ` and ${e.noteCount - 1} more` : "";
@@ -279,13 +239,11 @@ function describeAttempt(e: AgentActivity): string {
   return `Tried to ${verb[e.tool] ?? "act"}, but it failed`;
 }
 
-/** The tool as a short badge: "read", "search", "write", "revert". */
 export function kindLabel(e: AgentActivity): string {
   if (e.tool === "revert") return "revert";
   return e.kind;
 }
 
-/** "just now", "4 min ago", "2 h ago", "3 d ago". */
 export function timeAgo(at: number, now: number): string {
   const s = Math.max(0, Math.round((now - at) / 1000));
   if (s < 45) return "just now";
@@ -296,29 +254,22 @@ export function timeAgo(at: number, now: number): string {
   return `${Math.round(h / 24)} d ago`;
 }
 
-/** "12 ms", "1.4 s". */
 export function formatDuration(ms: number): string {
   if (ms < 1000) return `${Math.max(0, Math.round(ms))} ms`;
   return `${(ms / 1000).toFixed(1)} s`;
 }
 
-/** The clock time of a row, for the trace: "14:03:27". */
 export function clockTime(at: number): string {
   const d = new Date(at);
   const two = (n: number) => String(n).padStart(2, "0");
   return `${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`;
 }
 
-/** The raw exchange behind a call, from `agent_activity_wire`: the JSON-RPC
- *  message the agent sent and the one it got back, each as JSON text. Null
- *  where none was kept (an older row, or the app's own revert). */
 export interface AgentWire {
   request: string | null;
   response: string | null;
 }
 
-/** A wire message laid out to read. The text a tool result carries is JSON
- *  inside a JSON string; nothing is unwrapped or dropped, only indented. */
 export function prettyWire(raw: string): string {
   try {
     return JSON.stringify(JSON.parse(raw), null, 2);
@@ -327,11 +278,9 @@ export function prettyWire(raw: string): string {
   }
 }
 
-/** One conversation's calls, for the trace to group under a header. */
 export interface AgentSession {
   session: string;
   client: string;
-  /** Oldest and newest `at` in the group. */
   startedAt: number;
   endedAt: number;
   entries: AgentActivity[];
@@ -340,8 +289,6 @@ export interface AgentSession {
   errors: number;
 }
 
-/** Group rows (newest first) into sessions, newest session first. Rows keep
- *  their order within a session. */
 export function groupSessions(entries: AgentActivity[]): AgentSession[] {
   const out: AgentSession[] = [];
   const index = new Map<string, AgentSession>();
@@ -371,7 +318,6 @@ export function groupSessions(entries: AgentActivity[]): AgentSession[] {
   return out;
 }
 
-/** Where the app and its library live, from `agent_connection`. */
 export interface AgentConnection {
   exe: string;
   db: string;
@@ -386,22 +332,18 @@ function serverArgs(c: AgentConnection): string[] {
 
 const shellQuote = (s: string) => (/^[\w./:@-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`);
 
-/** One line for Claude Code. */
 export function claudeCodeCommand(c: AgentConnection): string {
   return ["claude", "mcp", "add", "instantnotes", "--", c.exe, ...serverArgs(c)]
     .map(shellQuote)
     .join(" ");
 }
 
-/** One line for Codex. */
 export function codexCommand(c: AgentConnection): string {
   return ["codex", "mcp", "add", "instantnotes", "--", c.exe, ...serverArgs(c)]
     .map(shellQuote)
     .join(" ");
 }
 
-/** The `mcp_servers` entry for Hermes Agent's `~/.hermes/config.yaml`.
- *  JSON strings are valid YAML, which keeps paths with spaces intact. */
 export function hermesConfig(c: AgentConnection): string {
   return [
     "mcp_servers:",
@@ -411,7 +353,6 @@ export function hermesConfig(c: AgentConnection): string {
   ].join("\n");
 }
 
-/** The `mcpServers` entry most other clients take (Claude Desktop, Cursor). */
 export function mcpServersJson(c: AgentConnection): string {
   return JSON.stringify(
     { mcpServers: { instantnotes: { command: c.exe, args: serverArgs(c) } } },

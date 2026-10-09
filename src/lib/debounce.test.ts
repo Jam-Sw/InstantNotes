@@ -23,7 +23,7 @@ describe("debounce", () => {
     d.flush();
     expect(calls).toEqual(["draft"]);
     vi.advanceTimersByTime(200);
-    expect(calls).toEqual(["draft"]); // no double-fire
+    expect(calls).toEqual(["draft"]);
   });
 
   test("flush with nothing pending does nothing", () => {

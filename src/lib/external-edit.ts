@@ -1,9 +1,3 @@
-// An edit that arrives from outside the editor (an agent writing to the
-// open note) lands as an ordinary CodeMirror change, not a reload: the
-// caret and selection map through it, it joins the undo history (Cmd-Z
-// takes the agent's edit back out), and the text it inserted flashes so
-// the user sees what changed and where.
-
 import {
   EditorState,
   StateEffect,
@@ -12,7 +6,6 @@ import {
 } from "@codemirror/state";
 import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
 
-/** How long inserted text stays highlighted. */
 const FLASH_MS = 2400;
 
 interface TextChange {
@@ -21,11 +14,7 @@ interface TextChange {
   insert: string;
 }
 
-/**
- * The one contiguous replacement that turns `before` into `after`: the
- * common prefix and suffix stay, the middle is replaced. Null when equal.
- * @internal
- */
+/** @internal */
 export function minimalChange(before: string, after: string): TextChange | null {
   if (before === after) return null;
   const max = Math.min(before.length, after.length);
@@ -75,13 +64,9 @@ const flashTheme = EditorView.baseTheme({
   },
 });
 
-/** The editor extension that draws the flash. */
 export const externalEdit = [flashField, flashTheme];
 
-/**
- * The transaction that brings `state` to `next`, or null if already there.
- * @internal
- */
+/** @internal */
 export function externalEditSpec(state: EditorState, next: string): TransactionSpec | null {
   const change = minimalChange(state.doc.toString(), next);
   if (!change) return null;
@@ -93,13 +78,11 @@ export function externalEditSpec(state: EditorState, next: string): TransactionS
   };
 }
 
-/** Apply an outside edit to a live view and schedule the flash to clear. */
 export function applyExternalEdit(view: EditorView, next: string): boolean {
   const spec = externalEditSpec(view.state, next);
   if (!spec) return false;
   view.dispatch(spec);
   setTimeout(() => {
-    // The view may be gone (note closed) by then.
     if (view.dom.isConnected) view.dispatch({ effects: clearFlash.of(null) });
   }, FLASH_MS);
   return true;

@@ -1,9 +1,3 @@
-//! Sheets in the vault. A sheet's note file carries `kind: sheet` and the
-//! grid as a Markdown table; the grid itself is a `.csv` beside it with the
-//! same name, opening in any spreadsheet. The sidecar follows its note
-//! through renames, the trash, and deletes, under the same ownership rules
-//! as a whiteboard's canvas.
-
 use instantnotes_core::types::*;
 use instantnotes_core::vault::{collect_from_store, export_vault, parse_note};
 use instantnotes_core::Store;
@@ -27,7 +21,6 @@ fn flush(s: &mut Store) {
     assert_eq!(out.remaining, 0);
 }
 
-/// A sheet titled `title` holding one data row.
 fn sheet(s: &mut Store, title: &str) -> Note {
     let n = s
         .create_note(CreateNoteInput {
@@ -47,7 +40,6 @@ fn sheet(s: &mut Store, title: &str) -> Note {
     .unwrap()
 }
 
-/// Visible filenames directly inside `dir`, sorted, skipping folders.
 fn files(dir: &Path) -> Vec<String> {
     let Ok(entries) = fs::read_dir(dir) else {
         return Vec::new();
@@ -172,8 +164,6 @@ fn a_foreign_csv_at_the_name_is_never_overwritten() {
     assert!(names.contains(&format!("Timings-{id6}.csv")), "{names:?}");
 }
 
-/// The note existed as a document in the vault before it became a sheet:
-/// the CSV appears beside its file on the next flush.
 #[test]
 fn a_document_that_becomes_a_sheet_gains_its_csv() {
     let (mut s, dir) = mirrored();

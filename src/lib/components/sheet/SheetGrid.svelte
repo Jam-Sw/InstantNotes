@@ -1,23 +1,4 @@
 <script lang="ts">
-  // A sheet's grid: a real table of real cells, written in-house as Svelte
-  // DOM and styled by the theme's tokens alone. Two modes, as in Sheets and
-  // Excel: select (a cell is lit, no caret) and edit (a caret in one cell).
-  // The pure parts live in $lib/sheet: the model and its edits, movement,
-  // the key tables, and the clipboard format. This file owns focus, drawing,
-  // and the dispatch from a key or a click to one of those.
-  //
-  // Focus. In select mode a hidden textarea (the "catcher") holds focus, so
-  // the window's shortcut handler sees a typing target, IME composition has
-  // somewhere to land, and copy, cut, and paste arrive as clipboard events
-  // from the keys and the Edit menu alike. In edit mode a textarea sits over
-  // the cell. The grid stops a key only when the key tables claim it; every
-  // other key, every Cmd/Ctrl chord above all, goes on to the window.
-  //
-  // Saving. Every committed edit is handed to the owner at once as the
-  // serialized grid; the save queue debounces. The one edit that can wait
-  // is the cell being typed in, which `registerFlush` and unmount commit. A
-  // `surfaceData` the grid did not emit itself (an agent's rows adopted by
-  // the store) replaces what the grid shows, as an undoable step.
   import { onMount, tick, untrack } from "svelte";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
@@ -61,8 +42,6 @@
 
   interface Props {
     noteId: string;
-    /** The grid as stored. Read at mount, and again whenever a value the
-     *  grid did not emit arrives: that is another writer's grid to adopt. */
     surfaceData: string | null | undefined;
     readonly: boolean;
     onchange: (noteId: string, surfaceData: string) => void;
@@ -71,10 +50,8 @@
 
   let { noteId, surfaceData, readonly, onchange, registerFlush }: Props = $props();
 
-  /** Fixed, so rows outside the viewport can be skipped by arithmetic. */
   const ROW_H = 26;
   const ROW_HEAD_W = 44;
-  /** Past this many rows only the rows near the viewport are in the DOM. */
   const WINDOW_FROM = 200;
   const OVERSCAN = 12;
   const UNDO_LIMIT = 200;
@@ -95,12 +72,9 @@
   let viewportHeight = $state(0);
   let menu = $state<{ x: number; y: number; kind: "row" | "col"; index: number } | null>(null);
 
-  // The serialized grid last handed out or taken in: an incoming value equal
-  // to it is the grid's own, echoed back by the store.
   let lastSeen: string | null | undefined = untrack(() => surfaceData);
   let undoStack: { sheet: Sheet; sel: Selection }[] = [];
   let redoStack: { sheet: Sheet; sel: Selection }[] = [];
-  // Where the current run of Tabs began: Enter returns to that column.
   let tabStartCol: number | null = null;
   let dragging = false;
   let resizing: { c: number; startX: number; before: Sheet } | null = null;
@@ -114,7 +88,6 @@
   const range = $derived(rangeOf(sel));
   const tableWidth = $derived(ROW_HEAD_W + sheet.cols.reduce((sum, c) => sum + c.w, 0));
 
-  // Only the rows near the viewport are in the DOM once a sheet is tall.
   const windowed = $derived(rows > WINDOW_FROM);
   const first = $derived(windowed ? Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN) : 0);
   const last = $derived(
@@ -124,10 +97,6 @@
   );
   const visible = $derived(Array.from({ length: Math.max(0, last - first) }, (_, i) => first + i));
 
-  // ---- the one way the grid changes ----
-
-  /** Show `next`; when it differs, record the step for undo and hand it to
-   *  the owner. `nextSel` follows, clamped to the new shape. */
   function apply(next: Sheet, nextSel: Selection = sel) {
     if (next !== sheet) {
       undoStack.push({ sheet, sel });
@@ -163,9 +132,6 @@
     emit();
   }
 
-  // Another writer's grid (an agent's rows, taken in by the store) replaces
-  // what is shown. The step is undoable, as an agent's text edit is in the
-  // editor, and a cell being typed in is kept: it commits onto the new grid.
   $effect(() => {
     const incoming = surfaceData;
     untrack(() => {
@@ -181,8 +147,6 @@
       }
     });
   });
-
-  // ---- editing ----
 
   async function startEdit(replaceWith?: string) {
     if (readonly) return;
@@ -203,7 +167,6 @@
     editor.style.height = `${Math.max(ROW_H, editor.scrollHeight)}px`;
   }
 
-  /** Put the typed value into the cell and move on. */
   function commitEdit(move: "down" | "up" | "right" | "left" | "stay") {
     if (!editing) return;
     const { r, c, value } = editing;
@@ -217,7 +180,6 @@
       case "down": {
         const col = tabStartCol ?? c;
         tabStartCol = null;
-        // The last row grows the sheet, so a log never runs out of room.
         if (r === rows - 1) next = growRows(next, 1);
         nextSel = moveTo(sel, r + 1, col, next.rows.length, next.cols.length, false);
         break;
@@ -251,7 +213,6 @@
     fitEditor();
   }
 
-  /** Rows appended at the bottom, or a word about the cap when none fit. */
   function growRows(from: Sheet, n: number): Sheet {
     const grown = insertRows(from, from.rows.length, n);
     if (grown === from) toasts.show(`A sheet holds at most ${MAX_ROWS.toLocaleString()} rows.`);
@@ -261,8 +222,6 @@
   function focusCatcher() {
     catcher?.focus({ preventScroll: true });
   }
-
-  // ---- keys ----
 
   function onKeydown(e: KeyboardEvent) {
     if (editing) {
@@ -335,13 +294,11 @@
     }
   }
 
-  /** Esc: out of the grid, back to the note list when there is one. */
   function leave() {
     catcher?.blur();
     document.querySelector<HTMLElement>(".note-row.selected")?.focus();
   }
 
-  // IME composition lands in the catcher; what it produced starts an edit.
   function onCatcherInput(e: Event) {
     if (editing || (e as InputEvent).isComposing) return;
     takeCatcherText();
@@ -353,8 +310,6 @@
     catcher.value = "";
     if (text) void startEdit(text);
   }
-
-  // ---- clipboard ----
 
   function onCopy(e: ClipboardEvent) {
     if (editing || !e.clipboardData) return;
@@ -375,7 +330,6 @@
     e.preventDefault();
     const block = fromTsv(text);
     const { r0, c0 } = range;
-    // One value pasted over a range fills the range, as spreadsheets do.
     const fill =
       block.length === 1 && block[0].length === 1 && !isSingle(sel)
         ? Array.from({ length: range.r1 - r0 + 1 }, () =>
@@ -393,8 +347,6 @@
     apply(next, { anchor: { r: r0, c: c0 }, active: { r: r1, c: c1 } });
   }
 
-  // ---- mouse ----
-
   function cellAt(target: EventTarget | null): { r: number; c: number } | null {
     const td = target instanceof Element ? target.closest<HTMLElement>("td[data-r]") : null;
     if (!td) return null;
@@ -404,7 +356,6 @@
   function onHostMousedown(e: MouseEvent) {
     if (e.button !== 0) return;
     if (editor && e.target instanceof Node && editor.contains(e.target)) return;
-    // Keep focus in the grid: the cells themselves are not focusable.
     e.preventDefault();
     const cell = cellAt(e.target);
     if (cell) {
@@ -456,8 +407,6 @@
     menu = { x: e.clientX, y: e.clientY, kind, index };
   }
 
-  /** The header menu's items: on the clicked row or column, or on the
-   *  whole selected block of them when the click lands inside it. */
   function menuItems(kind: "row" | "col", index: number) {
     const whole =
       kind === "row"
@@ -495,7 +444,6 @@
     ];
   }
 
-  // Column resize: live while dragging, one undo step and one save at the end.
   function startResize(e: PointerEvent, c: number) {
     if (readonly || e.button !== 0) return;
     e.preventDefault();
@@ -518,16 +466,12 @@
     apply(after);
   }
 
-  // ---- viewport ----
-
   function onScroll() {
     if (!host) return;
     scrollTop = host.scrollTop;
     viewportHeight = host.clientHeight;
   }
 
-  /** Keep the active cell in view, by arithmetic, so it works for rows not
-   *  in the DOM and never scrolls anything but the grid. */
   function reveal(active: { r: number; c: number }) {
     if (!host) return;
     const top = active.r * ROW_H;
@@ -542,7 +486,6 @@
     const viewW = Math.max(host.clientWidth - ROW_HEAD_W, width);
     if (left < viewLeft) host.scrollLeft = left;
     else if (left + width > viewLeft + viewW) host.scrollLeft = left + width - viewW;
-    // The window follows at once, not on the scroll event that may follow.
     scrollTop = host.scrollTop;
   }
 
@@ -554,7 +497,6 @@
   function onFocusOut(e: FocusEvent) {
     if (host && e.relatedTarget instanceof Node && host.contains(e.relatedTarget)) return;
     focused = false;
-    // A click elsewhere ends the edit the way Enter would, keeping the value.
     if (editing) {
       const { r, c, value } = editing;
       editing = null;
@@ -575,7 +517,6 @@
       unregister();
       observer?.disconnect();
       window.removeEventListener("mouseup", endDrag);
-      // A cell still being typed in is not dropped on the way out.
       if (editing) {
         const { r, c, value } = editing;
         editing = null;
@@ -740,7 +681,7 @@
   th,
   td {
     box-sizing: border-box;
-    height: 26px; /* ROW_H */
+    height: 26px;
     padding: 0;
     border-right: 1px solid var(--border);
     border-bottom: 1px solid var(--border);

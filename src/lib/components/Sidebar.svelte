@@ -27,14 +27,11 @@
   );
   let spacesHeader = $state<HTMLDivElement>();
   let tagsHeader = $state<HTMLDivElement>();
-  // Space and tag management live behind a context menu (right-click /
-  // Shift+F10) and double-click-to-rename, so rows carry no resting chrome.
   let renamingSpaceId = $state<string | null>(null);
   let spaceMenu = $state<{ x: number; y: number; ws: WorkspaceWithCount } | null>(null);
   let renamingTagId = $state<string | null>(null);
   let tagMenu = $state<{ x: number; y: number; tag: TagWithCount } | null>(null);
 
-  // "Claude Code and Codex connected", "Claude Code and 19 more connected".
   const connectedTitle = $derived.by(() => {
     const names = agents.sessions.filter((s) => s.connected).map((s) => agentName(s.client, s.label));
     if (names.length === 0) return "";
@@ -50,16 +47,11 @@
     newSpaceInput = "";
   }
 
-  // Deleting a space never touches notes, so it goes straight through with
-  // an Undo toast (shown by the store) instead of a confirm dialog.
   async function deleteSpace(ws: WorkspaceWithCount): Promise<void> {
     await library.removeWorkspace(ws.id);
-    // The row that held focus is gone; land somewhere stable nearby.
     queueMicrotask(() => spacesHeader?.focus());
   }
 
-  // The tag keeps its id across a rename, so an active filter on it stays
-  // valid without any extra bookkeeping here.
   async function renameTag(
     tag: TagWithCount,
     name: string,
@@ -86,33 +78,24 @@
   }
 
   async function deleteTagRow(tag: TagWithCount): Promise<void> {
-    // Point the filter away from the tag before it disappears, so the note
-    // list is never left querying a tag id that no longer exists.
     if (library.activeTagId === tag.id) {
       library.setTagFilter(null);
     }
     try {
       await deleteTag(tag.id);
     } catch (e) {
-      // The refresh below re-syncs the list, but the user completed a
-      // two-step confirm; a failure must say so rather than vanish.
       const message = friendlyError(e);
       toasts.show(`Couldn't delete #${tag.name}. ${message}`);
     }
     await Promise.all([library.refreshTags(), library.refresh()]);
-    // The row that held focus is gone; land somewhere stable nearby.
     queueMicrotask(() => tagsHeader?.focus());
   }
 </script>
 
 <aside class="sidebar">
-  <!-- The window's title bar, where the traffic lights sit: it moves the
-       window and holds nothing else. -->
   <div class="pane-header" data-tauri-drag-region></div>
   <div class="sidebar-scroll">
   {#if licenseSpace.locked}
-    <!-- Until the license and EULA are agreed, the License Space is the one
-         place to go; everything below is shown but out of reach. -->
     <nav class="license-nav">
       <SidebarEntityRow
         name={LICENSE_SPACE_NAME}
@@ -142,9 +125,6 @@
     >
       All Notes
     </button>
-    <!-- Open loops: capture-born notes never opened since. Hidden at zero
-         (useful by default, invisible when there's nothing to do), but held
-         visible while active so the row doesn't vanish mid burn-down. -->
     {#if library.revisitCount > 0 || library.revisitMode}
       <button
         class="nav-item"
@@ -165,8 +145,6 @@
       onclick={() => library.selectGraph()}
     >
       <span>Graph</span>
-      <!-- How many unfiled notes the graph can say a Space for. Hidden at
-           zero, like Revisit: a count that reaches nothing is closure. -->
       {#if library.suggestionCount > 0}
         <span class="nav-count">{library.suggestionCount}</span>
       {/if}
@@ -174,9 +152,6 @@
   </nav>
   <div class="tags-header section-label" bind:this={spacesHeader} tabindex="-1">Spaces</div>
   <nav class="workspaces">
-    <!-- The update notification, first: the same row as any Space, with a green
-         asterisk and no management gestures. It exists only while an update is
-         offered, so it is rendered rather than listed. -->
     {#if updateSpace.visible}
       <SidebarEntityRow
         name={UPDATE_SPACE_NAME}
@@ -198,8 +173,6 @@
         {#snippet suffix()}<span class="update-star" aria-hidden="true">*</span>{/snippet}
       </SidebarEntityRow>
     {/if}
-    <!-- The agent trace: a Space with one note per agent conversation, drawn
-         like the update's and, like it, with no management gestures. -->
     {#if agentsSpace.visible}
       <SidebarEntityRow
         name={AGENTS_SPACE_NAME}
@@ -218,8 +191,6 @@
         onDoneRename={() => {}}
         onMenu={() => {}}
       >
-        <!-- Who is connected lives on the row itself, which is always here:
-             nothing appears or goes, so nothing below it ever moves. -->
         {#snippet suffix()}{#if agents.connectedCount > 0}<span
               class="agents-live"
               title={connectedTitle}
@@ -314,7 +285,6 @@
 {/if}
 
 <style>
-  /* sidebar */
   .sidebar {
     display: flex;
     flex-direction: column;
@@ -328,7 +298,6 @@
     overflow-y: auto;
     padding: 0 8px 12px;
   }
-  /* A wrapper for the lock only; it adds no box of its own. */
   .lockable {
     display: contents;
   }
@@ -378,7 +347,6 @@
     line-height: 18px;
     text-align: center;
   }
-  /* Type comes from .section-label (app.css); this is only where it sits. */
   .tags-header {
     margin: 22px 10px 6px;
   }
@@ -396,14 +364,11 @@
     color: var(--text-tertiary);
     font-size: 12px;
   }
-  /* The notification's invitation: a saturated go-green, not the theme accent,
-     so it reads as "something is ready" in every theme. */
   .update-star {
     color: #2ecc71;
     font-weight: 700;
   }
 
-  /* spaces */
   .spaces-more {
     padding: 2px 10px;
     font-size: 12px;

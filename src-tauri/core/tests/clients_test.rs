@@ -1,7 +1,3 @@
-//! The client adapters, against files laid out the way each client lays
-//! them out (shapes taken from real installs of Claude Code, Codex, and
-//! Hermes).
-
 use instantnotes_core::clients::{
     current_in, elapsed_ms, identify_in, Client, ClientProcess, EXACT, INFERRED,
 };
@@ -91,7 +87,6 @@ fn claude_code_says_its_session_itself_and_a_rename_is_followed() {
     let now = current_in(home.path(), Client::ClaudeCode, Some(42), None).unwrap();
     assert_eq!(now.label.as_deref(), Some("bob"));
 
-    // No file: the environment alone still identifies the session.
     let bare = identify_in(
         Some(home.path()),
         Some(Client::ClaudeCode),
@@ -144,7 +139,6 @@ fn a_codex_thread_is_the_one_its_process_began_in_that_folder() {
     );
     assert_eq!(about.matched.as_deref(), Some(INFERRED));
 
-    // A process that began after every thread there has none to claim.
     let late = identify_in(
         Some(home.path()),
         Some(Client::Codex),

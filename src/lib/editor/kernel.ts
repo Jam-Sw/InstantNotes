@@ -1,10 +1,3 @@
-// The preview kernel: owns the scan lifecycle and feeds the view.
-//
-// One PreviewKernel instance per editor. It rescans (one tree walk) only
-// when the document, viewport, mode, or a watched preference field changes;
-// a bare selection change just re-derives fold state from the cached table.
-// Typing and arrow keys, the hottest paths, never re-walk the tree.
-
 import {
   EditorView,
   ViewPlugin,
@@ -22,8 +15,6 @@ import {
 import { ConstructScanner, type ConstructTable } from "./scanner";
 import type { ConstructSpec, TextSpec } from "./types";
 
-// Mode state
-
 export const setPreviewMode = StateEffect.define<boolean>();
 
 export const previewModeField = StateField.define<boolean>({
@@ -36,13 +27,9 @@ export const previewModeField = StateField.define<boolean>({
   },
 });
 
-// Kernel plugin
-
 export interface KernelConfig {
   specs: readonly ConstructSpec[];
   textSpecs?: readonly TextSpec[];
-  /** Fields whose value change forces a rescan (preference snapshots). */
-  // deno-lint-ignore no-explicit-any StateField is invariant in its value type.
   rescanOn?: readonly StateField<any>[];
 }
 
@@ -90,7 +77,6 @@ class PreviewKernel {
   }
 }
 
-/** What previewKernel returns: the extension plus a handle for CaretGuard. */
 export interface Kernel {
   extension: Extension;
   plugin: ViewPlugin<PreviewKernel>;
@@ -102,8 +88,6 @@ export function previewKernel(config: KernelConfig): Kernel {
     (view) => new PreviewKernel(view, scanner, config.rescanOn ?? []),
     {
       decorations: (v) => v.decorations,
-      // The documented idiom: expose the plugin's ranges to atomicRanges via
-      // view.plugin(), guarding against the plugin having been dropped.
       provide: (p) =>
         EditorView.atomicRanges.of((view) => view.plugin(p)?.atomic ?? RangeSet.empty),
     },

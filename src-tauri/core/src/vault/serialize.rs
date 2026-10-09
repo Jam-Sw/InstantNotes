@@ -1,7 +1,3 @@
-//! `VaultNote` -> Markdown + YAML frontmatter. Every field is omitted when
-//! it equals its default, per design.md §3.2: frontmatter noise defeats the
-//! point of the format being human-readable.
-
 use super::{Frontmatter, VaultNote};
 use crate::types::CONTENT_KIND_DOCUMENT;
 

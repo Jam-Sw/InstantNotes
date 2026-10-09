@@ -1,12 +1,3 @@
-// ATX heading construct: the `# ` prefix folds in preview (the heading text
-// is sized by the highlight style); touching the heading line reveals it.
-// Setext underlines are left alone: hiding the underline line would collapse
-// it to nothing.
-//
-// Headings and tags coexist without ambiguity: CommonMark only parses
-// `# Heading` (with a space) as a heading, and the tag construct only
-// matches `#tag` (no space).
-
 import type { SyntaxNodeRef } from "@lezer/common";
 import type { ConstructSpec, Emit, ScanContext } from "../types";
 

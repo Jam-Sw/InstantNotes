@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-// `imagePrefs.init()`'s read-from-settings path is covered directly in
-// stores/images.svelte.test.ts; this file only covers what the page renders
-// and persists, following SettingsView.test.ts's convention of stubbing
-// getSetting to resolve undefined (defaults) throughout.
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, fireEvent, cleanup } from "@testing-library/svelte";
 import SettingsImages from "./SettingsImages.svelte";
@@ -41,9 +37,6 @@ vi.mock("$lib/stores/confirm.svelte", () => ({
 
 afterEach(cleanup);
 
-// `imagePrefs` is a module-level singleton shared across every test in this
-// file (it also outlives `init()`'s one-shot fetch guard), so reset its state
-// directly rather than depending on a fresh settings read per test.
 beforeEach(() => {
   imagePrefs.storage = "copy";
   imagePrefs.maxPreviewHeight = DEFAULT_MAX_HEIGHT;

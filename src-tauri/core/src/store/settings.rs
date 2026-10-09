@@ -1,5 +1,3 @@
-//! The key/value settings store.
-
 use super::*;
 
 impl Store {
@@ -31,7 +29,6 @@ impl Store {
     }
 }
 
-/// Write a setting inside an existing transaction/connection.
 pub(super) fn setting_put(conn: &Connection, key: &str, value: &serde_json::Value) -> Result<()> {
     let serialized = serde_json::to_string(value)
         .map_err(|e| AppError::Validation(format!("unserializable setting value: {e}")))?;

@@ -1,16 +1,7 @@
-//! Where an unfiled note belongs (API.md section 4): for every live note in
-//! no Space, the Space its tags and words point to, how sure that is, and
-//! why. Nothing is trained or stored: the model (`classify.rs`) is the
-//! library itself, recounted on every call, so filing a note, by the user
-//! or an agent, is also what teaches it. The one thing written is a
-//! dismissal, in the settings table.
-
 use super::*;
 use crate::classify::{self, Example, Features, Model, Params};
 use std::collections::{HashMap, HashSet};
 
-/// The settings key holding dismissed suggestions, a map from note id to the
-/// Space ids the user said the note does not belong in.
 pub const DISMISSED_SETTING: &str = "graph.dismissed";
 
 pub const TAG_SUGGEST_SETTING: &str = "suggest.tags";
@@ -23,8 +14,6 @@ struct Doc {
 }
 
 impl Store {
-    /// Suggestions for the live notes in no Space, newest first. Empty until
-    /// at least two Spaces hold notes: with one, every note would go there.
     pub fn space_suggestions(&self) -> Result<Vec<SpaceSuggestion>> {
         let params = Params::default();
         let docs = self.suggestion_docs(params)?;
@@ -126,8 +115,6 @@ impl Store {
             }))
     }
 
-    /// Record that a note does not belong in a Space, so the graph stops
-    /// suggesting it. Keyed by ids, so it survives renames of either.
     pub fn dismiss_space_suggestion(&mut self, note_id: &str, space_id: &str) -> Result<()> {
         self.fetch_note(note_id)?;
         self.require_workspace(space_id)?;
@@ -148,8 +135,6 @@ impl Store {
         self.set_setting(DISMISSED_SETTING, serde_json::Value::Object(map))
     }
 
-    /// Take a dismissal back (the Undo on "Not this one"): the pair can be
-    /// suggested again. Unknown pairs are fine; nothing to undo.
     pub fn restore_space_suggestion(&mut self, note_id: &str, space_id: &str) -> Result<()> {
         let mut map = self.pruned_dismissals()?;
         if let Some(list) = map.get_mut(note_id).and_then(|v| v.as_array_mut()) {
@@ -159,9 +144,6 @@ impl Store {
         self.set_setting(DISMISSED_SETTING, serde_json::Value::Object(map))
     }
 
-    /// Drop the dismissals of notes and Spaces that no longer exist, so the
-    /// record stays the size of the library. Run on every write to it, and
-    /// when a Space is deleted.
     pub(super) fn prune_space_dismissals(&mut self) -> Result<()> {
         let map = self.pruned_dismissals()?;
         self.set_setting(DISMISSED_SETTING, serde_json::Value::Object(map))
@@ -184,8 +166,6 @@ impl Store {
         }
     }
 
-    /// The dismissal record with the entries of destroyed notes and Spaces
-    /// left out. A malformed record reads as empty.
     fn pruned_dismissals(&self) -> Result<serde_json::Map<String, serde_json::Value>> {
         let notes: HashSet<String> = self
             .query_rows("SELECT id FROM notes", |r| r.get::<_, String>(0))?
@@ -219,8 +199,6 @@ impl Store {
         let Some(value) = self.get_setting(DISMISSED_SETTING)? else {
             return Ok(out);
         };
-        // Best-effort, like every setting: a malformed record means nothing
-        // is dismissed, never an error in the graph.
         if let Some(map) = value.as_object() {
             for (note_id, spaces) in map {
                 for space in spaces.as_array().into_iter().flatten() {
@@ -233,7 +211,6 @@ impl Store {
         Ok(out)
     }
 
-    /// Every live note with its features and Spaces, newest first.
     fn suggestion_docs(&self, params: Params) -> Result<Vec<Doc>> {
         const LIVE: &str = "n.is_deleted = 0 AND n.is_archived = 0";
         let rows = self.query_rows(

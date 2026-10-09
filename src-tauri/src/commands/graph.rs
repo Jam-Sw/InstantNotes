@@ -1,15 +1,10 @@
-//! Graph commands: the library as a graph, and where its unfiled notes
-//! belong.
-
 use crate::*;
 
-/// The library as a graph of notes, tags, and Spaces, for the Graph view.
 #[tauri::command(async)]
 pub fn library_graph(state: State<'_, AppState>) -> CmdResult<LibraryGraph> {
     Ok(locked_reader(&state)?.library_graph()?)
 }
 
-/// Where each live note in no Space most likely belongs, with reasons.
 #[tauri::command(async)]
 pub fn space_suggestions(state: State<'_, AppState>) -> CmdResult<Vec<SpaceSuggestion>> {
     Ok(locked_reader(&state)?.space_suggestions()?)
@@ -23,8 +18,6 @@ pub fn tag_suggestion(
     Ok(locked_reader(&state)?.tag_suggestion(&note_id)?)
 }
 
-/// The user said a note does not belong in a Space; stop suggesting it.
-/// Device-local UI state in the settings table, so no library event.
 #[tauri::command(async)]
 pub fn dismiss_space_suggestion(
     state: State<'_, AppState>,
@@ -35,7 +28,6 @@ pub fn dismiss_space_suggestion(
     Ok(())
 }
 
-/// Undo of a dismissal: the pair can be suggested again.
 #[tauri::command(async)]
 pub fn restore_space_suggestion(
     state: State<'_, AppState>,

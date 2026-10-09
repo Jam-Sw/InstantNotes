@@ -1,6 +1,3 @@
-//! Stage 2 mirror types. The flush itself lives on `Store`
-//! (`store/vault.rs`), which owns the connection.
-
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
@@ -32,13 +29,7 @@ pub struct VaultReport {
     pub manifest_ok: bool,
 }
 
-/// Whether `path` is `dir` itself or somewhere inside it. Both are resolved
-/// first (symlinks, `..`, and on macOS `/var` vs `/private/var`), so two
-/// spellings of one folder compare equal. A path that does not exist yet is
-/// resolved through its nearest existing ancestor.
 pub fn is_within(path: &Path, dir: &Path) -> bool {
-    // Path::starts_with compares whole components, so `notes2` is not
-    // inside `notes`.
     resolve(path).starts_with(resolve(dir))
 }
 
@@ -59,10 +50,6 @@ fn resolve(path: &Path) -> PathBuf {
     }
 }
 
-/// A vault folder must not overlap the app data directory in either
-/// direction: inside it, the mirror would write next to (or over) the
-/// database and its attachments; around it, the live SQLite file would sit
-/// inside a synced folder, which design.md D4 exists to prevent.
 pub fn check_vault_location(root: &Path, app_data: &Path) -> Result<(), String> {
     if is_within(root, app_data) {
         return Err("choose a folder outside the app's own data folder".into());

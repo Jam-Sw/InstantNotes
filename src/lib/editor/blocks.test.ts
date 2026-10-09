@@ -44,7 +44,6 @@ describe("blockMarkerRange", () => {
   });
 
   it("handles indented list markers", () => {
-    // "  - item": indent=2, marker="-", space=1 → marker occupies [2,4), text starts at 4
     expect(blockMarkerRange("  - item", 0)).toEqual({ from: 2, to: 4 });
   });
 

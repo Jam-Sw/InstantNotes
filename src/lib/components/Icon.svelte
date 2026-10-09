@@ -1,7 +1,4 @@
 <script lang="ts" module>
-  // The app's action icons: one 24-unit grid, one stroke, drawn in the colour
-  // of the text around them. Each is a list of path data, so adding an icon is
-  // adding a line here.
   const ICONS = {
     image: [
       "M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z",

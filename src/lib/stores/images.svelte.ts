@@ -1,15 +1,3 @@
-// Image preferences (Svelte 5 runes): how images are stored when added to a
-// note, and how large they render inline. Persisted to the settings KV like the
-// other preference stores.
-//
-// Storage mode governs INSERTION only (paste, drop, and "Insert image..."):
-// - "copy": image bytes are copied into the app's attachments folder, so
-//   exported markdown stays portable. Pasted screenshots are always copied,
-//   since there is no original file to link.
-// - "link": a file picked from disk is referenced in place by its absolute
-//   path (rendered through the asset protocol). Saves disk but breaks if the
-//   original file moves or is deleted.
-
 import { getSetting, setSetting } from "$lib/api/client";
 
 export type ImageStorage = "copy" | "link";
@@ -39,7 +27,6 @@ class ImagePrefs {
       if (storage === "copy" || storage === "link") this.storage = storage;
       if (typeof height === "number") this.maxPreviewHeight = this.#clampHeight(height);
     } catch {
-      // Settings are best-effort; fall back to defaults silently.
     }
   }
 

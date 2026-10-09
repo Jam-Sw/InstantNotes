@@ -1,11 +1,3 @@
-// Self-update state (Svelte 5 runes). Checks GitHub Releases via the Tauri
-// updater plugin. Automatic checks stay silent unless an update exists; a
-// manual check - from the tray "Check for Updates…" - answers with a toast
-// either way.
-//
-// An available update is surfaced as a synthetic Space (see
-// `$lib/update/space.ts`). Nothing here writes to SQLite or the vault.
-
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { installUpdate, restartApp } from "$lib/api/client";
 import { toasts } from "$lib/stores/toasts.svelte";
@@ -20,40 +12,25 @@ type UpdateStatus =
   | "ready"
   | "error";
 
-/** Whether the offered build's size against the running one is known yet. */
 type DeltaState = "idle" | "loading" | "ready" | "unavailable";
 
 const RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 class UpdaterStore {
   status = $state<UpdateStatus>("idle");
-  /** Version offered by the latest release (the target of the update). */
   version = $state<string | null>(null);
-  /** Version currently installed, per the updater manifest comparison. */
   currentVersion = $state<string | null>(null);
-  /** Release notes for the available update, verbatim from the manifest. */
   notes = $state<string | null>(null);
-  /** The release's own date, used to date the synthetic notes. */
   date = $state<string | null>(null);
-  // 0..1 while downloading, null when total size is unknown.
   progress = $state<number | null>(null);
   error = $state<string | null>(null);
-  /** Offered size minus running size, in bytes; null when unknown. */
   sizeDelta = $state<number | null>(null);
   deltaState = $state<DeltaState>("idle");
 
   #update: Update | null = null;
   #timer: ReturnType<typeof setInterval> | null = null;
-  // A version the user answered with "Later": kept off the sidebar for the rest
-  // of this run. The update is installable until the app relaunches, so without
-  // this the next check would surface the same notification again.
   #acknowledgedVersion: string | null = null;
 
-  /**
-   * Whether the update Space should be showing: an update was found and the
-   * user has not answered it. Covers every state of the install once found, so
-   * the Space never blinks out mid-download or on a failed install.
-   */
   get pendingUpdate(): boolean {
     if (this.version == null || this.version === this.#acknowledgedVersion) {
       return false;
@@ -67,7 +44,6 @@ class UpdaterStore {
     );
   }
 
-  /** Check once now, then every RECHECK_INTERVAL_MS while running. */
   start() {
     if (this.#timer) return;
     this.#timer = setInterval(() => void this.checkNow(), RECHECK_INTERVAL_MS);
@@ -81,15 +57,8 @@ class UpdaterStore {
     }
   }
 
-  /**
-   * Look for a newer release. Automatic checks (`manual` false) stay silent on
-   * "no update" and on failure - updates are a suggestion, never an
-   * obstruction. A manual check reports both outcomes with a toast, since there
-   * is no dialog to answer into.
-   */
   async checkNow(opts: { manual?: boolean } = {}) {
     const manual = opts.manual ?? false;
-    // Never interrupt a download or a pending acknowledgment.
     if (this.status === "downloading" || this.status === "ready") return;
     this.status = "checking";
     this.error = null;
@@ -115,7 +84,6 @@ class UpdaterStore {
           "Couldn't check for updates. Check your connection and try again.",
         );
       } else {
-        // Offline, private repo, or no manifest yet: stay silent.
         this.status = "idle";
       }
     }
@@ -148,17 +116,10 @@ class UpdaterStore {
     }
   }
 
-  /** Start the installed version now. Closing the window only hides the app
-   *  to the tray, so the old version keeps running until a real restart. */
   async restart() {
     await restartApp();
   }
 
-  /**
-   * The user answered the notification's "Later". The update is installed and
-   * applies on the next launch; take the Space down now rather than leaving it
-   * up as a done screen.
-   */
   acknowledge() {
     this.#acknowledgedVersion = this.version;
     this.status = "idle";
@@ -179,7 +140,6 @@ class UpdaterStore {
       version,
       userAgent: navigator.userAgent,
     });
-    // A newer check superseded this one; its own load owns the field now.
     if (this.version !== version) return;
     this.sizeDelta = delta;
     this.deltaState = delta == null ? "unavailable" : "ready";

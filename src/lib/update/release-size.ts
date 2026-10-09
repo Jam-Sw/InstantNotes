@@ -1,11 +1,3 @@
-// How much bigger or smaller the offered build is than the one running.
-//
-// The updater plugin only reports a size once a download starts, so the delta
-// is read from the published GitHub release assets instead: the running
-// version's updater artifact against the offered one. This is a nicety, never a
-// gate - any failure (offline, rate limit, a release whose asset was named
-// differently) resolves to null and the UI simply omits the line.
-
 const REPO = "Jam-Sw/InstantNotes";
 
 interface ReleaseAsset {
@@ -13,17 +5,13 @@ interface ReleaseAsset {
   size: number;
 }
 
-/** The updater artifact for this platform, by the names tauri-action uploads. */
 function assetMatcher(userAgent: string): (name: string) => boolean {
   if (/mac|darwin/i.test(userAgent)) return (n) => n.endsWith(".app.tar.gz");
   if (/win/i.test(userAgent)) return (n) => n.endsWith("-setup.exe");
   return (n) => n.endsWith(".AppImage");
 }
 
-/**
- * The one updater artifact in a release, skipping its `.sig` sidecar.
- * @internal
- */
+/** @internal */
 export function selectAsset(
   assets: ReleaseAsset[],
   userAgent: string,
@@ -54,10 +42,6 @@ async function fetchReleaseAssets(
   }));
 }
 
-/**
- * Offered size minus running size, in bytes. `null` when either side cannot be
- * resolved for this platform, or on any network or parsing failure.
- */
 export async function fetchUpdateSizeDelta(opts: {
   currentVersion: string;
   version: string;

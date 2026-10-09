@@ -221,7 +221,6 @@ describe("GraphView suggestions", () => {
     const { findByRole, queryByRole } = render(GraphView);
     await fireEvent.click(await findByRole("button", { name: "Add “Lasagne” to Research" }));
     await waitFor(() => expect(addNoteToWorkspace).toHaveBeenCalledWith("n4", "s1"));
-    // The row is gone at once; the library event brings the fresh list.
     expect(queryByRole("complementary", { name: "Filing suggestions" })).toBeNull();
     await waitFor(() => expect(show).toHaveBeenCalled());
     const [message, action] = show.mock.calls[0];
@@ -242,7 +241,6 @@ describe("GraphView suggestions", () => {
     expect(message).toBe('Won\'t suggest Research for "Lasagne"');
     action?.run();
     expect(restoreSpaceSuggestion).toHaveBeenCalledWith("n4", "s1");
-    // Undo re-reads, so the row comes back from the store, not from memory.
     await waitFor(() => expect(spaceSuggestions).toHaveBeenCalledTimes(2));
   });
 
@@ -263,7 +261,6 @@ describe("GraphView suggestions", () => {
     const panel = await findByRole("complementary", { name: "Filing suggestions" });
     expect(panel.textContent).toMatch(/Where these belong\s*200/);
     expect(within(panel).getAllByRole("listitem")).toHaveLength(25);
-    // The canvas draws the rows on screen: 25 dashed edges, not 200.
     expect(getAllByRole("button", { name: /suggested for Research/ })).toHaveLength(25);
     await fireEvent.click(getByRole("button", { name: "Show 25 more" }));
     await waitFor(() => expect(within(panel).getAllByRole("listitem")).toHaveLength(50));

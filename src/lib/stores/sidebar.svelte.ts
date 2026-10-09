@@ -1,7 +1,3 @@
-// Sidebar layout state (Svelte 5 runes): drag-resizable width and an
-// open/closed toggle. Persisted to the settings KV like editorPrefs, so the
-// layout comes back the way it was left.
-
 import { getSetting, setSetting } from "$lib/api/client";
 
 const KEY_WIDTH = "sidebar.width";
@@ -34,7 +30,6 @@ class SidebarState {
       if (typeof w === "number" && w >= SIDEBAR_MIN && w <= SIDEBAR_MAX) this.width = w;
       if (typeof c === "boolean") this.collapsed = c;
     } catch {
-      // Settings are best-effort; fall back to defaults silently.
     }
   }
 
@@ -42,12 +37,10 @@ class SidebarState {
     return Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(w)));
   }
 
-  /** Live-updates during a drag; call commitWidth() once when it ends. */
   setWidth(w: number): void {
     this.width = this.#clamp(w);
   }
 
-  /** Persist the width once per gesture instead of on every pointermove. */
   commitWidth(): void {
     void setSetting(KEY_WIDTH, this.width);
   }

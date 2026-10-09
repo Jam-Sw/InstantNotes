@@ -1,14 +1,3 @@
-//! The tools an agent can call, as `tools/list` describes them.
-//!
-//! Every tool maps onto a public `Store` method, so an agent's write goes
-//! through the same rules as a keystroke in the app. The surface says
-//! "space" (the product term); the core underneath says "workspace".
-//!
-//! Deliberately absent, at every access level: permanent delete, settings,
-//! the vault, and whiteboard canvases. A sheet's grid is reached one way:
-//! `append_sheet_rows` adds rows and nothing else, which is what keeps an
-//! agent's write mergeable with the user's unsaved cells in the app.
-
 use crate::access::{Access, BLOCKED_KEY, TAGS_KEY};
 use crate::activity::{Kind, Scope, Trace};
 use crate::fail;
@@ -33,10 +22,8 @@ const SNIPPET_CHARS: usize = 160;
 const DEFAULT_LIMIT: i64 = 50;
 const MAX_LIMIT: i64 = 200;
 const MAX_READ: usize = 50;
-/// Passages shown per search result; the rest are counted.
 const MAX_PASSAGES: usize = 3;
 const PASSAGE_LINE_CHARS: usize = 240;
-/// append_to_note re-reads and retries when the user saves in between.
 const APPEND_ATTEMPTS: usize = 3;
 const SEARCH_LIMIT: i64 = 10;
 const NOTE_CHARS: usize = 12_000;
@@ -50,16 +37,9 @@ type ToolResult = Result<Value, String>;
 pub(crate) struct Tools<'a> {
     store: &'a mut Store,
     attachments_dir: Option<PathBuf>,
-    /// `clientInfo.name` from `initialize`, shown to the user as who is
-    /// acting ("claude-code", "cursor").
     client: String,
-    /// This process, in the trace: one agent conversation's calls group
-    /// under it.
     session: String,
-    /// The client, as the process that started this server shows it.
     launched_by: Option<Client>,
-    /// The trace row of the call just made, until the transport attaches the
-    /// raw messages to it.
     traced: Option<i64>,
 }
 
@@ -67,11 +47,7 @@ struct ToolDef {
     name: &'static str,
     title: &'static str,
     level: Access,
-    /// MCP `destructiveHint`, for writes: the tool can remove or replace
-    /// something, rather than only add. Undoable still counts.
     destructive: bool,
-    /// MCP `idempotentHint`, for writes: repeating the call with the same
-    /// arguments changes nothing more.
     idempotent: bool,
     description: &'static str,
     schema: fn() -> Value,
@@ -354,8 +330,6 @@ fn max_chars_param(default: usize) -> Value {
     json!({ "type": "integer", "minimum": MIN_NOTE_CHARS, "maximum": MAX_NOTE_CHARS, "default": default, "description": "Body characters returned per note; a longer body is cut and says so." })
 }
 
-/// An input schema as MCP wants it: an object that accepts exactly these
-/// properties, since the server rejects any other.
 fn object(properties: Value, required: &[&str]) -> Value {
     let mut schema =
         json!({ "type": "object", "properties": properties, "additionalProperties": false });
@@ -366,16 +340,11 @@ fn object(properties: Value, required: &[&str]) -> Value {
 }
 
 impl<'a> Tools<'a> {
-    /// A connection begins: the session is on record from here, so the app
-    /// can say an agent is connected before it has asked for anything.
     pub(crate) fn new(
         store: &'a mut Store,
         attachments_dir: Option<PathBuf>,
         session: String,
     ) -> Self {
-        // Who started this server says which client it is, even one whose
-        // handshake will name nothing (Hermes sends `mcp`), and which of
-        // that client's sessions this is.
         let (process, launched_by) = launcher();
         let client = launched_by.map_or("agent", Client::as_str).to_string();
         let _ = store.open_agent_session(&session, &client);
@@ -418,8 +387,6 @@ impl<'a> Tools<'a> {
 
     pub(crate) fn set_client(&mut self, name: &str) {
         let name = name.trim();
-        // A handshake that names no client in particular (`mcp` is the MCP
-        // SDK's own default) does not replace what the launcher showed.
         let generic = matches!(name, "mcp" | "agent");
         let keep_launcher = generic && self.launched_by.is_some();
         if !name.is_empty() && !keep_launcher {
@@ -428,9 +395,6 @@ impl<'a> Tools<'a> {
         }
     }
 
-    /// Every tool, in a fixed order so a client's cache and prompt stay
-    /// stable. The title is given twice: top level for 2025-06-18 and later,
-    /// in the annotations for 2025-03-26.
     pub(crate) fn list(&self) -> Vec<Value> {
         TOOLS
             .iter()
@@ -456,16 +420,12 @@ impl<'a> Tools<'a> {
         TOOLS.iter().any(|t| t.name == name)
     }
 
-    /// Run a tool that exists (see `knows`). Failures are tool results with
-    /// `isError`, which the model sees and can act on. A success carries its
-    /// JSON twice, as MCP asks: structured, and as text for older clients.
     pub(crate) fn call(&mut self, name: &str, args: Value) -> Value {
         self.traced = None;
         let outcome = match TOOLS.iter().find(|t| t.name == name) {
             None => Err(format!(
                 "Unknown tool: {name}. tools/list names every tool this server has."
             )),
-            // A refused call leaves no trace: off means off.
             Some(def) => self.check(def.level).and_then(|()| {
                 let kind = match (def.level, def.name) {
                     (Access::Write, _) => Kind::Write,
@@ -492,8 +452,6 @@ impl<'a> Tools<'a> {
         }
     }
 
-    /// Keep the raw exchange with the call just traced. A refused call left
-    /// no row, so it keeps nothing.
     pub(crate) fn record_wire(&mut self, request: &str, response: &str) {
         if let Some(seq) = self.traced.take() {
             let _ = self.store.set_activity_wire(seq, request, response);
@@ -606,7 +564,6 @@ impl<'a> Tools<'a> {
             offset,
         };
         let page = self.store.search_notes_page(&search).map_err(fail)?;
-        // One query for every hit's Spaces, not one per hit.
         let ids: Vec<String> = page.matches.iter().map(|h| h.note_id.clone()).collect();
         let mut spaces = self.store.workspaces_for_notes(&ids).map_err(fail)?;
         let mut results = Vec::with_capacity(page.matches.len());
@@ -624,8 +581,6 @@ impl<'a> Tools<'a> {
             }
             let tags = self.store.tags_for_note(&hit.note_id).map_err(fail)?;
             let (mut found, matching_lines) = passages(&hit.body, &terms);
-            // Stemming can match a word the text never spells the way it was
-            // asked (run, running): the index's own excerpt still shows why.
             if found.is_empty() {
                 found.push(json!({ "text": unmark(&hit.excerpt) }));
             }
@@ -724,7 +679,6 @@ impl<'a> Tools<'a> {
             "pinned" => filter.is_pinned = Some(true),
             "archived" => filter.is_archived = Some(true),
             "trash" => filter.is_deleted = Some(true),
-            // The app's Revisit view: one rule, expanded by the store.
             "revisit" => filter.revisit = true,
             other => {
                 return Err(format!(
@@ -830,9 +784,6 @@ impl<'a> Tools<'a> {
     }
 
     fn create_note(&mut self, a: CreateArgs) -> ToolResult {
-        // A note with no Space is lost in All Notes, and agents rarely file one afterwards.
-        // Refuse, naming the Spaces that exist, so the retry is one call. A library with no
-        // Spaces yet has nothing to file into, so it is let through.
         if a.space.as_deref().is_none_or(|s| s.trim().is_empty()) {
             let names: Vec<String> = self
                 .store
@@ -886,7 +837,6 @@ impl<'a> Tools<'a> {
         };
         match self.store.update_note(&a.id, patch) {
             Ok(_) => {}
-            // Hand back what is there now, so the retry needs no extra read.
             Err(AppError::Conflict(_)) => {
                 let now = self.note_view(&a.id, Some((0, NOTE_CHARS)))?;
                 return Err(format!(
@@ -953,10 +903,6 @@ impl<'a> Tools<'a> {
         Err("CONFLICT: the note kept changing while appending, so nothing was added; call append_to_note again".into())
     }
 
-    /// Rows go after the sheet's last row holding data; the store derives
-    /// the Markdown body from the grid, as it does for the app's own saves.
-    /// Read, append, write with the version check, and retry when the user
-    /// saved in between, like `append_to_note`.
     fn append_sheet_rows(&mut self, a: SheetRowsArgs) -> ToolResult {
         for _ in 0..APPEND_ATTEMPTS {
             let current = self.store.get_note(&a.id, false).map_err(fail)?;
@@ -983,7 +929,6 @@ impl<'a> Tools<'a> {
             match self.store.update_note(&a.id, patch) {
                 Ok(_) => {
                     let mut view = self.note_view(&a.id, None)?;
-                    // Spreadsheet numbering, as the app shows it.
                     view["appended"] = json!({ "firstRow": first + 1, "count": a.rows.len() });
                     return Ok(view);
                 }
@@ -1090,7 +1035,6 @@ impl<'a> Tools<'a> {
                 view["nextBodyOffset"] = json!(end);
             }
         }
-        // A sheet's shape and header, so an agent knows the columns before it appends.
         if note.content_kind == CONTENT_KIND_SHEET {
             if let Ok(sheet) = Sheet::parse(note.surface_data.as_deref().unwrap_or_default()) {
                 let mut shape = json!({ "cols": sheet.cols.len(), "rows": sheet.filled_rows() });
@@ -1147,9 +1091,6 @@ fn summary(note: &Note) -> Value {
     })
 }
 
-/// A whiteboard's body is the text on its canvas and a sheet's is its grid
-/// as a table, each rewritten by every save of the surface, so writing the
-/// body would be silently undone.
 fn refuse_derived_body(note: &Note) -> Result<(), String> {
     match note.content_kind.as_str() {
         CONTENT_KIND_WHITEBOARD => {
@@ -1183,7 +1124,6 @@ fn clamp_chars(max_chars: Option<i64>) -> usize {
         .clamp(MIN_NOTE_CHARS as i64, MAX_NOTE_CHARS as i64) as usize
 }
 
-/// A page of results with where it stands, and where to ask for more.
 fn paged(mut page: Value, key: &str, total: i64, offset: i64, limit: i64) -> Value {
     let shown = page[key].as_array().map_or(0, Vec::len) as i64;
     let has_more = offset + shown < total;
@@ -1197,8 +1137,6 @@ fn paged(mut page: Value, key: &str, total: i64, offset: i64, limit: i64) -> Val
     page
 }
 
-/// A date or timestamp an agent gave, as a bound comparable as text with the
-/// store's UTC ISO-8601 timestamps.
 fn date_bound(raw: &str) -> Result<String, String> {
     let raw = raw.trim();
     let is_date = chrono::NaiveDate::parse_from_str(raw, "%Y-%m-%d").is_ok();
@@ -1213,7 +1151,6 @@ fn date_bound(raw: &str) -> Result<String, String> {
         .map_err(|_| format!("not a date: {raw}; use 2026-09-01 or 2026-09-01T08:00:00Z"))
 }
 
-/// The words of a query, as the search index splits them, lowercased.
 fn search_terms(query: &str) -> Vec<String> {
     query
         .split(|c: char| !(c.is_alphanumeric() || c == '-' || c == '_'))
@@ -1222,8 +1159,6 @@ fn search_terms(query: &str) -> Vec<String> {
         .collect()
 }
 
-/// Up to `MAX_PASSAGES` non-overlapping passages (the matching line and one
-/// either side) and how many lines match in all.
 fn passages(body: &str, terms: &[String]) -> (Vec<Value>, usize) {
     let lines: Vec<&str> = body.lines().collect();
     let hits = |line: &str| {
@@ -1232,7 +1167,7 @@ fn passages(body: &str, terms: &[String]) -> (Vec<Value>, usize) {
     };
     let mut found = Vec::new();
     let mut matching = 0;
-    let mut covered = 0; // lines before this index are already in a passage
+    let mut covered = 0;
     for (i, line) in lines.iter().enumerate() {
         if !hits(line) {
             continue;
@@ -1277,7 +1212,6 @@ fn clip(line: &str, terms: &[String]) -> String {
     out
 }
 
-/// Search marks matches with \u{1} and \u{2} for the app to highlight.
 fn unmark(s: &str) -> String {
     s.replace(['\u{1}', '\u{2}'], "")
 }
@@ -1287,7 +1221,6 @@ fn launcher() -> (Option<ClientProcess>, Option<Client>) {
     let client = process
         .as_ref()
         .and_then(|p| Client::from_command(&p.command))
-        // Claude Code is not always called `claude`, but it always says so.
         .or_else(|| env("CLAUDE_CODE_SESSION_ID").map(|_| Client::ClaudeCode));
     (process, client)
 }
@@ -1296,8 +1229,6 @@ fn env(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|v| !v.trim().is_empty())
 }
 
-/// A session id without a uuid dependency: the process id and the start
-/// time, which no two concurrent servers on one machine share.
 pub(crate) fn session_id() -> String {
     format!("{:x}-{:x}", std::process::id(), now_ms())
 }

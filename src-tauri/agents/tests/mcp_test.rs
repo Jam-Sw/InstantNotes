@@ -1,6 +1,3 @@
-//! The MCP server driven the way a client drives it: JSON-RPC lines in,
-//! JSON-RPC lines out, against a real store.
-
 use instantnotes_agents::{serve, ACCESS_KEY, BLOCKED_KEY, TAGS_KEY};
 use instantnotes_core::store::activity::AgentActivity;
 use instantnotes_core::types::CreateNoteInput;
@@ -8,13 +5,11 @@ use instantnotes_core::Store;
 use serde_json::{json, Value};
 use std::io::Cursor;
 
-/// Send one session's worth of messages; return every reply.
 fn session(store: &mut Store, messages: &[Value]) -> Vec<Value> {
     let input: String = messages.iter().map(|m| format!("{m}\n")).collect();
     raw_session(store, input.as_bytes())
 }
 
-/// The same over raw bytes, for input that is not valid JSON or UTF-8.
 fn raw_session(store: &mut Store, input: &[u8]) -> Vec<Value> {
     let mut output = Vec::new();
     serve(store, None, Cursor::new(input.to_vec()), &mut output).unwrap();
@@ -25,7 +20,6 @@ fn raw_session(store: &mut Store, input: &[u8]) -> Vec<Value> {
         .collect()
 }
 
-/// A modern (2026-07-28) request: no handshake, the version on the request.
 fn modern(id: i64, method: &str, mut params: Value) -> Value {
     params["_meta"] = json!({
         "io.modelcontextprotocol/protocolVersion": "2026-07-28",
@@ -48,7 +42,6 @@ fn call(id: i64, name: &str, arguments: Value) -> Value {
             "params": { "name": name, "arguments": arguments } })
 }
 
-/// A tool call's result: (is_error, text, parsed JSON when it is JSON).
 fn result_of(reply: &Value) -> (bool, String, Value) {
     let result = &reply["result"];
     let text = result["content"][0]["text"].as_str().unwrap().to_string();
@@ -56,7 +49,6 @@ fn result_of(reply: &Value) -> (bool, String, Value) {
     (result["isError"].as_bool().unwrap(), text, parsed)
 }
 
-/// The trace, newest first.
 fn trace(store: &Store) -> Vec<AgentActivity> {
     store.list_activity(100, 0).unwrap()
 }
@@ -133,7 +125,6 @@ fn tools_list_describes_every_tool_with_a_schema() {
         let name = tool["name"].as_str().unwrap();
         let schema = &tool["inputSchema"];
         assert_eq!(schema["type"], "object", "{name}");
-        // The server rejects unknown arguments, so the schema must say so.
         assert_eq!(schema["additionalProperties"], false, "{name}");
         assert_ne!(schema["required"], json!([]), "{name}: omit, not empty");
         assert!(
@@ -142,7 +133,6 @@ fn tools_list_describes_every_tool_with_a_schema() {
         );
         assert_eq!(tool["annotations"]["title"], tool["title"], "{name}");
         assert_eq!(tool["annotations"]["openWorldHint"], false, "{name}");
-        // Destructive means it can remove or replace: never the additive ones.
         let destructive = matches!(
             name,
             "update_note" | "edit_note" | "untag_note" | "remove_from_space" | "trash_note"
@@ -198,7 +188,6 @@ fn modern_clients_need_no_handshake() {
     assert!(!is_error);
     assert_eq!(read["title"], "Roadmap");
     assert_eq!(replies[2]["result"]["resultType"], "complete");
-    // Who is acting comes from the request itself, not a handshake.
     assert_eq!(trace(&store)[0].client, "codex");
 }
 
@@ -260,7 +249,6 @@ fn unknown_tools_and_malformed_calls_are_protocol_errors() {
             call(1, "drop_database", json!({})),
             json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call",
                     "params": { "name": "get_note", "arguments": "id=1" } }),
-            // A bad argument is the tool's error, which the model can fix.
             call(3, "get_note", json!({ "note": "x" })),
         ],
     );
@@ -279,13 +267,9 @@ fn unknown_tools_and_malformed_calls_are_protocol_errors() {
 fn malformed_messages_are_refused_and_the_server_keeps_going() {
     let mut store = store_with("read");
     let mut input = Vec::new();
-    // No jsonrpc member.
     input.extend_from_slice(b"{\"id\":1,\"method\":\"ping\"}\n");
-    // A null id, which MCP forbids.
     input.extend_from_slice(b"{\"jsonrpc\":\"2.0\",\"id\":null,\"method\":\"ping\"}\n");
-    // A response to nothing: never answered.
     input.extend_from_slice(b"{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{}}\n");
-    // Bytes that are not UTF-8.
     input.extend_from_slice(b"\xff\xfe\n");
     input.extend_from_slice(b"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"ping\"}\n");
     let replies = raw_session(&mut store, &input);
@@ -342,7 +326,6 @@ fn read_only_reads_but_refuses_writes() {
     assert!(is_error);
     assert!(text.contains("read only"));
 
-    // Reading never marks the note as opened: it stays in Revisit.
     let after = store.get_note(&note.id, false).unwrap();
     assert_eq!(after.last_opened_at, None);
     assert_eq!(after.body, "Fix the #sync bug");
@@ -493,7 +476,6 @@ fn update_with_a_stale_version_is_a_conflict() {
                     "id": note.id, "expectedUpdatedAt": note.updated_at, "body": "v2"
                 }),
             ),
-            // The version it read is now stale.
             call(
                 2,
                 "update_note",
@@ -552,7 +534,6 @@ fn revisit_lists_only_fresh_captures_once_they_are_old_enough() {
             call(2, "list_notes", json!({})),
         ],
     );
-    // A capture from moments ago is not yet an open loop; it is a live note.
     let (is_error, text, open) = result_of(&replies[1]);
     assert!(!is_error, "{text}");
     assert_eq!(open["notes"], json!([]));
@@ -569,7 +550,6 @@ fn a_traced_call_keeps_the_whole_exchange_as_it_crossed_the_wire() {
     ];
     let replies = session(&mut store, &[init(), sent[0].clone(), sent[1].clone()]);
     let log = trace(&store);
-    // Newest first: the failed get_note, then the search.
     for (row, (request, reply)) in log
         .iter()
         .zip([(&sent[1], &replies[2]), (&sent[0], &replies[1])])
@@ -619,7 +599,6 @@ fn every_call_is_traced_for_the_app_newest_first_failures_included() {
     assert_eq!(log[2].kind, "search");
     assert_eq!(log[2].query.as_deref(), Some("road"));
     assert_eq!(log[3].tool, "list_notes");
-    // One process, one session: every row shares it.
     assert!(log.iter().all(|e| e.session == log[0].session));
     assert!(!log[0].session.is_empty());
 }
@@ -660,7 +639,6 @@ fn a_write_keeps_the_note_as_it_was_and_the_app_can_revert_it() {
     assert_eq!(log.len(), 3);
     assert!(log.iter().all(|e| e.kind == "write" && e.revertable));
     let appended = log.iter().find(|e| e.tool == "append_to_note").unwrap();
-    // The untag came after, so the note has moved on since the append.
     assert!(appended.after_updated_at.is_some());
     let untagged = log.iter().find(|e| e.tool == "untag_note").unwrap();
     assert_eq!(
@@ -679,28 +657,23 @@ fn a_write_keeps_the_note_as_it_was_and_the_app_can_revert_it() {
         vec![("work".to_string(), "inline".to_string())]
     );
 
-    // Revert the untag: the tag comes back with its original source.
     let untag = log.iter().find(|e| e.tool == "untag_note").unwrap();
     store.revert_activity(untag.seq).unwrap();
     let tags = store.tags_for_note(&note.id).unwrap();
     assert_eq!(tags.len(), 1);
     assert_eq!(tags[0].name, "work");
-    // Then the append: the body is as it was, and the tag survives.
     store.revert_activity(appended.seq).unwrap();
     assert_eq!(
         store.get_note(&note.id, false).unwrap().body,
         "Plan
 - one #work"
     );
-    // A create is reverted by trashing, never deleting.
     let create = log.iter().find(|e| e.tool == "create_note").unwrap();
     assert!(store.activity_before(create.seq).unwrap().is_none());
     store.revert_activity(create.seq).unwrap();
     assert!(store.get_note(&created_id, false).unwrap().is_deleted);
-    // Twice is refused.
     assert!(store.revert_activity(create.seq).is_err());
 
-    // Each revert is itself a traced, revertable write, so it can be undone.
     let log = trace(&store);
     let reverts: Vec<&AgentActivity> = log.iter().filter(|e| e.tool == "revert").collect();
     assert_eq!(reverts.len(), 3);
@@ -710,7 +683,6 @@ fn a_write_keeps_the_note_as_it_was_and_the_app_can_revert_it() {
     assert_eq!(reverts[0].reverts, Some(create.seq));
     store.revert_activity(reverts[0].seq).unwrap();
     assert!(!store.get_note(&created_id, false).unwrap().is_deleted);
-    // The reverted rows say so.
     assert!(log
         .iter()
         .find(|e| e.seq == create.seq)
@@ -811,7 +783,6 @@ fn a_titled_note_is_found_by_its_title_and_rewritten_without_a_read() {
                 "update_note",
                 json!({ "id": note.id, "expectedUpdatedAt": hit["updatedAt"], "body": "steps" }),
             ),
-            // Stale now: the conflict carries the current note.
             call(
                 2,
                 "update_note",
@@ -841,9 +812,7 @@ fn a_connection_is_on_record_from_its_start_to_its_goodbye() {
         sessions[0].disconnected_at.is_some(),
         "stdin closed: it said goodbye"
     );
-    // The trace's rows carry the same session, so the two line up.
     assert_eq!(trace(&store)[0].session, sessions[0].session);
-    // Clearing the history forgets ended connections with it.
     store.clear_activity().unwrap();
     assert!(store.list_agent_sessions(10).unwrap().is_empty());
 }
@@ -857,7 +826,6 @@ fn a_held_lock_reads_as_alive_and_a_dropped_one_as_gone() {
     assert!(!session_alive(&db, "s1"), "no lock file: not connected");
     let held = hold_session_lock(&db, "s1").expect("the lock is free");
     assert!(session_alive(&db, "s1"), "held: connected");
-    // However the process ends, the lock goes with it.
     drop(held);
     assert!(!session_alive(&db, "s1"));
     assert!(
@@ -885,7 +853,6 @@ fn a_connection_carries_what_its_client_says_about_its_session() {
             },
         )
         .unwrap();
-    // A rename alone keeps the rest.
     store
         .describe_agent_session(
             &id,
@@ -926,7 +893,6 @@ fn search_shows_where_the_words_are_and_how_much_is_left() {
         &[
             init(),
             call(1, "search_notes", json!({ "query": "deadline" })),
-            // Every word, by default: no note has both.
             call(2, "search_notes", json!({ "query": "deadline renew" })),
             call(
                 3,
@@ -946,7 +912,6 @@ fn search_shows_where_the_words_are_and_how_much_is_left() {
     let hit = &found["results"][0];
     assert_eq!(hit["id"], taxes);
     assert_eq!(hit["matchingLines"], 2);
-    // The matching line with the lines around it, and where it is.
     assert_eq!(hit["passages"][0]["line"], 4);
     assert_eq!(
         hit["passages"][0]["text"],
@@ -1096,7 +1061,6 @@ fn several_notes_are_read_in_one_call_and_a_list_says_what_is_left() {
     assert_eq!(rest["hasMore"], false);
     assert!(rest.get("nextOffset").is_none());
 
-    // One trace row for the batch read, naming the notes it read.
     let read_row = trace(&store)
         .into_iter()
         .find(|e| e.tool == "get_notes" && e.status == "ok")
@@ -1156,17 +1120,12 @@ fn suggest_space_answers_from_the_graphs_model_and_files_nothing() {
     let (_, _, none) = result_of(&replies[3]);
     assert_eq!(none["suggestions"], json!([]));
 
-    // A read: traced as one, and the note is still in no Space.
     let rows = trace(&store);
     assert_eq!(rows[0].tool, "suggest_space");
     assert_eq!(rows[0].kind, "read");
     assert!(store.workspaces_for_note(&unfiled.id).unwrap().is_empty());
 }
 
-// ---- sheets ----
-
-/// A new sheet, as the app creates one: an empty note made a sheet, which
-/// gives it the default 3 x 20 grid.
 fn new_sheet(store: &mut Store) -> instantnotes_core::types::Note {
     let note = store.create_note(CreateNoteInput::default()).unwrap();
     store
@@ -1224,7 +1183,6 @@ fn sheet_rows_land_after_the_data_and_the_body_follows() {
     let (_, _, second) = result_of(&replies[3]);
     assert_eq!(second["appended"], json!({ "firstRow": 3, "count": 1 }));
     let rows = grid_rows(&mut store, &sheet.id);
-    // The default grid's empty rows were reused, not appended after.
     assert_eq!(rows.len(), 20);
     assert_eq!(rows[2], vec!["2026-10-05", "b2c4", "398"]);
     assert_eq!(rows[1], vec!["2026-10-04", "a1f3", ""]);
@@ -1278,7 +1236,6 @@ fn sheet_rows_are_refused_when_wider_than_the_sheet_or_not_a_sheet() {
     assert!(is_error);
     assert!(text.contains("at least one row"), "{text}");
     assert_eq!(grid_rows(&mut store, &sheet.id).len(), 20);
-    // Refused writes leave an error row and no snapshot.
     assert!(trace(&store)
         .iter()
         .all(|e| e.status == "error" && !e.revertable));
@@ -1384,7 +1341,6 @@ fn a_note_with_no_space_is_refused_and_the_spaces_are_named() {
     let (is_error, _, created) = result_of(&replies[3]);
     assert!(!is_error);
     assert_eq!(created["spaces"], json!(["Hardware"]));
-    // Only the filed note was saved.
     let notes = store.list_notes(Default::default()).unwrap();
     assert_eq!(notes.len(), 1);
 }

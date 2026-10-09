@@ -1,7 +1,3 @@
-// Where the user is in a sheet: the active cell and the anchor a range
-// extends from. Pure movement over a rows x cols grid; the view owns the
-// Sheet and asks here where a key leads.
-
 import type { Range, Sheet } from "./model";
 
 export interface Cell {
@@ -10,9 +6,7 @@ export interface Cell {
 }
 
 export interface Selection {
-  /** The cell that takes typing, and that moves. */
   active: Cell;
-  /** Where a range started; equals `active` for a single cell. */
   anchor: Cell;
 }
 
@@ -56,27 +50,19 @@ function clampCell(cell: Cell, rows: number, cols: number): Cell {
   };
 }
 
-/** Keep a selection inside a grid that may have shrunk under it. */
 export function clampSelection(sel: Selection, rows: number, cols: number): Selection {
   return { active: clampCell(sel.active, rows, cols), anchor: clampCell(sel.anchor, rows, cols) };
 }
 
-/** Put the active cell at (r, c); the anchor follows unless extending. */
 export function moveTo(sel: Selection, r: number, c: number, rows: number, cols: number, extend: boolean): Selection {
   const active = clampCell({ r, c }, rows, cols);
   return { active, anchor: extend ? sel.anchor : active };
 }
 
-/** One step, or any delta, from the active cell. */
 export function moveBy(sel: Selection, dr: number, dc: number, rows: number, cols: number, extend: boolean): Selection {
   return moveTo(sel, sel.active.r + dr, sel.active.c + dc, rows, cols, extend);
 }
 
-/**
- * Tab moves right and wraps to the start of the next row; Shift+Tab the
- * reverse. At the very last cell it stays put: a Tab run ends with Enter,
- * which is what adds a row.
- */
 export function tabMove(sel: Selection, back: boolean, rows: number, cols: number): Selection {
   let { r, c } = sel.active;
   if (back) {
@@ -87,11 +73,6 @@ export function tabMove(sel: Selection, back: boolean, rows: number, cols: numbe
   return moveTo(sel, r, c, rows, cols, false);
 }
 
-/**
- * Cmd/Ctrl+Arrow: to the edge of the data, as spreadsheets do. From a filled
- * cell whose neighbor is filled, to the end of that run; otherwise to the
- * next filled cell, or the edge of the grid when there is none.
- */
 export function jumpEdge(sheet: Sheet, sel: Selection, dr: number, dc: number, extend: boolean): Selection {
   const rows = sheet.rows.length;
   const cols = sheet.cols.length;

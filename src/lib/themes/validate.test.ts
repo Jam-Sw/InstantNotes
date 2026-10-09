@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { parseTheme, validateTheme } from "./validate";
 import { manuscript } from "./builtin/manuscript";
 
-// A round-trip of a built-in theme is the canonical valid input.
 const validJson = JSON.stringify(manuscript);
 
 describe("validateTheme", () => {

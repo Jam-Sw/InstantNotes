@@ -1,20 +1,10 @@
-//! The trace of agent calls, kept in the `agent_activity` table (core
-//! `store/activity.rs`). Writing it is also what tells the app anything
-//! happened: a read changes no note, but this row moves SQLite's
-//! `data_version`.
-//!
-//! A write's row carries the note as it was just before, so the app can
-//! revert it. Failed calls are recorded too (`status: "error"`).
-
 use instantnotes_core::store::activity::{ActivityRecord, NoteSnapshot};
 use instantnotes_core::Store;
 use serde_json::Value;
 use std::time::Instant;
 
-/// Ids recorded per call; enough to light up a full page of results.
 const NOTE_IDS: usize = 50;
 const TITLES: usize = 3;
-/// Error text kept in the trace. Enough to read, never a whole note.
 const ERROR_CHARS: usize = 200;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,7 +48,6 @@ pub(crate) struct Trace {
     tool: &'static str,
     kind: Kind,
     scope: Scope,
-    /// For a write: the note before, or `Some(None)` when it did not exist.
     before: Option<Option<NoteSnapshot>>,
 }
 
@@ -73,21 +62,16 @@ impl Trace {
         }
     }
 
-    /// Best effort: a write is never refused because its trace could not be
-    /// prepared, it just becomes non-revertable.
     pub(crate) fn snapshot(&mut self, store: &Store) {
         if self.kind != Kind::Write {
             return;
         }
         self.before = match &self.scope.id {
             Some(id) => store.snapshot_note(id).ok(),
-            // A create: no note yet. Reverting trashes what gets created.
             None => Some(None),
         };
     }
 
-    /// Returns the row's `seq`. Best effort: an agent's call never fails
-    /// because its trace could not be written.
     pub(crate) fn finish(
         self,
         store: &mut Store,
@@ -102,8 +86,6 @@ impl Trace {
     }
 }
 
-/// A failed write changed nothing, so it keeps no snapshot; a failed call
-/// still names the note it was about.
 fn record_for(
     trace: Trace,
     session: &str,
@@ -157,7 +139,6 @@ fn record_for(
     }
 }
 
-/// The notes a result is about: the note itself, or every one in a list.
 fn touched_notes(result: &Value) -> Vec<(String, String)> {
     let pair = |v: &Value| {
         let id = v.get("id").and_then(Value::as_str)?;
@@ -177,7 +158,6 @@ fn touched_notes(result: &Value) -> Vec<(String, String)> {
 
 #[cfg(test)]
 mod tests {
-    //! The row's rules on plain values: no store.
     use super::*;
     use serde_json::json;
 

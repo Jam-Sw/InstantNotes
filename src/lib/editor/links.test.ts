@@ -12,15 +12,11 @@ import {
   DEFAULT_LINK_PREFS,
 } from "./links";
 
-// Same language setup as the editor (GFM base) so autolinks and bare URLs
-// parse the way they do in the app.
 function stateOf(doc: string): EditorState {
   const state = EditorState.create({
     doc,
     extensions: [markdown({ base: markdownLanguage })],
   });
-  // linkAt reads the current tree; force a full parse up front since there
-  // is no view driving incremental parsing in tests.
   ensureSyntaxTree(state, doc.length, 5000);
   return state;
 }
@@ -116,15 +112,6 @@ describe("linkAt", () => {
   });
 });
 
-// Cursor feedback across the three link-opening modes. Mode 1 (preview +
-// "click") gets its pointer from linkMarkClass's cm-link-clickable, asserted
-// above ("defaults: ... clickable in preview"). Modes 2 (preview +
-// "modclick") and 3 (edit mode, any openWith) get theirs from cm-mod-held
-// while the modifier is held — the CSS pairing is `.cm-mod-held
-// .cm-link-target { cursor: pointer }` (editor/theme.ts), so this only needs
-// to prove the class itself toggles correctly; which mode is active doesn't
-// change ModKeyCursor's behavior, since it listens at the window level
-// regardless of preview/openWith.
 describe("modKeyCursor", () => {
   function mountView(): EditorView {
     return new EditorView({

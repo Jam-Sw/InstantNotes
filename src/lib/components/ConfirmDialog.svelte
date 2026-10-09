@@ -1,8 +1,4 @@
 <script lang="ts">
-  // Shared confirm dialog for every irreversible action, replacing
-  // window.confirm across the app. Mounted once in +page.svelte; call sites
-  // just `await confirmDialog.ask(...)`. Cancel is the safe default: it holds
-  // initial focus, and clicking the scrim or pressing Escape both cancel.
   import { confirmDialog } from "$lib/stores/confirm.svelte";
 
   let cancelBtn = $state<HTMLButtonElement>();
@@ -15,18 +11,12 @@
   });
 
   function onKeydown(e: KeyboardEvent) {
-    // A modal is a keyboard boundary: no key may reach the window-level
-    // shortcuts underneath (+page.svelte moves the selection on ArrowUp/Down,
-    // and this dialog is often about to destroy that very selection).
     e.stopPropagation();
     if (e.key === "Escape") {
       e.preventDefault();
       confirmDialog.cancel();
       return;
     }
-    // Trap Tab/Shift+Tab between the two buttons rather than letting focus
-    // leave the dialog. Enter is left alone: it activates whichever button
-    // already has focus, nothing more.
     if (e.key === "Tab") {
       e.preventDefault();
       const onConfirm = document.activeElement === confirmBtn;

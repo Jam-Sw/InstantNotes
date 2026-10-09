@@ -1,13 +1,3 @@
-// Agents (Svelte 5 runes): the access level, the trace of agent calls, and
-// live presence: which notes, Spaces, and tags an agent is reading,
-// searching, or changing right now, shown on the things themselves (a glow
-// on the row, the open note, the Space). The trace is the Agents Space, for
-// the full story and the power to undo a change.
-//
-// Fed by `library:external-change`, which the shell emits when another
-// process writes to the library (src-tauri/src/shell/agents.rs) and when the
-// app itself reverts an agent's write.
-
 import { listen } from "@tauri-apps/api/event";
 import {
   clearAgentActivity,
@@ -45,14 +35,10 @@ import {
   type AgentTags,
 } from "$lib/agent-activity";
 
-/**
- * How long a touched note, Space, or tag stays lit after the last call.
- * @internal
- */
+/** @internal */
 export const PRESENCE_MS = 4000;
 const RECENT_KEEP = 500;
 const PAGE = 200;
-/** More calls than this in one batch are announced as one toast. */
 const BURST = 3;
 
 type AgentMark = AgentKind;
@@ -62,32 +48,20 @@ class AgentsStore {
   notify = $state<AgentNotify>("writes");
   tags = $state<AgentTags>({});
   blocked = $state<string[]>([]);
-  /** The trace, newest first. */
   recent = $state<AgentActivity[]>([]);
-  /** Whether a load returned a full page, so there may be more. */
   hasMore = $state(false);
-  /** The latest call while it is fresh; drives the sidebar's live line. */
   current = $state<AgentActivity | null>(null);
-  /** The latest search while it is fresh; the note list shows the query. */
   currentSearch = $state<AgentActivity | null>(null);
   connection = $state<AgentConnection | null>(null);
-  /** Every known connection, newest first, with whether each is alive now. */
   sessions = $state<AgentPresence[]>([]);
-  /** Whether the Agents Space is on screen: changes are then seen as they land. */
   watching = $state(false);
-  /** Writes that arrived while the Agents Space was not on screen: the badge. */
   unseen = $state(0);
-  /** Takes the user to the Agents Space. The library page sets it, since this
-   *  store cannot reach the library (the library imports it). */
   show: () => void = () => {};
 
   #notes = $state(new Map<string, AgentMark>());
   #spaces = $state(new Set<string>());
   #tags = $state(new Set<string>());
-  // The call each conversation is in the middle of, while it is fresh.
   #doing = $state(new Map<string, AgentActivity>());
-  // When each mark lapses, so a later call extends it and an earlier timer
-  // does not clear it early.
   #until = new Map<string, number>();
   #loaded = false;
 
@@ -113,7 +87,6 @@ class AgentsStore {
       this.tags = parseTags(tags);
       this.blocked = parseBlocked(blocked);
     } catch {
-      // Best-effort, like every settings store: presence still works.
     }
     await this.loadRecent();
   }
@@ -124,7 +97,6 @@ class AgentsStore {
       this.recent = rows;
       this.hasMore = rows.length === PAGE;
     } catch {
-      // The Space shows what it has; the store is best-effort.
     }
   }
 
@@ -132,7 +104,6 @@ class AgentsStore {
     try {
       this.sessions = parsePresence(await listAgentSessions());
     } catch {
-      // Best-effort: the row shows no one connected until the next event.
     }
   }
 
@@ -144,7 +115,6 @@ class AgentsStore {
     return this.#doing.size > 0;
   }
 
-  /** The call a conversation is in the middle of, if any. */
   doing(session: string): AgentActivity | null {
     return this.#doing.get(session) ?? null;
   }
@@ -161,7 +131,6 @@ class AgentsStore {
     }
   }
 
-  /** The executable and library path, for the connect commands. */
   async loadConnection(): Promise<void> {
     try {
       this.connection = await getAgentConnection();
@@ -205,7 +174,6 @@ class AgentsStore {
     if (on) this.unseen = 0;
   }
 
-  /** Show new calls, oldest first, as they arrive. */
   play(entries: AgentActivity[], now = Date.now()): void {
     if (entries.length === 0) return;
     const until = now + PRESENCE_MS;
@@ -214,12 +182,10 @@ class AgentsStore {
     const tags = new Set(this.#tags);
     const doing = new Map(this.#doing);
     for (const e of entries) {
-      // The app's own revert is not an agent at work.
       if (e.client !== "instantnotes") {
         doing.set(e.session, e);
         this.#until.set(`d:${e.session}`, until);
       }
-      // A write holds over a read on the same note within the window.
       for (const id of e.noteIds) {
         if (e.kind === "write" || notes.get(id) !== "write") notes.set(id, e.kind);
         this.#until.set(`n:${id}`, until);
@@ -250,7 +216,6 @@ class AgentsStore {
     setTimeout(() => this.expire(), PRESENCE_MS + 50);
   }
 
-  /** Fold new rows into the trace: a revert row also marks the row it undid. */
   #merge(entries: AgentActivity[]): void {
     const seen = new Set(this.recent.map((e) => e.seq));
     const fresh = entries.filter((e) => !seen.has(e.seq));
@@ -264,11 +229,7 @@ class AgentsStore {
     this.recent = [...fresh].reverse().concat(recent).slice(0, RECENT_KEEP);
   }
 
-  /** Toasts for what just happened, as the notify setting asks. A write
-   *  offers Revert right there; the Agents Space has the rest. A burst of changes
-   *  is one toast that opens the Space, not a stack that evicts itself. */
   #announce(entries: AgentActivity[]): void {
-    // The app's own revert is already confirmed where it was asked for.
     const theirs = entries.filter((e) => e.client !== "instantnotes");
     const writes = theirs.filter((e) => e.kind === "write" && e.status === "ok");
     if (!this.watching) this.unseen += writes.length;
@@ -293,8 +254,6 @@ class AgentsStore {
     }
   }
 
-  /** Undo one agent write. The shell answers with the revert row and emits it
-   *  as an external change, which `play` folds in; the toast confirms. */
   async revert(seq: number): Promise<boolean> {
     const original = this.recent.find((r) => r.seq === seq);
     try {
@@ -328,7 +287,6 @@ class AgentsStore {
     }
   }
 
-  /** Drop marks whose time is up. Public so tests can drive the clock. */
   expire(now = Date.now()): void {
     const lapsed = (key: string) => (this.#until.get(key) ?? 0) <= now;
     const notes = [...this.#notes].filter(([id]) => !lapsed(`n:${id}`));
@@ -344,7 +302,6 @@ class AgentsStore {
     for (const [key, at] of this.#until) if (at <= now) this.#until.delete(key);
   }
 
-  /** "read", "search", or "write" while an agent is on this note, else null. */
   noteMark(id: string): AgentMark | null {
     return this.#notes.get(id) ?? null;
   }
@@ -357,7 +314,6 @@ class AgentsStore {
     return this.#tags.has(name.toLowerCase());
   }
 
-  /** The client that last wrote to a note, from the trace, if any did. */
   lastWriter(noteId: string): string | null {
     const hit = this.recent.find(
       (e) => e.kind === "write" && e.status === "ok" && e.noteIds.includes(noteId),
@@ -365,7 +321,6 @@ class AgentsStore {
     return hit?.client ?? null;
   }
 
-  /** Every write to a note that can still be reverted, newest first. */
   revertableFor(noteId: string): AgentActivity[] {
     return this.recent.filter((e) => canRevert(e) && e.noteIds.includes(noteId));
   }
@@ -373,9 +328,6 @@ class AgentsStore {
 
 export const agents = new AgentsStore();
 
-/** The user's typing replaced an agent's edit to a note. Say so, by name, and
- *  offer it back; the restore is itself an edit, so Cmd-Z undoes it. Shown by
- *  whichever window was editing the note: the library or its sticky. */
 export function announceOverwrite(noteId: string, restore: () => void): void {
   const who = clientLabel(agents.lastWriter(noteId) ?? "");
   toasts.show(`${who}'s change to this note was replaced by your typing.`, {

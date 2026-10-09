@@ -1,7 +1,3 @@
-// Manuscript - the default direction. Editorial, near-monochrome, warm ink on
-// near-black; a sage accent and monospace metadata give it a typeset feel.
-// Light variant is warm "paper": off-white ground, ink text, deeper sage.
-
 import type { Theme } from "../types";
 import { MONO_STACK, SANS_STACK } from "../fonts";
 
@@ -16,8 +12,6 @@ export const manuscript: Theme = {
   metrics: {
     radius: "8px",
     density: 1.15,
-    // Editorial: airy line-height and a touch of negative tracking for a
-    // typeset feel; warm, soft, deep elevation on overlays.
     leading: "1.6",
     tracking: "-0.01em",
     shadow: "0 1px 4px rgba(34, 26, 16, 0.12)",

@@ -1,8 +1,4 @@
 <script lang="ts">
-  // The Graph view (SEQUENCE.md units 13 and 13g): the library drawn as
-  // notes, tags, and Spaces, linked by what each note carries, and beside it
-  // where the unfiled notes belong. Derived on every open and every change;
-  // the only thing stored is a dismissed suggestion.
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import {
@@ -30,20 +26,12 @@
   import { FRONT, centroid, projector, turn, type Orbit } from "$lib/graph/projection";
   import { clampLabel, nodeLabel, placeLabels } from "$lib/graph/labels";
 
-  // Layout work per animation frame, so a large library settles over a few
-  // frames instead of freezing the view while it does.
   const FRAME_BUDGET_MS = 12;
   const KIND_LABEL = { note: "Note", tag: "Tag", space: "Space" } as const;
   const ZOOM = { min: 0.2, max: 4 };
-  // Note titles show from this zoom up; hubs are always labeled.
   const NOTE_LABEL_ZOOM = 1.3;
-  // The lens: the open note, its tags and Spaces, and the notes they gather.
   const LENS_HOPS = 2;
-  // Pixels of drag an arrow key turns the graph by.
   const KEY_TURN = 20;
-  // Suggestions listed at once; the rest come a page at a time, so two
-  // hundred of them read as a list, not a wall, and the canvas draws the
-  // dashed edges of the rows on screen only.
   const PAGE = 25;
 
   let graph = $state.raw<Graph | null>(null);
@@ -55,18 +43,13 @@
   let height = $state(600);
   let view = $state({ x: 400, y: 300, k: 1 });
   let orbit = $state<Orbit>(FRONT);
-  // The lens frames the open note's neighborhood; "Show all" is the escape
-  // and stays until the lens is chosen again.
   let lens = $state(true);
-  // Until the user pans or zooms, the view keeps itself framed as the
-  // layout settles; after that it stays where they put it.
   let userMoved = false;
   let positions = new Map<string, { x: number; y: number; z: number }>();
   let frame: number | null = null;
   let host: HTMLDivElement;
   let lastLib: Awaited<ReturnType<typeof libraryGraph>> | null = null;
 
-  // Frames where the platform has them (a test DOM may not).
   const hasRaf = typeof requestAnimationFrame === "function";
   const raf = (f: () => void): number =>
     hasRaf ? requestAnimationFrame(f) : (setTimeout(f, 16) as unknown as number);
@@ -92,17 +75,12 @@
   const currentId = $derived(
     library.selected && byId.has(library.selected.id) ? library.selected.id : null,
   );
-  // The lit neighborhood: what the pointer or focus is on, one link out;
-  // else the open note's lens.
   const lit = $derived.by(() => {
     if (!graph) return null;
     if (hovered) return neighbors(graph, hovered);
     return currentId && lens ? neighbors(graph, currentId, LENS_HOPS) : null;
   });
 
-  // The layout is three-dimensional; what is drawn is it turned by the orbit
-  // and seen in perspective, around the center of what the view frames: the
-  // open note's lens, else the whole library.
   const pivot = $derived.by(() => {
     const nodes = graph?.nodes ?? [];
     const around = graph && lens && currentId ? neighbors(graph, currentId, LENS_HOPS) : null;
@@ -112,12 +90,9 @@
     const project = projector(orbit, pivot);
     return new Map((graph?.nodes ?? []).map((n) => [n.id, project(n)]));
   });
-  // Back to front, so a nearer node paints over the ones behind it.
   const painted = $derived(
     [...(graph?.nodes ?? [])].sort((a, b) => projected.get(b.id)!.depth - projected.get(a.id)!.depth),
   );
-  // The labels with room to show, and where: what the user is on first, then
-  // hubs by size, then the nearest notes; one that would cover another waits.
   const labeled = $derived.by(() => {
     const candidates = [];
     for (const n of graph?.nodes ?? []) {
@@ -154,8 +129,6 @@
 
   async function load() {
     try {
-      // Suggestions are a help, not the graph: when they fail the graph
-      // still draws, with none.
       const [lib, next] = await Promise.all([
         libraryGraph(),
         spaceSuggestions().catch(() => [] as SpaceSuggestion[]),
@@ -170,7 +143,6 @@
   }
   const reload = debounce(() => void load(), 80);
 
-  /** Redraw from what is already loaded, after the list changed locally. */
   function redraw() {
     if (lastLib) settle(buildGraph(lastLib, shown));
   }
@@ -191,8 +163,6 @@
     step();
   }
 
-  /** Center the open note's lens when it is on the graph and the lens is
-   *  on, else fit the whole library. */
   function frameView() {
     if (!graph || graph.nodes.length === 0) return;
     const around = lens && currentId ? neighbors(graph, currentId, LENS_HOPS) : null;
@@ -234,14 +204,10 @@
     }
   }
 
-  // ---- suggestions ----
-
   function drop(s: SpaceSuggestion) {
     suggestions = suggestions.filter((x) => !(x.noteId === s.noteId && x.spaceId === s.spaceId));
   }
 
-  /** One tap: the note joins the Space. The membership is the data, and the
-   *  model learns from it on the next read; Undo takes it out again. */
   async function accept(s: SpaceSuggestion) {
     drop(s);
     redraw();
@@ -257,8 +223,6 @@
     }
   }
 
-  /** "Not this one": the pair is remembered on this device and not shown
-   *  again; nothing about the note changes. Undo forgets the dismissal. */
   async function dismiss(s: SpaceSuggestion) {
     drop(s);
     redraw();
@@ -283,9 +247,6 @@
   const percent = (p: number) => `${Math.round(p * 100)}%`;
   const because = (s: SpaceSuggestion) => s.reasons.map((r) => r.label).join(", ");
 
-  // ---- pan and zoom ----
-
-  // A drag pans; with the right button or Shift held, it turns the graph.
   let drag = $state<{ id: number; x: number; y: number; turn: boolean } | null>(null);
 
   function onPointerDown(e: PointerEvent) {
@@ -327,7 +288,6 @@
     const rect = host.getBoundingClientRect();
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
-    // A trackpad pinch arrives as a ctrl+wheel with small deltas.
     const factor = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.002));
     const k = Math.min(ZOOM.max, Math.max(ZOOM.min, view.k * factor));
     view = { k, x: px - ((px - view.x) * k) / view.k, y: py - ((py - view.y) * k) / view.k };
@@ -342,8 +302,6 @@
     const observer =
       typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
     observer?.observe(host);
-    // Registered by hand: a wheel listener has to be non-passive to keep the
-    // page from scrolling while it zooms.
     host.addEventListener("wheel", onWheel, { passive: false });
     const unlisten = Promise.all(
       LIBRARY_CHANGED_EVENTS.map((event) => listen(event, () => reload())),
@@ -449,8 +407,6 @@
                 {/if}
               </g>
             {/each}
-            <!-- Labels above every node, so a nearer node never covers a name
-                 that was given room. -->
             {#each painted as n (n.id)}
               {@const at = labeled.get(n.id)}
               {#if at}
@@ -468,8 +424,6 @@
     </div>
 
     {#if shown.length > 0}
-      <!-- The suggestions, as a list beside the canvas: each row is one
-           dashed edge, and a row under the pointer or focus lights it. -->
       <aside class="suggestions" aria-label="Filing suggestions">
         <h3>
           Where these belong
@@ -551,7 +505,6 @@
     height: 100%;
     background: var(--bg);
   }
-  /* Layout comes from .pane-header (app.css). */
   .graph-bar {
     gap: 12px;
     padding-right: 16px;
@@ -598,10 +551,6 @@
   svg {
     display: block;
   }
-  /* Edges tell their kind by pattern and weight, never by color alone, so
-     the legend reads the same for every eye: a written tag is a thin solid
-     line, an added tag is dotted, a Space is a heavier solid line, and a
-     suggestion is dashed in the accent. */
   .edge {
     stroke: var(--border);
     stroke-width: 1;
@@ -642,8 +591,6 @@
     stroke: var(--bg);
     stroke-width: 1.5;
   }
-  /* A note drawn for its suggestion alone is hollow and dashed: not yet
-     anyone's. */
   .node.suggested circle,
   .node.suggested rect {
     fill: var(--bg);
@@ -709,7 +656,6 @@
     cursor: default;
   }
 
-  /* ---- the suggestion list ---- */
   .suggestions {
     flex: none;
     width: 280px;
@@ -824,7 +770,6 @@
     background: var(--bg-hover);
   }
 
-  /* ---- the footer: legend and what is left out ---- */
   .graph-foot {
     display: flex;
     flex-wrap: wrap;

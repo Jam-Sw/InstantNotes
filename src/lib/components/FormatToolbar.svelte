@@ -88,9 +88,6 @@
 </div>
 
 <style>
-  /* format toolbar (toggled by the Aa action) - grouped: text styles ·
-     blocks & insert · zoom. Monochrome icons inherit the button color, so the
-     accent only shows on the active (applied) mark. */
   .format-bar {
     display: flex;
     align-items: center;
@@ -109,7 +106,6 @@
     padding-left: 6px;
     border-left: 1px solid var(--border);
   }
-  /* Zoom sits at the far right; the auto margin replaces a divider. */
   .fmt-group.zoom-group {
     margin-left: auto;
     padding-left: 0;
@@ -130,7 +126,6 @@
     background: var(--bg-hover);
     color: var(--text);
   }
-  /* Active = the mark under the caret is applied. */
   .fmt[aria-pressed="true"] {
     background: var(--accent-soft);
     color: var(--accent-text);

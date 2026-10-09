@@ -1,8 +1,3 @@
-// Svelte 5 runes track reassignment of a $state Map or Set, not in-place
-// mutation. These return a fresh collection so `store.x = withMapEntry(store.x,
-// ...)` triggers an update, keeping the copy-then-mutate boilerplate (and the
-// easy-to-forget reassignment) out of the call sites.
-
 export function withMapEntry<K, V>(
   map: ReadonlyMap<K, V>,
   key: K,

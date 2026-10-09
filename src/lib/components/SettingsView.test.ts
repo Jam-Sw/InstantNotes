@@ -4,8 +4,6 @@ import { render, fireEvent, cleanup, within } from "@testing-library/svelte";
 import SettingsView from "./SettingsView.svelte";
 import { setSetting } from "$lib/api/client";
 
-// The sub-pages init preference stores and fetch capture latency on mount;
-// stub the IPC client so they render without a Tauri backend.
 vi.mock("$lib/api/client", () => ({
   getSetting: vi.fn().mockResolvedValue(undefined),
   setSetting: vi.fn().mockResolvedValue(undefined),
@@ -60,13 +58,10 @@ describe("SettingsView", () => {
   });
 
   it("has no Import page where there is no Apple Stickies", () => {
-    // jsdom's user agent names no Mac, like Windows and Linux.
     const { queryByRole } = open();
     expect(queryByRole("button", { name: /^Import/ })).toBeNull();
   });
 
-  // A fresh install has recorded no capture timing yet; the tile still has to
-  // render rather than showing null or collapsing the grid.
   it("shows the capture tile as unmeasured when no latency has been recorded", async () => {
     const { findByText } = open();
     const tile = (await findByText("Capture")).parentElement;
@@ -91,8 +86,6 @@ describe("SettingsView", () => {
     expect(await findByText(/What's new in v0\.8\.0/)).toBeTruthy();
   });
 
-  // A build whose version has no changelog section drops the whole block
-  // rather than showing an empty "What's new".
   it("omits What's new when the running version has no changelog section", async () => {
     const { queryByText, findByRole } = render(SettingsView, {
       appVersion: "9.9.9",
@@ -113,7 +106,6 @@ describe("SettingsView", () => {
     await fireEvent.keyDown(filter, { key: "Enter" });
     const crumb = getByRole("navigation", { name: "Breadcrumb" });
     expect(within(crumb).getByText("Agents")).toBeTruthy();
-    // Escape in the filter clears it first, instead of leaving the page.
     await fireEvent.input(filter, { target: { value: "x" } });
     filter.focus();
     await fireEvent.keyDown(window, { key: "Escape" });
@@ -138,11 +130,9 @@ describe("SettingsView", () => {
   it("opens a page from the list and shows a breadcrumb back to Settings", async () => {
     const { getByRole, findByText } = open();
     await fireEvent.click(getByRole("button", { name: /About/ }));
-    // The About page rendered (its heading), under a breadcrumb.
     expect(await findByText("InstantNotes")).toBeTruthy();
     const crumb = getByRole("navigation", { name: "Breadcrumb" });
     expect(within(crumb).getByText("About")).toBeTruthy();
-    // Breadcrumb "Settings" returns to the overview.
     await fireEvent.click(within(crumb).getByRole("button", { name: "Settings" }));
     expect(getByRole("heading", { name: "Overview" })).toBeTruthy();
   });
@@ -151,17 +141,13 @@ describe("SettingsView", () => {
     const { getByRole, queryByRole, onBack } = open();
     await fireEvent.click(getByRole("button", { name: /Links/ }));
     expect(queryByRole("heading", { name: "Overview" })).toBeNull();
-    // First Escape: back to the overview, view stays open.
     await fireEvent.keyDown(window, { key: "Escape" });
     expect(onBack).not.toHaveBeenCalled();
     expect(getByRole("heading", { name: "Overview" })).toBeTruthy();
-    // Second Escape from the overview: closes the whole view.
     await fireEvent.keyDown(window, { key: "Escape" });
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
-  // The Links page is the one that used to hand-roll its rows; this holds it to
-  // the shared primitives and proves the migration kept the page working.
   it("builds the Links page from the shared rows and persists a change", async () => {
     const { getByRole, getAllByRole, findAllByRole } = open();
     await fireEvent.click(getByRole("button", { name: /Links/ }));

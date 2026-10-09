@@ -1,12 +1,6 @@
-/* Base token fallback for first paint, before the theme store applies the
-   persisted theme onto :root at runtime. These values are Manuscript dark (the
-   default theme) so an unstyled flash, if any, matches the default look.
-   Themes live as data in src/lib/themes/; do not hard-code palettes here. */
-
 :root {
   --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-  /* Resolved font slots (theme decides whether each is ui or mono). */
   --font-body: var(--font-ui);
   --font-meta: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 
@@ -20,12 +14,10 @@
   --text-tertiary: #62605b;
   --border: #2a2a2b;
   --accent: #86b8a3;
-  /* Brighter accent for text/icons, distinct from the focus-border --accent. */
   --accent-text: #9ccdb8;
   --accent-soft: rgba(134, 184, 163, 0.12);
   --danger: #d98a7a;
   --tag: #9ccdb8;
-  /* Optional tokens; the theme store derives them when a theme sets none. */
   --success: #86b8a3;
   --warning: #d9b07a;
   --selection: rgba(134, 184, 163, 0.12);
@@ -33,35 +25,24 @@
   --focus: #86b8a3;
   --radius: 8px;
   --radius-lg: calc(var(--radius) + 4px);
-  /* Unitless multiplier applied via calc() to base text size and key paddings. */
   --density: 1.15;
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
   --shadow-lg: 0 18px 50px rgba(0, 0, 0, 0.4);
   --leading: 1.5;
   --tracking: 0;
 
-  /* Window chrome. Every pane starts with a header of this height; where the
-     macOS traffic lights sit over the page (data-chrome="overlay", set by the
-     library window) the leading header keeps clear of them. */
   --chrome-h: 48px;
   --chrome-inset: 0px;
-  /* The longest line of note text worth reading across. */
   --measure: 70ch;
 
-  /* Surfaces step from the navigation (--bg-sidebar) through the note list to
-     the page (--bg). Derived from the theme's own tokens, so every theme,
-     imported ones included, gets the steps without naming them. */
   --surface-list: color-mix(in srgb, var(--bg) 96%, var(--text));
   --divider: color-mix(in srgb, var(--border) 86%, var(--text));
-  /* One selection for every list: the sidebar, the note list, Settings. */
   --select-bg: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 html[data-chrome="overlay"] {
   --chrome-inset: 80px;
 }
 
-/* A pane's header row. Its empty space moves the window (the element carries
-   data-tauri-drag-region); controls inside it stay controls. */
 .pane-header {
   flex: none;
   display: flex;
@@ -73,14 +54,11 @@ html[data-chrome="overlay"] {
   -webkit-user-select: none;
   cursor: default;
 }
-/* Whichever pane is leftmost sits under the traffic lights. */
 .layout > :first-child .pane-header,
 .settings-root > :first-child .pane-header {
   padding-left: max(12px, var(--chrome-inset));
 }
 
-/* Section labels (Spaces, Tags, Today, Yesterday): anchors to scan by, set
-   well below the rows they group. */
 .section-label {
   font-family: var(--font-meta);
   font-size: 11px;
@@ -91,8 +69,6 @@ html[data-chrome="overlay"] {
   opacity: 0.62;
 }
 
-/* An agent's connection, wherever it is shown: a steady dot while it is
-   connected, a pulse while it is in the middle of a call. */
 .live-dot {
   display: inline-block;
   flex: none;
@@ -121,7 +97,6 @@ html[data-chrome="overlay"] {
   }
 }
 
-/* Icon buttons in a header, in groups split by a hairline. */
 .icon-group {
   display: flex;
   align-items: center;
@@ -155,7 +130,6 @@ html[data-chrome="overlay"] {
 
 * {
   box-sizing: border-box;
-  /* No persistent scrollbar gutter; trackpad/wheel scrolling stays native and smooth. */
   scrollbar-width: none;
 }
 *::-webkit-scrollbar {
@@ -195,7 +169,6 @@ textarea {
   background: var(--selection);
 }
 
-/* One focus ring for every keyboard user, in the theme's focus color. */
 :focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
@@ -206,7 +179,6 @@ textarea:focus-visible,
   outline: none;
 }
 
-/* CodeMirror */
 .cm-editor {
   height: 100%;
   font-size: calc(14px * var(--density) * var(--editor-zoom, 1));
@@ -222,9 +194,6 @@ textarea:focus-visible,
   line-height: var(--leading);
   letter-spacing: var(--tracking);
 }
-/* Paint a caret only in the focused editor. Without this, loading a note's
-   document while the editor is blurred (switching between notes) could leave a
-   stray native caret drawn at the top of the text in WKWebView. */
 .cm-editor:not(.cm-focused) .cm-content {
   caret-color: transparent;
 }
@@ -242,31 +211,19 @@ textarea:focus-visible,
 .cm-editor .cm-placeholder {
   color: var(--text-tertiary);
 }
-/* In the library, note text is a centred column of readable width, not the
-   width of the window. The line padding sits outside the measure. */
 .editor-pane .cm-editor .cm-content {
   max-width: calc(var(--measure) + 32px * var(--density));
   margin: 0 auto;
 }
 
-/* Native macOS vibrancy. Set by the theme store on the library window only when
-   a material is in force AND the OS actually applied it. The root and body go
-   transparent so the window material shows behind the translucent sidebar; the
-   note list, the page, and Settings paint their own opaque surfaces, so dense
-   text keeps full contrast. */
 html[data-vibrancy],
 html[data-vibrancy] body {
   background: transparent;
 }
-/* A theme that names a material carries the alpha in its own --bg-sidebar. A
-   theme that names none gets the default material, and its opaque sidebar
-   colour is thinned here so the material shows through as a tint. */
 html[data-vibrancy][data-vibrancy-derived] .sidebar {
   background: color-mix(in srgb, var(--bg-sidebar) 68%, transparent);
 }
 
-/* Terminal theme flourishes - the non-tokenizable personality. Markup stays
-   theme-agnostic; these rules only switch on [data-theme="terminal"]. */
 [data-theme="terminal"] .tags-header::before {
   content: "// ";
   opacity: 0.6;
@@ -287,12 +244,6 @@ html[data-vibrancy][data-vibrancy-derived] .sidebar {
   }
 }
 
-/* Agent presence. What an agent connected over MCP is reading or changing
-   right now is drawn on the thing itself: a note row, a Space or tag, the
-   open note. Components only set data-agent="read" | "write" from the agents
-   store (src/lib/stores/agents.svelte.ts), which clears it a few seconds
-   after the last call; every rule for how it looks lives here. A read is a
-   light passing over; a write holds a firmer outline. */
 [data-agent] {
   position: relative;
 }
@@ -314,8 +265,6 @@ html[data-vibrancy][data-vibrancy-derived] .sidebar {
     agent-in 160ms ease-out,
     agent-scan 1.6s ease-in-out infinite;
 }
-/* A search: the same passing light, dashed, so "found by a search" reads
-   apart from "opened and read". */
 [data-agent="search"]::after {
   box-shadow: none;
   outline: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent);
@@ -325,7 +274,6 @@ html[data-vibrancy][data-vibrancy-derived] .sidebar {
   box-shadow: inset 0 0 0 1.5px var(--accent);
   background-color: color-mix(in srgb, var(--accent) 9%, transparent);
 }
-/* The open note: an outline around the page, no sweep across the text. */
 .editor-body[data-agent]::after {
   inset: 0;
   border-radius: 0;

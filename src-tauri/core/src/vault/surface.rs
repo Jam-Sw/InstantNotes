@@ -1,10 +1,3 @@
-//! A surface note's second file in the vault: the file beside the note's
-//! `.md`, sharing its name, that holds what the note's `surface_data` holds
-//! in a form other tools open. A whiteboard's canvas is a standard
-//! `.excalidraw` file; a sheet's grid is a `.csv`. The note file holds the
-//! frontmatter and the derived body (the text on the board, the Markdown
-//! table); this file holds the surface itself.
-
 use crate::sheet::Sheet;
 use crate::types::{CONTENT_KIND_SHEET, CONTENT_KIND_WHITEBOARD};
 use serde_json::{json, Map, Value};
@@ -12,8 +5,6 @@ use serde_json::{json, Map, Value};
 pub const CANVAS_EXT: &str = ".excalidraw";
 pub const SHEET_EXT: &str = ".csv";
 
-/// The extension of the surface file notes of `kind` write, or `None` for a
-/// document, which has none.
 pub fn surface_ext(kind: &str) -> Option<&'static str> {
     match kind {
         CONTENT_KIND_WHITEBOARD => Some(CANVAS_EXT),
@@ -22,14 +13,10 @@ pub fn surface_ext(kind: &str) -> Option<&'static str> {
     }
 }
 
-/// The surface file that sits beside the note file `note_rel` (`x.md`).
 pub fn surface_rel(note_rel: &str, ext: &str) -> String {
     format!("{}{ext}", note_rel.strip_suffix(".md").unwrap_or(note_rel))
 }
 
-/// The note file a surface file belongs to, and the kind of note that
-/// writes a file with that extension: the inverse of `surface_rel`. `None`
-/// for a path that is not a surface file.
 pub fn note_of_surface(rel: &str) -> Option<(String, &'static str)> {
     for (ext, kind) in [
         (CANVAS_EXT, CONTENT_KIND_WHITEBOARD),
@@ -42,15 +29,10 @@ pub fn note_of_surface(rel: &str) -> Option<(String, &'static str)> {
     None
 }
 
-/// Whether `name` is a file the vault writes: a note file or a surface file.
 pub fn is_vault_file_name(name: &str) -> bool {
     name.ends_with(".md") || note_of_surface(name).is_some()
 }
 
-/// The surface file for a note of `kind` holding `surface_data`, or `None`
-/// for a document. A whiteboard's is `canvas_file`; a sheet's is its CSV,
-/// and an unreadable grid becomes an empty CSV, the same thing the app
-/// shows for it.
 pub fn surface_file(kind: &str, surface_data: Option<&str>) -> Option<String> {
     match kind {
         CONTENT_KIND_WHITEBOARD => Some(canvas_file(surface_data)),
@@ -64,10 +46,6 @@ pub fn surface_file(kind: &str, surface_data: Option<&str>) -> Option<String> {
     }
 }
 
-/// The `.excalidraw` file for a whiteboard's stored canvas (`surface_data`:
-/// `{"v":1,"engine":"excalidraw","data":{elements,appState,files}}`). A
-/// missing, unreadable, or other-engine canvas becomes an empty scene, the
-/// same thing the app shows for it.
 pub fn canvas_file(surface_data: Option<&str>) -> String {
     let envelope: Value = surface_data
         .and_then(|raw| serde_json::from_str(raw).ok())
@@ -98,9 +76,6 @@ pub fn canvas_file(surface_data: Option<&str>) -> String {
     text
 }
 
-/// Whether two surface files of a `kind` hold the same surface. A canvas is
-/// compared as JSON, ignoring formatting, since other tools reindent it; a
-/// CSV is compared as written, since its bytes are the grid.
 pub fn same_surface(kind: &str, a: &str, b: &str) -> bool {
     if kind == CONTENT_KIND_WHITEBOARD {
         same_canvas(a, b)
@@ -109,7 +84,6 @@ pub fn same_surface(kind: &str, a: &str, b: &str) -> bool {
     }
 }
 
-/// Whether two canvas files hold the same drawing, ignoring formatting.
 pub fn same_canvas(a: &str, b: &str) -> bool {
     match (
         serde_json::from_str::<Value>(a),

@@ -1,9 +1,4 @@
 <script lang="ts">
-  // One agent conversation, as a note in the Agents Space: every call the
-  // agent made, newest first, with what it touched, how long it took, what it
-  // failed with, and, for a write, a Revert that puts the note back as it
-  // was. Nothing here is persisted as a note; the page is drawn from the
-  // trace. The live view of an agent at work stays on the notes themselves.
   import { onMount } from "svelte";
   import { agents } from "$lib/stores/agents.svelte";
   import { agentsSpace } from "$lib/stores/agents-space";
@@ -27,15 +22,12 @@
   } from "$lib/agent-activity";
 
   let now = $state(Date.now());
-  // The row whose details are unfolded, and the snapshot fetched for it.
   let openSeq = $state<number | null>(null);
   let before = $state<NoteSnapshot | null | undefined>(undefined);
   let beforeFor = $state<number | null>(null);
-  // The raw exchange for the open row: undefined while it loads.
   let wire = $state<AgentWire | null | undefined>(undefined);
 
   const session = $derived(agentsSpace.sessionFor(library.selected?.id));
-  // The call this agent is in the middle of, if any.
   const doing = $derived(session ? agents.doing(session.session) : null);
   const punchLabel = $derived(
     (session?.clocks ?? [])
@@ -47,7 +39,6 @@
       .join(", "),
   );
 
-  // A long conversation is mostly reads; the filter brings out the rest.
   type Filter = "all" | "changes" | "failed";
   let filter = $state<Filter>("all");
   const isChange = (e: AgentActivity) => e.kind === "write" && e.status === "ok";
@@ -66,7 +57,6 @@
     return () => clearInterval(tick);
   });
 
-  /** Whether the note moved on after this write: a revert would drop that. */
   function editedSince(e: AgentActivity): boolean {
     if (!e.afterUpdatedAt || e.noteIds.length !== 1) return false;
     const note = library.notes.find((n) => n.id === e.noteIds[0]);
@@ -111,7 +101,6 @@
     await agents.revert(e.seq);
   }
 
-  // Leaves the Agents Space for the note, in All Notes.
   function openNote(e: AgentActivity) {
     if (e.noteIds.length !== 1) return;
     library.selectWorkspace(null);
@@ -163,8 +152,6 @@
   <div class="column">
     {#if session}
       <h1 class="title">{agentName(session.client, session.label)}</h1>
-      <!-- The connection, as it is: this line is always here and only its
-           words change, so the page below it never moves. -->
       <p class="status" role="status" aria-live="polite">
         <span class="live-dot" data-state={!session.connected ? "off" : doing ? "working" : "connected"}></span>
         {#if session.connected && doing}<span class="status-main">{describeActivity(doing)}</span>{/if}
@@ -190,8 +177,6 @@
           {/if}
         </span>
       </p>
-      <!-- Exactly which instance of the client this is, so a change can be
-           traced back to the conversation that made it. -->
       {#if session.clientSession || session.cwd}
         <dl class="origin">
           {#if session.clientSession}
@@ -250,7 +235,6 @@
                 </span>
                 <span class="dur">{formatDuration(e.durationMs)}</span>
               </button>
-              <!-- A change can be put back from its own line, without unfolding it. -->
               {#if e.noteIds.length === 1}
                 <button class="btn go" onclick={() => openNote(e)}>Open note</button>
               {/if}
@@ -260,8 +244,6 @@
             </div>
             {#if openSeq === e.seq}
               <div class="details">
-                <!-- What crossed the wire, whole: the message the agent sent
-                     and the one it got back. Nothing is summarized. -->
                 {#if wire === undefined}
                   <span class="muted">Loading…</span>
                 {:else if wire && (wire.request || wire.response)}
@@ -330,7 +312,6 @@
     min-height: 0;
     overflow-y: auto;
   }
-  /* The note editor's column, so the page reads as a note. */
   .column {
     font-size: calc(14px * var(--density));
     max-width: calc(var(--measure) + 32px * var(--density));
@@ -489,8 +470,6 @@
     font-size: 13px;
     color: var(--text);
   }
-  /* A change is what this list is for: it reads at full strength, and a
-     read or a search steps back. */
   .row[data-kind="read"] .what,
   .row[data-kind="search"] .what {
     color: var(--text-secondary);
@@ -516,8 +495,6 @@
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
   }
-  /* The kind of call, as a mark: hollow for a read, dashed for a search,
-     solid for a change, red for a failure. */
   .mark {
     width: 8px;
     height: 8px;
@@ -576,7 +553,6 @@
     display: block;
     margin: 10px 0 4px;
   }
-  /* Raw JSON, selectable, wrapped so a long note body stays on the page. */
   .wire {
     margin: 0;
     max-height: 360px;

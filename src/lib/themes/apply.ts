@@ -1,8 +1,3 @@
-// Turns a Theme into CSS custom properties and writes them to the document.
-// `themeToVars` is pure (unit-tested); `applyTheme` does the DOM write. Tokens,
-// fonts, radius, and density all land on :root so every scoped style picks
-// them up via var().
-
 import {
   OPTIONAL_TOKEN_KEYS,
   OPTIONAL_TOKEN_VAR,
@@ -14,8 +9,6 @@ import {
   type Variant,
 } from "./types";
 
-/** What an optional token means when the theme leaves it out: derived from
- *  the required tokens so the result stays in the theme's own palette. */
 function optionalFallback(key: OptionalTokenKey, t: TokenSet): string {
   switch (key) {
     case "success":
@@ -31,8 +24,6 @@ function optionalFallback(key: OptionalTokenKey, t: TokenSet): string {
   }
 }
 
-/** The variant actually used, given what the theme defines. A dark-only theme
- *  asked for "light" falls back to its dark set, and vice versa. */
 export function effectiveVariant(theme: Theme, requested: Variant): Variant {
   if (requested === "dark") return theme.dark ? "dark" : "light";
   return theme.light ? "light" : "dark";
@@ -40,14 +31,10 @@ export function effectiveVariant(theme: Theme, requested: Variant): Variant {
 
 function tokensFor(theme: Theme, variant: Variant): TokenSet {
   const v = effectiveVariant(theme, variant);
-  // effectiveVariant guarantees the chosen set exists (schema requires >=1).
   return (v === "dark" ? theme.dark : theme.light) as TokenSet;
 }
 
-/**
- * All CSS custom properties for a theme at a variant: colors, fonts, metrics.
- * @internal
- */
+/** @internal */
 export function themeToVars(theme: Theme, variant: Variant): Record<string, string> {
   const tokens = tokensFor(theme, variant);
   const vars: Record<string, string> = {};
@@ -71,7 +58,6 @@ export function themeToVars(theme: Theme, variant: Variant): Record<string, stri
   return vars;
 }
 
-/** Apply a theme to the document root: write vars, then tag for flourish CSS. */
 export function applyTheme(
   theme: Theme,
   variant: Variant,

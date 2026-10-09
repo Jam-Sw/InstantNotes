@@ -1,7 +1,4 @@
 // @vitest-environment jsdom
-// The two settings row primitives. They are shared by every settings page, so
-// their props and their keyboard behavior are covered here rather than
-// re-tested through each page that mounts them.
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, fireEvent, cleanup } from "@testing-library/svelte";
 import SegmentedRow from "./SegmentedRow.svelte";
@@ -15,8 +12,6 @@ const OPTIONS = [
   { value: "ask", label: "Ask" },
 ];
 
-// A key press lands on the focused segment, which is the selected one: the
-// group itself is never a tab stop.
 function press(radios: HTMLElement[], key: string) {
   const focused = radios.find((r) => r.getAttribute("tabindex") === "0") ?? radios[0];
   return fireEvent.keyDown(focused, { key });
@@ -63,11 +58,9 @@ describe("SegmentedRow", () => {
     await press(radios, "ArrowRight");
     expect(props.onchange).toHaveBeenLastCalledWith("link");
 
-    // Down and up are the same axis as right and left on a segmented control.
     await press(radios, "ArrowDown");
     expect(props.onchange).toHaveBeenLastCalledWith("link");
 
-    // From the first option, going back wraps to the last.
     await press(radios, "ArrowLeft");
     expect(props.onchange).toHaveBeenLastCalledWith("ask");
   });

@@ -1,11 +1,3 @@
-// Link constructs: [text](url), <autolinks>, and bare GFM URLs.
-//
-// Preview folds the [ and ](url) markup and keeps the text; touching the
-// link reveals the whole thing. The appearance mark (underline, pointer,
-// tooltip, external indicator) derives from linkPrefsField here, in both
-// modes, so what looks clickable and what linkOpenHandler opens can never
-// disagree.
-
 import { Decoration } from "@codemirror/view";
 import type { SyntaxNodeRef } from "@lezer/common";
 import { linkAt, linkMarkClass, linkPrefsField } from "../links";
@@ -24,7 +16,6 @@ export class LinkSpec implements ConstructSpec {
         emit.hide(owner, node.from + split, node.to);
       }
       this.#mark(node.from, node.to, cx, emit);
-      // Descend: emphasis inside link text folds via its own construct.
       return true;
     }
 
@@ -37,9 +28,6 @@ export class LinkSpec implements ConstructSpec {
       return false;
     }
 
-    // URL: a bare GFM autolink, or the URL inside an Image (link-styled in
-    // edit mode; in preview the image widget covers it). URLs wrapped by
-    // Link/Autolink are already marked at the wrapper.
     const parent = node.node.parent;
     if (parent && (parent.name === "Link" || parent.name === "Autolink")) {
       return false;

@@ -1,10 +1,3 @@
-// Image construct: `![alt](attachments/<name>)` renders as the actual image
-// through Tauri's asset protocol; caret contact brings the raw markdown back
-// so it stays editable. Remote http(s) images stay as text: the CSP
-// deliberately blocks remote loads, and the link layer opens them externally
-// on click. The converter is injected so the spec stays testable without a
-// Tauri runtime.
-
 import { Decoration, WidgetType } from "@codemirror/view";
 import type { SyntaxNodeRef } from "@lezer/common";
 import { imageSrc, attachmentsBaseField } from "../images";
@@ -28,8 +21,6 @@ class ImageWidget extends WidgetType {
     img.draggable = false;
     return img;
   }
-  // Let CM handle clicks: the caret lands at the image's position, which
-  // reveals the raw markdown for editing.
   ignoreEvent(): boolean {
     return false;
   }
@@ -41,8 +32,6 @@ export class ImageSpec implements ConstructSpec {
   constructor(private readonly convert: (path: string) => string) {}
 
   enter(node: SyntaxNodeRef, cx: ScanContext, emit: Emit): boolean {
-    // Always descend so the URL child keeps its link mark (visible in edit
-    // mode and whenever the image is revealed).
     if (!cx.preview) return true;
     const url = node.node.getChild("URL");
     if (!url) return true;

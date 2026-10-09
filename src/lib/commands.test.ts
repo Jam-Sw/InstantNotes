@@ -1,6 +1,3 @@
-// The command set the palette is built from, per selection state; the
-// stores are stand-ins.
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Note } from "$lib/api/types";
 

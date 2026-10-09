@@ -23,20 +23,10 @@
     { id: "trash", label: "Trash" },
   ];
 
-  // Time-bucketed sections (Pinned / Today / Yesterday / ...). Revisit stays
-  // flat: it sorts oldest-first by capture date, which time-of-edit buckets
-  // would fight. "Now" is sampled per list change, matching platform behavior
-  // (a list left open across midnight regroups on its next change).
   const groups = $derived(
     library.revisitMode ? null : groupNotes(library.notes, new Date()),
   );
 
-  // The kinds of note this toolbar can create. Clicking ＋ makes a document,
-  // the common case, in one click. The chevron (or a right-click anywhere on
-  // the control) opens the list, which is the only visible place a whiteboard
-  // or a sheet can be started from.
-  // A synthetic Space (the update, the agent trace) has no rows in the store:
-  // its notes are derived, so they are rendered from where they come from.
   const syntheticNotes = $derived(
     isUpdateSpaceId(library.activeWorkspaceId)
       ? updateSpace.notes
@@ -45,14 +35,11 @@
         : null,
   );
 
-  // An agent's latest search, shown only while the field is empty: the
-  // user's own words always come first.
   const agentSearch = $derived(library.searchText ? null : agents.currentSearch);
 
   let newMenu = $state<{ x: number; y: number } | null>(null);
   let newControl = $state<HTMLDivElement>();
 
-  // Right-click on a row: pop that note out as a sticky, or bring it back.
   let rowMenu = $state<{ x: number; y: number; id: string } | null>(null);
 
   function openNewMenu() {
@@ -84,8 +71,6 @@
 
 <section class="list-pane">
   {#if licenseSpace.locked}
-    <!-- The License Space's two documents. Nothing else is reachable until
-         both are agreed, so no search or New here. -->
     <div class="pane-header" data-tauri-drag-region></div>
     <div class="note-list">
       {#each licenseSpace.documents as doc (doc.id)}
@@ -105,10 +90,6 @@
     </div>
   {:else}
   <div class="pane-header list-toolbar" data-tauri-drag-region>
-    <!-- An agent just searched: its words show in the search field itself,
-         where a search belongs, in place of the placeholder. Nothing is
-         added above the list, so the list does not move. The button runs
-         the same search for you. -->
     <div class="search-wrap" data-agent={agentSearch ? "search" : null}>
       <input
         class="search"
@@ -153,8 +134,6 @@
     </div>
   </div>
   {#if library.activeWorkspaceId && !library.searchResults && library.workspaceTags.length > 0}
-    <!-- Tags found on this space's notes; a chip filters within the space,
-         unlike the sidebar's global tags which replace it. -->
     <div class="space-tags" role="group" aria-label="Filter this space by tag">
       {#each library.workspaceTags as tag (tag.id)}
         <button
@@ -343,7 +322,6 @@
 
 <style>
   .list-pane {
-    /* The middle surface: a step up from the page, opaque over the window. */
     background: var(--surface-list);
     border-right: 1px solid var(--divider);
     display: flex;
@@ -351,7 +329,6 @@
     min-width: 0;
     min-height: 0;
   }
-  /* Layout comes from .pane-header (app.css). */
   .list-toolbar {
     gap: 6px;
     padding-right: 10px;
@@ -368,8 +345,6 @@
   .search:focus {
     border-color: var(--accent);
   }
-  /* One object, two targets: a hairline divides the segments so the chevron
-     reads as part of the ＋ button rather than a second control beside it. */
   .new-control {
     display: flex;
     height: 28px;
@@ -406,7 +381,6 @@
     gap: 4px;
     padding: 0 10px 8px;
   }
-  /* Occupies the status-filter's slot: the pills hide inside a space. */
   .space-tags {
     display: flex;
     flex-wrap: wrap;
@@ -456,9 +430,6 @@
     padding: 0 8px 12px;
     border-top: 1px solid var(--border);
   }
-  /* Type comes from .section-label (app.css). The label is stuck to the top
-     of the list as its notes scroll under it, so it paints the list surface;
-     opacity would let them show through, hence the solid colour here. */
   .group-header {
     position: sticky;
     top: 0;
@@ -469,8 +440,6 @@
     opacity: 1;
     color: color-mix(in srgb, var(--text-secondary) 62%, var(--surface-list));
   }
-  /* A row is the same object as a sidebar row: inset, rounded, and selected
-     with the same fill. Spacing, not rules, separates one from the next. */
   .note-row {
     display: block;
     width: 100%;
@@ -485,7 +454,6 @@
   .note-row.selected {
     background: var(--select-bg);
   }
-  /* Title and date share the first line; the date never gives way. */
   .row-head {
     display: flex;
     align-items: baseline;
@@ -519,11 +487,9 @@
   .row-live {
     margin-right: 6px;
   }
-  /* What an agent is doing this moment, before it settles to the summary. */
   .row-preview.doing {
     color: var(--text);
   }
-  /* Two lines of the note, then cut. */
   .row-preview {
     color: var(--text-secondary);
     font-size: 12px;
@@ -535,8 +501,6 @@
     line-clamp: 2;
     overflow: hidden;
   }
-  /* Reset UA mark styling (yellow bg, black text) so a search hit reads as
-     a subtle emphasis in both themes, matching pill/tag styling elsewhere. */
   .row-title mark,
   .row-preview mark {
     background: var(--accent-soft);
@@ -581,11 +545,9 @@
     display: flex;
     position: relative;
   }
-  /* Room for the hit count, so the agent's words stop short of it. */
   .search-wrap[data-agent] .search {
     padding-right: 68px;
   }
-  /* Sits inside the field's right edge, over its padding. */
   .agent-search-run {
     position: absolute;
     right: 4px;

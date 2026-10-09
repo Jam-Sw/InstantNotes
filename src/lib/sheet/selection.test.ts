@@ -1,5 +1,3 @@
-// Movement over the grid: steps, ranges, Tab wrapping, and the jump to the
-// edge of the data.
 import { describe, expect, it } from "vitest";
 import {
   clampSelection,
@@ -59,7 +57,6 @@ describe("moves", () => {
     expect(tabMove(single(1, 0), true, 3, 3)).toEqual(single(0, 2));
     expect(tabMove(single(2, 2), false, 3, 3)).toEqual(single(2, 2));
     expect(tabMove(single(0, 0), true, 3, 3)).toEqual(single(0, 0));
-    // Tab drops any range to the cell it lands on.
     expect(tabMove({ anchor: { r: 0, c: 0 }, active: { r: 2, c: 0 } }, false, 3, 3)).toEqual(single(2, 1));
   });
 

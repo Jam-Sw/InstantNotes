@@ -1,9 +1,4 @@
 <script lang="ts">
-  // Settings > Appearance: the theme, light or dark, the body font, and
-  // sharing themes as files. Each theme is shown as a small live preview
-  // drawn from its own tokens in the appearance that would apply, so a
-  // choice is seen before it is made. The command palette keeps its theme
-  // list for switching without leaving the keyboard.
   import { theme, type ThemeMode } from "$lib/stores/theme.svelte";
   import { effectiveVariant } from "$lib/themes/apply";
   import { exportTheme, importTheme } from "$lib/themes/share";
@@ -25,8 +20,6 @@
     dark: "Always the dark variant.",
   };
 
-  /** The tokens a preview of `t` should use: its set for the appearance in
-   *  effect, falling back the way the theme itself would. */
   function previewTokens(t: Theme): TokenSet {
     const v = effectiveVariant(t, theme.resolvedVariant);
     return (v === "dark" ? t.dark : t.light) as TokenSet;

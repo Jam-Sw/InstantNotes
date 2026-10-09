@@ -1,14 +1,3 @@
-//! Sticky notes: a note popped out of the library into its own small window.
-//!
-//! A sticky is a handoff, not a second view. While a note is a sticky, its
-//! window is the note's only editor and the library shows a placeholder, so
-//! the store never sees two writers on one note. Popping back in asks the
-//! sticky to flush and waits for its answer before the window goes away.
-//!
-//! Which notes are stickies, and where their windows sit, is per-device window
-//! state rather than note data: one JSON map in the settings table under
-//! `stickies`, never in the vault.
-
 use crate::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
@@ -20,31 +9,19 @@ const SETTING_KEY: &str = "stickies";
 const LABEL_PREFIX: &str = "sticky-";
 const DEFAULT_SIZE: (f64, f64) = (320.0, 320.0);
 const MIN_SIZE: (f64, f64) = (220.0, 160.0);
-/// A collapsed sticky is only its header strip, like a Stickies note after
-/// a double-click on its title bar. Matches the header height in
-/// `src/routes/sticky/+page.svelte`.
 pub(crate) const STRIP_HEIGHT: f64 = 30.0;
-/// How long popping in waits for the sticky to flush before closing it
-/// anyway. Only a hung webview reaches the limit, and its unsaved edit is
-/// unreachable either way; the same reasoning as the quit handshake.
 const POP_IN_GRACE: Duration = Duration::from_millis(1500);
-/// How much of a sticky must overlap a monitor to count as on screen.
 const VISIBLE_MARGIN: f64 = 40.0;
 
-/// Where the sticky sits relative to other windows.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum StickyLevel {
-    /// Above every window, on every Space.
     #[default]
     Float,
-    /// An ordinary window.
     Normal,
-    /// Below every window, on every Space: a desktop widget.
     Desktop,
 }
 
-/// One sticky's window, in logical pixels. No position means centered.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StickyState {
@@ -54,7 +31,6 @@ pub struct StickyState {
     pub height: f64,
     #[serde(default)]
     pub level: StickyLevel,
-    /// Rolled up to its header. `height` keeps the expanded height.
     #[serde(default)]
     pub collapsed: bool,
 }
@@ -82,8 +58,6 @@ fn note_id_of(label: &str) -> Option<&str> {
     label.strip_prefix(LABEL_PREFIX)
 }
 
-/// The saved map. An unreadable value is treated as empty: losing where
-/// stickies sat is harmless, and it must never block launch.
 fn load_map(store: &Store) -> StickyMap {
     store
         .get_setting(SETTING_KEY)
@@ -116,8 +90,6 @@ fn apply_level(win: &WebviewWindow, level: StickyLevel) {
     let _ = win.set_visible_on_all_workspaces(level != StickyLevel::Normal);
 }
 
-/// Roll the window up to its header strip, or back down to `height`. A
-/// collapsed sticky can still be widened but not heightened.
 fn apply_collapsed(win: &WebviewWindow, sticky: &StickyState) {
     let width = win
         .inner_size()
@@ -145,8 +117,6 @@ fn build_window(app: &AppHandle, note_id: &str, sticky: &StickyState) -> tauri::
             .decorations(false)
             .transparent(true)
             .skip_taskbar(true)
-            // One gesture moves a sticky that is not in front, as a title bar
-            // does; without this the first click only activates the window.
             .accept_first_mouse(true)
             .focused(true);
     builder = match (sticky.x, sticky.y) {
@@ -158,8 +128,6 @@ fn build_window(app: &AppHandle, note_id: &str, sticky: &StickyState) -> tauri::
     if sticky.collapsed {
         apply_collapsed(&win, sticky);
     }
-    // Closing a sticky by any route (⌘W, the window menu) is popping it in,
-    // which has to flush first; the flush answers and then really closes.
     let handle = app.clone();
     let id = note_id.to_string();
     win.on_window_event(move |event| {
@@ -175,7 +143,6 @@ fn build_window(app: &AppHandle, note_id: &str, sticky: &StickyState) -> tauri::
     Ok(())
 }
 
-/// A monitor's area in logical pixels.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Area {
     pub x: f64,
@@ -184,9 +151,6 @@ pub(crate) struct Area {
     pub height: f64,
 }
 
-/// Whether a window at this rect shows enough of itself on some monitor to be
-/// grabbed. A sticky saved on a display that is gone fails this and is
-/// re-centered rather than restored off screen.
 pub(crate) fn is_reachable(rect: Area, monitors: &[Area]) -> bool {
     monitors.iter().any(|m| {
         let overlap_w = (rect.x + rect.width).min(m.x + m.width) - rect.x.max(m.x);
@@ -213,9 +177,6 @@ fn monitor_areas(app: &AppHandle) -> Vec<Area> {
         .collect()
 }
 
-/// Reopen every sticky from the last session. Entries whose note is gone or
-/// in the Trash are dropped; a window that fails to build is dropped too, so
-/// one bad entry cannot strand a note in the "popped out" state.
 pub(crate) fn restore_stickies(app: &AppHandle) {
     let state = app.state::<AppState>();
     let Ok(mut store) = state.store.lock() else {
@@ -251,15 +212,9 @@ pub(crate) fn restore_stickies(app: &AppHandle) {
     let _ = save_map(&mut store, &kept);
 }
 
-// ---- pop in ----
-
-/// Senders waiting for a sticky's flush answer, by window label.
 static POP_IN_WAITERS: std::sync::LazyLock<Mutex<HashMap<String, mpsc::Sender<bool>>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// Ask the sticky to flush, wait for its answer, then close it and forget it.
-/// A sticky that reports its save failed stays open with its edit, rather
-/// than closing on text that never reached disk.
 fn pop_in(app: &AppHandle, note_id: &str) -> CmdResult<()> {
     let label = label_for(note_id);
     if let Some(win) = app.get_webview_window(&label) {
@@ -287,8 +242,6 @@ fn pop_in(app: &AppHandle, note_id: &str) -> CmdResult<()> {
     Ok(())
 }
 
-/// The sticky's answer to "sticky:close-requested": its edits are on disk
-/// (`saved`), or they are not and it stays open.
 #[tauri::command]
 pub fn answer_pop_in(window: WebviewWindow, saved: bool) {
     if let Ok(waiters) = POP_IN_WAITERS.lock() {
@@ -298,10 +251,6 @@ pub fn answer_pop_in(window: WebviewWindow, saved: bool) {
     }
 }
 
-// ---- commands ----
-
-/// Turn a note into a sticky, or bring its sticky forward if it is one. The
-/// library flushes the note's pending edit before calling this.
 #[tauri::command(async)]
 pub fn pop_out_note(state: State<'_, AppState>, app: AppHandle, id: String) -> CmdResult<()> {
     if let Some(win) = app.get_webview_window(&label_for(&id)) {
@@ -326,20 +275,16 @@ pub fn pop_out_note(state: State<'_, AppState>, app: AppHandle, id: String) -> C
     Ok(())
 }
 
-/// Turn a sticky back into a normal note. Resolves once the sticky's edits
-/// are on disk and its window is gone, so the caller can reload the note.
 #[tauri::command(async)]
 pub fn pop_in_note(app: AppHandle, id: String) -> CmdResult<()> {
     pop_in(&app, &id)
 }
 
-/// Ids of the notes that are stickies right now.
 #[tauri::command(async)]
 pub fn list_stickies(state: State<'_, AppState>) -> CmdResult<Vec<String>> {
     Ok(load_map(&*locked(&state)?).into_keys().collect())
 }
 
-/// The calling sticky's level. Applied now and remembered for next launch.
 #[tauri::command(async)]
 pub fn set_sticky_level(
     state: State<'_, AppState>,
@@ -357,8 +302,6 @@ pub fn set_sticky_level(
     })
 }
 
-/// Roll the calling sticky up to its header, or back down. Remembered for
-/// next launch, like its level.
 #[tauri::command(async)]
 pub fn set_sticky_collapsed(
     state: State<'_, AppState>,
@@ -380,7 +323,6 @@ pub fn set_sticky_collapsed(
     Ok(())
 }
 
-/// The calling sticky's header state on load.
 #[derive(Debug, Clone, Copy, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StickyView {
@@ -400,8 +342,6 @@ pub fn get_sticky_view(state: State<'_, AppState>, window: WebviewWindow) -> Cmd
         .unwrap_or_default())
 }
 
-/// Remember where the calling sticky sits. Read from the window itself, so
-/// the webview only says "now", never a position it could get wrong.
 #[tauri::command(async)]
 pub fn save_sticky_geometry(state: State<'_, AppState>, window: WebviewWindow) -> CmdResult<()> {
     let Some(id) = note_id_of(window.label()) else {
@@ -418,8 +358,6 @@ pub fn save_sticky_geometry(state: State<'_, AppState>, window: WebviewWindow) -
             sticky.x = Some(pos.x);
             sticky.y = Some(pos.y);
             sticky.width = size.width;
-            // Collapsed, the window is only the strip; the height to restore
-            // is the one saved before it rolled up.
             if !sticky.collapsed {
                 sticky.height = size.height;
             }
@@ -450,15 +388,12 @@ mod tests {
     #[test]
     fn a_sticky_on_a_monitor_is_reachable() {
         assert!(is_reachable(at(100.0, 100.0), &[MAIN]));
-        // Mostly off the right edge, but a grabbable strip remains.
         assert!(is_reachable(at(1440.0 - 60.0, 100.0), &[MAIN]));
     }
 
     #[test]
     fn a_sticky_on_a_missing_display_is_not() {
-        // Saved on a second display to the right that is now unplugged.
         assert!(!is_reachable(at(1800.0, 200.0), &[MAIN]));
-        // Only a sliver shows: not enough to grab.
         assert!(!is_reachable(at(1440.0 - 10.0, 100.0), &[MAIN]));
     }
 
@@ -497,7 +432,6 @@ mod tests {
         let json = serde_json::to_value(&map).unwrap();
         assert_eq!(json["a"]["level"], "desktop");
         assert_eq!(serde_json::from_value::<StickyMap>(json).unwrap(), map);
-        // An entry without a level floats, the default.
         let bare: StickyMap =
             serde_json::from_value(serde_json::json!({"b": {"width": 300.0, "height": 200.0}}))
                 .unwrap();

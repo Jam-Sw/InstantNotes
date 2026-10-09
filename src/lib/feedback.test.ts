@@ -47,8 +47,6 @@ describe("githubIssueUrl", () => {
   it("truncates a very long message so the URL stays a bounded size", () => {
     const message = "x".repeat(50_000);
     const url = githubIssueUrl({ category: "bug", message });
-    // A generous, deliberately loose upper bound: whatever the exact cap,
-    // the URL must never scale with a 50,000-character report.
     expect(url.length).toBeLessThan(3000);
     const body = new URL(url).searchParams.get("body") ?? "";
     expect(body).toContain("truncated");

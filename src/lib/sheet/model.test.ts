@@ -1,5 +1,3 @@
-// The sheet model: the stored envelope, the pure edits, and the merge that
-// makes an agent's append safe beside unsaved cells.
 import { describe, expect, it } from "vitest";
 import {
   appendRows,
@@ -43,7 +41,6 @@ describe("the stored envelope", () => {
       data: { cols: [{ w: 120 }, { w: 120 }], rows: [["a", "b"], ["1", ""]] },
     });
     expect(parseSheet(raw)).toEqual(s);
-    // The Rust side reads widths as numbers; fractions from a drag are rounded.
     expect(JSON.parse(serializeSheet(resizeCol(s, 0, 150.6))).data.cols[0]).toEqual({ w: 151 });
   });
 
@@ -182,9 +179,7 @@ describe("append and merge", () => {
 
   it("merges an agent's appended rows onto the user's unsaved grid", () => {
     const base = sheet([["Date", "ms"], ["d1", "1"]]);
-    // The user typed into row 3 (unsaved) and fixed a cell.
     const mine = setCell(setCell(insertRows(base, 2, 1), 2, 0, "d2"), 1, 1, "11");
-    // Meanwhile the agent appended two rows after the base's data.
     const theirs = appendRows(base, [["a1", "9"], ["a2", "8"]]);
     const { sheet: merged, added } = mergeAppended(base, mine, theirs);
     expect(added).toEqual([["a1", "9"], ["a2", "8"]]);

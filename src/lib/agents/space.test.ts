@@ -78,7 +78,6 @@ describe("the Agents Space", () => {
       ["quiet", true],
       ["old", false],
     ]);
-    // An ended connection that never asked for anything is not a conversation.
     const none = joinConversations(
       [],
       [presence({ connected: false, disconnectedAt: 5 })],
@@ -101,7 +100,6 @@ describe("the Agents Space", () => {
       [presence({ label: "bob", clientSession: "ec23c3e6", cwd: "/work", matched: "exact" })],
     );
     expect(named[0].inferred).toBe(false);
-    // Codex and Hermes are matched from their own records, and say so.
     const matched = joinConversations(
       [session()],
       [presence({ client: "hermes", label: "Fix the build", matched: "inferred" })],
@@ -110,7 +108,6 @@ describe("the Agents Space", () => {
     expect(matched[0].inferred).toBe(true);
     expect(buildAgentNotes(named)[0].title).toBe("Claude Code: bob");
     expect(named[0].clientSession).toBe("ec23c3e6");
-    // A client that names nothing is just itself.
     expect(buildAgentNotes(joinConversations([session()], [presence()]))[0].title).toBe("Claude Code");
   });
 

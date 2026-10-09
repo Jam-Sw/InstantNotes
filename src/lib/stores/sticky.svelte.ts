@@ -1,13 +1,3 @@
-// One sticky window's note (Svelte 5 runes). While a note is a sticky this is
-// its only editor in the app: the library shows a placeholder instead, so the
-// save queue here is the note's single in-app writer, the same SaveQueue the
-// library composes.
-//
-// Only metadata follows change events (title, pin, trash). The body follows
-// an agent's write the way the library's open note does (`adoptExternal`),
-// never a plain change event: re-reading it then would race this window's own
-// unsaved typing.
-
 import { ApiError, getNote } from "$lib/api/client";
 import type { Note } from "$lib/api/types";
 import { ERROR_CODES } from "$lib/api/error-codes";
@@ -23,16 +13,12 @@ import { appendRows, parseSheet, serializeSheet } from "$lib/sheet/model";
 
 export class StickyNote {
   note = $state<Note | null>(null);
-  /** The note was destroyed or moved to the Trash behind this window. */
   gone = $state(false);
   error = $state<string | null>(null);
 
   #queue = new SaveQueue({
     onPersisted: (id, updated) => {
       if (this.note?.id !== id) return;
-      // Keep the local body and surface: typing may have continued past this
-      // save, and the reply never carries the surface. A sheet's body is the
-      // store's to derive, so the reply's is the one to show.
       const { body, surfaceData, contentKind } = this.note;
       this.note = {
         ...updated,
@@ -47,8 +33,6 @@ export class StickyNote {
         if (this.note?.id === id) this.editBody(theirs);
       }),
     onMerged: (id, added) => {
-      // Rows an agent appended, met by this window's save: onto the grid,
-      // and into any newer edit still waiting (see the library's version).
       if (this.note?.id !== id || added.length === 0) return;
       const surfaceData = serializeSheet(appendRows(parseSheet(this.note.surfaceData), added));
       this.note.surfaceData = surfaceData;
@@ -56,8 +40,6 @@ export class StickyNote {
     },
   });
 
-  // A whiteboard batches canvas changes before handing them over; it
-  // registers here and is asked for them before every flush.
   #beforeFlush = new Set<() => void>();
 
   get saveState(): SaveState {
@@ -94,24 +76,18 @@ export class StickyNote {
     this.#queue.queue(id, edit);
   }
 
-  /** A sheet save: the grid; the store derives the note's table from it. */
   editSheet(id: string, surfaceData: string): void {
     if (this.note?.id !== id || this.gone) return;
     this.note.surfaceData = surfaceData;
     this.#queue.queue(id, { surfaceData });
   }
 
-  /** Persist everything now. True when nothing is left unsaved, which is
-   *  the only answer that lets the window close. */
   async flush(): Promise<boolean> {
     for (const hook of this.#beforeFlush) hook();
     await this.#queue.flushAll();
     return this.saveState === "saved";
   }
 
-  /** Follow a change event: take new metadata, keep this window's body. A
-   *  note that went to the Trash or was destroyed marks the sticky gone, and
-   *  its queued edits are dropped since there is no live row to write. */
   async refreshMeta(): Promise<void> {
     const current = this.note;
     if (!current || this.gone) return;
@@ -126,17 +102,11 @@ export class StickyNote {
     }
   }
 
-  /** An agent wrote. With nothing unsaved here, the sticky takes the new
-   *  version and the editor applies it under the caret; with unsaved typing
-   *  it is left alone, and that save meets the agent's write through the
-   *  version check, which offers the agent's text back. */
   async adoptExternal(entries: AgentActivity[]): Promise<void> {
     const open = this.note;
     if (!open || this.gone || open.contentKind === "whiteboard") return;
     if (!mayHaveWritten(entries, open.id)) return;
     if (open.contentKind === "sheet") {
-      // Whole when nothing is unsaved; else the agent's appended rows go onto
-      // the grid and into the waiting save (SaveQueue.readExternalSheet).
       const taken = await this.#queue.readExternalSheet(
         open.id,
         () => this.note?.id === open.id && !this.gone,

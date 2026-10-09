@@ -1,20 +1,10 @@
-//! Filesystem writes: one note file, and the vault-level `instantnotes.yaml`.
-//! Both go through `atomic_write` (design.md §6): write to a temp file in
-//! the same directory, fsync, then rename, so a crash mid-write never
-//! leaves a half-written note on disk, and a concurrent reader (the future
-//! `notify` watcher, or an external editor) never observes a partial file.
-
 use std::fs::{self, File};
 use std::io;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-/// Distinguishes temp files within one process, so two writers to the same
-/// target (an export into a folder the mirror is flushing) never share one.
 static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
 
-/// Write `bytes` to `path` atomically. `path`'s parent directory must
-/// already exist.
 pub fn atomic_write(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let dir = path.parent().ok_or_else(|| {
         io::Error::new(io::ErrorKind::InvalidInput, "path has no parent directory")
@@ -37,10 +27,6 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> io::Result<()> {
     Ok(())
 }
 
-/// Copy every file under `src` into `dst`, creating `dst` and any
-/// subdirectories as needed. Used to bring `<app data>/attachments` into the
-/// vault on export (design.md's vault layout, §3): a plain recursive copy,
-/// not a move, since stage 1 leaves the app data directory authoritative.
 pub fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
     fs::create_dir_all(dst)?;
     for entry in fs::read_dir(src)? {
@@ -56,8 +42,6 @@ pub fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// Copy each file directly under `src` that `dst` does not already have,
-/// creating `dst` if needed. Returns how many were copied.
 pub fn copy_missing_files(src: &Path, dst: &Path) -> io::Result<usize> {
     fs::create_dir_all(dst)?;
     let mut copied = 0;
@@ -134,9 +118,6 @@ mod tests {
         );
     }
 
-    /// The live mirror (stage 2) re-runs this at every launch: attachment
-    /// names are uuids, so an existing name is already the same image and
-    /// must never be rewritten.
     #[test]
     fn copy_missing_files_copies_only_what_the_destination_lacks() {
         let dir = tempfile::tempdir().unwrap();

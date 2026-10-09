@@ -1,7 +1,3 @@
-// The two key tables (design.md §3) as tables, and the one rule that matters
-// outside the grid: it never swallows an app shortcut. That rule is checked
-// against the command registry itself and the library window's own global
-// keys, so a future shortcut that collides with the grid fails here.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { claimsKey, editIntent, selectIntent, type KeyLike } from "./keys";
 
@@ -50,8 +46,6 @@ function key(k: string, mods: Partial<KeyLike> = {}): KeyLike {
 }
 const cmd = (k: string, mods: Partial<KeyLike> = {}) => key(k, { metaKey: true, ...mods });
 
-/** A registry shortcut label ("⌘⇧N", "Ctrl+Shift+N", "⌘\\") as the key
- *  events that fire it, with either modifier and either letter case. */
 function eventsFor(label: string): KeyLike[] {
   let rest = label;
   const strip = (prefixes: string[]) => {
@@ -149,9 +143,6 @@ describe("edit mode", () => {
 });
 
 describe("the grid never swallows an app shortcut", () => {
-  // The library window handles these before any pane sees them
-  // (src/routes/+page.svelte onKeydown): the palette, the Agents Space,
-  // the sidebar, and the text zoom.
   const WINDOW_GLOBALS = ["⌘K", "⌘⇧A", "⌘\\", "⌘=", "⌘-", "⌘0"];
 
   it("against the command registry and the window's own keys", () => {

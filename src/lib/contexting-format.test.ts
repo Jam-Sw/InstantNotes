@@ -69,10 +69,6 @@ describe("applyImageMode", () => {
     expect(applyImageMode("a ![x](attachments/x.png) b", "strip", null)).toBe("a  b");
   });
 
-  // A "link the original file" image is an absolute local path, not an
-  // attachments/ reference (NoteEditor.svelte inserts `![](${picked})` verbatim).
-  // Contexting has no way to know whether a tool reading the copied text can
-  // reach that path, so all three modes leave it exactly as written.
   const linked = "![shot](/Users/jam/Pictures/shot.png)";
   const copied = "![alt](attachments/x.png)";
   const both = `${linked} and ${copied}`;

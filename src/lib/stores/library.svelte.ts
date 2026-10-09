@@ -1,6 +1,3 @@
-// Library window state (Svelte 5 runes). The only mutation path is the API
-// client; the store re-queries on core change events (single-writer model).
-
 import {
   addNoteToWorkspace,
   addTagToNote,
@@ -66,8 +63,6 @@ import { listen } from "@tauri-apps/api/event";
 
 export type { StatusFilter } from "$lib/stores/library/navigation.svelte";
 
-// Debounce for search-text refreshes only, so a query runs per pause rather
-// than per keystroke; filter clicks and change events stay immediate.
 const SEARCH_DEBOUNCE_MS = 150;
 const SUGGESTION_COUNT_DEBOUNCE_MS = 1500;
 
@@ -98,10 +93,7 @@ class LibraryStore {
   set scopedTagId(value: string | null) {
     this.#nav.scopedTagId = value;
   }
-  // Tags carried by the active workspace's visible notes; drives the chips.
   workspaceTags = $state<TagWithCount[]>([]);
-  // Revisit: capture-born notes never opened in the library. The count keeps
-  // the sidebar entry honest (hidden at zero); the mode filters the list.
   get revisitMode(): boolean {
     return this.#nav.revisitMode;
   }
@@ -115,7 +107,6 @@ class LibraryStore {
     this.#nav.graphMode = value;
   }
   revisitCount = $state(0);
-  /** Unfiled notes the graph can say a Space for; the Graph row's count. */
   suggestionCount = $state(0);
   suggestions = $state<SpaceSuggestion[]>([]);
   searchText = $state("");
@@ -127,24 +118,16 @@ class LibraryStore {
   selectedTags = $state<Tag[]>([]);
   selectedWorkspaces = $state<Workspace[]>([]);
   error = $state<string | null>(null);
-  // Notes popped out as stickies. Each sticky is its note's only editor, so
-  // the library stops editing a note the moment it appears here.
   stickyIds = $state<ReadonlySet<string>>(new Set());
 
-  // Ids checked for bulk actions (the open note's id on a plain click; grows
-  // via cmd-click / shift-click). Size > 1 swaps the editor for the bulk panel.
   #selection = new SelectionModel(() => this.visibleIds);
   get multiSelected(): ReadonlySet<string> {
     return this.#selection.ids;
   }
 
-  // A confirmed write updates the open note; a terminal failure surfaces an error.
   #saveQueue = new SaveQueue({
     onPersisted: async (id, updated) => {
       if (this.selected?.id === id) {
-        // Keep the local body and surface: the user may have kept editing
-        // past this save, and the reply never carries the surface. A sheet's
-        // body is the store's to derive, so the reply's is the one to show.
         const { body, surfaceData, contentKind } = this.selected;
         this.selected = {
           ...updated,
@@ -160,13 +143,8 @@ class LibraryStore {
     onMerged: (id, added) => this.#takeAppendedRows(id, added),
   });
 
-  // Editors that hold an edit not yet handed to the queue (a whiteboard
-  // batches canvas changes before serializing them) register here, and are
-  // asked to hand it over before any flush, trash, or note switch.
   #beforeFlush = new Set<() => void>();
 
-  /** Register a hook run before every flush, trash, and note switch;
-   *  returns the unregister function. */
   onBeforeFlush(hook: () => void): () => void {
     this.#beforeFlush.add(hook);
     return () => this.#beforeFlush.delete(hook);
@@ -179,17 +157,13 @@ class LibraryStore {
   #initialized = false;
 
   #refreshDebounced = debounce(() => void this.refresh(), 50);
-  // The revisit count rides the same 50ms window so a burst of change
-  // events (bulk delete, undo) costs one count query, not one per event.
   #revisitCountDebounced = debounce(() => void this.#refreshRevisitCount(), 50);
-  // The suggestion count too: every library change can change the evidence.
   #suggestionCountDebounced = debounce(
     () => void this.refreshSuggestionCount(),
     SUGGESTION_COUNT_DEBOUNCE_MS,
   );
   #searchRefresh = debounce(() => void this.refresh(), SEARCH_DEBOUNCE_MS);
 
-  /** Save status of the selected note, for the editor status bar. */
   get saveState(): SaveState {
     return this.#saveQueue.stateFor(this.selected?.id);
   }
@@ -197,8 +171,6 @@ class LibraryStore {
   async init(): Promise<void> {
     if (this.#initialized) return;
     this.#initialized = true;
-    // Listeners before the initial fetches: a change event arriving during
-    // startup must trigger a re-query, not be dropped.
     await Promise.all([
       listen(EVENTS.NOTES_CHANGED, () => {
         this.#refreshDebounced();
@@ -228,14 +200,10 @@ class LibraryStore {
     ]);
   }
 
-  // ---- stickies ----
-
   isSticky(id: string | undefined): boolean {
     return id !== undefined && this.stickyIds.has(id);
   }
 
-  /** Re-read which notes are stickies. A note that just came back from one
-   *  is reopened from disk if it is the open note: the sticky wrote it last. */
   async refreshStickies(): Promise<void> {
     try {
       const next = new Set(await listStickies());
@@ -248,11 +216,6 @@ class LibraryStore {
     }
   }
 
-  /**
-   * Pop a note out as a sticky. Every pending edit is written first and the
-   * note's must have landed: the sticky loads the note from disk, and an edit
-   * still queued here would later overwrite whatever is typed there.
-   */
   async popOut(id: string): Promise<void> {
     if (isSyntheticNoteId(id)) return;
     await this.flushPendingEdits();
@@ -268,22 +231,16 @@ class LibraryStore {
     }
   }
 
-  /** Bring a sticky back into the library. Resolves once its edits are on
-   *  disk and the open note shows them. */
   async popIn(id: string): Promise<void> {
     await this.#popInAll([id]);
   }
 
-  /** The File menu's toggle: pop the open note out, or back in. */
   async toggleSticky(): Promise<void> {
     const note = this.selected;
     if (!note || note.isDeleted) return;
     await (this.isSticky(note.id) ? this.popIn(note.id) : this.popOut(note.id));
   }
 
-  /** Pop in whichever of these notes are stickies, before anything that ends
-   *  their life here (trash, destroy). False when a sticky could not save,
-   *  in which case the caller must not go ahead. */
   async #popInAll(ids: string[]): Promise<boolean> {
     const stickies = ids.filter((id) => this.stickyIds.has(id));
     if (stickies.length === 0) return true;
@@ -298,16 +255,10 @@ class LibraryStore {
     }
   }
 
-  // Monotonic refresh token: queries answer out of order (search per pause,
-  // list per filter click), so a response only lands while it is still the
-  // newest request; a slow earlier reply can never clobber a later one.
   #refreshToken = 0;
 
   async refresh(): Promise<void> {
     const token = ++this.#refreshToken;
-    // The update Space is synthetic: its two notes come from the updater, not
-    // the store, so there is nothing to query. A search still runs globally,
-    // which is why it is the one thing that takes precedence over the Space.
     if (isSyntheticSpaceId(this.activeWorkspaceId) && !this.searchText.trim()) {
       this.searchResults = null;
       this.notes = [];
@@ -333,13 +284,9 @@ class LibraryStore {
         }
       }
       this.error = null;
-      // In revisit mode the main list IS the revisit query, so the count
-      // stays in lockstep with the burn-down for free.
       if (this.revisitMode && !this.searchResults) {
         this.revisitCount = this.notes.length;
       }
-      // Chips ride along on every refresh: notes:changed also fires when a
-      // note's inline tags change, which is exactly when they go stale.
       if (this.activeWorkspaceId) {
         void this.#refreshWorkspaceTags();
       } else if (this.workspaceTags.length > 0) {
@@ -362,7 +309,6 @@ class LibraryStore {
   async refreshWorkspaces(): Promise<void> {
     try {
       this.workspaces = await listWorkspaces();
-      // Live list refresh when the active workspace's contents changed.
       if (
         this.activeWorkspaceId &&
         !this.workspaces.some((w) => w.id === this.activeWorkspaceId)
@@ -375,8 +321,6 @@ class LibraryStore {
   }
 
   setStatusFilter(filter: StatusFilter): void {
-    // Status (All / Archived / Trash) composes with the active space or tag,
-    // so it clears revisit and search but keeps the space/tag scope.
     this.#rememberOpen();
     this.#nav.setStatus(filter);
     this.searchText = "";
@@ -384,10 +328,6 @@ class LibraryStore {
     void this.#enterView();
   }
 
-  /**
-   * What leaving a view clears beyond the navigation dimensions (the model
-   * resets those): the chip row, search, and the multi-selection.
-   */
   #leaveView(): void {
     this.#rememberOpen();
     this.#collectPending();
@@ -427,14 +367,12 @@ class LibraryStore {
     void this.refresh();
   }
 
-  /** Show All Notes (null) or one workspace's collected notes. */
   selectWorkspace(workspaceId: string | null): void {
     this.#leaveView();
     this.#nav.showWorkspace(workspaceId);
     void this.#enterView();
   }
 
-  /** Show the open loops: capture-born notes never opened in the library. */
   selectRevisit(): void {
     this.#leaveView();
     this.#nav.showRevisit();
@@ -447,10 +385,6 @@ class LibraryStore {
     void this.#enterView();
   }
 
-  /**
-   * Re-count the open loops. Quiet: a failed count only affects a sidebar
-   * hint, and the next change event retries it.
-   */
   async #refreshRevisitCount(): Promise<void> {
     try {
       this.revisitCount = await countNotes(revisitFilter());
@@ -458,7 +392,6 @@ class LibraryStore {
     }
   }
 
-  /** Re-count the suggestions (API.md section 4). Quiet like the revisit count. */
   async refreshSuggestionCount(): Promise<void> {
     try {
       this.suggestions = await spaceSuggestions();
@@ -467,7 +400,6 @@ class LibraryStore {
     }
   }
 
-  /** Toggle a chip: filter the active workspace's list by one of its tags. */
   toggleScopedTag(tagId: string): void {
     this.#rememberOpen();
     if (!this.#nav.toggleScopedTag(tagId)) return;
@@ -475,11 +407,6 @@ class LibraryStore {
     void this.#enterView();
   }
 
-  /**
-   * Re-query the chip row for the active workspace. The scoped tag is
-   * dropped when it no longer exists on the workspace's visible notes: a
-   * chip that vanished must not keep filtering the list.
-   */
   async #refreshWorkspaceTags(): Promise<void> {
     const id = this.activeWorkspaceId;
     if (!id) {
@@ -488,7 +415,7 @@ class LibraryStore {
     }
     try {
       const tags = await listWorkspaceTags(id);
-      if (this.activeWorkspaceId !== id) return; // switched away mid-flight
+      if (this.activeWorkspaceId !== id) return;
       this.workspaceTags = tags;
       if (this.scopedTagId && !tags.some((t) => t.id === this.scopedTagId)) {
         this.scopedTagId = null;
@@ -497,8 +424,6 @@ class LibraryStore {
     } catch (e) {
       if (this.activeWorkspaceId !== id) return;
       this.workspaceTags = [];
-      // The workspace can be deleted between the list refresh and this
-      // query; refreshWorkspaces resets the selection, nothing to surface.
       if (!(e instanceof ApiError && e.code === ERROR_CODES.NOT_FOUND))
         this.#fail(e);
     }
@@ -511,25 +436,17 @@ class LibraryStore {
     if (text.trim()) {
       this.#searchRefresh();
     } else {
-      // Clearing must feel instant: drop any pending keystroke debounce and
-      // go straight back to the list.
       this.#searchRefresh.cancel();
       void this.refresh();
     }
   }
 
   async select(id: string): Promise<void> {
-    // Opening a note shows it, wherever it was chosen from (the graph, the
-    // palette), so the graph steps aside.
     this.graphMode = false;
     this.#selection.reset([id], id);
     await this.#open(id);
   }
 
-  /**
-   * Open one of the update Space's synthetic notes: no row in the store, so
-   * nothing to fetch or persist. The note being left is still flushed first.
-   */
   selectVirtual(note: Note): void {
     this.graphMode = false;
     this.#collectPending();
@@ -547,8 +464,6 @@ class LibraryStore {
     try {
       const note = await getNote(id, true);
       this.#saveQueue.known(note);
-      // A queued edit (debounced or awaiting retry) is newer than what disk
-      // returned; showing the disk body would fork the note's history.
       const queued = this.#saveQueue.peek(id);
       this.selected = queued !== undefined ? { ...note, ...queued } : note;
       [this.selectedTags, this.selectedWorkspaces] = await Promise.all([
@@ -556,9 +471,6 @@ class LibraryStore {
         workspacesForNote(id),
       ]);
       this.error = null;
-      // The touch in getNote released this note from the Revisit filter;
-      // get_note emits no change event, so sync the count (and, in revisit
-      // mode, the list burn-down) here.
       void this.#refreshRevisitCount();
       if (this.revisitMode) void this.refresh();
     } catch (e) {
@@ -566,15 +478,12 @@ class LibraryStore {
     }
   }
 
-  // ---- multi-selection ----
-
   get visibleIds(): string[] {
     return this.searchResults
       ? this.searchResults.map((h) => h.noteId)
       : this.notes.map((n) => n.id);
   }
 
-  /** Notes backing the current multi-selection (normal list only). */
   get multiSelectedNotes(): Note[] {
     return this.notes.filter((n) => this.multiSelected.has(n.id));
   }
@@ -598,10 +507,6 @@ class LibraryStore {
     await this.#syncEditorToSelection();
   }
 
-  /**
-   * Arrow-key movement; `extend` grows the range from the anchor.
-   * Returns the id the selection moved to so the view can reveal it.
-   */
   async moveSelection(delta: number, extend = false): Promise<string | null> {
     const next = this.#selection.step(delta, this.selected?.id ?? null);
     if (!next) return null;
@@ -620,7 +525,6 @@ class LibraryStore {
     this.selectedWorkspaces = [];
   }
 
-  /** Keep the editor pane consistent with how many notes are checked. */
   async #syncEditorToSelection(): Promise<void> {
     const ids = [...this.multiSelected];
     if (ids.length === 1) {
@@ -633,8 +537,6 @@ class LibraryStore {
       this.selectedWorkspaces = [];
     }
   }
-
-  // ---- bulk actions ----
 
   async bulkSetPinned(isPinned: boolean): Promise<void> {
     await this.#bulk((ids) => setNotesFlags(ids, { isPinned }));
@@ -649,8 +551,6 @@ class LibraryStore {
   async bulkDelete(): Promise<void> {
     const ids = [...this.multiSelected];
     if (!(await this.#popInAll(ids))) return;
-    // Trash is reversible and Undo promises fidelity: persist any pending
-    // edit first, so a restored note holds the user's last keystrokes.
     this.#collectPending();
     this.#saveQueue.cancelDebounce();
     await this.#saveQueue.flushIds(ids);
@@ -675,18 +575,9 @@ class LibraryStore {
     await this.destroyNotes([...this.multiSelected]);
   }
 
-  /**
-   * Permanently delete an explicit set of notes. Ids are an argument rather
-   * than a read of the live selection so confirm dialogs can snapshot them
-   * at ask time: the selection must not be able to drift between the dialog
-   * opening and the user confirming.
-   */
   async destroyNotes(ids: string[]): Promise<void> {
     if (ids.length === 0) return;
     if (!(await this.#popInAll(ids))) return;
-    // Destroyed notes must also forget their queued edits, or the retry and
-    // every later flush re-attempts a write against a row that no longer
-    // exists and surfaces NOT_FOUND forever.
     this.#saveQueue.cancelDebounce();
     this.#saveQueue.drop(ids);
     try {
@@ -723,17 +614,12 @@ class LibraryStore {
     }
   }
 
-  /** Create a note and open it. Resolves to its id, or null if creating
-   *  failed (the error is already surfaced). */
   async newNote(): Promise<string | null> {
     try {
       const activeTag = this.activeTagId
         ? this.tags.find((t) => t.id === this.activeTagId)
         : null;
 
-      // A note cannot be born in the synthetic update Space; creating one there
-      // drops the view back to All Notes rather than filing the note under a
-      // workspace id that is not in the database.
       if (isSyntheticSpaceId(this.activeWorkspaceId)) {
         this.activeWorkspaceId = null;
       }
@@ -741,14 +627,10 @@ class LibraryStore {
       const note = await createNote(
         activeTag ? { tags: [activeTag.name] } : {},
       );
-      // A note born inside a workspace joins it; the view stays put.
       if (this.activeWorkspaceId) {
         await addNoteToWorkspace(note.id, this.activeWorkspaceId);
       }
       this.statusFilter = "active";
-      // A brand-new note can never match the Revisit filter (it is neither
-      // old nor forgotten), so leaving the mode on would hide the note the
-      // user just asked for. Exit it, exactly like trash and archived above.
       this.revisitMode = false;
       if (!activeTag) this.activeTagId = null;
       this.searchText = "";
@@ -761,8 +643,6 @@ class LibraryStore {
     }
   }
 
-  // ---- workspaces ----
-
   async createWorkspace(name: string): Promise<void> {
     if (!name.trim()) return;
     try {
@@ -773,13 +653,11 @@ class LibraryStore {
     }
   }
 
-  /** Delete a workspace; its notes are kept, so it takes an Undo toast, not a confirm dialog. */
   async removeWorkspace(id: string): Promise<void> {
     const ws = this.workspaces.find((w) => w.id === id);
     try {
       const memberIds = await deleteWorkspace(id);
       if (this.activeWorkspaceId === id) this.selectWorkspace(null);
-      // An open note's membership chips may have shown this workspace.
       if (this.selected) {
         this.selectedWorkspaces = await workspacesForNote(this.selected.id);
       }
@@ -795,11 +673,6 @@ class LibraryStore {
     }
   }
 
-  /**
-   * Undo for a workspace delete: recreate it by name and re-add every
-   * member, archived and trashed ones included. A member destroyed in the
-   * meantime fails quietly into a plain toast.
-   */
   async #undoWorkspaceDelete(name: string, memberIds: string[]): Promise<void> {
     try {
       const ws = await getOrCreateWorkspace(name);
@@ -821,10 +694,6 @@ class LibraryStore {
     }
   }
 
-  /**
-   * Rename a workspace. Returns an inline-error shape rather than throwing,
-   * so the row can show a duplicate-name rejection in place.
-   */
   async renameWorkspace(
     id: string,
     name: string,
@@ -832,7 +701,6 @@ class LibraryStore {
     try {
       await renameWorkspace(id, name);
       await this.refreshWorkspaces();
-      // An open note's membership chips may display the old name.
       if (this.selected) {
         this.selectedWorkspaces = await workspacesForNote(this.selected.id);
       }
@@ -842,7 +710,6 @@ class LibraryStore {
     }
   }
 
-  /** Collect the open note into a workspace by name (created if missing). */
   async addSelectedToWorkspace(name: string): Promise<void> {
     if (!this.selected || !name.trim()) return;
     try {
@@ -865,22 +732,12 @@ class LibraryStore {
   }
 
   editBody(body: string): void {
-    // A sticky is the note's only editor; see stickyIds.
     if (!this.selected || this.isSticky(this.selected.id)) return;
-    // Optimistic local state; persistence is debounced. The note is dirty
-    // from this moment until a write of this (or a newer) body succeeds.
     this.selected.body = body;
-    // A synthetic note (the update Space's release notes) is not user data:
-    // the edit lives while the note is open and is gone when it closes.
     if (isSyntheticNoteId(this.selected.id)) return;
     this.#saveQueue.queue(this.selected.id, { body });
   }
 
-  /**
-   * A whiteboard save: the canvas and its text, queued like a body edit.
-   * Takes the id because a board hands over its last change while the
-   * library is already switching away from it.
-   */
   editBoard(id: string, edit: Required<QueuedEdit>): void {
     if (this.isSticky(id)) return;
     if (this.selected?.id === id) {
@@ -890,22 +747,12 @@ class LibraryStore {
     this.#saveQueue.queue(id, edit);
   }
 
-  /**
-   * A sheet save: the grid, queued like a body edit; the store derives the
-   * note's table from it. Takes the id because a grid hands over its last
-   * edit while the library is already switching away from it.
-   */
   editSheet(id: string, surfaceData: string): void {
     if (this.isSticky(id)) return;
     if (this.selected?.id === id) this.selected.surfaceData = surfaceData;
     this.#saveQueue.queue(id, { surfaceData });
   }
 
-  /**
-   * Rows another writer (an agent) appended, met by a save of this window's
-   * grid, which went out carrying them. They go onto the grid shown here, and
-   * a newer edit still waiting is replaced so it carries them too.
-   */
   #takeAppendedRows(id: string, added: string[][]): void {
     if (this.selected?.id !== id || added.length === 0) return;
     const surfaceData = serializeSheet(appendRows(parseSheet(this.selected.surfaceData), added));
@@ -913,10 +760,6 @@ class LibraryStore {
     if (this.#saveQueue.peek(id) !== undefined) this.#saveQueue.queue(id, { surfaceData });
   }
 
-  /**
-   * Turn the open note into a whiteboard, for good: its text goes onto the
-   * board as a text block, so nothing written disappears.
-   */
   async convertToWhiteboard(): Promise<void> {
     const note = this.selected;
     if (!note || note.isDeleted || note.contentKind === "whiteboard") return;
@@ -932,22 +775,16 @@ class LibraryStore {
     }
   }
 
-  /** A new note, opened as an empty whiteboard. Converts only the note it
-   *  just created: if creating failed, the open note is someone's writing. */
   async newWhiteboard(): Promise<void> {
     const id = await this.newNote();
     if (id && this.selected?.id === id) await this.convertToWhiteboard();
   }
 
-  /** A new note, opened as an empty sheet: the store gives it the default
-   *  grid and its name. Converts only the note it just created. */
   async newSheet(): Promise<void> {
     const id = await this.newNote();
     if (id && this.selected?.id === id) await this.#convertToSheet();
   }
 
-  /** Make the open note a sheet, for good. Only the empty note "New sheet"
-   *  just made comes through here; a Markdown table is not turned into one. */
   async #convertToSheet(): Promise<void> {
     const note = this.selected;
     if (!note || note.isDeleted || note.contentKind !== "document") return;
@@ -986,7 +823,6 @@ class LibraryStore {
     if (!this.selected) return;
     const id = this.selected.id;
     if (!(await this.#popInAll([id]))) return;
-    // Persist pending edits first, as in bulkDelete: Undo promises fidelity.
     this.#collectPending();
     this.#saveQueue.cancelDebounce();
     await this.#saveQueue.flushIds([id]);
@@ -1037,19 +873,11 @@ class LibraryStore {
     }
   }
 
-  /**
-   * Persist every queued edit now (note switch, window blur, export, quit).
-   * Anything that still fails stays queued for the next flush.
-   */
   async flushPendingEdits(): Promise<void> {
     this.#collectPending();
     await this.#saveQueue.flushAll();
   }
 
-  /**
-   * Undo for a soft delete: restore each id, then refresh. A note destroyed
-   * in the meantime fails quietly into a plain toast, not a throw.
-   */
   async #undoSoftDelete(ids: string[]): Promise<void> {
     const results = await Promise.allSettled(ids.map((id) => restoreNote(id)));
     await this.refresh();
@@ -1064,12 +892,6 @@ class LibraryStore {
     toasts.show(message);
   }
 
-  /**
-   * Another process (an agent) wrote while a note is open. With nothing
-   * unsaved, the open note takes the new version and the editor applies it
-   * as a change under the caret. With unsaved typing it is left alone: that
-   * save meets the other write through the version check (SaveQueue).
-   */
   async #adoptExternal(entries: AgentActivity[]): Promise<void> {
     const open = this.selected;
     if (!open || isSyntheticNoteId(open.id) || open.contentKind === "whiteboard") return;
@@ -1080,7 +902,6 @@ class LibraryStore {
   async #adoptExternalNote(open: Note): Promise<void> {
     if (open.contentKind === "sheet") return this.#adoptExternalSheet(open.id);
     const shown = open.body;
-    // The user may have typed, or moved on, while this was read.
     const fresh = await this.#saveQueue.readExternal(
       open.id,
       () => this.selected?.id === open.id && this.selected.body === shown,
@@ -1093,13 +914,6 @@ class LibraryStore {
     ]);
   }
 
-  /**
-   * An agent appended rows to the open sheet. With nothing unsaved the grid
-   * takes the agent's version whole; with unsaved cells it takes the rows
-   * the agent added, and the save that was waiting carries them too (see
-   * SaveQueue.readExternalSheet). Nothing is "offered back": an agent can
-   * only append, so the two writers never touch the same cell.
-   */
   async #adoptExternalSheet(id: string): Promise<void> {
     const taken = await this.#saveQueue.readExternalSheet(id, () => this.selected?.id === id);
     if (!taken || this.selected?.id !== id) return;
@@ -1110,7 +924,6 @@ class LibraryStore {
     ]);
   }
 
-  /** "Restore theirs": put an agent's overwritten body back, as an edit. */
   #restoreExternal(id: string, body: string): void {
     if (this.selected?.id === id) {
       this.selected.body = body;
@@ -1131,7 +944,6 @@ class LibraryStore {
         const { body, surfaceData } = this.selected;
         this.selected = {
           ...updated,
-          // A sheet's body is the store's: the reply carries the table.
           body: updated.contentKind === "sheet" ? updated.body : (patch.body ?? body),
           surfaceData: patch.surfaceData ?? surfaceData,
         };

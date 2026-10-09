@@ -1,8 +1,3 @@
-// Fjord - cool arctic neutrals with a glacial blue accent and a frost-green
-// success tone. Calm and low-saturation, in the Nordic tradition: the theme
-// for long sessions where the UI should recede and the text should stay.
-// Light variant is pale slate on near-white, same blue a shade deeper.
-
 import type { Theme } from "../types";
 import { MONO_STACK, SANS_STACK } from "../fonts";
 

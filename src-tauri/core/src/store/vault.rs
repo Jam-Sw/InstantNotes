@@ -1,23 +1,3 @@
-//! Stage 2 of the portable vault: the live mirror (dual-write, design.md §6).
-//! SQLite stays authoritative. Migration v5's triggers set `vault_dirty` in
-//! the same transaction as every write that changes a note's file;
-//! `flush_vault` writes those notes out and clears the flag. Nothing here
-//! reads the vault back into the store.
-//!
-//! Safety rules, each pinned by `core/tests/vault_mirror_test.rs`:
-//! - Only files the mirror owns are written or removed: a path recorded in
-//!   `vault_path` or a tombstone, or a file whose frontmatter `id` is the
-//!   note's own. Anything else at a target name is left alone and the note
-//!   takes a suffixed name instead.
-//! - A removal happens only while the file still holds the bytes the mirror
-//!   wrote (`file_sha`); a file edited outside the app is left in place.
-//! - The vault root is never created. A missing root (an unmounted drive)
-//!   fails the flush and leaves every note dirty until it returns.
-//! - A surface note's second file (a whiteboard's `.excalidraw` canvas, a
-//!   sheet's `.csv`) is named after its note file (`vault/surface.rs`). It
-//!   moves, trashes, and deletes with the note under the same rules, tracked
-//!   by its own hash in `board_sha`.
-
 use super::*;
 use crate::vault::{
     atomic_write, candidate_filenames, is_vault_file_name, note_of_surface, parse_note,
@@ -27,8 +7,6 @@ use crate::vault::{
 use sha2::{Digest, Sha256};
 use std::fs;
 
-/// Device-local, like every other setting: another device's vault lives
-/// wherever that device keeps it.
 const VAULT_PATH_SETTING: &str = "vault.path";
 const MANIFEST_FILE: &str = "instantnotes.yaml";
 const TRASH_DIR: &str = "trash";
@@ -50,7 +28,6 @@ impl VaultState {
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
-    // sha2 0.11's digest no longer formats as hex itself.
     Sha256::digest(bytes)
         .iter()
         .map(|b| format!("{b:02x}"))
@@ -65,9 +42,6 @@ fn root_missing(root: &Path) -> AppError {
     AppError::Storage(format!("vault folder not found: {}", root.display()))
 }
 
-/// Whether two paths name one file. On a case-insensitive filesystem
-/// `notes.md` and `Notes.md` do, which is what makes a case-only rename
-/// dangerous: removing the "old" path would delete the new file.
 fn same_file(a: &Path, b: &Path) -> bool {
     #[cfg(unix)]
     {
@@ -83,7 +57,6 @@ fn same_file(a: &Path, b: &Path) -> bool {
     }
 }
 
-/// Whether the file at `path` still holds exactly the bytes we wrote.
 fn holds_our_bytes(path: &Path, sha: Option<&str>) -> bool {
     match (fs::read(path), sha) {
         (Ok(bytes), Some(sha)) => sha256_hex(&bytes) == sha,
@@ -91,8 +64,6 @@ fn holds_our_bytes(path: &Path, sha: Option<&str>) -> bool {
     }
 }
 
-/// Where a note's files were last written, and the hashes of what was
-/// written there.
 struct WrittenFiles {
     rel: Option<String>,
     sha: Option<String>,
@@ -100,9 +71,6 @@ struct WrittenFiles {
 }
 
 impl Store {
-    /// Point the mirror at `root`, or stop mirroring with `None`. A new root
-    /// starts from scratch: every note is marked for writing and the old
-    /// folder is left exactly as it was. Stopping leaves the files in place.
     pub fn configure_vault(&mut self, root: Option<&Path>) -> Result<()> {
         let Some(root) = root else {
             self.delete_setting(VAULT_PATH_SETTING)?;
@@ -126,15 +94,11 @@ impl Store {
         Ok(())
     }
 
-    /// Resume the mirror saved by `configure_vault`, at startup. The folder
-    /// need not exist right now (an unmounted drive): flushes report it
-    /// missing and keep notes pending until it is back.
     pub fn attach_saved_vault(&mut self) -> Result<()> {
         self.vault = self.saved_vault_root()?.map(|p| VaultState::new(p.into()));
         Ok(())
     }
 
-    /// The configured vault root, if any.
     pub fn vault_root(&self) -> Option<&Path> {
         self.vault.as_ref().map(|v| v.root.as_path())
     }
@@ -156,7 +120,6 @@ impl Store {
         })
     }
 
-    /// One note in the shape its vault file carries.
     pub fn vault_note(&self, id: &str) -> Result<VaultNote> {
         let note = self.fetch_note(id)?;
         let title_is_auto = self.title_is_auto(id)?;
@@ -191,8 +154,6 @@ impl Store {
         })
     }
 
-    /// What `instantnotes.yaml` holds: tag colors and every space, including
-    /// empty ones (design.md §3.4).
     pub fn vault_manifest(&self) -> Result<Manifest> {
         let mut manifest = Manifest::default();
         for t in self.list_tags()? {
@@ -213,10 +174,6 @@ impl Store {
         Ok(manifest)
     }
 
-    /// Write up to `max` pending notes, process queued removals, and refresh
-    /// `instantnotes.yaml` when it changed. A failure on one note is
-    /// recorded in the outcome and the note stays pending; only a missing
-    /// root fails the whole flush. With no vault configured this is a no-op.
     pub fn flush_vault(&mut self, max: usize) -> Result<FlushOutcome> {
         let Some(root) = self.vault_root().map(Path::to_path_buf) else {
             return Ok(FlushOutcome::default());
@@ -240,9 +197,6 @@ impl Store {
         result
     }
 
-    /// Compare the vault against the store without changing either. Notes
-    /// still pending are counted, not compared: their files are stale by
-    /// definition until the next flush.
     pub fn verify_vault(&self) -> Result<VaultReport> {
         let root = self
             .vault_root()
@@ -319,16 +273,12 @@ impl Store {
         Ok(report)
     }
 
-    // ---- internals ----
-
     fn saved_vault_root(&self) -> Result<Option<String>> {
         Ok(self
             .get_setting(VAULT_PATH_SETTING)?
             .and_then(|v| v.as_str().map(str::to_string)))
     }
 
-    /// Drop every record of files in the current vault. Used when the root
-    /// changes or mirroring stops: those files are no longer ours to manage.
     fn forget_vault_paths(&mut self) -> Result<()> {
         let tx = self.conn.transaction()?;
         tx.execute(
@@ -348,8 +298,6 @@ impl Store {
         )?)
     }
 
-    /// Whether a note other than `except_id` has its file at `rel`.
-    /// Case-insensitive, like the filesystems the vault usually lives on.
     fn vault_path_claimed(&self, rel: &str, except_id: Option<&str>) -> Result<bool> {
         Ok(self
             .conn
@@ -363,8 +311,6 @@ impl Store {
             .is_some())
     }
 
-    /// Whether a note of `kind` has its note file at `note_rel`, which makes
-    /// the surface file of that kind beside it that note's.
     fn surface_claims(&self, note_rel: &str, kind: &str) -> Result<bool> {
         Ok(self
             .conn
@@ -386,8 +332,6 @@ impl Store {
         fs::create_dir_all(&trash).map_err(|e| io_error("cannot create", &trash, e))?;
         let mut out = FlushOutcome::default();
 
-        // Removals first, so a name freed by a deleted note is free for any
-        // note written below.
         let tombstones: Vec<(String, Option<String>)> = {
             let mut stmt = self
                 .conn
@@ -397,7 +341,6 @@ impl Store {
         };
         for (rel, sha) in tombstones {
             let path = root.join(&rel);
-            // A surface file is claimed through the note file it sits beside.
             let claimed = match note_of_surface(&rel) {
                 Some((note_rel, _)) => self.vault_path_claimed(&note_rel, None)?,
                 None => self.vault_path_claimed(&rel, None)?,
@@ -453,10 +396,6 @@ impl Store {
         Ok(out)
     }
 
-    /// Write one note's file (and a surface note's file beside it: a
-    /// whiteboard's canvas, a sheet's CSV), moving them when the name or
-    /// trash state changed, then record where they went and mark the note
-    /// clean.
     fn write_note_file(&mut self, root: &Path, id: &str, old: &WrittenFiles) -> Result<()> {
         let note = self.vault_note(id)?;
         let bytes = serialize_note(&note);
@@ -468,8 +407,6 @@ impl Store {
             .unwrap_or_else(|| domain::derive_title(&note.body));
         let old_rel = old.rel.as_deref();
         let old_path = old_rel.map(|r| root.join(r));
-        // A note that just became a sheet had no surface file before; its
-        // "old" one does not exist, which the checks below treat as free.
         let old_surface = old_rel
             .zip(ext)
             .map(|(r, ext)| root.join(surface_rel(r, ext)));
@@ -498,9 +435,6 @@ impl Store {
                     || old.is_some_and(|old| same_file(old, path))
                     || adopted
             };
-            // A surface file takes its note file's name, so a surface note
-            // needs both names free or already its own. A surface file
-            // beside a note file that is this note's own is its own too.
             let surface_ok = match ext {
                 None => true,
                 Some(ext) => ours(&root.join(surface_rel(&rel, ext)), old_surface.as_deref()),
@@ -515,8 +449,6 @@ impl Store {
         let path = root.join(&rel);
         let surface_path = ext.map(|ext| root.join(surface_rel(&rel, ext)));
         let moved = old_rel.is_some_and(|r| r != rel);
-        // The note file and, for a surface note, its surface file: where
-        // each was, where it goes, and the hash of what was written there.
         let files: Vec<(Option<&Path>, &Path, Option<&str>)> = [
             Some((old_path.as_deref(), path.as_path(), old.sha.as_deref())),
             surface_path
@@ -527,9 +459,6 @@ impl Store {
         .flatten()
         .collect();
 
-        // A case-only rename of our own file: rename first, or on a
-        // case-insensitive filesystem the write below keeps the old spelling
-        // and the removal below would take the only copy.
         if moved {
             for (old, new, _) in &files {
                 if let Some(old) = old.filter(|old| same_file(old, new)) {
@@ -543,8 +472,6 @@ impl Store {
                 .map_err(|e| io_error("cannot write", surface_path, e))?;
         }
         if moved {
-            // Left behind when edited outside the app: that edit is not ours
-            // to discard, and verify reports the file as an orphan.
             for (old, new, sha) in &files {
                 if let Some(old) =
                     old.filter(|old| !same_file(old, new) && holds_our_bytes(old, *sha))

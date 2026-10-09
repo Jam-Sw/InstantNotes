@@ -1,6 +1,3 @@
-//! Aggregate counts for the Settings dashboard. One cheap query per number;
-//! the dashboard is opened rarely and never on a hot path.
-
 use super::*;
 
 impl Store {
@@ -52,11 +49,11 @@ mod tests {
         store.get_or_create_workspace("Ideas").unwrap();
 
         let s = store.library_stats().unwrap();
-        assert_eq!(s.notes_total, 1); // b is trashed, a remains
+        assert_eq!(s.notes_total, 1);
         assert_eq!(s.notes_active, 1);
         assert_eq!(s.notes_pinned, 1);
         assert_eq!(s.notes_trashed, 1);
-        assert_eq!(s.tags, 1); // #work, auto-extracted from a's body
+        assert_eq!(s.tags, 1);
         assert_eq!(s.spaces, 1);
     }
 }

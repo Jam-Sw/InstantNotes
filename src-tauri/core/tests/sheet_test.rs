@@ -1,8 +1,3 @@
-//! Sheet notes in the store: a note whose `content_kind` is `sheet` keeps
-//! its grid in `surface_data` and the grid as a Markdown table in `body`,
-//! derived by the store on every save, so search and inline tags keep
-//! working and every writer produces the same body.
-
 use instantnotes_core::sheet::{Sheet, DEFAULT_TITLE, MAX_ROWS};
 use instantnotes_core::types::*;
 use instantnotes_core::Store;
@@ -22,7 +17,6 @@ fn create(store: &mut Store, body: &str) -> Note {
         .expect("create note")
 }
 
-/// What "New sheet" does: create an empty note, then make it a sheet.
 fn new_sheet(store: &mut Store) -> Note {
     let n = create(store, "");
     store
@@ -77,7 +71,6 @@ fn a_grid_save_derives_the_body_and_its_tags() {
         .map(|t| t.name)
         .collect();
     assert_eq!(tags, vec!["bug"]);
-    // The title stays what it was: the body moves with every cell.
     assert_eq!(saved.title, DEFAULT_TITLE);
 }
 

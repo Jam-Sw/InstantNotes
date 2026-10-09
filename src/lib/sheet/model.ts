@@ -1,17 +1,4 @@
-// A sheet's grid and the pure operations the grid view performs on it. No
-// DOM, no Svelte. The Rust side reads the same envelope (core/src/sheet.rs)
-// and owns the Markdown body and the CSV sidecar, so the frontend never
-// serializes a sheet to anything but this envelope and the TSV clipboard.
-//
-// Stored in note.surfaceData:
-//   { "v": 1, "engine": "grid", "data": { cols: [{ w }], rows: [[""]] } }
-//
-// `rows` is dense (every row has cols.length cells) and holds each cell's
-// raw input. Every operation returns a new Sheet and shares the rows it did
-// not touch, which is what makes undo snapshots cheap.
-
 export const SHEET_ENGINE = "grid";
-/** Columns A to AZ. */
 export const MAX_COLS = 52;
 export const MAX_ROWS = 5000;
 export const MAX_CELL_CHARS = 10_000;
@@ -22,7 +9,6 @@ export const MIN_COL_WIDTH = 40;
 export const MAX_COL_WIDTH = 1200;
 
 export interface Column {
-  /** Width in CSS pixels. */
   w: number;
 }
 
@@ -31,7 +17,6 @@ export interface Sheet {
   rows: string[][];
 }
 
-/** An inclusive, normalized block of cells. */
 export interface Range {
   r0: number;
   c0: number;
@@ -50,7 +35,6 @@ function emptyRow(cols: number): string[] {
   return Array.from({ length: cols }, () => "");
 }
 
-/** The spreadsheet letter(s) of column `c` (0-based): A..Z, AA..AZ. */
 export function columnName(c: number): string {
   const letter = (n: number) => String.fromCharCode(65 + (n % 26));
   return c < 26 ? letter(c) : `${letter(Math.floor(c / 26) - 1)}${letter(c)}`;
@@ -59,12 +43,6 @@ export function columnName(c: number): string {
 const isObject = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === "object" && !Array.isArray(v);
 
-/**
- * The grid stored in `surfaceData`. Anything unreadable opens as the default
- * empty grid rather than failing: the note itself stays intact either way.
- * Rows are made dense and widths sane, so the rest of the module can trust
- * the shape.
- */
 export function parseSheet(raw: string | null | undefined): Sheet {
   let parsed: unknown;
   try {
@@ -98,12 +76,6 @@ export function serializeSheet(sheet: Sheet): string {
   });
 }
 
-/**
- * What a cell shows. The view reads every cell through this one function
- * and never formats a cell itself, so a formula engine can later compute
- * cell values here ("evaluate if it starts with `=`") without the view
- * changing. Today a cell shows exactly what was typed.
- */
 export function display(sheet: Sheet, r: number, c: number): string {
   return sheet.rows[r]?.[c] ?? "";
 }
@@ -112,7 +84,6 @@ export function rowIsEmpty(row: readonly string[]): boolean {
   return row.every((cell) => cell === "");
 }
 
-/** How many rows hold data: the index of the last non-empty row plus one. */
 export function filledRows(sheet: Sheet): number {
   for (let r = sheet.rows.length - 1; r >= 0; r--) {
     if (!rowIsEmpty(sheet.rows[r])) return r + 1;
@@ -135,7 +106,6 @@ function withRow(sheet: Sheet, r: number, row: string[]): Sheet {
   return { cols: sheet.cols, rows };
 }
 
-/** One cell's new input. The same sheet comes back when nothing changed. */
 export function setCell(sheet: Sheet, r: number, c: number, value: string): Sheet {
   const next = clipCell(value);
   if (sheet.rows[r]?.[c] === undefined || sheet.rows[r][c] === next) return sheet;
@@ -157,7 +127,6 @@ export function clearCells(sheet: Sheet, range: Range): Sheet {
   return rows ? { cols: sheet.cols, rows } : sheet;
 }
 
-/** The cells of a range, row by row, for the clipboard. */
 export function rangeBlock(sheet: Sheet, range: Range): string[][] {
   const out: string[][] = [];
   for (let r = range.r0; r <= range.r1; r++) {
@@ -166,11 +135,6 @@ export function rangeBlock(sheet: Sheet, range: Range): string[][] {
   return out;
 }
 
-/**
- * Paste a block with its top-left cell at (r, c). The grid grows to fit,
- * within the limits; what would land past them is dropped and reported so
- * the view can say so.
- */
 export function pasteBlock(
   sheet: Sheet,
   r: number,
@@ -207,8 +171,6 @@ export function pasteBlock(
   return { sheet: out, clipped: wantRows > rowsAfter || wantCols > colsAfter };
 }
 
-/** `n` empty rows before row `at` (at = rows.length appends). Capped at
- *  MAX_ROWS; returns the same sheet when no row fits. */
 export function insertRows(sheet: Sheet, at: number, n: number): Sheet {
   const room = Math.max(0, Math.min(n, MAX_ROWS - sheet.rows.length));
   if (room === 0) return sheet;
@@ -217,7 +179,6 @@ export function insertRows(sheet: Sheet, at: number, n: number): Sheet {
   return { cols: sheet.cols, rows };
 }
 
-/** Remove `count` rows from `from`. A sheet keeps at least one row. */
 export function deleteRows(sheet: Sheet, from: number, count: number): Sheet {
   const n = Math.min(count, sheet.rows.length - 1, sheet.rows.length - from);
   if (n <= 0) return sheet;
@@ -226,7 +187,6 @@ export function deleteRows(sheet: Sheet, from: number, count: number): Sheet {
   return { cols: sheet.cols, rows };
 }
 
-/** `n` empty columns before column `at`. Capped at MAX_COLS. */
 export function insertCols(sheet: Sheet, at: number, n: number): Sheet {
   const room = Math.max(0, Math.min(n, MAX_COLS - sheet.cols.length));
   if (room === 0) return sheet;
@@ -239,7 +199,6 @@ export function insertCols(sheet: Sheet, at: number, n: number): Sheet {
   };
 }
 
-/** Remove `count` columns from `from`. A sheet keeps at least one column. */
 export function deleteCols(sheet: Sheet, from: number, count: number): Sheet {
   const n = Math.min(count, sheet.cols.length - 1, sheet.cols.length - from);
   if (n <= 0) return sheet;
@@ -259,12 +218,6 @@ export function resizeCol(sheet: Sheet, c: number, w: number): Sheet {
   return { cols, rows: sheet.rows };
 }
 
-/**
- * Rows added after the last row holding data, reusing the empty rows at the
- * bottom before the grid grows, as the Rust side does for an agent's
- * append. Rows are padded or cut to the sheet's width; rows past MAX_ROWS
- * are dropped.
- */
 export function appendRows(sheet: Sheet, rows: readonly (readonly string[])[]): Sheet {
   if (rows.length === 0) return sheet;
   const width = sheet.cols.length;
@@ -278,13 +231,6 @@ export function appendRows(sheet: Sheet, rows: readonly (readonly string[])[]): 
   return { cols: sheet.cols, rows: next };
 }
 
-/**
- * Two writers, one sheet. `base` is the version this window last saw on
- * disk, `mine` the grid as it is here, `theirs` what another process (an
- * agent) wrote since. An agent can only append, so what it added is every
- * non-empty row of `theirs` past `base`'s data; those rows go onto `mine`.
- * Nothing of the user's is touched and nothing of the agent's is lost.
- */
 export function mergeAppended(
   base: Sheet,
   mine: Sheet,

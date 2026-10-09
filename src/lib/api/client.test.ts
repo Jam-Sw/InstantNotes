@@ -1,5 +1,3 @@
-// Workspace API client wrappers: command names, argument shapes, and error
-// mapping, with the Tauri invoke boundary mocked.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const invoke = vi.fn();

@@ -1,13 +1,5 @@
-//! Capture reveal-to-ready latency: a rolling median surfaced in the About
-//! panel. "Capture is discharge" only holds if the panel is ready before the
-//! thought decays, so reveal-to-input-ready is tracked as a first-class number.
-//! The anchor is the moment the shell starts revealing the window (the earliest
-//! point we control; the OS delivers no hotkey-press timestamp). Note content is
-//! never involved here.
-
 use crate::*;
 
-/// Rolling window; enough for a stable median, small enough to forget history.
 const CAPTURE_SAMPLE_CAP: usize = 50;
 
 #[derive(Default)]
@@ -22,7 +14,6 @@ struct CaptureMetricsInner {
 }
 
 impl CaptureMetrics {
-    /// Stamp the reveal start; the next capture_input_ready measures against it.
     pub(crate) fn mark_shown(&self) {
         if let Ok(mut inner) = self.inner.lock() {
             inner.shown_at = Some(std::time::Instant::now());
@@ -54,9 +45,6 @@ fn median_ms(samples: &[u64]) -> Option<u64> {
     Some(sorted[sorted.len() / 2])
 }
 
-/// Called by the capture webview once its textarea has focus after a
-/// reveal (post-paint). Consumes the pending stamp so a stray call can
-/// never double-record; returns the measured reveal-to-ready milliseconds.
 #[tauri::command]
 pub fn capture_input_ready(metrics: State<'_, CaptureMetrics>) -> CmdResult<Option<u64>> {
     let mut inner = metrics
@@ -95,7 +83,6 @@ mod tests {
             push_capture_sample(&mut samples, ms);
         }
         assert_eq!(samples.len(), CAPTURE_SAMPLE_CAP);
-        // Oldest entries were evicted; the newest survives.
         assert_eq!(samples.first().copied(), Some(10));
         assert_eq!(samples.last().copied(), Some(CAPTURE_SAMPLE_CAP as u64 + 9));
     }
@@ -104,9 +91,7 @@ mod tests {
     fn median_is_none_when_empty_and_stable_against_outliers() {
         assert_eq!(median_ms(&[]), None);
         assert_eq!(median_ms(&[40]), Some(40));
-        // One slow cold start must not drag the reported number.
         assert_eq!(median_ms(&[35, 38, 40, 42, 900]), Some(40));
-        // Input order is irrelevant.
         assert_eq!(median_ms(&[900, 40, 35, 42, 38]), Some(40));
     }
 }

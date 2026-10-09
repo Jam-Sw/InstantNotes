@@ -1,8 +1,3 @@
-// Theme state (Svelte 5 runes). Holds the active theme id, the light/dark
-// mode, and any imported custom themes; resolves the effective variant and
-// writes tokens to :root via apply. Persists to the existing settings KV so
-// the choice survives restarts and is shared with the capture window.
-
 import { getSetting, setSetting, setWindowVibrancy, setWindowTheme } from "$lib/api/client";
 import { applyTheme } from "$lib/themes/apply";
 import { BUILTIN_THEMES, DEFAULT_THEME_ID } from "$lib/themes/builtin";
@@ -24,9 +19,7 @@ class ThemeStore {
   activeId = $state(DEFAULT_THEME_ID);
   mode = $state<ThemeMode>("auto");
   customThemes = $state<Theme[]>([]);
-  /** User-chosen body font id, or null to use the theme's default font slot. */
   bodyFontId = $state<BodyFontId | null>(null);
-  // Tracks the OS appearance so `auto` can resolve and react to changes.
   systemDark = $state(true);
 
   #initialized = false;
@@ -44,8 +37,6 @@ class ThemeStore {
     return this.mode;
   }
 
-  /** Read system preference + persisted settings, then apply. Safe to call
-   *  again (e.g. on capture:shown) to pick up changes made in another window. */
   async init(): Promise<void> {
     if (!this.#initialized) {
       this.#initialized = true;
@@ -80,14 +71,11 @@ class ThemeStore {
         this.bodyFontId = bodyFont as BodyFontId;
       }
     } catch {
-      // Settings are best-effort; fall back to the default theme silently.
     }
   }
 
   #apply(): void {
     applyTheme(this.activeTheme, this.resolvedVariant);
-    // Body font override: write --font-body after applyTheme so the user's
-    // choice wins regardless of the theme's body font slot.
     if (this.bodyFontId) {
       const font = BODY_FONTS.find((f) => f.id === this.bodyFontId);
       if (font) document.documentElement.style.setProperty("--font-body", font.value);
@@ -96,20 +84,10 @@ class ThemeStore {
     void this.#syncWindowTheme();
   }
 
-  /** Ask the OS to render (or clear) the active theme's window material, and
-   *  mark the document so the CSS can go translucent. Only the library window
-   *  owns vibrancy; the capture panel has its own transparent styling. If the
-   *  native call is unavailable (browser dev, non-macOS, older OS) the document
-   *  stays opaque so nothing looks broken. */
   async #syncVibrancy(): Promise<void> {
-    // The library is the one window with a material behind it; a sticky or the
-    // capture panel marked translucent would show its desktop through.
     if (location.pathname !== "/") return;
     const root = document.documentElement;
     const named = this.activeTheme.material;
-    // Materials are macOS's. Elsewhere the page stays opaque and a theme's
-    // translucent sidebar colour sits over --bg. On macOS a theme that names
-    // no material gets the sidebar one, which is what a sidebar is made of.
     const material = !isMac || named === "none" ? null : (named ?? DEFAULT_MATERIAL);
     try {
       await setWindowVibrancy(material);
@@ -120,21 +98,15 @@ class ThemeStore {
     }
     if (material) root.dataset.vibrancy = material;
     else delete root.dataset.vibrancy;
-    // Derived: the theme's sidebar colour is opaque and the CSS thins it.
     if (material && !named) root.dataset.vibrancyDerived = "";
     else delete root.dataset.vibrancyDerived;
   }
 
-  /** Match the native window chrome (titlebar, traffic lights) to the resolved
-   *  light/dark variant, so the macOS decorations follow the in-app theme rather
-   *  than the launch-time system appearance. Library window only; a no-op in
-   *  browser dev or off macOS, where the native call is unavailable. */
   async #syncWindowTheme(): Promise<void> {
     if (location.pathname.startsWith("/capture")) return;
     try {
       await setWindowTheme(this.resolvedVariant);
     } catch {
-      // Best-effort; nothing to clean up if the native call is unavailable.
     }
   }
 
@@ -151,12 +123,10 @@ class ThemeStore {
     void setSetting(KEY_MODE, mode);
   }
 
-  /** Flip to the opposite of whatever is showing, pinning an explicit mode. */
   toggleLightDark(): void {
     this.setMode(this.resolvedVariant === "dark" ? "light" : "dark");
   }
 
-  /** Add or replace a custom theme (by id), persist, and make it active. */
   addCustomTheme(theme: Theme): void {
     this.customThemes = [
       ...this.customThemes.filter((t) => t.id !== theme.id),
@@ -172,14 +142,12 @@ class ThemeStore {
     if (this.activeId === id) this.setTheme(DEFAULT_THEME_ID);
   }
 
-  /** Set the user body font override. Pass null to revert to the theme default. */
   setBodyFont(id: BodyFontId | null): void {
     this.bodyFontId = id;
     this.#apply();
     void setSetting(KEY_BODY_FONT, id);
   }
 
-  /** Serialize a theme to pretty JSON for export. Defaults to the active one. */
   serialize(id: string = this.activeId): string {
     const theme = this.allThemes.find((t) => t.id === id) ?? this.activeTheme;
     return JSON.stringify(theme, null, 2);

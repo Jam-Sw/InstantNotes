@@ -1,5 +1,3 @@
-//! Workspace commands.
-
 use crate::*;
 
 #[tauri::command(async)]

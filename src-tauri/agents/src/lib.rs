@@ -1,36 +1,3 @@
-//! Agent access: InstantNotes as a Model Context Protocol server.
-//!
-//! Any agent or coding CLI (Claude Code, Codex, Cursor, Claude Desktop)
-//! reads and writes the library by launching the app's own binary in a
-//! second mode:
-//!
-//! ```text
-//! instantnotes mcp --db <library.db> [--attachments <dir>]
-//! ```
-//!
-//! That process opens the same SQLite file through `instantnotes-core`, so
-//! every business rule (titles, inline tags, trash) is the app's own, and
-//! speaks MCP on stdin/stdout. It does not need the app to be running; when
-//! the app is running, it notices the writes through SQLite's `data_version`
-//! (see `src-tauri/src/shell/agents.rs`).
-//!
-//! Layout: `protocol` is the JSON-RPC loop, `tools` is the tool surface,
-//! `access` is the permission gate in front of it, `activity` is the trace
-//! the app reads back, and this file is the command-line entry point. The
-//! crate never touches Tauri, so it is tested without a window.
-//!
-//! Invariants:
-//! - stdout carries protocol messages only; stderr carries nothing that
-//!   includes note content (openspec/project.md: content never in logs).
-//! - Every call is traced in the library's `agent_activity` table, writes
-//!   with the note as it was, so the app can show and revert them.
-//! - A connection is on record in `agent_sessions` for as long as the process
-//!   lives, and holds a lock file beside the library that says so truthfully.
-//! - Access is off until the user turns it on in Settings > Agents, and is
-//!   re-read on every call, so turning it off applies immediately.
-//! - The store is opened with `Store::open`, never `open_or_recover`: an agent
-//!   process must never be the one to set a library aside.
-
 mod access;
 mod activity;
 mod protocol;
@@ -45,12 +12,8 @@ use std::ffi::OsString;
 use std::io::{stdin, stdout};
 use std::path::PathBuf;
 
-/// The subcommand that selects this mode.
 pub const SUBCOMMAND: &str = "mcp";
 
-/// Entry point for `main()`: returns `None` when the arguments do not ask
-/// for the MCP server, so the app starts as usual, and the exit code when
-/// they do.
 pub fn run_from_args(mut args: impl Iterator<Item = OsString>) -> Option<i32> {
     if args.next().as_deref() != Some(SUBCOMMAND.as_ref()) {
         return None;
@@ -71,13 +34,10 @@ pub fn run_from_args(mut args: impl Iterator<Item = OsString>) -> Option<i32> {
     let mut store = match Store::open(&db) {
         Ok(store) => store,
         Err(e) => {
-            // The error names the file, never a note.
             eprintln!("instantnotes mcp: cannot open the library: {e}");
             return Some(1);
         }
     };
-    // Held until this process ends, however it ends: the app reads the lock
-    // to know the agent is still connected.
     let session = new_session();
     let _alive = hold_session_lock(&db, &session);
     match serve_as(
@@ -100,8 +60,6 @@ fn usage() -> i32 {
     2
 }
 
-/// A store error as the agent sees it: the stable code first, so a model
-/// can branch on `CONFLICT` or `NOT_FOUND`.
 fn fail(e: AppError) -> String {
     match &e {
         AppError::NotFound(what) if what.starts_with("note ") => format!(
