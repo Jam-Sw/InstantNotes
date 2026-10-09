@@ -10,77 +10,61 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.9.4]
 
 ### Added
-- Agents: `edit_note` replaces one exact `oldText` that appears once in a document.
-- Agents: `search_notes` takes `detail: "titles"` and `status` `pinned` or `trash`; `get_note` takes `maxChars` and `bodyOffset`; `suggest_space` takes `offset`.
-- Sheet notes: a third kind of note, a cell grid that stays a note. New sheet
-  from the palette, the ＋ menu, or File > New Sheet. It works like Sheets or
-  Excel: type into a cell, Tab across, Enter down (a new row appears at the
-  bottom), copy and paste ranges to and from Google Sheets, Excel, and
-  Numbers, undo and redo, resize columns, insert and delete rows and columns
-  from the header menus. A sheet is listed, tagged, filed, searched, popped
-  out as a sticky, and exported like any note; its cells are its text, so
-  `#tags` typed into cells tag the note. In the vault it is a Markdown table
-  with a `.csv` beside it; Export Note writes the `.csv`. Agents get
-  `append_sheet_rows` to log rows into a sheet, and rows an agent adds appear
-  in the open grid without a reload, beside anything still being typed.
-- Graph: 3D layout (`d3-force-3d`, held to a slab by `forceZ`, Barnes-Hut
-  `theta` 1.2); right-drag, Shift+drag or arrow keys turn it about the framed
-  nodes, drawn in perspective back to front. Pan, zoom and lens unchanged.
-- Agents: Settings > Agents lists each kind of agent (Claude Code, Codex and so
-  on) with two controls. Tags are put on every note it creates, separated by
-  commas. Block refuses everything it asks for, leaves no trace in its history,
-  and can be undone from the same row or from the agent's own page.
-- Agents: an agent's page shows a punch card of when it clocked in and clocked
-  out. An agent that reconnects under the same session stays one conversation
-  with every clock-in listed, instead of splitting into several. Each activity
-  entry has an "Open note" button, and a connected agent has "End session",
-  which asks first and then disconnects it.
-- Agents: a note an agent last changed carries a small mark in the editor
-  ("Last changed by Claude Code"), and in the graph it gets a ring and is read
-  out as written by an agent.
-- Notes: the open note can suggest a tag from its own words and tags. One tap
-  adds it; hovering shows how sure it is and why. Settings > Editor turns the
-  suggestions off and sets how sure they must be (Eager, Balanced, Careful).
-- Notes: drag a link from a browser onto a note and it lands as a Markdown link
-  carrying the page's title.
-- Capture: under the box, the notes you had open recently. Tab cycles through
-  them and Enter adds the capture to that note instead of making a new one.
-- Capture (Linux, Wayland): the welcome screen now says the built-in capture
-  shortcut only reaches InstantNotes while an X11 app is focused, and points to
-  binding a key to `instantnotes capture` in your desktop's keyboard settings.
-- Settings: the search box lists every matching setting across all pages, with
-  the page it lives on. Click one to go there.
-- Sidebar: with many Spaces, it shows the six with the most notes plus the open
-  one, and "N more" opens the rest.
+- Sheet notes: a third note kind, a cell grid (Tab/Enter entry, range paste to and from Sheets, Excel and
+  Numbers, undo, resizable columns). Stored in the vault as a Markdown table plus a `.csv`.
+- Agents: `edit_note` replaces one exact `oldText` that occurs once; `append_sheet_rows` adds rows to a sheet.
+- Agents: `search_notes` takes `detail: "titles"` and `status` `pinned`/`trash`; `get_note` takes `maxChars`
+  and `bodyOffset`; `suggest_space` takes `offset`.
+- Agents: Settings > Agents sets per-kind tags for every note an agent creates, and Block, which refuses all
+  of that agent's calls.
+- Agents: an agent's page shows a clock-in punch card, keeps a reconnect under the same session as one
+  conversation, and offers "End session".
+- Agents: a note an agent last changed shows "Last changed by" and the agent's name in the editor, and a
+  ring in the graph.
+- Graph: 3D layout (`d3-force-3d`, `forceZ` slab, Barnes-Hut `theta` 1.2); right-drag, Shift+drag or the
+  arrow keys rotate it.
+- Notes: one-tap tag suggestions from the note's own words; Settings > Editor sets Eager, Balanced, Careful
+  or off.
+- Notes: a link dropped from a browser becomes a Markdown link with the page title.
+- Capture: recent notes are listed under the box; Tab picks one and Enter appends the capture to it.
+- Capture (Linux, Wayland): the welcome screen says the global shortcut fires only while an X11 app is
+  focused, and suggests binding `instantnotes capture`.
+- Settings: search lists every matching setting across all pages.
+- Sidebar: with many Spaces, the six largest plus the open one show, and a "more" row opens the rest.
 
 ### Changed
-- Speed: on a library of 20,000 notes the note list loads in 3 ms instead of 79 ms, the tag and Space lists in about 30 ms instead of 3 s, and the filing suggestions take about 2 s instead of 5 s and run beside the app instead of in front of it, so a save, a search or opening a note never waits for them. The first screen loads a quarter of the JavaScript it did: the editor, Settings and the Graph load in the background just after launch.
-- Search: the first one, two and three letters of a word search up to seven times faster on a large library, which is what the first keystrokes of a search are. The library is re-indexed once, on the first launch after the update; about 3 seconds at 20,000 notes, unnoticeable below a few thousand. Results and their order do not change.
-- The window opens in your theme on Linux and Windows instead of flashing white, and every launch starts with your theme's colors in place instead of the default ones for a moment. The first launch after the update still shows the default colors once.
-- The first automatic check for an update waits eight seconds after launch; "Check for updates" is still immediate.
-- Agents: the panel's connection check no longer holds up saves while it reads each client's own files, and a large vault write is done in smaller pieces so a save never waits behind it.
-- A library over 4 MB is no longer scanned for damage at every launch. It is scanned after a session that did not end cleanly, after any read that reports a problem, when the last scan is a week old, and the first time it is opened. Smaller libraries are still scanned every time.
-- Agents: writes return the note without its body; `get_note` and `get_notes` cut bodies at `maxChars` (12,000, 60,000 shared per `get_notes`).
-- Agents: `search_notes` defaults to 10 results, refuses an empty query, and returns a `hint` on no match; every page echoes `limit`.
-- Agents: `create_note` and `add_to_space` return `createdSpace`; resource reads are traced; a sheet's view returns `sheet.header`.
-- Agents: `INSTRUCTIONS`, every tool description and refusal rewritten: a saved thought is a new note via `create_note` (not appended to an existing one), each refusal names the next step; `search_notes` results carry `kind`.
-- Graph: labels never overlap: placed by priority (open note, hovered, lit,
-  hubs by degree, nearest) under or else over their node (`rbush`), above all nodes.
+- Speed at 20,000 notes: note list 79 ms to 3 ms, tag and Space lists 3 s to 30 ms, filing suggestions 5 s
+  to 2 s on their own read connection, so saves and searches never wait for them.
+- Search: one- to three-letter prefixes are up to 7x faster via a prefix index; the library re-indexes once
+  on first launch (about 3 s at 20,000 notes). Results are unchanged.
+- Startup: the first screen loads a quarter of the JavaScript; the editor, Settings and the Graph load just
+  after launch.
+- Theme: saved colors apply before first paint; on Linux and Windows the window opens in the theme's
+  background instead of white.
+- Updater: the first automatic check runs 8 s after launch; "Check for updates" stays immediate.
+- Saves no longer wait on the agent connection check, and large vault writes are split into smaller pieces.
+- Integrity scan: libraries over 4 MB are scanned only after an unclean exit, a read error, a week, or on
+  first open; smaller ones at every launch.
+- Agents: writes return notes without bodies; `get_note`/`get_notes` cap bodies at `maxChars` (12,000;
+  60,000 shared per `get_notes`).
+- Agents: `search_notes` defaults to 10 results, refuses an empty query, returns a `hint` on no match and
+  echoes `limit`; its results carry `kind`.
+- Agents: `create_note` and `add_to_space` return `createdSpace`; resource reads are traced; a sheet's view
+  returns `sheet.header`.
+- Agents: `INSTRUCTIONS`, tool descriptions and refusals rewritten: a new thought is a new note via
+  `create_note`, and each refusal names the next step.
+- Graph: labels never overlap; they are placed by priority under or over their node (`rbush`), above all
+  nodes.
 
 ### Fixed
-- Updater: the installed-update note offers "Restart now" (`restart_app`: quit
-  handshake, then `request_restart`); closing the window only hid to the tray,
-  so the old version kept running.
-- Layout: a window narrower than 960px hides the sidebar, and the sidebar toggle
-  brings it back over the list.
-- Editor: a long list item that wraps now hangs under its own text, not under
-  its bullet. In a narrow editor the title shrinks instead of squashing, and
-  the open note's title shows in the top bar.
-- Spaces and filters: switching Space or filter keeps the note you had open
-  whenever that note is also in the new view.
-- Graph: long labels are cut at 28 characters with an ellipsis, labels keep off
-  other nodes unless the note is open, hovered or lit, the side panel has a
-  solid background, and its small grey text is darker.
+- Updater: the installed-update note offers "Restart now" (`restart_app`); closing the window only hid it to
+  the tray, so the old version kept running.
+- Layout: below 960 px the sidebar hides, and its toggle brings it back over the list.
+- Editor: wrapped list items hang under their text; in a narrow editor the title shrinks and shows in the
+  top bar.
+- Spaces and filters: switching keeps the open note when it is also in the new view.
+- Graph: labels are cut at 28 characters and kept off other nodes unless open, hovered or lit; the side
+  panel has a solid background and darker small text.
 
 ## [0.9.3] - 2026-10-02
 
