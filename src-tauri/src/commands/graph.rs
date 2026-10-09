@@ -7,7 +7,7 @@ pub fn library_graph(state: State<'_, AppState>) -> CmdResult<LibraryGraph> {
 
 #[tauri::command(async)]
 pub fn space_suggestions(state: State<'_, AppState>) -> CmdResult<Vec<SpaceSuggestion>> {
-    Ok(locked_reader(&state)?.space_suggestions()?)
+    Ok(locked_analyst(&state)?.space_suggestions()?)
 }
 
 #[tauri::command(async)]
@@ -15,7 +15,7 @@ pub fn tag_suggestion(
     state: State<'_, AppState>,
     note_id: String,
 ) -> CmdResult<Option<TagSuggestion>> {
-    Ok(locked_reader(&state)?.tag_suggestion(&note_id)?)
+    Ok(locked_analyst(&state)?.tag_suggestion(&note_id)?)
 }
 
 #[tauri::command(async)]

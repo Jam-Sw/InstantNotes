@@ -14,6 +14,7 @@ pub(crate) static LIBRARY_DB: std::sync::OnceLock<std::path::PathBuf> = std::syn
 struct AppState {
     store: Mutex<Store>,
     reader: Mutex<Store>,
+    analyst: Mutex<Store>,
 }
 
 fn locked<'a>(
@@ -29,6 +30,15 @@ pub(crate) fn close_session() {
     if let Some(path) = LIBRARY_DB.get() {
         Store::mark_session_closed(path);
     }
+}
+
+fn locked_analyst<'a>(
+    state: &'a State<'_, AppState>,
+) -> Result<std::sync::MutexGuard<'a, Store>, CmdError> {
+    state
+        .analyst
+        .lock()
+        .map_err(|_| CmdError::storage("internal state lock poisoned"))
 }
 
 fn locked_reader<'a>(
@@ -139,9 +149,12 @@ pub fn run() {
             Store::mark_session_open(&db_path);
             let reader =
                 Store::open_reader(&db_path).map_err(|e| format!("cannot open reader: {e}"))?;
+            let analyst =
+                Store::open_reader(&db_path).map_err(|e| format!("cannot open analyst: {e}"))?;
             app.manage(AppState {
                 store: Mutex::new(store),
                 reader: Mutex::new(reader),
+                analyst: Mutex::new(analyst),
             });
             app.manage(CaptureMetrics::default());
             app.manage(start_vault_flusher(app.handle()));
