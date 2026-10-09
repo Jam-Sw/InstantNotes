@@ -131,7 +131,9 @@ until the user edits the title directly.
 ## 7. Full-text search
 
 `notes_fts` is an FTS5 external-content table over `title` and `body`
-(`content='notes'`, `content_rowid='seq'`, `porter unicode61` tokenizer).
+(`content='notes'`, `content_rowid='seq'`, `porter unicode61` tokenizer, and a prefix
+index for one, two and three letters, so the first keystrokes of a search do not expand
+every word that starts with them; migration 14 rebuilds the table to add it).
 Triggers keep it in sync on insert, delete, and title/body update. Search
 accepts plain user input without exposing FTS syntax errors.
 
@@ -182,6 +184,8 @@ public so tests can build fixtures at a historical schema version.
 | v10 | `agent_sessions.label`, `client_session`, `cwd`, `client_pid`: which instance of the client a connection is (section 11). |
 | v11 | `agent_sessions.matched`: whether that session was stated by the client or inferred (section 11). |
 | v12 | The hard-delete trigger queues a sheet's `.csv` under its own extension, beside a whiteboard's `.excalidraw` (section 10). No column: sheets live on the v4 and v6 columns. |
+| v13 | `idx_notes_list` (the note list's own sort order, so listing never sorts) and `idx_notes_revisit` (never-opened notes) replace `idx_notes_flags`. No column. |
+| v14 | `notes_fts` rebuilt with a prefix index for one, two and three letters (section 7). Search results and their order are unchanged. |
 
 v4 exists because pre-release builds that carried the whiteboard already
 migrated some libraries to it before the whiteboard was lifted off the 0.9.0

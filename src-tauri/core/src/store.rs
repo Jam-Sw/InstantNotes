@@ -65,9 +65,6 @@ CREATE TABLE settings (
   updated_at TEXT NOT NULL
 );
 
--- content_rowid is an explicit INTEGER PRIMARY KEY alias (`seq`), per the
--- FTS5 external-content documentation pattern; the implicit rowid is not
--- guaranteed stable across VACUUM.
 CREATE VIRTUAL TABLE notes_fts USING fts5(
   title, body,
   content='notes', content_rowid='seq',
@@ -120,7 +117,6 @@ CREATE INDEX idx_notes_vault_dirty ON notes(vault_dirty) WHERE vault_dirty = 1;
 CREATE INDEX idx_notes_vault_path ON notes(vault_path COLLATE NOCASE)
   WHERE vault_path IS NOT NULL;
 
--- A hard-deleted note leaves no row to flag, so its file is queued here.
 CREATE TABLE vault_tombstones (
   vault_path TEXT PRIMARY KEY,
   file_sha   TEXT
@@ -140,7 +136,6 @@ CREATE TRIGGER notes_vault_ad AFTER DELETE ON notes
     VALUES (old.vault_path, old.file_sha);
 END;
 
--- Edge changes, including the cascades from deleting a tag or a space.
 CREATE TRIGGER note_tags_vault_ai AFTER INSERT ON note_tags BEGIN
   UPDATE notes SET vault_dirty = 1 WHERE id = new.note_id;
 END;
@@ -154,8 +149,6 @@ CREATE TRIGGER note_workspaces_vault_ad AFTER DELETE ON note_workspaces BEGIN
   UPDATE notes SET vault_dirty = 1 WHERE id = old.note_id;
 END;
 
--- Names are what the frontmatter carries; a color change touches only
--- instantnotes.yaml, which the flush compares on its own.
 CREATE TRIGGER tags_vault_au AFTER UPDATE OF name ON tags
   WHEN old.name IS NOT new.name BEGIN
   UPDATE notes SET vault_dirty = 1
@@ -251,6 +244,16 @@ DROP INDEX idx_notes_flags;
 CREATE INDEX idx_notes_list ON notes(is_deleted, is_archived, is_pinned DESC, updated_at DESC, id);
 CREATE INDEX idx_notes_revisit ON notes(created_at, id)
   WHERE is_deleted = 0 AND is_archived = 0 AND last_opened_at IS NULL;
+"#,
+    r#"
+DROP TABLE notes_fts;
+CREATE VIRTUAL TABLE notes_fts USING fts5(
+  title, body,
+  content='notes', content_rowid='seq',
+  tokenize='porter unicode61',
+  prefix='1 2 3'
+);
+INSERT INTO notes_fts(notes_fts) VALUES ('rebuild');
 "#,
 ];
 
@@ -1016,6 +1019,144 @@ mod migration_tests {
         assert!(indexes.contains(&"idx_notes_list".to_string()));
         assert!(indexes.contains(&"idx_notes_revisit".to_string()));
         assert_eq!(store.get_note("n1", false).unwrap().body, "the body");
+    }
+
+    #[test]
+    fn v14_adds_a_prefix_index_to_search_and_keeps_every_result() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("v13.db");
+        let words = [
+            "alpha",
+            "alphabet",
+            "beta",
+            "gamma",
+            "garden",
+            "gardening",
+            "delta",
+            "note",
+            "notes",
+            "quick",
+            "quickly",
+            "wonder",
+            "world",
+            "word",
+            "words",
+            "work",
+            "working",
+        ];
+        {
+            let conn = Connection::open(&path).unwrap();
+            for sql in &MIGRATIONS[..13] {
+                conn.execute_batch(sql).unwrap();
+            }
+            conn.pragma_update(None, "user_version", 13i64).unwrap();
+            for i in 0..60 {
+                let title = format!(
+                    "{} {}",
+                    words[i % words.len()],
+                    words[(i * 7) % words.len()]
+                );
+                let body = (0..40)
+                    .map(|j| words[(i * 3 + j * 5) % words.len()])
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                conn.execute(
+                    "INSERT INTO notes (id, title, body, created_at, updated_at) \
+                     VALUES (?1, ?2, ?3, 't', 't')",
+                    rusqlite::params![format!("n{i}"), title, body],
+                )
+                .unwrap();
+            }
+            conn.execute(
+                "UPDATE notes SET body = body || ' extra' WHERE id = 'n3'",
+                [],
+            )
+            .unwrap();
+            conn.execute("DELETE FROM notes WHERE id = 'n9'", [])
+                .unwrap();
+        }
+
+        let store = Store::open(&path).unwrap();
+        let ddl: String = store
+            .conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE name = 'notes_fts'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(ddl.contains("prefix='1 2 3'"), "{ddl}");
+
+        store
+            .conn
+            .execute_batch(
+                "CREATE VIRTUAL TABLE notes_fts_plain USING fts5(\
+                   title, body, content='notes', content_rowid='seq', \
+                   tokenize='porter unicode61'); \
+                 INSERT INTO notes_fts_plain(notes_fts_plain) VALUES ('rebuild');",
+            )
+            .unwrap();
+        let ranked = |table: &str, q: &str| -> Vec<(String, f64)> {
+            let expr = crate::store::fts_match_expr(q).unwrap();
+            let mut stmt = store
+                .conn
+                .prepare(&format!(
+                    "SELECT n.id, bm25({table}) FROM {table} \
+                     JOIN notes n ON n.seq = {table}.rowid \
+                     WHERE {table} MATCH ?1 ORDER BY bm25({table}), {table}.rowid"
+                ))
+                .unwrap();
+            let rows = stmt
+                .query_map([expr], |r| Ok((r.get(0)?, r.get(1)?)))
+                .unwrap();
+            rows.collect::<rusqlite::Result<Vec<_>>>().unwrap()
+        };
+        let mut matched = 0;
+        for q in [
+            "a",
+            "al",
+            "alp",
+            "alph",
+            "w",
+            "wo",
+            "wor",
+            "word",
+            "work working",
+            "g",
+            "ga",
+            "qui",
+            "n",
+            "extra",
+            "zzz",
+            "alpha beta",
+            "d",
+        ] {
+            let with_prefix = ranked("notes_fts", q);
+            assert_eq!(with_prefix, ranked("notes_fts_plain", q), "{q}");
+            assert_eq!(
+                store
+                    .search_notes(q, 500)
+                    .unwrap()
+                    .into_iter()
+                    .map(|r| r.note_id)
+                    .collect::<Vec<_>>(),
+                with_prefix.iter().map(|r| r.0.clone()).collect::<Vec<_>>(),
+                "{q}"
+            );
+            matched += with_prefix.len();
+        }
+        assert!(matched > 200);
+
+        store
+            .conn
+            .execute(
+                "UPDATE notes SET body = 'freshly written wonderland' WHERE id = 'n4'",
+                [],
+            )
+            .unwrap();
+        let hits = store.search_notes("wonderl", 10).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].note_id, "n4");
     }
 
     #[test]
