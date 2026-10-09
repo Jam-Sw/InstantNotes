@@ -288,6 +288,12 @@ const STOP_WORDS: &[&str] = &[
     "we've",
 ];
 
+fn is_stop_word(word: &str) -> bool {
+    static SET: std::sync::LazyLock<std::collections::HashSet<&'static str>> =
+        std::sync::LazyLock::new(|| STOP_WORDS.iter().copied().collect());
+    SET.contains(word)
+}
+
 /// The words a note's text is about, for the Graph's filing suggestions
 /// (API.md section 4): lowercase runs of letters and digits, three
 /// characters or longer, that are not all digits and not stop words, each
@@ -304,10 +310,11 @@ pub fn content_words(text: &str) -> Vec<String> {
         |word: &mut String, out: &mut Vec<String>, seen: &mut std::collections::HashSet<String>| {
             if word.chars().count() >= 3
                 && !word.chars().all(|c| c.is_ascii_digit())
-                && !STOP_WORDS.contains(&word.as_str())
-                && seen.insert(word.clone())
+                && !is_stop_word(word)
+                && !seen.contains(word.as_str())
             {
-                out.push(word.clone());
+                seen.insert(word.clone());
+                out.push(std::mem::take(word));
             }
             word.clear();
         };

@@ -104,9 +104,16 @@ impl Model {
                 };
                 class.members += 1;
                 for (feature, weight) in ex.features {
-                    *class.counts.entry(feature.clone()).or_insert(0.0) += weight;
+                    match class.counts.get_mut(feature) {
+                        Some(count) => *count += weight,
+                        None => {
+                            class.counts.insert(feature.clone(), *weight);
+                        }
+                    }
                     class.total += weight;
-                    vocabulary.insert(feature.clone());
+                    if !vocabulary.contains(feature) {
+                        vocabulary.insert(feature.clone());
+                    }
                 }
             }
         }
