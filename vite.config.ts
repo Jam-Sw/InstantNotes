@@ -26,6 +26,9 @@ export default defineConfig(async () => ({
     port: 1422,
     strictPort: true,
     host: host || false,
+    fs: {
+      allow: ["src-tauri/installer", "CHANGELOG.md"],
+    },
     hmr: host
       ? {
           protocol: "ws",
