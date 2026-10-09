@@ -1943,6 +1943,7 @@ dependencies = [
  "chrono",
  "plist",
  "rusqlite",
+ "rustc-hash",
  "serde",
  "serde_json",
  "serde_norway",

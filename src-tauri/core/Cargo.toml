@@ -11,6 +11,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+rustc-hash = "2"
 serde_norway = "0.9.42"
 sha2 = "0.11"
 # Apple Stickies' state file; already in the app through Tauri.

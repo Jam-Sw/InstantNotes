@@ -266,31 +266,55 @@ const STOP_WORDS: &[&str] = &[
     "we've",
 ];
 
-fn is_stop_word(word: &str) -> bool {
-    static SET: std::sync::LazyLock<std::collections::HashSet<&'static str>> =
-        std::sync::LazyLock::new(|| STOP_WORDS.iter().copied().collect());
-    SET.contains(word)
+fn stop_words() -> &'static (std::collections::HashSet<&'static str>, usize) {
+    static SET: std::sync::LazyLock<(std::collections::HashSet<&'static str>, usize)> =
+        std::sync::LazyLock::new(|| {
+            let longest = STOP_WORDS.iter().map(|w| w.len()).max().unwrap_or(0);
+            (STOP_WORDS.iter().copied().collect(), longest)
+        });
+    &SET
 }
 
-pub fn content_words(text: &str) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    let mut seen = std::collections::HashSet::new();
-    let mut word = String::new();
+fn is_stop_word(word: &str) -> bool {
+    let (set, longest) = stop_words();
+    word.len() <= *longest && set.contains(word)
+}
+
+fn emit_word(
+    raw: &str,
+    chars: usize,
+    digits_only: bool,
+    dirty: bool,
+    scratch: &mut String,
+    visit: &mut impl FnMut(&str),
+) {
+    if !dirty {
+        if chars >= 3 && !digits_only && !is_stop_word(raw) {
+            visit(raw);
+        }
+        return;
+    }
+    scratch.clear();
+    for c in raw.chars() {
+        scratch.extend(c.to_lowercase());
+    }
+    let lowered_chars = scratch.chars().count();
+    let lowered_digits = scratch.chars().all(|c| c.is_ascii_digit());
+    if lowered_chars >= 3 && !lowered_digits && !is_stop_word(scratch) {
+        visit(scratch);
+    }
+}
+
+pub fn for_each_content_word(text: &str, mut visit: impl FnMut(&str)) {
+    let mut scratch = String::new();
+    let mut start = 0usize;
+    let mut chars = 0usize;
+    let mut digits_only = true;
+    let mut dirty = false;
+    let mut in_word = false;
     let mut in_tag = false;
     let mut prev_is_boundary = true;
-    let flush =
-        |word: &mut String, out: &mut Vec<String>, seen: &mut std::collections::HashSet<String>| {
-            if word.chars().count() >= 3
-                && !word.chars().all(|c| c.is_ascii_digit())
-                && !is_stop_word(word)
-                && !seen.contains(word.as_str())
-            {
-                seen.insert(word.clone());
-                out.push(std::mem::take(word));
-            }
-            word.clear();
-        };
-    for c in text.chars() {
+    for (at, c) in text.char_indices() {
         if c == '#' && prev_is_boundary {
             in_tag = true;
             prev_is_boundary = false;
@@ -298,7 +322,16 @@ pub fn content_words(text: &str) -> Vec<String> {
         }
         if c.is_alphanumeric() || c == '\'' {
             if !in_tag {
-                word.extend(c.to_lowercase());
+                if !in_word {
+                    in_word = true;
+                    start = at;
+                    chars = 0;
+                    digits_only = true;
+                    dirty = false;
+                }
+                chars += 1;
+                digits_only &= c.is_ascii_digit();
+                dirty |= !c.is_ascii() || c.is_ascii_uppercase();
             }
             prev_is_boundary = false;
             continue;
@@ -308,16 +341,157 @@ pub fn content_words(text: &str) -> Vec<String> {
             continue;
         }
         in_tag = false;
-        flush(&mut word, &mut out, &mut seen);
+        if in_word {
+            emit_word(
+                &text[start..at],
+                chars,
+                digits_only,
+                dirty,
+                &mut scratch,
+                &mut visit,
+            );
+            in_word = false;
+        }
         prev_is_boundary = c.is_whitespace();
     }
-    flush(&mut word, &mut out, &mut seen);
+    if in_word {
+        emit_word(
+            &text[start..],
+            chars,
+            digits_only,
+            dirty,
+            &mut scratch,
+            &mut visit,
+        );
+    }
+}
+
+pub fn content_words(text: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for_each_content_word(text, |word| {
+        if !seen.contains(word) {
+            seen.insert(word.to_string());
+            out.push(word.to_string());
+        }
+    });
     out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn reference_content_words(text: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        let mut word = String::new();
+        let mut in_tag = false;
+        let mut prev_is_boundary = true;
+        let flush = |word: &mut String,
+                     out: &mut Vec<String>,
+                     seen: &mut std::collections::HashSet<String>| {
+            if word.chars().count() >= 3
+                && !word.chars().all(|c| c.is_ascii_digit())
+                && !STOP_WORDS.contains(&word.as_str())
+                && seen.insert(word.clone())
+            {
+                out.push(word.clone());
+            }
+            word.clear();
+        };
+        for c in text.chars() {
+            if c == '#' && prev_is_boundary {
+                in_tag = true;
+                prev_is_boundary = false;
+                continue;
+            }
+            if c.is_alphanumeric() || c == '\'' {
+                if !in_tag {
+                    word.extend(c.to_lowercase());
+                }
+                prev_is_boundary = false;
+                continue;
+            }
+            if (c == '-' || c == '_') && in_tag {
+                prev_is_boundary = false;
+                continue;
+            }
+            in_tag = false;
+            flush(&mut word, &mut out, &mut seen);
+            prev_is_boundary = c.is_whitespace();
+        }
+        flush(&mut word, &mut out, &mut seen);
+        out
+    }
+
+    #[test]
+    fn content_words_match_the_reference_on_random_text() {
+        const PIECES: &[&str] = &[
+            "a",
+            "B",
+            "ab",
+            "Abc",
+            "the",
+            "and",
+            "we're",
+            "WE'RE",
+            "x1",
+            "123",
+            "4567",
+            "9",
+            "caf\u{e9}",
+            "\u{130}stanbul",
+            "\u{4e2d}\u{6587}",
+            "\u{df}",
+            "'",
+            "''",
+            "don't",
+            "-",
+            "_",
+            "#",
+            "##",
+            "#tag",
+            "#tag-x_y",
+            " ",
+            "  ",
+            "\n",
+            "\t",
+            ".",
+            ",",
+            "(",
+            ")",
+            "!",
+            "\u{a0}",
+            "\u{2003}",
+            "word",
+            "Zebra",
+            "naive",
+            "re-do",
+            "snake_case",
+            "ALLCAPS",
+            "\u{1f600}",
+            "e\u{301}",
+        ];
+        let mut state = 0x2545_F491_4F6C_DD1Du64;
+        let mut next = move || {
+            state ^= state >> 12;
+            state ^= state << 25;
+            state ^= state >> 27;
+            state.wrapping_mul(0x2545_F491_4F6C_DD1D)
+        };
+        for _ in 0..40_000 {
+            let len = (next() % 40) as usize;
+            let text: String = (0..len)
+                .map(|_| PIECES[(next() % PIECES.len() as u64) as usize])
+                .collect();
+            assert_eq!(
+                content_words(&text),
+                reference_content_words(&text),
+                "{text:?}"
+            );
+        }
+    }
 
     #[test]
     fn normalize_lowercases_and_trims() {

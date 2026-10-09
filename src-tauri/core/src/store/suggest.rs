@@ -10,13 +10,14 @@ struct Doc {
     id: String,
     title: String,
     features: Features,
+    tags: Vec<String>,
     spaces: Vec<String>,
 }
 
 impl Store {
     pub fn space_suggestions(&self) -> Result<Vec<SpaceSuggestion>> {
         let params = Params::default();
-        let docs = self.suggestion_docs(params)?;
+        let docs = self.suggestion_docs(params, true)?;
         let spaces: HashMap<String, String> = self
             .query_rows("SELECT id, name FROM workspaces", |r| {
                 Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
@@ -84,20 +85,22 @@ impl Store {
                 .map_or(Params::default().show_at, |at| at.clamp(0.3, 0.9)),
             ..Params::default()
         };
-        let docs = self.suggestion_docs(params)?;
+        let docs = self.suggestion_docs(params, false)?;
         let Some(target) = docs.iter().find(|d| d.id == note_id) else {
             return Ok(None);
         };
-        let has: HashSet<&str> = tag_names(&target.features).collect();
-        let taught: Vec<(Features, Vec<String>)> = docs
+        let has: HashSet<&str> = target.tags.iter().map(String::as_str).collect();
+        let taught: Vec<(&Features, Vec<String>)> = docs
             .iter()
             .filter(|d| d.id != note_id)
             .map(|d| {
-                let tags = tag_names(&d.features)
-                    .filter(|t| !has.contains(t))
-                    .map(str::to_string)
+                let tags = d
+                    .tags
+                    .iter()
+                    .filter(|t| !has.contains(t.as_str()))
+                    .cloned()
                     .collect::<Vec<_>>();
-                (words(&d.features), tags)
+                (&d.features, tags)
             })
             .filter(|(_, tags)| !tags.is_empty())
             .collect();
@@ -106,13 +109,11 @@ impl Store {
             .map(|(features, classes)| Example { features, classes })
             .collect();
         let model = Model::fit(&examples, params);
-        Ok(model
-            .classify(&words(&target.features))
-            .map(|v| TagSuggestion {
-                tag: v.class,
-                probability: v.probability,
-                reasons: v.reasons,
-            }))
+        Ok(model.classify(&target.features).map(|v| TagSuggestion {
+            tag: v.class,
+            probability: v.probability,
+            reasons: v.reasons,
+        }))
     }
 
     pub fn dismiss_space_suggestion(&mut self, note_id: &str, space_id: &str) -> Result<()> {
@@ -211,7 +212,7 @@ impl Store {
         Ok(out)
     }
 
-    fn suggestion_docs(&self, params: Params) -> Result<Vec<Doc>> {
+    fn suggestion_docs(&self, params: Params, merge_tags: bool) -> Result<Vec<Doc>> {
         const LIVE: &str = "n.is_deleted = 0 AND n.is_archived = 0";
         let rows = self.query_rows(
             &format!(
@@ -267,23 +268,16 @@ impl Store {
             .zip(tags)
             .zip(spaces)
             .map(|(((id, title, body), tags), spaces)| Doc {
-                features: classify::features(&format!("{title}\n{body}"), &tags, params),
+                features: classify::features(
+                    &format!("{title}\n{body}"),
+                    if merge_tags { &tags } else { &[] },
+                    params,
+                ),
+                tags: tags.into_iter().map(|(name, _)| name).collect(),
                 id,
                 title,
                 spaces,
             })
             .collect())
     }
-}
-
-fn tag_names(features: &Features) -> impl Iterator<Item = &str> {
-    features.keys().filter_map(|f| f.strip_prefix('#'))
-}
-
-fn words(features: &Features) -> Features {
-    features
-        .iter()
-        .filter(|(f, _)| !f.starts_with('#'))
-        .map(|(f, w)| (f.clone(), *w))
-        .collect()
 }
