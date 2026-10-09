@@ -1,6 +1,6 @@
 import type { WorkspaceWithCount } from "$lib/api/types";
 
-export const SPACES_SHOWN = 6;
+const SPACES_SHOWN = 6;
 
 export function spacesShown(
   spaces: WorkspaceWithCount[],

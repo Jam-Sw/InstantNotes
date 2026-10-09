@@ -1,7 +1,7 @@
 import type { ErrorCode } from "./error-codes";
 import type { FeedbackCategory } from "$lib/feedback";
 
-export type ContentKind = "document" | "whiteboard" | "sheet";
+type ContentKind ="document" | "whiteboard" | "sheet";
 
 export interface Note {
   id: string;

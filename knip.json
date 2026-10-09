@@ -26,6 +26,7 @@
     "src/lib/highlight.ts": ["exports"],
     "src/lib/markdown-format.ts": ["exports"],
     "src/lib/markdown-highlight.ts": ["exports"],
+    "src/lib/sheet/model.ts": ["exports"],
     "src/lib/stores/agents.svelte.ts": ["exports"],
     "src/lib/stores/images.svelte.ts": ["exports"],
     "src/lib/update/release-size.ts": ["exports"],

@@ -101,7 +101,3 @@ export function editIntent(e: KeyLike): EditIntent | null {
       return null;
   }
 }
-
-export function claimsKey(e: KeyLike): boolean {
-  return selectIntent(e) !== null || editIntent(e) !== null;
-}

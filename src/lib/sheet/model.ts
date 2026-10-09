@@ -1,14 +1,14 @@
-export const SHEET_ENGINE = "grid";
+const SHEET_ENGINE = "grid";
 export const MAX_COLS = 52;
 export const MAX_ROWS = 5000;
 export const MAX_CELL_CHARS = 10_000;
-export const DEFAULT_COLS = 3;
-export const DEFAULT_ROWS = 20;
-export const DEFAULT_COL_WIDTH = 120;
-export const MIN_COL_WIDTH = 40;
-export const MAX_COL_WIDTH = 1200;
+const DEFAULT_COLS = 3;
+const DEFAULT_ROWS = 20;
+const DEFAULT_COL_WIDTH = 120;
+const MIN_COL_WIDTH = 40;
+const MAX_COL_WIDTH = 1200;
 
-export interface Column {
+interface Column {
   w: number;
 }
 
@@ -80,7 +80,7 @@ export function display(sheet: Sheet, r: number, c: number): string {
   return sheet.rows[r]?.[c] ?? "";
 }
 
-export function rowIsEmpty(row: readonly string[]): boolean {
+function rowIsEmpty(row: readonly string[]): boolean {
   return row.every((cell) => cell === "");
 }
 
@@ -91,7 +91,7 @@ export function filledRows(sheet: Sheet): number {
   return 0;
 }
 
-export function clipCell(value: string): string {
+function clipCell(value: string): string {
   return value.length > MAX_CELL_CHARS ? value.slice(0, MAX_CELL_CHARS) : value;
 }
 

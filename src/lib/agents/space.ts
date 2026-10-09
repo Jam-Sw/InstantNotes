@@ -38,7 +38,7 @@ export function sessionSummary(s: AgentSession): string {
   return parts.join(" · ");
 }
 
-export interface AgentClock {
+interface AgentClock {
   session: string;
   inAt: number | null;
   outAt: number | null;

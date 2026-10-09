@@ -1,6 +1,6 @@
 import type { Range, Sheet } from "./model";
 
-export interface Cell {
+interface Cell {
   r: number;
   c: number;
 }

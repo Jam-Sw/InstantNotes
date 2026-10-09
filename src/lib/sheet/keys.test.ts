@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { claimsKey, editIntent, selectIntent, type KeyLike } from "./keys";
+import { editIntent, selectIntent, type KeyLike } from "./keys";
 
 const stores = vi.hoisted(() => ({
   library: {
@@ -45,6 +45,7 @@ function key(k: string, mods: Partial<KeyLike> = {}): KeyLike {
   return { key: k, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, ...mods };
 }
 const cmd = (k: string, mods: Partial<KeyLike> = {}) => key(k, { metaKey: true, ...mods });
+const claimsKey = (e: KeyLike) => selectIntent(e) !== null || editIntent(e) !== null;
 
 function eventsFor(label: string): KeyLike[] {
   let rest = label;
