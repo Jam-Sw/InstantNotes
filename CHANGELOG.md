@@ -54,6 +54,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   one, and "N more" opens the rest.
 
 ### Changed
+- Speed: on a library of 20,000 notes the note list loads in 3 ms instead of 79 ms, the tag and Space lists in about 30 ms instead of 3 s, and the filing suggestions take about 2 s instead of 5 s and run beside the app instead of in front of it, so a save, a search or opening a note never waits for them. The first screen loads a quarter of the JavaScript it did: the editor, Settings and the Graph load in the background just after launch.
+- A library over 4 MB is no longer scanned for damage at every launch. It is scanned after a session that did not end cleanly, after any read that reports a problem, when the last scan is a week old, and the first time it is opened. Smaller libraries are still scanned every time.
 - Agents: writes return the note without its body; `get_note` and `get_notes` cut bodies at `maxChars` (12,000, 60,000 shared per `get_notes`).
 - Agents: `search_notes` defaults to 10 results, refuses an empty query, and returns a `hint` on no match; every page echoes `limit`.
 - Agents: `create_note` and `add_to_space` return `createdSpace`; resource reads are traced; a sheet's view returns `sheet.header`.
