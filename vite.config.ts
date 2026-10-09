@@ -18,8 +18,24 @@ function noStore(): Plugin {
   };
 }
 
+const SVELTE_STYLE = /^([^?]+\.svelte)\?svelte&type=style(?:&|$)/;
+
+function compileBeforeStyle(): Plugin {
+  return {
+    name: "tauri-dev-compile-before-style",
+    apply: "serve",
+    enforce: "pre",
+    async load(id) {
+      const file = SVELTE_STYLE.exec(id)?.[1];
+      if (!file || this.environment.mode !== "dev") return;
+      if (this.getModuleInfo(file)?.meta?.svelte?.css) return;
+      await this.environment.transformRequest(`/@fs/${file.replace(/^\//, "")}`);
+    },
+  };
+}
+
 export default defineConfig(async () => ({
-  plugins: [sveltekit(), noStore()],
+  plugins: [compileBeforeStyle(), sveltekit(), noStore()],
 
   clearScreen: false,
   server: {

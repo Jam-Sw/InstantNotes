@@ -1,5 +1,7 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
+import { createServer } from "vite";
 import { describe, expect, it } from "vitest";
 import viteConfig from "../../vite.config";
 
@@ -36,4 +38,26 @@ describe("dev server file access", () => {
     });
     expect(refused).toEqual([]);
   });
+});
+
+describe("dev server component styles", () => {
+  it("serves a component's style when the web view asks for it before the component", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "instantnotes-vite-"));
+    const server = await createServer({
+      configFile: join(ROOT, "vite.config.ts"),
+      cacheDir,
+      logLevel: "silent",
+      server: { port: 0, strictPort: false, hmr: false, watch: null },
+      optimizeDeps: { noDiscovery: true, include: [] },
+    });
+    try {
+      const style = await server.environments.client.transformRequest(
+        "/src/lib/components/LicenseLocked.svelte?svelte&type=style&lang.css",
+      );
+      expect(style?.code).toContain(".locked.svelte-");
+    } finally {
+      await server.close();
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
+  }, 30_000);
 });
