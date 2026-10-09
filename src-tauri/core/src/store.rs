@@ -246,6 +246,12 @@ CREATE TRIGGER notes_vault_ad AFTER DELETE ON notes
     WHERE old.board_sha IS NOT NULL;
 END;
 "#,
+    r#"
+DROP INDEX idx_notes_flags;
+CREATE INDEX idx_notes_list ON notes(is_deleted, is_archived, is_pinned DESC, updated_at DESC, id);
+CREATE INDEX idx_notes_revisit ON notes(created_at, id)
+  WHERE is_deleted = 0 AND is_archived = 0 AND last_opened_at IS NULL;
+"#,
 ];
 
 const NOTE_COLUMNS: &str = "id, title, body, created_at, updated_at, last_opened_at, \
@@ -966,6 +972,74 @@ mod migration_tests {
                 ("S.md".to_string(), "c".to_string()),
             ]
         );
+    }
+
+    fn index_names(conn: &Connection) -> Vec<String> {
+        let mut stmt = conn.prepare("PRAGMA index_list('notes')").unwrap();
+        stmt.query_map([], |r| r.get::<_, String>(1))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect()
+    }
+
+    fn plan(conn: &Connection, sql: &str) -> String {
+        let mut stmt = conn.prepare(&format!("EXPLAIN QUERY PLAN {sql}")).unwrap();
+        stmt.query_map([], |r| r.get::<_, String>(3))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect::<Vec<_>>()
+            .join(" | ")
+    }
+
+    #[test]
+    fn v13_swaps_the_flags_index_for_the_list_and_revisit_indexes() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("v12.db");
+        {
+            let conn = Connection::open(&path).unwrap();
+            for sql in &MIGRATIONS[..12] {
+                conn.execute_batch(sql).unwrap();
+            }
+            conn.pragma_update(None, "user_version", 12i64).unwrap();
+            conn.execute(
+                "INSERT INTO notes (id, title, body, created_at, updated_at) \
+                 VALUES ('n1', 'Kept', 'the body', 't', 't')",
+                [],
+            )
+            .unwrap();
+            assert!(index_names(&conn).contains(&"idx_notes_flags".to_string()));
+        }
+
+        let mut store = Store::open(&path).unwrap();
+        let indexes = index_names(&store.conn);
+        assert!(!indexes.contains(&"idx_notes_flags".to_string()));
+        assert!(indexes.contains(&"idx_notes_list".to_string()));
+        assert!(indexes.contains(&"idx_notes_revisit".to_string()));
+        assert_eq!(store.get_note("n1", false).unwrap().body, "the body");
+    }
+
+    #[test]
+    fn the_default_list_reads_in_index_order_without_sorting() {
+        let store = Store::open_in_memory().unwrap();
+        let listed = plan(
+            &store.conn,
+            "SELECT id FROM notes WHERE is_deleted = 0 AND is_archived = 0 \
+             ORDER BY is_pinned DESC, updated_at DESC, id ASC LIMIT 500",
+        );
+        assert!(listed.contains("idx_notes_list"), "{listed}");
+        assert!(!listed.contains("TEMP B-TREE"), "{listed}");
+    }
+
+    #[test]
+    fn the_revisit_filter_can_use_its_own_index() {
+        let store = Store::open_in_memory().unwrap();
+        let counted = plan(
+            &store.conn,
+            "SELECT COUNT(*) FROM notes INDEXED BY idx_notes_revisit \
+             WHERE is_deleted = 0 AND is_archived = 0 AND last_opened_at IS NULL \
+             AND created_at < 'z'",
+        );
+        assert!(counted.contains("idx_notes_revisit"), "{counted}");
     }
 
     #[test]

@@ -330,9 +330,10 @@ impl Store {
 
         let pinned_first = if deleted { "" } else { "is_pinned DESC, " };
         let sql = format!(
-            "SELECT {LIST_COLUMNS} FROM notes WHERE {} \
+            "SELECT {LIST_COLUMNS} FROM notes{} WHERE {} \
              ORDER BY {pinned_first}{order_column} {order_dir}, id ASC \
              LIMIT {limit} OFFSET {offset}",
+            index_hint(&filter),
             conditions.join(" AND ")
         );
         let mut stmt = self.conn.prepare(&sql)?;
@@ -347,7 +348,8 @@ impl Store {
         let filter = expand_revisit(filter.clone(), Utc::now());
         let (conditions, args) = note_conditions(&filter);
         let sql = format!(
-            "SELECT COUNT(*) FROM notes WHERE {}",
+            "SELECT COUNT(*) FROM notes{} WHERE {}",
+            index_hint(&filter),
             conditions.join(" AND ")
         );
         Ok(self.conn.query_row(
@@ -429,25 +431,33 @@ impl Store {
     }
 }
 
+fn index_hint(filter: &NoteFilter) -> &'static str {
+    let live = !filter.is_deleted.unwrap_or(false) && !filter.is_archived.unwrap_or(false);
+    if live && filter.never_opened == Some(true) {
+        " INDEXED BY idx_notes_revisit"
+    } else {
+        ""
+    }
+}
+
 fn note_conditions(filter: &NoteFilter) -> (Vec<String>, Vec<Box<dyn rusqlite::ToSql>>) {
     let mut conditions: Vec<String> = Vec::new();
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
     let deleted = filter.is_deleted.unwrap_or(false);
-    conditions.push("is_deleted = ?".into());
-    args.push(Box::new(i64::from(deleted)));
+    conditions.push(format!("is_deleted = {}", i64::from(deleted)));
 
     if !deleted {
-        conditions.push("is_archived = ?".into());
-        args.push(Box::new(i64::from(filter.is_archived.unwrap_or(false))));
+        conditions.push(format!(
+            "is_archived = {}",
+            i64::from(filter.is_archived.unwrap_or(false))
+        ));
     } else if let Some(archived) = filter.is_archived {
-        conditions.push("is_archived = ?".into());
-        args.push(Box::new(i64::from(archived)));
+        conditions.push(format!("is_archived = {}", i64::from(archived)));
     }
 
     if let Some(pinned) = filter.is_pinned {
-        conditions.push("is_pinned = ?".into());
-        args.push(Box::new(i64::from(pinned)));
+        conditions.push(format!("is_pinned = {}", i64::from(pinned)));
     }
 
     if filter.never_opened == Some(true) {
