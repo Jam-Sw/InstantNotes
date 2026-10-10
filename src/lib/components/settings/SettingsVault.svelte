@@ -21,20 +21,15 @@
     try {
       status = await getVaultStatus();
     } catch {
-      // Keep whatever was last shown; the next vault:status event retries.
     }
   }
 
   onMount(() => {
     void refresh();
-    // The background writer announces every flush, so pending counts and
-    // errors stay current while this page is open.
     const unlisten = listen(EVENTS.VAULT_STATUS, () => void refresh());
     return () => void unlisten.then((off) => off());
   });
 
-  // A missing folder is the one error with an obvious fix, so it gets words
-  // instead of the raw message.
   const statusLine = $derived.by(() => {
     if (!status?.path) return "";
     if (status.lastError) {
@@ -101,7 +96,6 @@
     try {
       const result = await exportVaultToFolder();
       if ("cancelled" in result) {
-        // Nothing to report.
       } else if (result.ok) {
         toasts.show("Exported. Every note is now a plain Markdown file in the folder you chose.");
       } else {

@@ -1,8 +1,3 @@
-// Tag construct: #tag spans get the cm-tag treatment (styled in app.css) in
-// both modes. Text-driven, not tree-driven: tags are an InstantNotes notion,
-// not markdown. `#tag` (no space) never collides with `# Heading` (space
-// required by CommonMark).
-
 import { Decoration } from "@codemirror/view";
 import type { Emit, ScanContext, TextSpec } from "../types";
 

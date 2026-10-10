@@ -19,9 +19,6 @@
     { value: "strip", label: "Remove" },
   ];
 
-  // Live preview for the copy template, using the open note or a sample
-  // stand-in. The sample carries an image so the image-handling choice is
-  // visible in the preview.
   const SAMPLE_NOTE: Pick<Note, "title" | "body" | "updatedAt"> = {
     title: "Sample note",
     body: "The quick brown fox.\n![diagram](attachments/example.png)",

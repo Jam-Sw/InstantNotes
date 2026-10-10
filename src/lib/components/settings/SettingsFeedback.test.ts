@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, fireEvent, cleanup } from "@testing-library/svelte";
 import SettingsFeedback from "./SettingsFeedback.svelte";

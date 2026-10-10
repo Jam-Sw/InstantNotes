@@ -9,8 +9,6 @@
   );
 
   async function confirmBulkDestroy() {
-    // Snapshot the ids when the dialog opens: the selection could otherwise
-    // drift while it is up, and the confirm must act on what it named.
     const ids = [...library.multiSelected];
     if (ids.length === 0) return;
     const what = ids.length === 1 ? "this note" : `these ${ids.length} notes`;

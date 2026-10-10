@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { fetchUpdateSizeDelta } from "$lib/update/release-size";
-import { installUpdate } from "$lib/api/client";
+import { installUpdate, restartApp } from "$lib/api/client";
 
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: vi.fn() }));
 vi.mock("$lib/update/release-size", () => ({ fetchUpdateSizeDelta: vi.fn() }));
-vi.mock("$lib/api/client", () => ({ installUpdate: vi.fn() }));
+vi.mock("$lib/api/client", () => ({ installUpdate: vi.fn(), restartApp: vi.fn() }));
 
 const mockCheck = vi.mocked(check);
 const mockDelta = vi.mocked(fetchUpdateSizeDelta);
@@ -171,5 +171,55 @@ describe("acknowledge", () => {
 
     await updater.checkNow();
     expect(updater.pendingUpdate).toBe(false);
+  });
+});
+
+describe("restart", () => {
+  it("asks the app to restart into the installed version", async () => {
+    const updater = await load();
+    await updater.restart();
+    expect(vi.mocked(restartApp)).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("the automatic schedule", () => {
+  it("waits before the first check and then repeats", async () => {
+    mockCheck.mockResolvedValue(null);
+    const updater = await load();
+
+    updater.start();
+    expect(mockCheck).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(7_999);
+    expect(mockCheck).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mockCheck).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1000);
+    expect(mockCheck).toHaveBeenCalledTimes(2);
+    updater.stop();
+  });
+
+  it("answers a manual check at once, while the first automatic one is still waiting", async () => {
+    mockCheck.mockResolvedValue(null);
+    const updater = await load();
+
+    updater.start();
+    await updater.checkNow({ manual: true });
+
+    expect(mockCheck).toHaveBeenCalledTimes(1);
+    expect(updater.status).toBe("uptodate");
+    updater.stop();
+  });
+
+  it("cancels the waiting first check when stopped", async () => {
+    mockCheck.mockResolvedValue(null);
+    const updater = await load();
+
+    updater.start();
+    updater.stop();
+    await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1000);
+
+    expect(mockCheck).not.toHaveBeenCalled();
   });
 });

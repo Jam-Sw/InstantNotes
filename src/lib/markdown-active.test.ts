@@ -3,8 +3,6 @@ import { EditorState } from "@codemirror/state";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { activeMarks, NO_MARKS, type ActiveMarks } from "./markdown-active";
 
-// Build a state with the same language the editor uses (GFM base, so
-// strikethrough parses) and a selection, then read the active marks.
 function marksAt(doc: string, from: number, to = from): ActiveMarks {
   const state = EditorState.create({
     doc,
@@ -52,7 +50,6 @@ describe("activeMarks", () => {
   });
 
   it("lights italic across a selection that covers it", () => {
-    // "a *cap* b" - select the inner word "cap" (indices 3..6).
     expect(marksAt("a *cap* b", 3, 6)).toEqual({ ...NO_MARKS, italic: true });
   });
 });

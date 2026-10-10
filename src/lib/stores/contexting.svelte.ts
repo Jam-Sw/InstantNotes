@@ -1,8 +1,3 @@
-// Contexting (Svelte 5 runes): the user-editable template for copying a note as
-// LLM-ready context, plus how images in the note travel. Persisted to the
-// existing settings KV like the editor and theme stores. Rendering logic lives
-// in the pure contexting-format module.
-
 import { getSetting, setSetting, getAttachmentsDir } from "$lib/api/client";
 import type { Note, Tag } from "$lib/api/types";
 import {
@@ -18,8 +13,6 @@ const KEY_IMAGE_MODE = "contexting.imageMode";
 class ContextingStore {
   copyTemplate = $state(DEFAULT_TEMPLATE);
   imageMode = $state<ContextImageMode>(DEFAULT_IMAGE_MODE);
-  // Absolute attachments directory, needed to rewrite attachment images to
-  // their real path in "absolute" mode. Fetched once and cached.
   attachmentsDir = $state<string | null>(null);
 
   #loaded = false;
@@ -37,7 +30,6 @@ class ContextingStore {
       if (mode === "keep" || mode === "absolute" || mode === "strip") this.imageMode = mode;
       if (typeof dir === "string") this.attachmentsDir = dir;
     } catch {
-      // Settings are best-effort; keep the defaults silently.
     }
   }
 
@@ -51,7 +43,6 @@ class ContextingStore {
     void setSetting(KEY_IMAGE_MODE, mode);
   }
 
-  /** Render the active template for a note and its tags, ready for the clipboard. */
   render(note: Note, tags: Tag[]): string {
     return renderTemplate(this.copyTemplate, note, tags, {
       imageMode: this.imageMode,

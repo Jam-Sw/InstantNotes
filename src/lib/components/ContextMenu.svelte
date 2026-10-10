@@ -1,11 +1,6 @@
 <script lang="ts">
-  // Minimal right-click menu. The caller owns the state: render inside an
-  // {#if} with a position and items, drop it on close. Focus moves to the
-  // first item on open and returns to the invoker when the menu goes away.
   interface MenuItem {
     label: string;
-    /** Keyboard equivalent, shown dimmed on the right so the menu teaches
-     *  the shortcut rather than replacing it. */
     hint?: string;
     danger?: boolean;
     run: () => void;
@@ -21,9 +16,6 @@
     x: number;
     y: number;
     items: MenuItem[];
-    /** The control that opened the menu, when one did. Presses on it do not
-     *  count as "outside", so that control can own the toggle instead of the
-     *  menu closing on press and its click reopening. */
     anchor?: HTMLElement;
     onclose: () => void;
   } = $props();
@@ -32,8 +24,6 @@
   let left = $state(-9999);
   let top = $state(-9999);
 
-  // Clamp into the viewport once the menu has real dimensions. Reruns if the
-  // caller repositions an already-open menu (right-click on another row).
   $effect(() => {
     const rect = menuEl?.getBoundingClientRect();
     const pad = 8;
@@ -55,8 +45,6 @@
   }
 
   function onKeydown(e: KeyboardEvent) {
-    // Same keyboard boundary as the confirm dialog: nothing may fall through
-    // to the global shortcuts while the menu is open.
     e.stopPropagation();
     const buttons = [...(menuEl?.querySelectorAll("button") ?? [])];
     const idx = buttons.indexOf(document.activeElement as HTMLButtonElement);
@@ -101,8 +89,6 @@
       class:danger={item.danger}
       role="menuitem"
       onclick={() => {
-        // Close first so focus restores to the invoker, then run: an action
-        // that opens the confirm dialog captures the row, not a dead button.
         onclose();
         queueMicrotask(item.run);
       }}

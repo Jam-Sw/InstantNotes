@@ -1,10 +1,4 @@
 <script lang="ts">
-  // The default view of the Jam-Sw agreement gate: every document in its own
-  // tab, each with its own "I agree", and the app behind it only once all are
-  // agreed. Copied into the app by installers/scripts/apply.mjs, so never edit
-  // the copy. Wrap the root layout's content in it. It paints with the app's
-  // theme variables (--bg, --text, --border, ...) and falls back to the
-  // system's colors, so it looks like the app it guards.
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { agreements } from './agreements.svelte';
 
@@ -13,7 +7,6 @@
     ondecline = () => void getCurrentWindow().close(),
   }: {
     children?: import('svelte').Snippet;
-    /** Declining must leave the app unused; closing the only window does. */
     ondecline?: () => void;
   } = $props();
 

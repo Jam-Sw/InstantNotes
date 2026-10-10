@@ -1,9 +1,3 @@
-// Stage 1 vault export: prompt for a destination folder, then hand off to
-// the Rust writer (openspec/changes/feat-portable-vault-sync, SEQUENCE.md
-// unit 7). One-way and read-only from the app's perspective: nothing reads
-// this folder back yet, so there is nothing here to validate before writing,
-// unlike theme import (src/lib/themes/share.ts).
-
 import { open } from "@tauri-apps/plugin-dialog";
 import { exportVault } from "$lib/api/client";
 
@@ -12,7 +6,6 @@ export type ExportResult =
   | { ok: false; error: string }
   | { cancelled: true };
 
-/** Prompt for a folder and write the whole library into it as a vault. */
 export async function exportVaultToFolder(): Promise<ExportResult> {
   let dest: string | string[] | null;
   try {

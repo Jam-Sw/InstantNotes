@@ -1,9 +1,5 @@
 use std::fmt;
 
-/// Wrapper for note content (titles, bodies) that must never reach logs.
-/// `Debug` and `Display` print `<redacted>`; `expose()` is the only accessor
-/// and is greppable in review. Serialization is intentionally NOT implemented —
-/// IPC transports plain types; this type guards log/debug surfaces (SEC-001).
 pub struct Sensitive<T>(pub T);
 
 impl<T> Sensitive<T> {

@@ -20,8 +20,6 @@
     { value: "link", label: "Link original" },
   ];
 
-  // The preview-height row is a slider rather than one of the two row
-  // primitives, so it wires its own sub line to the control.
   const heightSubId = $props.id();
 
   let attachmentsCount = $state<number | null>(null);
@@ -52,8 +50,6 @@
       .catch(() => {});
   });
 
-  // Deleting a note for good already takes the images only it used; this
-  // clears what older versions left behind, or what a note stopped using.
   async function removeUnused() {
     if (!unused?.count || removing) return;
     const ok = await confirmDialog.ask({

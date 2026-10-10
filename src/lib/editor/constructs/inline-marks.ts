@@ -1,8 +1,3 @@
-// Inline mark constructs: **bold**, *italic*, ~~strike~~, `code`, and
-// ==highlight== markers fold away in preview; the styled text (painted by
-// markdown-highlight.ts) stays. The construct span is the whole parent, so
-// touching any part of **bold** reveals both markers together.
-
 import type { SyntaxNodeRef } from "@lezer/common";
 import type { ConstructSpec, Emit, ScanContext } from "../types";
 

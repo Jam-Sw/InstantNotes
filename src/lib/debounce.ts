@@ -1,4 +1,3 @@
-/** Debounce with flush (for blur/window-hide saves) and cancel. */
 export function debounce<A extends unknown[]>(
   fn: (...args: A) => void,
   ms: number,

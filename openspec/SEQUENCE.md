@@ -317,6 +317,38 @@ dependency, and unit 14 still owns those. Agents get the same answers through
 a read-only MCP tool; the policy is suggest-only everywhere. Built on
 `0.9.3-pre` on 2026-10-03. See `changes/feat-graph-suggestions/`.
 
+## 13h. `feat-note-sheet` (BUILT, open until checked in the app)
+
+A third note kind, `sheet`: a keyboard-first cell grid written in-house as
+Svelte DOM, with no third-party grid, for logging beside another editor. It
+follows the whiteboard's blueprint: the grid in `surface_data`, a Markdown
+table in `body`, and a `.csv` sidecar in the vault. It adds no column and no
+migration (`content_kind` is validated in code, and the sidecar hash reuses
+`board_sha`). Formulas are out of scope; the view reads cells through one
+`display` function a headless engine can take over later. Proposed on
+`0.9.4-pre` on 2026-10-03; reviewed and its four open questions decided on
+2026-10-04 (ship `append_sheet_rows`; 52 x 5,000 plus a 10,000-character cell
+cap; Enter edits; the body is derived in Rust from the grid). Built on
+`0.9.4-pre` on 2026-10-04 with its tests green, by the owner's decision while
+13c to 13g stay open until checked in the app: the recorded exception to the
+one-unit rule, as 13d and 13e were. One correction to the proposal: the
+hard-delete trigger needed a migration (v12, no column) so a destroyed
+sheet's `.csv` is tombstoned under its own extension. It stays open until the
+in-app checks in `changes/feat-note-sheet/tasks.md` pass, then archives.
+
+## 13i. `feat-agent-tool-surface` (BUILT, open until checked in the app)
+
+The MCP tools return what an agent reads and no more: writes drop the body,
+reads cap it, searches page at 10 and say what to try after no match, and
+`edit_note` changes one passage instead of a whole body. `NoteSearch` gains
+two filters and nothing persisted moves, so the insertion rule places it like
+a view change, in any slot. Built on `0.9.4-pre` on 2026-10-07 with its tests
+green, at the maintainer's request while 13c to 13h stay open: a recorded
+exception to the one-unit rule. The capture eval was re-run on the new surface
+with no loss in filing. It stays open until the in-app check in
+`changes/feat-agent-tool-surface/tasks.md` passes, then archives. See
+`changes/feat-agent-tool-surface/`.
+
 ## 14. Local AI
 
 Needs embedding storage, so it cannot precede unit 10. Embeddings are a

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { NavigationModel, revisitFilter } from "./navigation.svelte";
 
-/** A model with every dimension set away from its default. */
 function dirty(): NavigationModel {
   const nav = new NavigationModel();
   nav.statusFilter = "trash";

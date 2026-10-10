@@ -1,7 +1,3 @@
-//! Filing suggestions for the Graph: where an unfiled note belongs, judged
-//! from the tags and words the notes in each Space share with it. Nothing is
-//! stored but a dismissal, and filing a note is what teaches the model.
-
 use instantnotes_core::types::*;
 use instantnotes_core::Store;
 
@@ -24,7 +20,6 @@ fn file(s: &mut Store, body: &str, space: &str) -> Note {
     n
 }
 
-/// Two Spaces with a few notes each, about different things.
 fn library(s: &mut Store) {
     file(s, "Tomato ragu: simmer the sauce slowly #pasta", "Recipes");
     file(s, "Carbonara needs guanciale, not bacon #pasta", "Recipes");
@@ -44,7 +39,6 @@ fn nothing_is_suggested_until_two_spaces_hold_notes() {
     file(&mut s, "Tomato ragu #pasta", "Recipes");
     create(&mut s, "Another ragu #pasta");
     assert!(s.space_suggestions().unwrap().is_empty());
-    // A second, empty Space is not enough either.
     s.get_or_create_workspace("Work").unwrap();
     assert!(s.space_suggestions().unwrap().is_empty());
 }
@@ -99,12 +93,10 @@ fn a_note_sharing_nothing_gets_no_suggestion() {
 #[test]
 fn a_tag_written_in_the_text_outweighs_one_added_later() {
     let mut s = store();
-    // Two Spaces of equal size, each defined by one tag.
     file(&mut s, "first #alpha", "A");
     file(&mut s, "second #alpha", "A");
     file(&mut s, "third #beta", "B");
     file(&mut s, "fourth #beta", "B");
-    // The note writes one tag and was filed under the other.
     let n = create(&mut s, "something #alpha");
     s.add_tag_to_note(&n.id, "beta").unwrap();
 
@@ -149,8 +141,6 @@ fn newest_notes_come_first_and_filed_notes_are_left_alone() {
     let ids: Vec<&str> = out.iter().map(|x| x.note_id.as_str()).collect();
     assert_eq!(ids, vec![newer.id.as_str(), older.id.as_str()]);
 
-    // Filing the note (accepting) removes it from the list; the model needs
-    // no other update.
     let ws = s.find_workspace("Recipes").unwrap().unwrap();
     s.add_note_to_workspace(&newer.id, &ws.id).unwrap();
     let out = s.space_suggestions().unwrap();
@@ -173,7 +163,6 @@ fn trashed_and_archived_notes_neither_teach_nor_get_suggestions() {
         },
     )
     .unwrap();
-    // An archived member of Work carries #pasta; it must not teach.
     let stale = file(&mut s, "Old lunch order #pasta", "Work");
     s.update_note(
         &stale.id,
@@ -202,10 +191,8 @@ fn a_dismissed_suggestion_stays_away() {
     s.dismiss_space_suggestion(&n.id, &recipes.id).unwrap();
 
     assert!(s.space_suggestions().unwrap().is_empty());
-    // Recorded in the settings table, note id to Space ids.
     let saved = s.get_setting("graph.dismissed").unwrap().unwrap();
     assert_eq!(saved[&n.id], serde_json::json!([recipes.id]));
-    // Dismissing twice records it once.
     s.dismiss_space_suggestion(&n.id, &recipes.id).unwrap();
     let saved = s.get_setting("graph.dismissed").unwrap().unwrap();
     assert_eq!(saved[&n.id].as_array().unwrap().len(), 1);
@@ -266,7 +253,6 @@ fn restoring_a_dismissal_brings_the_suggestion_back() {
     s.restore_space_suggestion(&n.id, &recipes.id).unwrap();
 
     assert_eq!(s.space_suggestions().unwrap().len(), 1);
-    // An emptied entry is gone, not left as an empty list.
     assert!(s
         .get_setting("graph.dismissed")
         .unwrap()
@@ -274,7 +260,6 @@ fn restoring_a_dismissal_brings_the_suggestion_back() {
         .as_object()
         .unwrap()
         .is_empty());
-    // Restoring what was never dismissed is fine.
     s.restore_space_suggestion(&n.id, &recipes.id).unwrap();
 }
 
@@ -286,7 +271,6 @@ fn a_dismissal_survives_renames_and_goes_with_the_space() {
     let recipes = s.find_workspace("Recipes").unwrap().unwrap();
     s.dismiss_space_suggestion(&n.id, &recipes.id).unwrap();
 
-    // Renaming either side changes nothing: the record holds ids.
     s.rename_workspace(&recipes.id, "Cooking").unwrap();
     s.update_note(
         &n.id,
@@ -298,8 +282,58 @@ fn a_dismissal_survives_renames_and_goes_with_the_space() {
     .unwrap();
     assert!(s.space_suggestions().unwrap().is_empty());
 
-    // Deleting the Space drops the dismissal with it.
     s.delete_workspace(&recipes.id).unwrap();
     let saved = s.get_setting("graph.dismissed").unwrap().unwrap();
     assert!(saved.as_object().unwrap().is_empty(), "{saved}");
+}
+
+#[test]
+fn a_note_gets_the_tag_its_words_share_with_tagged_notes() {
+    let mut s = store();
+    library(&mut s);
+    let n = create(&mut s, "Let the sauce simmer slowly");
+
+    let got = s.tag_suggestion(&n.id).unwrap().unwrap();
+    assert_eq!(got.tag, "pasta");
+    assert!(got.probability >= 0.5);
+    assert!(
+        got.reasons.contains(&"simmer".to_string()),
+        "{:?}",
+        got.reasons
+    );
+}
+
+#[test]
+fn tag_suggestions_follow_the_setting() {
+    let mut s = store();
+    library(&mut s);
+    let n = create(&mut s, "Let the sauce simmer slowly");
+
+    s.set_setting(
+        "suggest.tags",
+        serde_json::json!({ "enabled": false, "showAt": 0.5 }),
+    )
+    .unwrap();
+    assert!(s.tag_suggestion(&n.id).unwrap().is_none());
+
+    s.set_setting(
+        "suggest.tags",
+        serde_json::json!({ "enabled": true, "showAt": 0.5 }),
+    )
+    .unwrap();
+    assert!(s.tag_suggestion(&n.id).unwrap().is_some());
+}
+
+#[test]
+fn a_tag_the_note_already_has_is_never_suggested() {
+    let mut s = store();
+    library(&mut s);
+    let n = create(&mut s, "Let the sauce simmer slowly #pasta");
+
+    assert!(s
+        .tag_suggestion(&n.id)
+        .unwrap()
+        .is_none_or(|got| got.tag != "pasta"));
+    let other = create(&mut s, "Call the dentist");
+    assert_eq!(s.tag_suggestion(&other.id).unwrap(), None);
 }

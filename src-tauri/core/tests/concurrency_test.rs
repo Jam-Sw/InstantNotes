@@ -1,8 +1,3 @@
-//! Two writers on one library: the app and an agent process (`instantnotes
-//! mcp`) each open their own `Store` on the same file. Covers the version
-//! check that keeps one from overwriting what it has not seen, and the
-//! `data_version` signal the app watches to notice the other's writes.
-
 use instantnotes_core::types::*;
 use instantnotes_core::{AppError, Store};
 
@@ -56,23 +51,49 @@ fn two_stores_on_one_file_see_each_other_and_data_version_moves() {
     let mut agent = Store::open(&path).unwrap();
 
     let before = app.data_version().unwrap();
-    // The app's own write does not move its own data_version.
     let n = create(&mut app, "from the app");
     assert_eq!(app.data_version().unwrap(), before);
 
-    // The agent sees the app's note and writes to it with the version it read.
     let seen = agent.get_note(&n.id, false).unwrap();
     agent
         .update_note(&n.id, body_patch("agent edit", Some(&seen.updated_at)))
         .unwrap();
 
-    // The app notices, and reads the agent's text.
     assert_ne!(app.data_version().unwrap(), before);
     assert_eq!(app.get_note(&n.id, false).unwrap().body, "agent edit");
 
-    // And the app's stale version now conflicts instead of overwriting.
     let err = app
         .update_note(&n.id, body_patch("stale", Some(&n.updated_at)))
         .unwrap_err();
     assert_eq!(err.code(), "CONFLICT");
+}
+
+#[test]
+fn a_reader_sees_the_writers_commits_and_cannot_write() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("library.db");
+    let mut writer = Store::open(&path).unwrap();
+    let reader = Store::open_reader(&path).unwrap();
+    assert!(reader.list_notes(NoteFilter::default()).unwrap().is_empty());
+
+    let n = create(&mut writer, "first");
+    let listed = reader.list_notes(NoteFilter::default()).unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, n.id);
+
+    writer
+        .update_note(&n.id, body_patch("second", None))
+        .unwrap();
+    assert_eq!(
+        reader.list_notes(NoteFilter::default()).unwrap()[0].body,
+        "second"
+    );
+
+    let mut reader = reader;
+    assert!(reader
+        .create_note(CreateNoteInput {
+            body: Some("nope".to_string()),
+            ..Default::default()
+        })
+        .is_err());
 }

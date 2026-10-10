@@ -1,10 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { LAYOUT_TICKS, buildGraph, neighbors, startLayout, type Graph } from "./layout";
 
-/** A layout run to rest in one go (`ticks: 0` gives the starting positions). */
 function layoutGraph(
   graph: Graph,
-  options: { previous?: Map<string, { x: number; y: number }>; ticks?: number } = {},
+  options: { previous?: Map<string, { x: number; y: number; z: number }>; ticks?: number } = {},
 ): Graph {
   const run = startLayout(graph, options.previous);
   run.step(options.ticks ?? LAYOUT_TICKS);
@@ -75,7 +74,6 @@ describe("buildGraph", () => {
     expect(edge("n2")).toMatchObject({ kind: "tag", tagSource: "manual" });
     expect(edge("n3")).toMatchObject({ kind: "space" });
     expect(edge("n3")?.tagSource).toBeUndefined();
-    // A link written before sources were sent reads as added.
     const lib = library();
     delete lib.links[0].source;
     expect(buildGraph(lib).edges.find((e) => e.source === "n1")?.tagSource).toBe("manual");
@@ -87,7 +85,6 @@ describe("buildGraph", () => {
     expect(g.edges.find((e) => e.kind === "suggested")).toMatchObject({ source: "lone", target: "s1" });
     const byId = new Map(g.nodes.map((n) => [n.id, n]));
     expect(byId.get("lone")).toMatchObject({ suggested: true, degree: 0 });
-    // A Space is as big as what it holds; a suggestion does not grow it.
     expect(byId.get("s1")?.degree).toBe(1);
     expect(g.unconnectedNotes).toBe(0);
     expect(g.populatedSpaces).toBe(1);
@@ -111,13 +108,13 @@ describe("layoutGraph", () => {
   it("places the same library the same way every time", () => {
     const a = layoutGraph(buildGraph(library()));
     const b = layoutGraph(buildGraph(library()));
-    expect(a.nodes.map((n) => [n.x, n.y])).toEqual(b.nodes.map((n) => [n.x, n.y]));
+    expect(a.nodes.map((n) => [n.x, n.y, n.z])).toEqual(b.nodes.map((n) => [n.x, n.y, n.z]));
   });
 
   it("gives every node a finite position", () => {
     const g = layoutGraph(buildGraph(library()));
     for (const n of g.nodes) {
-      expect(Number.isFinite(n.x) && Number.isFinite(n.y)).toBe(true);
+      expect([n.x, n.y, n.z].every(Number.isFinite)).toBe(true);
     }
   });
 
@@ -125,15 +122,30 @@ describe("layoutGraph", () => {
     const g = layoutGraph(buildGraph(library()));
     const at = new Map(g.nodes.map((n) => [n.id, n]));
     const dist = (a: string, b: string) =>
-      Math.hypot(at.get(a)!.x - at.get(b)!.x, at.get(a)!.y - at.get(b)!.y);
+      Math.hypot(at.get(a)!.x - at.get(b)!.x, at.get(a)!.y - at.get(b)!.y, at.get(a)!.z - at.get(b)!.z);
     expect(dist("n1", "t1")).toBeLessThan(dist("n1", "s1"));
   });
 
   it("starts nodes it has placed before where they were, so a refresh does not reshuffle", () => {
     const first = layoutGraph(buildGraph(library()));
-    const previous = new Map(first.nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
+    const previous = new Map(first.nodes.map((n) => [n.id, { x: n.x, y: n.y, z: n.z }]));
     const again = layoutGraph(buildGraph(library()), { previous, ticks: 0 });
-    expect(again.nodes.map((n) => [n.x, n.y])).toEqual(first.nodes.map((n) => [n.x, n.y]));
+    expect(again.nodes.map((n) => [n.x, n.y, n.z])).toEqual(first.nodes.map((n) => [n.x, n.y, n.z]));
+  });
+
+  it("lays the library out in depth, flatter than it is wide", () => {
+    const lib = library();
+    for (let i = 0; i < 40; i++) {
+      lib.notes.push(note(`m${i}`));
+      lib.links.push({ noteId: `m${i}`, targetId: i % 2 ? "t1" : "s1", kind: i % 2 ? "tag" : "space" });
+    }
+    const g = layoutGraph(buildGraph(lib));
+    const spread = (axis: "x" | "y" | "z") => {
+      const v = g.nodes.map((n) => n[axis]);
+      return Math.max(...v) - Math.min(...v);
+    };
+    expect(spread("z")).toBeGreaterThan(0);
+    expect(spread("z")).toBeLessThan(Math.max(spread("x"), spread("y")));
   });
 });
 
@@ -145,17 +157,16 @@ describe("refreshing a laid-out library", () => {
       lib.links.push({ noteId: `m${i}`, targetId: i % 2 ? "t1" : "s1", kind: i % 2 ? "tag" : "space" });
     }
     const first = layoutGraph(buildGraph(lib));
-    const previous = new Map(first.nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
+    const previous = new Map(first.nodes.map((n) => [n.id, { x: n.x, y: n.y, z: n.z }]));
     lib.notes.push(note("new"));
     lib.links.push({ noteId: "new", targetId: "t1", kind: "tag" });
     const after = new Map(layoutGraph(buildGraph(lib), { previous }).nodes.map((n) => [n.id, n]));
-    const moved = first.nodes.map((n) => Math.hypot(after.get(n.id)!.x - n.x, after.get(n.id)!.y - n.y));
+    const moved = first.nodes.map((n) => Math.hypot(after.get(n.id)!.x - n.x, after.get(n.id)!.y - n.y, after.get(n.id)!.z - n.z));
     const mean = moved.reduce((a, b) => a + b, 0) / moved.length;
     expect(mean).toBeLessThan(4);
-    // The newcomer still lands by the tag it carries.
     const newcomer = after.get("new")!;
     const hub = after.get("t1")!;
-    expect(Math.hypot(newcomer.x - hub.x, newcomer.y - hub.y)).toBeLessThan(90);
+    expect(Math.hypot(newcomer.x - hub.x, newcomer.y - hub.y, newcomer.z - hub.z)).toBeLessThan(90);
   });
 });
 
@@ -183,8 +194,6 @@ describe("neighbors", () => {
   it("at two hops is the lens: a note's hubs and the notes they gather", () => {
     const g = buildGraph(library(), [suggestion("lone")]);
     expect([...neighbors(g, "n1", 2)].sort()).toEqual(["n1", "n2", "t1"]);
-    // A suggested edge is a path too: the lens on n3 reaches the note
-    // suggested for its Space.
     expect([...neighbors(g, "n3", 2)].sort()).toEqual(["lone", "n3", "s1"]);
   });
 });

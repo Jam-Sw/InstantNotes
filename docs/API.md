@@ -55,21 +55,28 @@ developer-facing description and is never shown to users verbatim.
 | Command | Purpose |
 | --- | --- |
 | `create_note` | Create a note; title is derived from the body (see DATA_MODEL.md section 6). |
-| `get_note` | Fetch one note by id, including a whiteboard's `surfaceData`. |
-| `update_note` | Patch title/body/flags, `contentKind`, and `surfaceData`; an empty patch is a no-op. The reply omits `surfaceData`: the caller already holds the canvas it saved. |
+| `get_note` | Fetch one note by id, including a whiteboard's canvas or a sheet's grid as `surfaceData`. |
+| `update_note` | Patch title/body/flags, `contentKind`, and `surfaceData`; an empty patch is a no-op. The reply omits `surfaceData`: the caller already holds the surface it saved. |
+| `sheet_csv` | A sheet's grid as CSV, the bytes the vault writes beside it, for Export Note. `VALIDATION_ERROR` for a note that is not a sheet. |
 | `soft_delete_note` | Move a note to trash (`is_deleted = 1`). |
 | `restore_note` | Restore a trashed note. |
 | `set_notes_flags` / `soft_delete_notes` / `restore_notes` / `destroy_notes` | The same for a multi-selection (`ids`), each in one transaction. `set_notes_flags` takes optional `isPinned` and `isArchived`; `destroy_notes` refuses without `confirm: true`. |
-| `list_notes` | List notes for a status/space/tag filter. `revisit: true` asks for the Revisit view (never-opened captures older than three days, oldest first); the store expands it, so the app and the MCP tool share one rule. Rows carry `contentKind` but not `surfaceData`. |
+| `list_notes` | List notes for a status/space/tag filter. `revisit: true` asks for the Revisit view (never-opened captures older than three days, oldest first); the store expands it, so the app and the MCP tool share one rule. Rows carry `contentKind` but not `surfaceData`. `bodyChars` cuts each document's `body` to that many characters, which the note list uses because it shows only a preview; the cut runs on past that count until 128 non-blank characters are in, so a note that opens with a long blank stretch still previews, and `0` returns no body. Sheets are never cut, and the agent tools never set it. |
 | `search_notes` | Full-text search over title and body (section 7 of DATA_MODEL.md). |
 | `library_graph` | Live notes, every tag and Space, and one link per note-to-tag or note-to-Space membership, for the Graph view. A tag link carries its `source` (`inline`, written in the text, or `manual`, added to the note); a Space link's is null. Derived on every call; nothing about the graph is stored. Trashed and archived notes are left out. |
 | `space_suggestions` | Where each live note in no Space most likely belongs (section 4.1): `noteId`, `noteTitle`, `spaceId`, `spaceName`, `probability` (0 to 1), and up to three `reasons` (`label`, `kind` = `tag` or `word`), newest note first. Empty until two Spaces hold notes. |
+| `tag_suggestion` | The one tag a note (`noteId`) most likely wants, from the words it shares with tagged notes: `tag`, `probability`, and up to three `reasons` (words), or null. Never a tag the note already has; the same model as `space_suggestions`, with tags as the classes and words as the only evidence. Follows the `suggest.tags` setting (`enabled`, default true, and `showAt`, 0.3 to 0.9, default 0.5). App only: no MCP tool reads or changes it. |
 | `dismiss_space_suggestion` / `restore_space_suggestion` | "Not this one" for a (`noteId`, `spaceId`) pair, and its undo. Device-local (DATA_MODEL.md section 8); an unknown note or Space is `NOT_FOUND` on dismiss. Neither emits a library event: nothing about a note changed. |
 
-`contentKind` is `document` or `whiteboard`. `update_note` rejects turning a
-whiteboard back into a document and `surfaceData` on a document, both with
-`VALIDATION_ERROR`. A whiteboard's `body` is the text on its board, written
-by the app with each canvas save (DATA_MODEL.md section 3.1).
+`contentKind` is `document`, `whiteboard`, or `sheet`. `update_note` rejects
+turning a whiteboard or a sheet into anything else and `surfaceData` on a
+document, both with `VALIDATION_ERROR`. A whiteboard's `body` is the text on
+its board, written by the app with each canvas save (DATA_MODEL.md section
+3.1). A sheet's `body` is its grid as a Markdown table, derived by the store
+from `surfaceData` on every save (a body sent with a sheet is ignored), and
+its grid is validated against the sheet limits with `VALIDATION_ERROR`
+(section 3.2). A document patched to `sheet` without `surfaceData` gets the
+default grid.
 
 `update_note` takes an optional `expectedUpdatedAt`. When given, the patch
 applies only if the note's `updatedAt` still equals it, checked inside the
@@ -184,15 +191,21 @@ a copy at export time regardless of storage mode; see
 
 `hide_capture`, `open_library`, `set_window_vibrancy`, `set_window_theme`,
 `export_theme_file`, `import_theme_file`, `export_note_file`, `open_url`,
-`quit_app`. These drive native windows, theme file I/O, and external links; they
+`quit_app`, `restart_app`. These drive native windows, theme file I/O, and external links; they
 carry no note data beyond what the user explicitly exports. `export_note_file`
-writes `.md`, `.txt`, or `.excalidraw` (a whiteboard's canvas).
+writes `.md`, `.txt`, `.excalidraw` (a whiteboard's canvas), or `.csv` (a
+sheet's grid, from `sheet_csv`).
+`set_window_theme` takes the `variant` (`light` or `dark`) and an optional `background` (a `#rrggbb` colour). On Linux and Windows it paints the library window and its web view in that colour, and keeps the pair in a small `window-paint` file in the app data folder so the next launch can paint the window before the page loads; macOS ignores `background`. The library window starts hidden and is shown at the top of setup, painted from that file when it exists.
 `get_shortcut_failure` returns why the global capture shortcut could not be
-registered at launch, or `null`; the welcome screen shows it.
+registered at launch, or `null`: `{ label, wayland }`, where `wayland` is true
+when registration succeeded but the session cannot deliver the key (the
+`shortcut:failed` event carries the same object). The welcome screen shows it.
+`instantnotes capture` starts the app with the capture panel open, or opens
+it in the running app, so a desktop shortcut can be bound to it.
 
 The File menu announces itself to the library window with `menu:new-note`,
-`menu:new-whiteboard`, `menu:export-note`, and `menu:toggle-sticky` (no
-payload). Every event name the
+`menu:new-whiteboard`, `menu:new-sheet`, `menu:export-note`, and
+`menu:toggle-sticky` (no payload). Every event name the
 shell emits is declared in `src-tauri/src/events.rs`.
 
 ### 9.1 Stickies
@@ -227,7 +240,9 @@ attached is centered.
 
 Quitting waits for every window that holds edits: the library and each sticky
 flush on `app:quit-requested` and answer with `quit_app`, and the app exits on
-the last answer (or after the 800ms fallback).
+the last answer (or after the 800ms fallback). `restart_app` runs the same
+handshake and starts the app again instead of exiting, so an installed update
+applies.
 
 ## 10. Capture
 
@@ -402,7 +417,7 @@ else follows the `initialize` handshake of 2025-11-25 back to 2024-11-05,
 including a JSON-RPC batch on one line. An unknown tool, or `arguments` that
 are not an object, is a JSON-RPC error (`-32602`); everything a tool refuses
 is a result with `isError`, which the model sees. Successful results carry
-their JSON as `structuredContent` and again as text. A request that panics
+their JSON as `structuredContent` and again as compact JSON text. A request that panics
 inside the server is answered with `-32603` and the connection goes on. Every
 response is checked against the official MCP JSON Schema of its revision.
 
@@ -410,38 +425,58 @@ Besides tools, the server declares `resources`: `resources/list` offers the
 fifty most recently updated live notes as `instantnotes://notes/<id>`
 (`text/markdown`), `resources/templates/list` names that template, and
 `resources/read` returns one note's Markdown, or `-32002` for an id that is
-not a note. Resources sit behind the same read gate as the read tools.
+not a note. Resources sit behind the same read gate as the read tools, and each call is
+traced as `resources/list` or `resources/read` (kind `read`).
 
 | Tool | Access | Store call |
 | --- | --- | --- |
 | `search_notes`, `list_notes`, `get_note`, `get_notes`, `list_tags`, `list_spaces` | read | `search_notes_page`, `list_notes` and `count_notes`, `get_note(id, false)`, `list_tags`, `list_workspaces` |
-| `suggest_space` | read | `space_suggestions` (section 4.1), for one note (`id`) or every unfiled note (`limit`, default 50): each with its Space, a probability, and the reasons. The same model the user sees in the Graph; it files nothing, and says so, so an agent that agrees calls `add_to_space`. |
+| `suggest_space` | read | `space_suggestions` (section 4.1), for one note (`id`) or every unfiled note (`limit`, default 50, and `offset`): each with its Space, a probability, and the reasons. The same model the user sees in the Graph; it files nothing, and says so, so an agent that agrees calls `add_to_space`. |
 | `create_note`, `update_note`, `append_to_note` | write | `create_note`, `update_note` with `expectedUpdatedAt` |
+| `edit_note` | write | `update_note` with the `updatedAt` just read: replaces one exact `oldText` that appears once in a document's body (0 or several matches are refused with the count). Retries on conflict like `append_to_note`. |
+| `append_sheet_rows` | write | `update_note` with `expectedUpdatedAt`, on a sheet's grid (`sheet.rs`): rows land after the last row holding data, a short row is padded, a wider one is refused, and the store derives the body. Retries on conflict like `append_to_note`. Returns the note view without its body plus `appended: { firstRow, count }` (spreadsheet numbering). |
 | `tag_note`, `untag_note`, `add_to_space`, `remove_from_space` | write | the tag and workspace membership calls |
 | `trash_note`, `restore_note` | write | `soft_delete_note`, `restore_note` |
 
 Every tool declares a `title`, an input schema that rejects unknown
 properties, and annotations: `readOnlyHint` for reads, `destructiveHint` for
-the writes that remove or replace (`update_note`, `untag_note`,
+the writes that remove or replace (`update_note`, `edit_note`, `untag_note`,
 `remove_from_space`, `trash_note`), `idempotentHint`, and `openWorldHint:
 false`, since a tool only ever touches this library.
 
 An agent is meant to search, then read only what matters. `search_notes`
-takes `query`, `match` (`all` or `any` of the words), `space`, `tag`, `status`
-(`active`, `archived`, `all`; never the Trash), `updatedAfter` and
-`updatedBefore` (a date or a UTC timestamp), `limit`, and `offset`. Each
+takes `query` (at least one word; an empty one is refused), `match` (`all` or
+`any` of the words), `detail` (`passages`, or `titles` for `id`, `title`,
+`kind`, `spaces`, `updatedAt` only), `space`, `tag`, `status` (`active`, `archived`,
+`pinned`, `trash`, `all`), `updatedAfter` and `updatedBefore` (a date or a UTC
+timestamp), `limit` (default 10, at most 200), and `offset`. A search with no
+match returns a `hint`: how many notes match any of the words, or what to
+loosen. Each
 result carries `passages`: up to three, each the matching line with the
 line before and after it and its 1-based `line`, plus `matchingLines`, the
-count of lines that match in all. `get_notes` reads up to 50 notes in full
-in one call, in the order asked, and returns ids that name no note in
-`missing`. `search_notes` and `list_notes` are paged: `total` is how many
-match in all, `hasMore` whether to ask again, and `nextOffset` from where.
+count of lines that match in all. `get_note` and `get_notes` cut each body at `maxChars` (default 12,000,
+1,000 to 100,000); `get_notes` also holds one call to 60,000 characters, so
+each of many notes is shorter (never under 1,000). A cut body says
+`truncated`, `totalChars`, and `nextBodyOffset`, which `get_note` takes as
+`bodyOffset` to read on. `get_notes` reads up to 50 notes in one call, in the
+order asked, and returns ids that name no note in `missing`. Write tools
+return the note without its body. `search_notes`, `list_notes`, and `suggest_space` are paged: `total` is how
+many match in all, `hasMore` whether to ask again, `nextOffset` from where, and
+`limit` the page size applied.
 `list_notes` takes the same two dates.
 
 `list_notes` with `status: "revisit"` is the Revisit view's filter. Reads never
 set `lastOpenedAt`. There is no permanent delete, no settings, no vault, and
 no whiteboard canvas at any access level; writing a whiteboard's text is
-refused.
+refused, and every refusal names the next step (a sheet: `append_sheet_rows`;
+a whiteboard: the user edits it in the app). Every search result carries
+`kind`, so an agent knows a sheet or whiteboard before it writes. A sheet's body is refused too (it is derived from the grid):
+`get_note` on a sheet returns the Markdown table and
+`sheet: { cols, rows, header }` (its width, how many rows hold data, and the
+first row), and `append_sheet_rows` is the one
+way to write it. Append is the only agent write to a sheet on purpose: the
+app can then merge an agent's rows with the user's unsaved cells by
+mechanics alone, so neither side's work is lost.
 
 Two settings keys belong to this surface:
 
@@ -458,9 +493,9 @@ process), `client` (the client's name, from the handshake or the request),
 `error`, `durationMs`, `noteIds` (up to 50), `noteCount`, `titles` (first
 three), `space`, `tag`, `query`, `afterUpdatedAt`, `revertable`,
 `revertedAt`, and `reverts`. A successful write also stores the note as it
-was just before (fields, tags with their sources, Spaces), which is what
-makes it revertable; a create stores "no note", and reverting it trashes the
-note.
+was just before (fields, tags with their sources, Spaces, and a sheet's grid,
+whose body is derived from it), which is what makes it revertable; a create
+stores "no note", and reverting it trashes the note.
 
 | Command | Purpose |
 | --- | --- |
@@ -469,6 +504,7 @@ note.
 | `agent_activity_before` | The snapshot a write row holds, or `null` for a create. |
 | `list_agent_sessions` | Every known agent connection, newest first: `session`, `client`, `connectedAt`, `disconnectedAt`, `label`, `clientSession`, `cwd`, `matched` (`exact` or `inferred`), and `connected` (the process holds its lock right now). The same list arrives as the `agents:sessions` event whenever it changes. |
 | `agent_activity_wire` | The raw exchange a row holds: `request` and `response`, each the whole JSON-RPC message as JSON text, or `null` where none was kept. |
+| `end_agent_session` | End a connected agent's server process (`session`). The pid comes from the session id alone, never from the client's own pid, and the process must still hold the session's lock (on Linux, it must also be running `mcp`), so a pid the system has since reused is never signalled. `VALIDATION_ERROR` for an ended or unknown session. The client may start a new server, which arrives as a new connection; Block stops that. |
 | `revert_agent_activity` | Put the note back as the row's snapshot has it (or trash a created note), mark the row reverted, and record the revert as a row of its own (client `instantnotes`, tool `revert`) with the state it replaced, so it can be reverted in turn. Returns that row; `CONFLICT` for a row already reverted. |
 | `clear_agent_activity` | Forget the trace. Notes are untouched. |
 

@@ -1,7 +1,3 @@
-//! In-app feedback: append one submission to `feedback.jsonl` in the app data
-//! directory. This is the durable local record; delivery to the project (a
-//! prefilled GitHub issue) happens on the frontend through `open_url`.
-
 use crate::*;
 use std::io::Write;
 
@@ -12,8 +8,6 @@ pub struct FeedbackInput {
     message: String,
     #[serde(default)]
     app_version: Option<String>,
-    /// Opt-in diagnostics snapshot, stored verbatim so the record matches
-    /// what the user was shown.
     #[serde(default)]
     diagnostics: Option<serde_json::Value>,
 }
@@ -56,9 +50,6 @@ pub fn submit_feedback(app: AppHandle, input: FeedbackInput) -> CmdResult<()> {
     Ok(())
 }
 
-/// Reveal `feedback.jsonl` in the OS file manager: the only way a user can
-/// see what has accumulated there, since nothing else surfaces or prunes it.
-/// Reveals rather than opens: the file is meant to be located, not edited.
 #[tauri::command(async)]
 pub fn open_feedback_log(app: AppHandle) -> CmdResult<()> {
     let path = feedback_log_path(&app)?;

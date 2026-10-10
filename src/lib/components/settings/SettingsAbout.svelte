@@ -5,8 +5,6 @@
 
   let { appVersion }: { appVersion: string } = $props();
 
-  // Reveal-to-ready timing for the capture panel; the number that keeps the
-  // "capture is discharge" promise honest.
   let captureLatency = $state<CaptureLatencySummary | null>(null);
   onMount(() => {
     getCaptureLatency()

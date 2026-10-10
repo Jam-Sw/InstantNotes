@@ -1,5 +1,3 @@
-//! Workspace CRUD and note-workspace membership.
-
 use super::*;
 
 impl Store {
@@ -18,7 +16,6 @@ impl Store {
         workspace_get_or_create(&self.conn, raw_name)
     }
 
-    /// The Space with this name, case-insensitively, if any.
     pub fn find_workspace(&self, raw_name: &str) -> Result<Option<Workspace>> {
         let Some(name) = domain::normalize_workspace_name(raw_name) else {
             return Ok(None);
@@ -35,8 +32,6 @@ impl Store {
             .optional()?)
     }
 
-    /// The Spaces of many notes in one query: note id to Space names, in
-    /// name order. Notes in no Space are absent.
     pub fn workspaces_for_notes(
         &self,
         note_ids: &[String],
@@ -65,10 +60,13 @@ impl Store {
     pub fn list_workspaces(&self) -> Result<Vec<WorkspaceWithCount>> {
         let mut stmt = self.conn.prepare(
             "SELECT w.id, w.name, w.created_at, w.updated_at, \
-                    (SELECT COUNT(*) FROM note_workspaces nw \
-                       JOIN notes n ON n.id = nw.note_id \
-                      WHERE nw.workspace_id = w.id AND n.is_deleted = 0) AS note_count \
-             FROM workspaces w ORDER BY w.name COLLATE NOCASE",
+                    COALESCE(c.n, 0) AS note_count \
+             FROM workspaces w \
+             LEFT JOIN (SELECT nw.workspace_id, COUNT(*) AS n FROM note_workspaces nw \
+                          JOIN notes n ON n.id = nw.note_id \
+                         WHERE n.is_deleted = 0 GROUP BY nw.workspace_id) c \
+                    ON c.workspace_id = w.id \
+             ORDER BY w.name COLLATE NOCASE",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(WorkspaceWithCount {
@@ -103,10 +101,6 @@ impl Store {
         self.fetch_workspace(id)
     }
 
-    /// Removes the workspace and its memberships; notes are untouched.
-    /// Returns the member note ids so the caller can offer an undo that
-    /// re-adds every membership: a post-hoc `list_notes` snapshot can't,
-    /// because its default filter hides archived and trashed members.
     pub fn delete_workspace(&mut self, id: &str) -> Result<Vec<String>> {
         self.fetch_workspace(id)?;
         let member_ids = {
@@ -118,15 +112,10 @@ impl Store {
         };
         self.conn
             .execute("DELETE FROM workspaces WHERE id = ?1", params![id])?;
-        // Suggestions dismissed for this Space have nothing left to refer to.
         self.prune_space_dismissals()?;
         Ok(member_ids)
     }
 
-    /// Tags carried by a workspace's visible notes, with counts scoped to
-    /// the workspace (the note list's tag chips). Archived and trashed
-    /// members don't contribute: a chip must never filter the visible
-    /// list down to zero matches for a tag the user can't see.
     pub fn list_workspace_tags(&self, workspace_id: &str) -> Result<Vec<TagWithCount>> {
         self.fetch_workspace(workspace_id)?;
         let mut stmt = self.conn.prepare(
@@ -148,7 +137,6 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
-    /// Collect a note into a workspace (idempotent).
     pub fn add_note_to_workspace(&mut self, note_id: &str, workspace_id: &str) -> Result<()> {
         self.fetch_note(note_id)?;
         self.fetch_workspace(workspace_id)?;

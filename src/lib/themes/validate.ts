@@ -1,9 +1,3 @@
-// Import-only guard. A shared theme is untrusted input that becomes CSS values
-// written to :root, so every value is checked against a strict allow-list
-// before any token is applied. Built-in themes are typed objects and bypass
-// this. The goal is no CSS injection: a hostile file is rejected with a
-// friendly message and nothing is applied.
-
 import {
   OPTIONAL_TOKEN_KEYS,
   TOKEN_KEYS,
@@ -18,8 +12,6 @@ export type ValidationResult =
   | { ok: true; theme: Theme }
   | { ok: false; error: string };
 
-// Substrings that have no place in a color/font/length value and that could
-// break out of a custom-property declaration or pull in remote content.
 const FORBIDDEN = ["url(", "expression(", "@import", "javascript:", "/*", "*/", ";", "{", "}", "<", ">", "\\"];
 
 const COLOR_RE =
@@ -27,9 +19,7 @@ const COLOR_RE =
 const FONT_RE = /^[\w\s,"'().\-]+$/;
 const LENGTH_RE = /^\d+(\.\d+)?(px|rem|em)$/;
 const ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
-// Leading: unitless number (1.5) or number with units (24px, 1.5em).
 const LEADING_RE = /^\d+(\.\d+)?(px|rem|em|%)?$/;
-// Tracking: 0, or a signed CSS length (e.g. -0.01em, 0.5px).
 const TRACKING_RE = /^-?\d+(\.\d+)?(px|rem|em|ch)$|^0$/;
 
 function hasForbidden(value: string): boolean {
@@ -54,8 +44,6 @@ function isLength(value: unknown): value is string {
   return typeof value === "string" && !hasForbidden(value) && LENGTH_RE.test(value.trim());
 }
 
-// Shadow is a complex CSS value; we accept anything without injection vectors
-// and under a reasonable length cap (multiple layered shadows are valid CSS).
 function isShadow(value: unknown): value is string {
   return typeof value === "string" && value.length <= 300 && !hasForbidden(value);
 }
@@ -81,7 +69,6 @@ function validateTokenSet(input: unknown, label: string): TokenSet | string {
     if (!isColor(v)) return `${label}.${key} is not a valid color`;
     out[key] = (v as string).trim();
   }
-  // Optional tokens: absent is fine, present must be a color like the rest.
   for (const key of OPTIONAL_TOKEN_KEYS) {
     const v = rec[key];
     if (v === undefined) continue;
@@ -91,7 +78,6 @@ function validateTokenSet(input: unknown, label: string): TokenSet | string {
   return out;
 }
 
-/** Parse + validate untrusted input (already JSON-parsed) into a safe Theme. */
 export function validateTheme(input: unknown): ValidationResult {
   if (!input || typeof input !== "object") {
     return { ok: false, error: "Not a theme file." };
@@ -199,7 +185,6 @@ export function validateTheme(input: unknown): ValidationResult {
   return { ok: true, theme };
 }
 
-/** Parse a JSON string then validate it. */
 export function parseTheme(json: string): ValidationResult {
   let data: unknown;
   try {

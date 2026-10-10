@@ -1,13 +1,27 @@
-// Tauri doesn't have a Node.js server to do proper SSR
-// so we use adapter-static with a fallback to index.html to put the site in SPA mode
-// See: https://svelte.dev/docs/kit/single-page-apps
-// See: https://v2.tauri.app/start/frontend/sveltekit/ for more info
 import adapter from "@sveltejs/adapter-static";
 import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
 
-/** @type {import('@sveltejs/kit').Config} */
+const QUIET = {
+  "src/lib/components/GraphView.svelte": ["a11y_no_static_element_interactions"],
+  "src/lib/components/LicenseNote.svelte": ["a11y_no_noninteractive_tabindex"],
+  "src/lib/components/SettingsView.svelte": ["state_referenced_locally"],
+  "src/lib/components/sheet/SheetGrid.svelte": ["a11y_no_static_element_interactions"],
+  "src/routes/+page.svelte": [
+    "a11y_no_noninteractive_element_interactions",
+    "a11y_no_noninteractive_tabindex",
+  ],
+  "src/routes/sticky/+page.svelte": ["a11y_no_static_element_interactions"],
+};
+
 const config = {
   preprocess: vitePreprocess(),
+  compilerOptions: {
+    warningFilter: (warning) =>
+      !Object.entries(QUIET).some(
+        ([file, codes]) =>
+          warning.filename?.replaceAll("\\", "/").endsWith(file) && codes.includes(warning.code),
+      ),
+  },
   kit: {
     adapter: adapter({
       fallback: "index.html",

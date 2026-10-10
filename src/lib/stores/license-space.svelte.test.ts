@@ -1,8 +1,3 @@
-// @vitest-environment jsdom
-// The License Space: the library's form of the installers agreement gate.
-// The rules themselves are agreements.test.ts (the shared conformance cases);
-// this covers what InstantNotes adds: which document is open, and the lock.
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import manifest from "../../../src-tauri/installer/agreements.json";
 
@@ -29,7 +24,6 @@ describe("License Space", () => {
     space.agree("license");
     expect(space.locked).toBe(true);
     expect(space.isAgreed("license")).toBe(true);
-    // The next document still to agree to opens by itself.
     expect(space.shown?.id).toBe("eula");
 
     space.agree("eula");

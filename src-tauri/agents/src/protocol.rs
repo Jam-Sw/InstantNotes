@@ -1,17 +1,3 @@
-//! The MCP stdio transport: newline-delimited JSON-RPC 2.0, served in both
-//! eras of the specification (a "dual-era" server, 2026-07-28 versioning.md):
-//!
-//! - Modern (2026-07-28): stateless. Every request names its protocol version
-//!   in `params._meta`, `server/discover` describes the server, and every
-//!   result carries `resultType`.
-//! - Legacy (2025-11-25 back to 2024-11-05): an `initialize` handshake picks
-//!   the version for the rest of the process. 2025-03-26 also lets a client
-//!   send a batch (a JSON array of messages) on one line.
-//!
-//! A request is modern exactly when its `_meta` names a modern version. The
-//! methods are few and stable, so this is written against `serde_json`
-//! directly rather than pulling in an async SDK and its runtime.
-
 use crate::access::Access;
 use crate::tools::{session_id, Tools, NOTE_URI_PREFIX};
 use instantnotes_core::Store;
@@ -19,21 +5,15 @@ use serde_json::{json, Map, Value};
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
 
-/// Stateless revisions: the version travels on every request.
 const MODERN_VERSIONS: &[&str] = &["2026-07-28"];
-/// Handshake revisions, newest first. `initialize` asking for one of them
-/// gets it back; any other gets the newest.
 const LEGACY_VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 
 const VERSION_META: &str = "io.modelcontextprotocol/protocolVersion";
 const CLIENT_META: &str = "io.modelcontextprotocol/clientInfo";
 const SERVER_META: &str = "io.modelcontextprotocol/serverInfo";
 
-/// How long a client may keep `tools/list` and `server/discover`: both are
-/// fixed for the life of this binary.
 const CACHE_TTL_MS: u64 = 60 * 60 * 1000;
 
-// JSON-RPC error codes, and the one MCP adds.
 const PARSE_ERROR: i64 = -32700;
 const INVALID_REQUEST: i64 = -32600;
 const METHOD_NOT_FOUND: i64 = -32601;
@@ -44,40 +24,42 @@ const RESOURCE_NOT_FOUND: i64 = -32002;
 
 const INSTRUCTIONS: &str = "You are connected to InstantNotes, the user's \
 personal notes app: a place to park thoughts fast and trust they come back. \
-The user sees what you read and change as you do it, highlighted in the app.
+The user watches what you read and change, highlighted in the app as you go.
 
-Library: notes, tags, and Spaces. A Space is a named collection for one \
-effort; a note can be in several. A note's title is its first line unless set.
+# Vocabulary
+- Space: a named collection for one effort. A note can be in several Spaces.
+- Note kinds: document (Markdown), sheet (a cell grid), whiteboard (a canvas). \
+A document's title is its first line unless set.
+- Document Markdown is what the editor renders: GitHub extensions, \
+==highlight==, task items written \"- [ ] task\", and images written \
+![](attachments/<file>). A #word in the text is a tag.
 
-Formatting, as the editor renders it: Markdown with GitHub extensions. \
-# headings, **bold**, *italic*, ~~strike~~, ==highlight==, `code`, fenced code \
-blocks, > quotes, - lists (indent to nest), - [ ] tasks, [links](url), and \
-images as ![](attachments/<file>). A #word in the text is a tag.
+# Writing
+- Write when the user asks for that change. For any other change, ask first.
+- A thought, idea, or to-do the user asks you to save is a new note: call \
+list_spaces, then create_note with the Space it belongs in. Add to an \
+existing note only when the user names that note.
+- Change the smallest part that does the job: append_to_note adds text at the \
+end, edit_note replaces one passage, update_note rewrites the whole note.
 
-Reading: search, then read only what matters. search_notes returns the \
-matching passages with their line numbers and surrounding lines, and takes \
-match \"any\" to cast wide, a space, a tag, a status, and dates; that is \
-usually enough to answer without opening a note. To read notes in full, pass \
-their ids to get_notes, several at a time. Do not page through the whole \
-library with list_notes to read everything, and do not script around these \
-tools: results say total and hasMore, so you always know what is left.
+# Reading
+- Find notes with search_notes and two or three keywords. Its passages often \
+answer the question; read with get_notes only the notes that matter.
+- search_notes, list_notes, and suggest_space are paged: while hasMore is \
+true and you need more, call again with offset set to nextOffset.
+- Open loops are captures the user has never opened, older than three days: \
+list_notes with status \"revisit\" lists them.
 
-Working with notes: search or list before creating, so you add to an existing \
-note instead of duplicating it. search_notes matches titles, so search a \
-note's title to find it; its results already carry the id, spaces, and \
-updatedAt. Prefer append_to_note to add to a note. To rewrite one, pass the \
-updatedAt from search_notes, list_notes, or get_note to update_note; you do \
-not need to read the note first unless you need its current text. A CONFLICT \
-means the user changed it since; it includes the current note, so retry from \
-that. Nothing you do \
-deletes for good: trash_note is undoable by the user.
+# Limits
+- Sheets: append_sheet_rows adds rows; the user edits cells in the app.
+- Whiteboards: agents read them; the user edits them in the app.
+- Removing: trash_note moves a note to the Trash, where the user can restore \
+it. No tool deletes a note for good.
 
-Open loops: list_notes with status \"revisit\" gives captures the user has \
-not come back to, oldest first. That is the list to help close, in a Space or \
-across the library. InstantNotes is not a task manager: do not add dates, \
-reminders, or checklists the user did not ask for.";
+# Scope
+InstantNotes holds notes. Dates, reminders, and checklists go into a note's \
+text when the user asks for them.";
 
-/// Serve one client until stdin closes.
 pub fn serve(
     store: &mut Store,
     attachments_dir: Option<PathBuf>,
@@ -87,13 +69,10 @@ pub fn serve(
     serve_as(store, attachments_dir, new_session(), input, output)
 }
 
-/// A name for this process's connection, for `serve_as`.
 pub fn new_session() -> String {
     session_id()
 }
 
-/// `serve`, under a session id the caller already holds (the entry point
-/// takes the session's lock before the first message is read).
 pub fn serve_as(
     store: &mut Store,
     attachments_dir: Option<PathBuf>,
@@ -109,7 +88,6 @@ pub fn serve_as(
             tools.disconnect();
             return Ok(());
         }
-        // A line that is not UTF-8 is one bad message, not a dead server.
         let reply = match std::str::from_utf8(&line) {
             Ok(text) if text.trim().is_empty() => continue,
             Ok(text) => handle_line(&mut tools, text),
@@ -123,7 +101,6 @@ pub fn serve_as(
     }
 }
 
-/// One line: a message or a batch of them, to at most one line back.
 fn handle_line(tools: &mut Tools, line: &str) -> Option<Value> {
     match serde_json::from_str(line) {
         Err(_) => Some(error(Value::Null, PARSE_ERROR, "parse error")),
@@ -138,12 +115,6 @@ fn handle_line(tools: &mut Tools, line: &str) -> Option<Value> {
     }
 }
 
-/// One message to at most one reply. Notifications, and responses (this
-/// server sends no requests, so any response answers nothing), get none.
-///
-/// A panic inside a request (a bug in one tool, a corrupt row) is caught and
-/// answered as an internal error, so one bad call never takes the whole
-/// connection, and the agent's conversation, down with it.
 fn handle(tools: &mut Tools, message: Value) -> Option<Value> {
     let id = message.get("id").cloned().unwrap_or(Value::Null);
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -170,7 +141,6 @@ fn handle_unguarded(tools: &mut Tools, message: Value) -> Option<Value> {
     let id = match msg.get("id") {
         None => None,
         Some(id @ (Value::String(_) | Value::Number(_))) => Some(id.clone()),
-        // MCP request ids are strings or integers, never null.
         Some(_) => return Some(error(Value::Null, INVALID_REQUEST, "invalid request id")),
     };
     let well_formed = msg.get("jsonrpc").and_then(Value::as_str) == Some("2.0");
@@ -183,9 +153,7 @@ fn handle_unguarded(tools: &mut Tools, message: Value) -> Option<Value> {
         Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
         Err(err) => json!({ "jsonrpc": "2.0", "id": id, "error": err }),
     };
-    // The trace keeps the whole exchange, so the user can read exactly what
-    // an agent sent and what it was told.
-    if method == "tools/call" {
+    if matches!(method, "tools/call" | "resources/list" | "resources/read") {
         if let (Ok(sent), Ok(answered)) =
             (serde_json::to_string(&msg), serde_json::to_string(&reply))
         {
@@ -195,12 +163,10 @@ fn handle_unguarded(tools: &mut Tools, message: Value) -> Option<Value> {
     Some(reply)
 }
 
-/// A request's result, or its JSON-RPC error object.
 fn request(tools: &mut Tools, method: &str, params: &Value) -> Result<Value, Value> {
     let modern = match params.get("_meta").and_then(|m| m.get(VERSION_META)) {
         None => false,
         Some(Value::String(v)) if MODERN_VERSIONS.contains(&v.as_str()) => true,
-        // A legacy client that names its version anyway.
         Some(Value::String(v)) if LEGACY_VERSIONS.contains(&v.as_str()) => false,
         Some(requested) => {
             return Err(json!({
@@ -217,7 +183,6 @@ fn request(tools: &mut Tools, method: &str, params: &Value) -> Result<Value, Val
         }
     }
     let mut result = match method {
-        // The probe a dual-era client sends first, so it answers in any era.
         "server/discover" => {
             return Ok(complete(json!({
                 "supportedVersions": supported_versions(),
@@ -235,11 +200,9 @@ fn request(tools: &mut Tools, method: &str, params: &Value) -> Result<Value, Val
         "ping" => json!({}),
         "tools/list" => json!({ "tools": tools.list() }),
         "tools/call" => call(tools, params)?,
-        // Notes as resources, read-gated like the read tools. A client that
-        // prefers resources to tool calls (Claude Desktop's picker) gets
-        // the same notes the same way.
         "resources/list" => {
-            Access::check(tools.store(), Access::Read)
+            tools
+                .check(Access::Read)
                 .map_err(|m| error_object(INVALID_PARAMS, &m))?;
             json!({ "resources": tools.resources().map_err(|m| error_object(INTERNAL_ERROR, &m))? })
         }
@@ -253,7 +216,8 @@ fn request(tools: &mut Tools, method: &str, params: &Value) -> Result<Value, Val
             }]
         }),
         "resources/read" => {
-            Access::check(tools.store(), Access::Read)
+            tools
+                .check(Access::Read)
                 .map_err(|m| error_object(INVALID_PARAMS, &m))?;
             let uri = params
                 .get("uri")
@@ -276,9 +240,6 @@ fn request(tools: &mut Tools, method: &str, params: &Value) -> Result<Value, Val
     Ok(result)
 }
 
-/// `tools/call`. A request that fails the call's own schema, or names a tool
-/// that does not exist, is a protocol error; anything the tool itself
-/// refuses is a result with `isError`, which the model sees and can fix.
 fn call(tools: &mut Tools, params: &Value) -> Result<Value, Value> {
     let Some(name) = params.get("name").and_then(Value::as_str) else {
         return Err(error_object(INVALID_PARAMS, "tools/call needs a name"));
@@ -310,7 +271,6 @@ fn initialize(params: &Value) -> Value {
     })
 }
 
-/// A modern result: `resultType`, and who answered.
 fn complete(mut result: Value) -> Value {
     let Value::Object(fields) = &mut result else {
         return result;
@@ -332,7 +292,6 @@ fn supported_versions() -> Vec<&'static str> {
 }
 
 fn capabilities() -> Value {
-    // Neither list changes while the process lives: no listChanged.
     json!({ "tools": {}, "resources": {} })
 }
 

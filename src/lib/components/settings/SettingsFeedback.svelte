@@ -46,16 +46,12 @@
     sending = true;
     const diag = includeDiagnostics ? diagnostics : null;
     try {
-      // Durable local record first, so feedback is never lost even offline.
       await submitFeedback({ category, message: text, appVersion, diagnostics: diag });
     } catch (e) {
       toasts.show(`Couldn't send feedback. ${e instanceof Error ? e.message : e}`);
       sending = false;
       return;
     }
-    // The local record is safe from here on; message is cleared regardless of
-    // whether the GitHub hand-off below succeeds, so a browser failure never
-    // reads as feedback having been lost.
     message = "";
     try {
       await openUrl(
@@ -210,8 +206,6 @@
     padding: 8px 18px;
     border-radius: var(--radius);
     background: var(--accent);
-    /* White reads on every builtin accent (blue family); the accent is the
-       filled background, not text. */
     color: #fff;
     font-size: 13px;
     font-weight: 600;

@@ -86,10 +86,8 @@ describe("bumpLockVersion", () => {
       "}",
     ].join("\n");
     const out = bumpLockVersion(lock, "0.6.0");
-    // Both instantnotes version fields move.
     expect(out.match(/"version": "0\.6\.0"/g)).toHaveLength(2);
     expect(out).not.toContain('"version": "0.5.2"');
-    // The dependency's version is untouched.
     expect(out).toContain('"version": "5.0.0"');
   });
 });

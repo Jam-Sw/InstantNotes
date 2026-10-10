@@ -1,7 +1,3 @@
-// Promise-based confirm dialog for irreversible actions, replacing every
-// window.confirm in the app. One host (ConfirmDialog.svelte) is mounted once
-// in +page.svelte; call sites just `await confirmDialog.ask(...)`.
-
 interface ConfirmOptions {
   title: string;
   body?: string;
@@ -22,13 +18,9 @@ class ConfirmDialogStore {
   request = $state<ConfirmRequest | null>(null);
 
   #resolve: ((ok: boolean) => void) | null = null;
-  // Focus returns here once the dialog closes, so a keyboard user lands back
-  // where they were rather than at the top of the document.
   #invoker: HTMLElement | null = null;
 
   ask(options: ConfirmOptions): Promise<boolean> {
-    // Only one confirm can be open at a time; a second call while one is
-    // pending settles the first as cancelled rather than stacking dialogs.
     this.#settle(false);
     this.#invoker =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;

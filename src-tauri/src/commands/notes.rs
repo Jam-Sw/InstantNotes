@@ -1,6 +1,5 @@
-//! Note commands: create, read, update, delete, list, search.
-
 use crate::*;
+use instantnotes_core::sheet::Sheet;
 
 #[tauri::command(async)]
 pub fn create_note(
@@ -29,10 +28,19 @@ pub fn update_note(
     let mut note = locked(&state)?.update_note(&id, patch)?;
     emit_notes_changed(&app);
     emit_tags_changed(&app);
-    // The caller already holds the canvas it just saved; echoing it back
-    // would ship the whole board, pasted images included, on every save.
     note.surface_data = None;
     Ok(note)
+}
+
+#[tauri::command(async)]
+pub fn sheet_csv(state: State<'_, AppState>, id: String) -> CmdResult<String> {
+    let note = locked(&state)?.get_note(&id, false)?;
+    if note.content_kind != CONTENT_KIND_SHEET {
+        return Err(CmdError::validation("only a sheet exports as CSV"));
+    }
+    let sheet = Sheet::parse(note.surface_data.as_deref().unwrap_or_default())
+        .map_err(CmdError::validation)?;
+    Ok(sheet.csv())
 }
 
 #[tauri::command(async)]
@@ -51,7 +59,12 @@ pub fn restore_note(state: State<'_, AppState>, app: AppHandle, id: String) -> C
 
 #[tauri::command(async)]
 pub fn list_notes(state: State<'_, AppState>, filter: Option<NoteFilter>) -> CmdResult<Vec<Note>> {
-    Ok(locked(&state)?.list_notes(filter.unwrap_or_default())?)
+    Ok(locked_reader(&state)?.list_notes(filter.unwrap_or_default())?)
+}
+
+#[tauri::command(async)]
+pub fn count_notes(state: State<'_, AppState>, filter: Option<NoteFilter>) -> CmdResult<i64> {
+    Ok(locked_reader(&state)?.count_notes(&filter.unwrap_or_default())?)
 }
 
 #[tauri::command(async)]
@@ -60,12 +73,8 @@ pub fn search_notes(
     text: String,
     limit: Option<i64>,
 ) -> CmdResult<Vec<SearchResult>> {
-    Ok(locked(&state)?.search_notes(&text, limit.unwrap_or(50))?)
+    Ok(locked_reader(&state)?.search_notes(&text, limit.unwrap_or(50))?)
 }
-
-// ---- bulk commands ----
-// One transaction and one change event for a whole multi-select, instead of
-// one round trip per note.
 
 #[tauri::command(async)]
 pub fn set_notes_flags(
@@ -118,11 +127,6 @@ pub fn destroy_notes(
     Ok(())
 }
 
-/// Destroy notes for good, and with them the images only they used. The
-/// store stays locked from reading their references to removing the files,
-/// so no save can start referencing an image in between. A cleanup failure
-/// never fails the delete: the note is gone either way, and a stray file is
-/// what Settings > Images offers to clean up.
 fn destroy_with_attachments(
     state: &State<'_, AppState>,
     app: &AppHandle,

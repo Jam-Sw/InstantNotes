@@ -1,7 +1,3 @@
-// `editorPrefs` is a module-level singleton whose `init()` only reads
-// settings once (guarded by a private #loaded flag), so — like `imagePrefs`
-// in images.svelte.test.ts — each test loads a fresh copy of the module via
-// vi.resetModules() + dynamic import.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getSetting, setSetting } from "$lib/api/client";
 
@@ -47,7 +43,7 @@ describe("editorPrefs", () => {
     const prefs = await load();
     await prefs.init();
     await prefs.init();
-    expect(mockGetSetting).toHaveBeenCalledTimes(3); // zoom + toolbarOpen + showExactTime, once each
+    expect(mockGetSetting).toHaveBeenCalledTimes(3);
   });
 
   it("falls back to defaults silently when the settings read fails", async () => {
@@ -69,8 +65,6 @@ describe("editorPrefs", () => {
   });
 
   it("re-reading after setShowExactTime does not clobber the value with a stale init", async () => {
-    // init() is one-shot; calling set before init ever resolves must not let
-    // a slow settings read overwrite the user's explicit change afterward.
     mockGetSetting.mockImplementation(async (key: string) =>
       key === "editor.showExactTime" ? false : undefined,
     );

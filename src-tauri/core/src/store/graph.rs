@@ -1,7 +1,3 @@
-//! The library graph (`types::LibraryGraph`). Live notes only: the trash and
-//! the archive are out of view everywhere else by default, so they are here
-//! too. Every tag and Space is listed; the view decides what to draw.
-
 use super::*;
 
 impl Store {

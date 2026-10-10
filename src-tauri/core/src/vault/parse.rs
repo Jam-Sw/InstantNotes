@@ -1,20 +1,11 @@
-//! Markdown + YAML frontmatter -> `VaultNote`. Tolerant of missing optional
-//! keys (they default, per `Frontmatter`'s `#[serde(default)]`) and of
-//! unrecognized keys (serde ignores them unless `deny_unknown_fields` is
-//! set, which this type deliberately does not set).
-
 use super::{Frontmatter, VaultNote};
 use crate::types::CONTENT_KIND_DOCUMENT;
 use std::fmt;
 
 #[derive(Debug)]
 pub enum ParseError {
-    /// The file does not open with a `---\n` frontmatter delimiter.
     MissingFrontmatter,
-    /// A `---\n` opened but no closing `---` was found.
     UnterminatedFrontmatter,
-    /// The frontmatter block is not valid YAML, or is missing a required
-    /// key (`id`, `created`, or `updated`).
     Yaml(serde_norway::Error),
 }
 
@@ -39,10 +30,6 @@ pub fn parse_note(text: &str) -> Result<VaultNote, ParseError> {
         .strip_prefix("---\n")
         .ok_or(ParseError::MissingFrontmatter)?;
 
-    // The first `\n---\n` after the opening delimiter closes the
-    // frontmatter block. A body can safely contain its own `---` lines
-    // (e.g. a Markdown thematic break) further down; only the first match
-    // is ever consulted, so those never get misread as the closing marker.
     let (yaml, body) = if let Some(idx) = after_open.find("\n---\n") {
         (&after_open[..idx], &after_open[idx + 5..])
     } else if let Some(yaml) = after_open.strip_suffix("\n---") {
@@ -67,6 +54,6 @@ pub fn parse_note(text: &str) -> Result<VaultNote, ParseError> {
         kind: frontmatter
             .kind
             .unwrap_or_else(|| CONTENT_KIND_DOCUMENT.to_string()),
-        canvas: None,
+        surface: None,
     })
 }

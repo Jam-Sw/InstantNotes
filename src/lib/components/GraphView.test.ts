@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, fireEvent, cleanup, waitFor, within } from "@testing-library/svelte";
 import GraphView from "./GraphView.svelte";
@@ -33,6 +32,8 @@ vi.mock("$lib/stores/library.svelte", () => ({
   },
 }));
 vi.mock("$lib/stores/toasts.svelte", () => ({ toasts: { show: vi.fn() } }));
+const agentsMock = vi.hoisted(() => ({ recent: [] as unknown[] }));
+vi.mock("$lib/stores/agents.svelte", () => ({ agents: agentsMock }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
 
 const lib = library as unknown as {
@@ -78,6 +79,7 @@ let handlers: Record<string, () => void> = {};
 
 beforeEach(() => {
   handlers = {};
+  agentsMock.recent = [];
   lib.selected = null;
   lib.select.mockReset();
   lib.setTagFilter.mockReset();
@@ -105,6 +107,31 @@ describe("GraphView", () => {
     expect(getByRole("button", { name: "Note: Beta" })).toBeTruthy();
     expect(getByRole("button", { name: "Tag: #ideas" })).toBeTruthy();
     expect(getByRole("button", { name: "Space: Research" })).toBeTruthy();
+  });
+
+  it("rings a note an agent wrote and says so", async () => {
+    agentsMock.recent = [
+      { kind: "write", status: "ok", client: "claude-code", revertedAt: null, noteIds: ["n1"] },
+      { kind: "write", status: "ok", client: "claude-code", revertedAt: 5, noteIds: ["n2"] },
+    ];
+    const { findByRole, getByRole } = render(GraphView);
+    const written = await findByRole("button", { name: "Note: Alpha, written by an agent" });
+    expect(written.querySelector(".agent-ring")).not.toBeNull();
+    expect(getByRole("button", { name: "Note: Beta" }).querySelector(".agent-ring")).toBeNull();
+  });
+
+  it("shortens a long title on the canvas and keeps the whole name for screen readers", async () => {
+    const title = "A".repeat(60);
+    vi.mocked(libraryGraph).mockResolvedValue({
+      ...GRAPH,
+      notes: [...GRAPH.notes, note("n5", title)],
+      links: [...GRAPH.links, { noteId: "n5", targetId: "t1", kind: "tag", source: "inline" }],
+    });
+    lib.selected = { id: "n5" };
+    const { findByRole, container } = render(GraphView);
+    await findByRole("button", { name: `Note: ${title}` });
+    const drawn = [...container.querySelectorAll("text")].map((t) => t.textContent);
+    expect(drawn).toContain(`${"A".repeat(27)}…`);
   });
 
   it("says how many notes it leaves out, and when suggestions will start", async () => {
@@ -193,7 +220,6 @@ describe("GraphView suggestions", () => {
     const { findByRole, queryByRole } = render(GraphView);
     await fireEvent.click(await findByRole("button", { name: "Add “Lasagne” to Research" }));
     await waitFor(() => expect(addNoteToWorkspace).toHaveBeenCalledWith("n4", "s1"));
-    // The row is gone at once; the library event brings the fresh list.
     expect(queryByRole("complementary", { name: "Filing suggestions" })).toBeNull();
     await waitFor(() => expect(show).toHaveBeenCalled());
     const [message, action] = show.mock.calls[0];
@@ -214,7 +240,6 @@ describe("GraphView suggestions", () => {
     expect(message).toBe('Won\'t suggest Research for "Lasagne"');
     action?.run();
     expect(restoreSpaceSuggestion).toHaveBeenCalledWith("n4", "s1");
-    // Undo re-reads, so the row comes back from the store, not from memory.
     await waitFor(() => expect(spaceSuggestions).toHaveBeenCalledTimes(2));
   });
 
@@ -235,7 +260,6 @@ describe("GraphView suggestions", () => {
     const panel = await findByRole("complementary", { name: "Filing suggestions" });
     expect(panel.textContent).toMatch(/Where these belong\s*200/);
     expect(within(panel).getAllByRole("listitem")).toHaveLength(25);
-    // The canvas draws the rows on screen: 25 dashed edges, not 200.
     expect(getAllByRole("button", { name: /suggested for Research/ })).toHaveLength(25);
     await fireEvent.click(getByRole("button", { name: "Show 25 more" }));
     await waitFor(() => expect(within(panel).getAllByRole("listitem")).toHaveLength(50));

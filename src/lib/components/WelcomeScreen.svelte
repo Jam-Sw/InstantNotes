@@ -4,22 +4,18 @@
   import { library } from "$lib/stores/library.svelte";
   import { updater } from "$lib/stores/updater.svelte";
   import { captureShortcut, modKey } from "$lib/platform";
+  import type { ShortcutFailure } from "$lib/api/types";
 
   let { appVersion, onOpenUpdate }: { appVersion: string; onOpenUpdate: () => void } =
     $props();
 
-  // Set when the global capture hotkey could not be registered at startup
-  // (another app owns it); without this notice the core feature would just
-  // silently not exist. Queried, not event-driven: the failure happens before
-  // this webview has listeners attached.
-  let shortcutConflict = $state<string | null>(null);
+  let shortcutConflict = $state<ShortcutFailure | null>(null);
   let conflictDismissed = $state(false);
 
   onMount(() => {
     getShortcutFailure()
       .then((label) => (shortcutConflict = label))
       .catch(() => {
-        // Best-effort notice; the welcome screen must render regardless.
       });
   });
 </script>
@@ -59,12 +55,19 @@
         {/if}
       {/if}
     </h2>
-    <p>Select a note, or press <kbd>{captureShortcut}</kbd> anywhere to capture.</p>
+    <p>
+      Select a note{#if !shortcutConflict?.wayland}, or press <kbd>{captureShortcut}</kbd> anywhere to capture{/if}.
+    </p>
     <p class="hint-line">Press <kbd>{modKey}K</kbd> for commands and themes.</p>
     {#if shortcutConflict && !conflictDismissed}
       <p class="shortcut-notice">
-        The capture shortcut <kbd>{shortcutConflict}</kbd> could not be registered;
-        another app likely owns it.
+        {#if shortcutConflict.wayland}
+          On Wayland, <kbd>{shortcutConflict.label}</kbd> only reaches InstantNotes while an X11 app is focused.
+          Bind a shortcut to <code>instantnotes capture</code> in your desktop's keyboard settings instead.
+        {:else}
+          The capture shortcut <kbd>{shortcutConflict.label}</kbd> could not be registered;
+          another app likely owns it.
+        {/if}
         <button class="notice-dismiss" onclick={() => (conflictDismissed = true)}>
           Dismiss
         </button>
@@ -93,7 +96,6 @@
     font-size: 12px;
     opacity: 0.8;
   }
-  /* Same warning orange as the beta badge; a conflict is a caution, not an error. */
   .shortcut-notice {
     font-size: 12px;
     color: #e8923a;
@@ -108,7 +110,6 @@
     font-size: 10px;
     cursor: pointer;
   }
-  /* Orange marks beta builds. */
   .version-badge {
     display: inline-block;
     vertical-align: middle;
@@ -123,7 +124,6 @@
     font-style: italic;
     letter-spacing: 0.3px;
   }
-  /* Sits beside the version badge; same shape, accent color marks action. */
   .update-pill {
     display: inline-block;
     vertical-align: middle;

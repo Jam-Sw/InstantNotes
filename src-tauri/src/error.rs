@@ -1,21 +1,6 @@
-//! The one place a command error is built.
-//!
-//! A `CmdError` carries an `ErrorCode`, never a string, so a wrong code is
-//! unwritable: the codes in API.md §14 are the only values that exist. Before
-//! this, two dozen sites hand-rolled `code:` as a literal and eight of them
-//! wrote `"VALIDATION"` instead of `"VALIDATION_ERROR"`, which silently broke
-//! the friendly copy in `src/lib/errors.ts` for every validation failure.
-//!
-//! `From<AppError>` stays the path a core error takes; the constructors here
-//! are for the shell's own failures, which have no `AppError` to map.
-
 use instantnotes_core::AppError;
 use serde::{Serialize, Serializer};
 
-/// A stable error code per API.md §14 — the only codes callers may branch on.
-/// The frontend mirror is `src/lib/api/error-codes.ts` and the core's
-/// `AppError::code()` is the authority for the strings; both equalities are
-/// asserted (in `src/lib/api/contract.test.ts` and in this module's tests).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorCode {
     NotFound,
@@ -45,8 +30,6 @@ impl ErrorCode {
         Self::Migration,
     ];
 
-    /// The inverse of `as_str`, used to prove the core's `AppError::code()`
-    /// strings and this enum cannot drift apart.
     #[cfg(test)]
     pub fn parse(s: &str) -> Option<Self> {
         Self::ALL.iter().copied().find(|c| c.as_str() == s)
@@ -59,7 +42,6 @@ impl Serialize for ErrorCode {
     }
 }
 
-/// Serializable error per API.md §3.6 / §14.
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct CmdError {
@@ -68,8 +50,6 @@ pub struct CmdError {
 }
 
 impl CmdError {
-    /// A persistence or platform failure: the operation could not be carried
-    /// out. Also the code for a path the shell refuses to touch.
     pub fn storage(message: impl Into<String>) -> Self {
         CmdError {
             code: ErrorCode::Storage,
@@ -77,7 +57,6 @@ impl CmdError {
         }
     }
 
-    /// Input from the webview failed a rule.
     pub fn validation(message: impl Into<String>) -> Self {
         CmdError {
             code: ErrorCode::Validation,
@@ -85,23 +64,27 @@ impl CmdError {
         }
     }
 
-    /// Read back for assertions; production code only ever serializes it.
     #[cfg(test)]
     pub fn code(&self) -> ErrorCode {
         self.code
     }
 }
 
+fn mark_if_corrupt(e: &AppError, library: Option<&std::path::Path>) {
+    if e.is_corruption() {
+        if let Some(path) = library {
+            instantnotes_core::Store::mark_library_suspect(path);
+        }
+    }
+}
+
 impl From<AppError> for CmdError {
     fn from(e: AppError) -> Self {
-        // Matched rather than read off `e.code()` so a new `AppError` variant
-        // cannot reach the frontend without a decision here; the test below
-        // holds this mapping and `AppError::code()` in agreement.
+        mark_if_corrupt(&e, crate::LIBRARY_DB.get().map(|p| p.as_path()));
         let code = match &e {
             AppError::NotFound(_) => ErrorCode::NotFound,
             AppError::Validation(_) => ErrorCode::Validation,
             AppError::Conflict(_) => ErrorCode::Conflict,
-            // A damaged file is a storage failure to callers (API.md §14).
             AppError::Storage(_) | AppError::Corruption(_) => ErrorCode::Storage,
             AppError::Migration(_) | AppError::SchemaTooNew { .. } => ErrorCode::Migration,
         };
@@ -136,6 +119,20 @@ mod tests {
             );
             assert_eq!(CmdError::from(e).code().as_str(), code);
         }
+    }
+
+    #[test]
+    fn a_corruption_error_marks_the_library_for_a_full_check() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("library.db");
+        let marker = dir.path().join("library.db.verify");
+        assert!(!marker.exists());
+        mark_if_corrupt(&AppError::Storage("x".into()), Some(&db));
+        assert!(!marker.exists());
+        mark_if_corrupt(&AppError::Corruption("x".into()), None);
+        assert!(!marker.exists());
+        mark_if_corrupt(&AppError::Corruption("x".into()), Some(&db));
+        assert!(marker.exists());
     }
 
     #[test]

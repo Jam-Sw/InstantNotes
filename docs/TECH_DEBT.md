@@ -11,8 +11,9 @@ the Rust workspace is warning-free; every registered IPC command has a
 command that is not registered; clippy, fmt, svelte-check, and both test
 suites clean. S1, S2, and the `commands.ts` and `theme.svelte.ts` half of
 T1 left this file in that pass, and A2 in the follow-up. `knip --production`
-is clean too: exports only their own tests call are tagged `@internal`, and
-`knip.json` leaves out the installer kit's copied agreement files.
+is clean too: the files whose exports only their own tests call are listed
+under `ignoreIssues` in `knip.json`, which also leaves out the installer kit's
+copied agreement files.
 
 ## Dependencies
 

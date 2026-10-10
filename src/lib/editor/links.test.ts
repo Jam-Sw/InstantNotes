@@ -4,22 +4,19 @@ import { EditorView } from "@codemirror/view";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { ensureSyntaxTree } from "@codemirror/language";
 import {
+  droppedLink,
   linkAt,
   normalizeHref,
   linkMarkClass,
   modKeyCursor,
-  DEFAULT_LINK_PREFS,
 } from "./links";
+import { DEFAULT_LINK_PREFS } from "./link-prefs";
 
-// Same language setup as the editor (GFM base) so autolinks and bare URLs
-// parse the way they do in the app.
 function stateOf(doc: string): EditorState {
   const state = EditorState.create({
     doc,
     extensions: [markdown({ base: markdownLanguage })],
   });
-  // linkAt reads the current tree; force a full parse up front since there
-  // is no view driving incremental parsing in tests.
   ensureSyntaxTree(state, doc.length, 5000);
   return state;
 }
@@ -115,15 +112,6 @@ describe("linkAt", () => {
   });
 });
 
-// Cursor feedback across the three link-opening modes. Mode 1 (preview +
-// "click") gets its pointer from linkMarkClass's cm-link-clickable, asserted
-// above ("defaults: ... clickable in preview"). Modes 2 (preview +
-// "modclick") and 3 (edit mode, any openWith) get theirs from cm-mod-held
-// while the modifier is held — the CSS pairing is `.cm-mod-held
-// .cm-link-target { cursor: pointer }` (editor/theme.ts), so this only needs
-// to prove the class itself toggles correctly; which mode is active doesn't
-// change ModKeyCursor's behavior, since it listens at the window level
-// regardless of preview/openWith.
 describe("modKeyCursor", () => {
   function mountView(): EditorView {
     return new EditorView({
@@ -170,5 +158,30 @@ describe("modKeyCursor", () => {
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Meta", metaKey: true }));
     view.destroy();
     expect(view.dom.classList.contains("cm-mod-held")).toBe(false);
+  });
+});
+
+describe("droppedLink", () => {
+  const drag = (types: Record<string, string>) => ({ getData: (t: string) => types[t] ?? "" });
+  const video = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+
+  it("keeps the title a browser drags along with a link", () => {
+    expect(droppedLink(drag({ "text/x-moz-url": `${video}\nNever Gonna Give You Up - YouTube` }))).toBe(
+      `[Never Gonna Give You Up - YouTube](${video})`,
+    );
+    expect(droppedLink(drag({ "text/html": `<a href="${video}"> Rick [Official]\n Video </a>`, "text/uri-list": video }))).toBe(
+      `[Rick \\[Official\\] Video](${video})`,
+    );
+  });
+
+  it("leaves a drop with no title, or no web link, to the editor", () => {
+    expect(droppedLink(drag({ "text/uri-list": video, "text/plain": video }))).toBeNull();
+    expect(droppedLink(drag({ "text/x-moz-url": `${video}\n${video}` }))).toBeNull();
+    expect(droppedLink(drag({ "text/html": '<a href="javascript:alert(1)">Click</a>', "text/uri-list": "javascript:alert(1)" }))).toBeNull();
+  });
+
+  it("leaves a dropped paragraph that holds a link to the editor", () => {
+    const html = `<p>Watch <a href="${video}">this</a> later</p>`;
+    expect(droppedLink(drag({ "text/html": html, "text/plain": "Watch this later" }))).toBeNull();
   });
 });

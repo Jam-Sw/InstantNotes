@@ -1,18 +1,15 @@
 <script lang="ts">
-  // One agent conversation, as a note in the Agents Space: every call the
-  // agent made, newest first, with what it touched, how long it took, what it
-  // failed with, and, for a write, a Revert that puts the note back as it
-  // was. Nothing here is persisted as a note; the page is drawn from the
-  // trace. The live view of an agent at work stays on the notes themselves.
   import { onMount } from "svelte";
   import { agents } from "$lib/stores/agents.svelte";
   import { agentsSpace } from "$lib/stores/agents-space";
   import { library } from "$lib/stores/library.svelte";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
-  import { agentActivityBefore, agentActivityWire } from "$lib/api/client";
+  import { toasts } from "$lib/stores/toasts.svelte";
+  import { agentActivityBefore, agentActivityWire, endAgentSession } from "$lib/api/client";
   import {
     canRevert,
     agentName,
+    clientLabel,
     clockTime,
     describeActivity,
     formatDuration,
@@ -25,18 +22,23 @@
   } from "$lib/agent-activity";
 
   let now = $state(Date.now());
-  // The row whose details are unfolded, and the snapshot fetched for it.
   let openSeq = $state<number | null>(null);
   let before = $state<NoteSnapshot | null | undefined>(undefined);
   let beforeFor = $state<number | null>(null);
-  // The raw exchange for the open row: undefined while it loads.
   let wire = $state<AgentWire | null | undefined>(undefined);
 
   const session = $derived(agentsSpace.sessionFor(library.selected?.id));
-  // The call this agent is in the middle of, if any.
   const doing = $derived(session ? agents.doing(session.session) : null);
+  const punchLabel = $derived(
+    (session?.clocks ?? [])
+      .flatMap((c) => [
+        c.inAt !== null ? `In ${new Date(c.inAt).toLocaleString()}` : null,
+        c.outAt !== null ? `Out ${new Date(c.outAt).toLocaleString()}` : null,
+      ])
+      .filter(Boolean)
+      .join(", "),
+  );
 
-  // A long conversation is mostly reads; the filter brings out the rest.
   type Filter = "all" | "changes" | "failed";
   let filter = $state<Filter>("all");
   const isChange = (e: AgentActivity) => e.kind === "write" && e.status === "ok";
@@ -55,7 +57,6 @@
     return () => clearInterval(tick);
   });
 
-  /** Whether the note moved on after this write: a revert would drop that. */
   function editedSince(e: AgentActivity): boolean {
     if (!e.afterUpdatedAt || e.noteIds.length !== 1) return false;
     const note = library.notes.find((n) => n.id === e.noteIds[0]);
@@ -100,11 +101,35 @@
     await agents.revert(e.seq);
   }
 
-  // Leaves the Agents Space for the note, in All Notes.
   function openNote(e: AgentActivity) {
     if (e.noteIds.length !== 1) return;
     library.selectWorkspace(null);
     void library.select(e.noteIds[0]);
+  }
+
+  function toggleBlock(client: string) {
+    const on = !agents.isBlocked(client);
+    agents.setBlocked(client, on);
+    toasts.show(
+      on
+        ? `${clientLabel(client)} is blocked. It can no longer read or change your notes.`
+        : `${clientLabel(client)} is unblocked.`,
+    );
+  }
+
+  async function endSession(session: string, client: string) {
+    const ok = await confirmDialog.ask({
+      title: `End this ${clientLabel(client)} session?`,
+      body: "Its connection to your notes closes now. The agent may start a new one; Block stops that.",
+      confirmLabel: "End Session",
+      tone: "danger",
+    });
+    if (!ok) return;
+    try {
+      await endAgentSession(session);
+    } catch (e) {
+      toasts.show(`Couldn't end the session. ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   async function clearAll() {
@@ -127,21 +152,20 @@
   <div class="column">
     {#if session}
       <h1 class="title">{agentName(session.client, session.label)}</h1>
-      <!-- The connection, as it is: this line is always here and only its
-           words change, so the page below it never moves. -->
       <p class="status" role="status" aria-live="polite">
-        {#if session.connected}
-          <span class="live-dot" data-state={doing ? "working" : "connected"}></span>
-          <span class="status-main">{doing ? describeActivity(doing) : "Connected"}</span>
-          {#if session.connectedAt}<span title={new Date(session.connectedAt).toLocaleString()}>since {clockTime(session.connectedAt)}</span>{/if}
-        {:else}
-          <span class="live-dot" data-state="off"></span>
-          <span class="status-main">Not connected</span>
-          {#if session.disconnectedAt}
-            <span title={new Date(session.disconnectedAt).toLocaleString()}>ended {timeAgo(session.disconnectedAt, now)}</span>
-          {:else}
-            <span title={new Date(session.endedAt).toLocaleString()}>last call {timeAgo(session.endedAt, now)}</span>
-          {/if}
+        <span class="live-dot" data-state={!session.connected ? "off" : doing ? "working" : "connected"}></span>
+        {#if session.connected && doing}<span class="status-main">{describeActivity(doing)}</span>{/if}
+        {#if punchLabel}
+          <span class="punch" role="img" aria-label={punchLabel} title={punchLabel}>
+            {#each session.clocks as c (c.session)}
+              {#if c.inAt !== null}
+                <span class="punch-stamp"><span class="punch-hole"></span>{clockTime(c.inAt)}</span>
+              {/if}
+              {#if c.outAt !== null}
+                <span class="punch-stamp" data-out><span class="punch-hole"></span>{clockTime(c.outAt)}</span>
+              {/if}
+            {/each}
+          </span>
         {/if}
         <span class="status-access">
           {#if agents.access === "off"}
@@ -153,8 +177,6 @@
           {/if}
         </span>
       </p>
-      <!-- Exactly which instance of the client this is, so a change can be
-           traced back to the conversation that made it. -->
       {#if session.clientSession || session.cwd}
         <dl class="origin">
           {#if session.clientSession}
@@ -213,15 +235,15 @@
                 </span>
                 <span class="dur">{formatDuration(e.durationMs)}</span>
               </button>
-              <!-- A change can be put back from its own line, without unfolding it. -->
+              {#if e.noteIds.length === 1}
+                <button class="btn go" onclick={() => openNote(e)}>Open note</button>
+              {/if}
               {#if canRevert(e)}
                 <button class="btn revert" onclick={() => revert(e)}>Revert</button>
               {/if}
             </div>
             {#if openSeq === e.seq}
               <div class="details">
-                <!-- What crossed the wire, whole: the message the agent sent
-                     and the one it got back. Nothing is summarized. -->
                 {#if wire === undefined}
                   <span class="muted">Loading…</span>
                 {:else if wire && (wire.request || wire.response)}
@@ -256,14 +278,11 @@
                     {/if}
                   </div>
                 {/if}
-                <div class="actions">
-                  {#if e.noteIds.length === 1}
-                    <button class="btn" onclick={() => openNote(e)}>Open note</button>
-                  {/if}
-                  {#if e.revertedAt !== null}
+                {#if e.revertedAt !== null}
+                  <div class="actions">
                     <span class="muted">Reverted {timeAgo(e.revertedAt, now)}</span>
-                  {/if}
-                </div>
+                  </div>
+                {/if}
               </div>
             {/if}
           </li>
@@ -273,6 +292,12 @@
         {#if agents.hasMore}
           <button class="btn" onclick={() => agents.loadMore()}>Load older</button>
         {/if}
+        {#if session.connected}
+          <button class="btn quiet" onclick={() => endSession(session.session, session.client)}>End session</button>
+        {/if}
+        <button class="btn quiet" onclick={() => toggleBlock(session.client)}>
+          {agents.isBlocked(session.client) ? "Unblock" : "Block"} {clientLabel(session.client)}
+        </button>
         <button class="btn quiet" onclick={clearAll}>Clear history</button>
       </div>
     {:else}
@@ -287,7 +312,6 @@
     min-height: 0;
     overflow-y: auto;
   }
-  /* The note editor's column, so the page reads as a note. */
   .column {
     font-size: calc(14px * var(--density));
     max-width: calc(var(--measure) + 32px * var(--density));
@@ -320,6 +344,34 @@
   }
   .status-access {
     margin-left: auto;
+  }
+  .punch {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    font-family: var(--font-meta);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+  }
+  .punch-stamp {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 1px 7px;
+  }
+  .punch-stamp + .punch-stamp {
+    border-left: 1px dashed var(--border);
+  }
+  .punch-stamp[data-out] + .punch-stamp {
+    border-left-style: solid;
+  }
+  .punch-hole {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-tertiary);
   }
   .origin {
     display: grid;
@@ -418,8 +470,6 @@
     font-size: 13px;
     color: var(--text);
   }
-  /* A change is what this list is for: it reads at full strength, and a
-     read or a search steps back. */
   .row[data-kind="read"] .what,
   .row[data-kind="search"] .what {
     color: var(--text-secondary);
@@ -445,8 +495,6 @@
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
   }
-  /* The kind of call, as a mark: hollow for a read, dashed for a search,
-     solid for a change, red for a failure. */
   .mark {
     width: 8px;
     height: 8px;
@@ -483,6 +531,10 @@
     text-decoration: none;
     display: inline-block;
   }
+  .btn.go {
+    flex: none;
+    margin-right: 8px;
+  }
   .btn.revert {
     flex: none;
     margin-right: 8px;
@@ -501,7 +553,6 @@
     display: block;
     margin: 10px 0 4px;
   }
-  /* Raw JSON, selectable, wrapped so a long note body stays on the page. */
   .wire {
     margin: 0;
     max-height: 360px;
@@ -565,6 +616,9 @@
     margin-left: auto;
     border-color: transparent;
     color: var(--text-secondary);
+  }
+  .btn.quiet + .btn.quiet {
+    margin-left: 0;
   }
   .foot {
     display: flex;

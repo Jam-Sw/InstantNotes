@@ -1908,7 +1908,7 @@ dependencies = [
 
 [[package]]
 name = "instantnotes"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "instantnotes-agents",
  "instantnotes-core",
@@ -1943,6 +1943,7 @@ dependencies = [
  "chrono",
  "plist",
  "rusqlite",
+ "rustc-hash",
  "serde",
  "serde_json",
  "serde_norway",

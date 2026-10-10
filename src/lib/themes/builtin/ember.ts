@@ -1,7 +1,3 @@
-// Ember - warm charcoal with an amber accent: a glowing, focused dark theme
-// for evening writing, more saturated than Paper Dark and less editorial
-// than Manuscript. Light variant is sun-warmed cream with burnt amber.
-
 import type { Theme } from "../types";
 import { MONO_STACK, SANS_STACK } from "../fonts";
 

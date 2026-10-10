@@ -1,31 +1,23 @@
-//! Where an unfiled note belongs (API.md section 4): for every live note in
-//! no Space, the Space its tags and words point to, how sure that is, and
-//! why. Nothing is trained or stored: the model (`classify.rs`) is the
-//! library itself, recounted on every call, so filing a note, by the user
-//! or an agent, is also what teaches it. The one thing written is a
-//! dismissal, in the settings table.
-
 use super::*;
 use crate::classify::{self, Example, Features, Model, Params};
 use std::collections::{HashMap, HashSet};
 
-/// The settings key holding dismissed suggestions, a map from note id to the
-/// Space ids the user said the note does not belong in.
 pub const DISMISSED_SETTING: &str = "graph.dismissed";
+
+pub const TAG_SUGGEST_SETTING: &str = "suggest.tags";
 
 struct Doc {
     id: String,
     title: String,
     features: Features,
+    tags: Vec<String>,
     spaces: Vec<String>,
 }
 
 impl Store {
-    /// Suggestions for the live notes in no Space, newest first. Empty until
-    /// at least two Spaces hold notes: with one, every note would go there.
     pub fn space_suggestions(&self) -> Result<Vec<SpaceSuggestion>> {
         let params = Params::default();
-        let docs = self.suggestion_docs(params)?;
+        let docs = self.suggestion_docs(params, true)?;
         let spaces: HashMap<String, String> = self
             .query_rows("SELECT id, name FROM workspaces", |r| {
                 Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
@@ -75,8 +67,55 @@ impl Store {
         Ok(out)
     }
 
-    /// Record that a note does not belong in a Space, so the graph stops
-    /// suggesting it. Keyed by ids, so it survives renames of either.
+    pub fn tag_suggestion(&self, note_id: &str) -> Result<Option<TagSuggestion>> {
+        let setting = self.get_setting(TAG_SUGGEST_SETTING)?;
+        let enabled = setting
+            .as_ref()
+            .and_then(|v| v.get("enabled"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        if !enabled {
+            return Ok(None);
+        }
+        let params = Params {
+            show_at: setting
+                .as_ref()
+                .and_then(|v| v.get("showAt"))
+                .and_then(|v| v.as_f64())
+                .map_or(Params::default().show_at, |at| at.clamp(0.3, 0.9)),
+            ..Params::default()
+        };
+        let docs = self.suggestion_docs(params, false)?;
+        let Some(target) = docs.iter().find(|d| d.id == note_id) else {
+            return Ok(None);
+        };
+        let has: HashSet<&str> = target.tags.iter().map(String::as_str).collect();
+        let taught: Vec<(&Features, Vec<String>)> = docs
+            .iter()
+            .filter(|d| d.id != note_id)
+            .map(|d| {
+                let tags = d
+                    .tags
+                    .iter()
+                    .filter(|t| !has.contains(t.as_str()))
+                    .cloned()
+                    .collect::<Vec<_>>();
+                (&d.features, tags)
+            })
+            .filter(|(_, tags)| !tags.is_empty())
+            .collect();
+        let examples: Vec<Example<'_>> = taught
+            .iter()
+            .map(|(features, classes)| Example { features, classes })
+            .collect();
+        let model = Model::fit(&examples, params);
+        Ok(model.classify(&target.features).map(|v| TagSuggestion {
+            tag: v.class,
+            probability: v.probability,
+            reasons: v.reasons,
+        }))
+    }
+
     pub fn dismiss_space_suggestion(&mut self, note_id: &str, space_id: &str) -> Result<()> {
         self.fetch_note(note_id)?;
         self.require_workspace(space_id)?;
@@ -97,8 +136,6 @@ impl Store {
         self.set_setting(DISMISSED_SETTING, serde_json::Value::Object(map))
     }
 
-    /// Take a dismissal back (the Undo on "Not this one"): the pair can be
-    /// suggested again. Unknown pairs are fine; nothing to undo.
     pub fn restore_space_suggestion(&mut self, note_id: &str, space_id: &str) -> Result<()> {
         let mut map = self.pruned_dismissals()?;
         if let Some(list) = map.get_mut(note_id).and_then(|v| v.as_array_mut()) {
@@ -108,9 +145,6 @@ impl Store {
         self.set_setting(DISMISSED_SETTING, serde_json::Value::Object(map))
     }
 
-    /// Drop the dismissals of notes and Spaces that no longer exist, so the
-    /// record stays the size of the library. Run on every write to it, and
-    /// when a Space is deleted.
     pub(super) fn prune_space_dismissals(&mut self) -> Result<()> {
         let map = self.pruned_dismissals()?;
         self.set_setting(DISMISSED_SETTING, serde_json::Value::Object(map))
@@ -133,8 +167,6 @@ impl Store {
         }
     }
 
-    /// The dismissal record with the entries of destroyed notes and Spaces
-    /// left out. A malformed record reads as empty.
     fn pruned_dismissals(&self) -> Result<serde_json::Map<String, serde_json::Value>> {
         let notes: HashSet<String> = self
             .query_rows("SELECT id FROM notes", |r| r.get::<_, String>(0))?
@@ -168,8 +200,6 @@ impl Store {
         let Some(value) = self.get_setting(DISMISSED_SETTING)? else {
             return Ok(out);
         };
-        // Best-effort, like every setting: a malformed record means nothing
-        // is dismissed, never an error in the graph.
         if let Some(map) = value.as_object() {
             for (note_id, spaces) in map {
                 for space in spaces.as_array().into_iter().flatten() {
@@ -182,8 +212,7 @@ impl Store {
         Ok(out)
     }
 
-    /// Every live note with its features and Spaces, newest first.
-    fn suggestion_docs(&self, params: Params) -> Result<Vec<Doc>> {
+    fn suggestion_docs(&self, params: Params, merge_tags: bool) -> Result<Vec<Doc>> {
         const LIVE: &str = "n.is_deleted = 0 AND n.is_archived = 0";
         let rows = self.query_rows(
             &format!(
@@ -239,7 +268,12 @@ impl Store {
             .zip(tags)
             .zip(spaces)
             .map(|(((id, title, body), tags), spaces)| Doc {
-                features: classify::features(&format!("{title}\n{body}"), &tags, params),
+                features: classify::features(
+                    &format!("{title}\n{body}"),
+                    if merge_tags { &tags } else { &[] },
+                    params,
+                ),
+                tags: tags.into_iter().map(|(name, _)| name).collect(),
                 id,
                 title,
                 spaces,

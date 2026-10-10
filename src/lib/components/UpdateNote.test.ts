@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render } from "@testing-library/svelte";
 import UpdateNote from "./UpdateNote.svelte";
@@ -48,13 +47,16 @@ describe("UpdateNote", () => {
     expect(getByText(/42% · Installing v0.10.0/)).toBeTruthy();
   });
 
-  it("answers the finished install with Ok, which dismisses", async () => {
+  it("offers a restart for the finished install, or Later, which dismisses", async () => {
     updater.status = "ready";
+    const restart = vi.spyOn(updater, "restart").mockResolvedValue(undefined);
     const done = vi.spyOn(updater, "acknowledge").mockImplementation(() => {});
     const { getByText } = render(UpdateNote);
 
     expect(getByText(/is installed/)).toBeTruthy();
-    await fireEvent.click(getByText("Ok"));
+    await fireEvent.click(getByText("Restart now"));
+    expect(restart).toHaveBeenCalledTimes(1);
+    await fireEvent.click(getByText("Later"));
     expect(done).toHaveBeenCalledTimes(1);
   });
 

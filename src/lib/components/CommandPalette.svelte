@@ -1,10 +1,4 @@
 <script lang="ts">
-  // ⌘K command palette: a centered overlay over a fuzzy-filtered command list,
-  // plus notes (Recent when the query is empty, search hits once it isn't).
-  // Commands are rebuilt each time it opens (theme list and selection-aware
-  // labels stay current). Keyboard: ↑/↓ move (wrapping) across every visible
-  // row, ↵ activates, Esc closes. Section-flattening and index math live in
-  // palette-sections.ts so this file stays about wiring, not navigation math.
   import {
     buildCommands,
     filterCommands,
@@ -38,33 +32,21 @@
 
   let query = $state("");
   let active = $state(0);
-  // Which folder we are inside; null is the top level. Back-navigation and
-  // breadcrumbs are derived from the commands' own parent pointers, so no
-  // per-view enum or navigation stack is needed.
   let currentParent = $state<string | null>(null);
   let commands = $state<Command[]>([]);
   let input = $state<HTMLInputElement>();
 
-  // Notes shown alongside commands. Only populated at the top level: inside a
-  // folder (e.g. Themes) the palette is command-only, as before.
   let recentNotes = $state<SearchResult[]>([]);
   let noteHits = $state<SearchResult[]>([]);
 
-  // The folder command we are inside, if any (for the back button + placeholder).
   const folder = $derived(findCommand(commands, currentParent));
 
-  // Row shape rendered by the palette: a command keeps its full row (icon,
-  // breadcrumb, shortcut, group…), a note is a quieter title + relative time.
   type PaletteRow =
     | { kind: "command"; id: string; command: Command }
     | { kind: "note"; id: string; note: SearchResult; title: string };
 
-  // Empty query shows the current level (recents first at the top level);
-  // otherwise the ranked fuzzy results over the current search scope.
   const commandResults = $derived.by(() => {
     if (query.trim()) {
-      // Search the whole tree at the top level, the open folder's children when
-      // inside one. Leaves matched outside their folder show a breadcrumb.
       const scope = currentParent === null ? commands : childrenOf(commands, currentParent);
       return filterCommands(scope, query);
     }
@@ -75,11 +57,6 @@
     return [...recents, ...level.filter((c) => !seen.has(c.id))];
   });
 
-  // A note with no title (still auto-titled, or briefly mid-save) falls back
-  // to the first non-empty line of its excerpt, then to a plain "Untitled".
-  // The palette shows no highlight, so the backend's match sentinels are
-  // stripped from everything it renders. Only the sentinels: a broader
-  // control-char sweep would eat the real newlines the line split relies on.
   function noteTitle(hit: SearchResult): string {
     const title = stripSentinels(hit.title).trim();
     if (title) return title;
@@ -103,9 +80,6 @@
     return [{ label: querying ? "Notes" : "Recent", rows }];
   });
 
-  // The command section keeps today's headerless look at the top level with
-  // an empty query; querying (or being inside a folder) is unchanged too,
-  // except it now gains a header once notes sit alongside it.
   const sections = $derived.by((): PaletteSection<PaletteRow>[] => {
     const cmdRows: PaletteRow[] = commandResults.map((cmd) => ({
       kind: "command",
@@ -119,15 +93,12 @@
   const shownSections = $derived(visibleSections(sections));
   const flatRows = $derived(flattenRows(shownSections));
   const activeRow = $derived(flatRows[active]);
-  // id -> flat index, so a row rendered inside a nested #each (sections, then
-  // rows) still knows its place in the single navigable list.
   const rowIndex = $derived.by(() => {
     const map = new Map<string, number>();
     flatRows.forEach((row, i) => map.set(row.id, i));
     return map;
   });
 
-  // Reset and focus whenever the palette opens.
   $effect(() => {
     if (open) {
       commands = buildCommands();
@@ -142,23 +113,16 @@
     }
   });
 
-  // Keep the active index in range as the flattened row count shrinks.
   $effect(() => {
     active = clampActive(active, flatRows.length);
   });
 
-  // Debounced, stale-response-safe note search: a token bumped per request
-  // so a slow earlier reply can never clobber a later one (mirrors the
-  // refresh-token pattern in the library store).
   let recentToken = 0;
   let searchToken = 0;
 
   async function loadRecentNotes() {
     const token = ++recentToken;
     try {
-      // list_notes already sorts pinned-first then by updated_at DESC, which
-      // reads fine as "recent" too. Reshaped into SearchResult (body doubling
-      // as excerpt) so noteTitle()'s fallback works the same for both lists.
       const notes = await listNotes({ limit: RECENT_NOTES_LIMIT });
       if (token !== recentToken) return;
       recentNotes = notes.map((n) => ({
@@ -187,8 +151,6 @@
       });
   }, NOTE_SEARCH_DEBOUNCE_MS);
 
-  // Query changes drive the note search; clearing the query must feel
-  // instant, so it bypasses the debounce rather than waiting it out.
   $effect(() => {
     if (currentParent !== null) return;
     if (query.trim()) {
@@ -217,17 +179,12 @@
       descend(action.parent);
       return;
     }
-    // keepOpen is a property of the command (value pickers like themes set it),
-    // so applying one stays open whether reached from its folder or a search.
     recordRecent(cmd.id);
     void cmd.run();
     if (!action.keepOpen) open = false;
   }
 
   function openNote(hit: SearchResult) {
-    // Palette hits ignore the sidebar's current scope. If that scope cannot
-    // show this note (a tag, workspace, search, or the trash view), widen it
-    // first so the list, filters, and editor stay in sync after the jump.
     const visible = library.searchResults
       ? library.searchResults.some((h) => h.noteId === hit.noteId)
       : library.notes.some((n) => n.id === hit.noteId);
@@ -426,8 +383,6 @@
     background: var(--accent-soft);
     color: var(--accent-text);
   }
-  /* The light/dark toggle is an action, not a theme: give it an accent border,
-     bolder label, and a little breathing room below to part it from the list. */
   .cmd-row.emphasis {
     border: 1px solid var(--accent);
     margin-bottom: 6px;
@@ -441,8 +396,6 @@
     color: var(--accent-text);
     flex-shrink: 0;
   }
-  /* A flex row so the action label keeps its width while a long note-title
-     prefix takes its own ellipsis instead of clipping the whole line. */
   .cmd-title {
     display: flex;
     align-items: baseline;
@@ -491,9 +444,6 @@
   .cmd-section-label:first-child {
     padding-top: 4px;
   }
-  /* Unlike .cmd-action (command titles, always short), a note title is
-     free-length user text, so it takes the ellipsis itself rather than
-     leaning on a shrinking breadcrumb. */
   .note-title {
     flex: 1 1 auto;
     min-width: 0;

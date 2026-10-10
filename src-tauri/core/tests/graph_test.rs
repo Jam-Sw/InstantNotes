@@ -1,7 +1,3 @@
-//! The library graph (SEQUENCE.md unit 13): notes, tags, and Spaces, and the
-//! links between them, derived from the existing tables on every read.
-//! Nothing about the graph is stored.
-
 use instantnotes_core::types::*;
 use instantnotes_core::Store;
 

@@ -24,7 +24,6 @@ describe("fuzzyScore", () => {
 
   it("returns null when characters are missing or out of order", () => {
     expect(fuzzyScore("New note", "z")).toBeNull();
-    // "tn" cannot be a subsequence: no n follows the only t.
     expect(fuzzyScore("New note", "tn")).toBeNull();
   });
 
@@ -68,7 +67,6 @@ describe("filterCommands", () => {
 });
 
 describe("command tree", () => {
-  // A folder ("themes") with two leaves, plus two top-level commands.
   const tree: Command[] = [
     cmd("note.new", "New note"),
     cmd("themes", "Themes"),
@@ -132,7 +130,6 @@ describe("resolveActivation", () => {
   });
 
   it("keeps the palette open for a value-picker leaf, regardless of where it was matched", () => {
-    // Same leaf, whether reached from inside its folder or from a root search.
     expect(resolveActivation(tree, themeLeaf)).toEqual({
       kind: "run",
       keepOpen: true,

@@ -1,8 +1,3 @@
-//! Pure domain logic: tag semantics and title derivation.
-//! No I/O, no SQL, no Tauri — per the dependency rule.
-
-/// Normalize a tag name per DATA_MODEL.md §2.2: trim, strip leading `#`,
-/// lowercase, collapse repeated whitespace. Returns `None` for empty results.
 pub fn normalize_tag_name(raw: &str) -> Option<String> {
     let stripped = raw.trim().trim_start_matches('#');
     let collapsed = stripped
@@ -17,9 +12,6 @@ pub fn normalize_tag_name(raw: &str) -> Option<String> {
     }
 }
 
-/// Normalize a workspace name: trim and collapse repeated whitespace,
-/// preserving case (workspaces are display names, unlike lowercase tags).
-/// Returns `None` for empty results.
 pub fn normalize_workspace_name(raw: &str) -> Option<String> {
     let collapsed = raw.split_whitespace().collect::<Vec<_>>().join(" ");
     if collapsed.is_empty() {
@@ -29,10 +21,6 @@ pub fn normalize_workspace_name(raw: &str) -> Option<String> {
     }
 }
 
-/// Extract inline `#tag` tokens from note body text. A tag starts with `#`
-/// at the start of the text or after whitespace, followed by one or more
-/// alphanumeric / `-` / `_` characters. Results are normalized and deduped,
-/// in order of first appearance.
 pub fn extract_inline_tags(body: &str) -> Vec<String> {
     let chars: Vec<char> = body.chars().collect();
     let mut out: Vec<String> = Vec::new();
@@ -66,12 +54,6 @@ pub fn extract_inline_tags(body: &str) -> Vec<String> {
     out
 }
 
-/// Derive a note title from the first line of the body with words on it
-/// (see DATA_MODEL.md section 6), passing over blank lines and lines that
-/// are only images: strip leading markdown markers (`#`, `-`, `*`, `>`), the
-/// emphasis markers around words (`**`, `*`, `~~`, `==`, `` ` ``), and inline
-/// `#` tag prefixes, collapse whitespace, truncate to 80 chars (char
-/// boundary). A body with no such line yields "Untitled".
 pub fn derive_title(body: &str) -> String {
     const UNTITLED: &str = "Untitled";
     const EMPHASIS: [char; 4] = ['*', '~', '=', '`'];
@@ -96,7 +78,6 @@ pub fn derive_title(body: &str) -> String {
     joined.chars().take(80).collect()
 }
 
-/// A line holding nothing but Markdown images: `![alt](path)`, one or more.
 fn is_image_line(line: &str) -> bool {
     let mut rest = line.trim();
     if rest.is_empty() {
@@ -117,9 +98,6 @@ fn is_image_line(line: &str) -> bool {
     true
 }
 
-/// Words that carry no signal about what a note is about: function words,
-/// and the tokens Markdown and links leave behind. Lowercase, as
-/// `content_words` lowercases before looking here.
 const STOP_WORDS: &[&str] = &[
     "the",
     "and",
@@ -288,20 +266,131 @@ const STOP_WORDS: &[&str] = &[
     "we've",
 ];
 
-/// The words a note's text is about, for the Graph's filing suggestions
-/// (API.md section 4): lowercase runs of letters and digits, three
-/// characters or longer, that are not all digits and not stop words, each
-/// listed once in order of first appearance. A `#tag` token is skipped: tags
-/// are their own channel, so a tag written inline is not also counted as a
-/// word.
+fn stop_words() -> &'static (std::collections::HashSet<&'static str>, usize) {
+    static SET: std::sync::LazyLock<(std::collections::HashSet<&'static str>, usize)> =
+        std::sync::LazyLock::new(|| {
+            let longest = STOP_WORDS.iter().map(|w| w.len()).max().unwrap_or(0);
+            (STOP_WORDS.iter().copied().collect(), longest)
+        });
+    &SET
+}
+
+fn is_stop_word(word: &str) -> bool {
+    let (set, longest) = stop_words();
+    word.len() <= *longest && set.contains(word)
+}
+
+fn emit_word(
+    raw: &str,
+    chars: usize,
+    digits_only: bool,
+    dirty: bool,
+    scratch: &mut String,
+    visit: &mut impl FnMut(&str),
+) {
+    if !dirty {
+        if chars >= 3 && !digits_only && !is_stop_word(raw) {
+            visit(raw);
+        }
+        return;
+    }
+    scratch.clear();
+    for c in raw.chars() {
+        scratch.extend(c.to_lowercase());
+    }
+    let lowered_chars = scratch.chars().count();
+    let lowered_digits = scratch.chars().all(|c| c.is_ascii_digit());
+    if lowered_chars >= 3 && !lowered_digits && !is_stop_word(scratch) {
+        visit(scratch);
+    }
+}
+
+pub fn for_each_content_word(text: &str, mut visit: impl FnMut(&str)) {
+    let mut scratch = String::new();
+    let mut start = 0usize;
+    let mut chars = 0usize;
+    let mut digits_only = true;
+    let mut dirty = false;
+    let mut in_word = false;
+    let mut in_tag = false;
+    let mut prev_is_boundary = true;
+    for (at, c) in text.char_indices() {
+        if c == '#' && prev_is_boundary {
+            in_tag = true;
+            prev_is_boundary = false;
+            continue;
+        }
+        if c.is_alphanumeric() || c == '\'' {
+            if !in_tag {
+                if !in_word {
+                    in_word = true;
+                    start = at;
+                    chars = 0;
+                    digits_only = true;
+                    dirty = false;
+                }
+                chars += 1;
+                digits_only &= c.is_ascii_digit();
+                dirty |= !c.is_ascii() || c.is_ascii_uppercase();
+            }
+            prev_is_boundary = false;
+            continue;
+        }
+        if (c == '-' || c == '_') && in_tag {
+            prev_is_boundary = false;
+            continue;
+        }
+        in_tag = false;
+        if in_word {
+            emit_word(
+                &text[start..at],
+                chars,
+                digits_only,
+                dirty,
+                &mut scratch,
+                &mut visit,
+            );
+            in_word = false;
+        }
+        prev_is_boundary = c.is_whitespace();
+    }
+    if in_word {
+        emit_word(
+            &text[start..],
+            chars,
+            digits_only,
+            dirty,
+            &mut scratch,
+            &mut visit,
+        );
+    }
+}
+
 pub fn content_words(text: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut seen = std::collections::HashSet::new();
-    let mut word = String::new();
-    let mut in_tag = false;
-    let mut prev_is_boundary = true;
-    let flush =
-        |word: &mut String, out: &mut Vec<String>, seen: &mut std::collections::HashSet<String>| {
+    for_each_content_word(text, |word| {
+        if !seen.contains(word) {
+            seen.insert(word.to_string());
+            out.push(word.to_string());
+        }
+    });
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn reference_content_words(text: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        let mut word = String::new();
+        let mut in_tag = false;
+        let mut prev_is_boundary = true;
+        let flush = |word: &mut String,
+                     out: &mut Vec<String>,
+                     seen: &mut std::collections::HashSet<String>| {
             if word.chars().count() >= 3
                 && !word.chars().all(|c| c.is_ascii_digit())
                 && !STOP_WORDS.contains(&word.as_str())
@@ -311,39 +400,98 @@ pub fn content_words(text: &str) -> Vec<String> {
             }
             word.clear();
         };
-    for c in text.chars() {
-        if c == '#' && prev_is_boundary {
-            in_tag = true;
-            prev_is_boundary = false;
-            continue;
-        }
-        if c.is_alphanumeric() || c == '\'' {
-            if !in_tag {
-                word.extend(c.to_lowercase());
-            }
-            prev_is_boundary = false;
-            continue;
-        }
-        if c == '-' || c == '_' {
-            // Inside a tag these join the token; inside a word they split it.
-            if in_tag {
+        for c in text.chars() {
+            if c == '#' && prev_is_boundary {
+                in_tag = true;
                 prev_is_boundary = false;
                 continue;
             }
+            if c.is_alphanumeric() || c == '\'' {
+                if !in_tag {
+                    word.extend(c.to_lowercase());
+                }
+                prev_is_boundary = false;
+                continue;
+            }
+            if (c == '-' || c == '_') && in_tag {
+                prev_is_boundary = false;
+                continue;
+            }
+            in_tag = false;
+            flush(&mut word, &mut out, &mut seen);
+            prev_is_boundary = c.is_whitespace();
         }
-        in_tag = false;
         flush(&mut word, &mut out, &mut seen);
-        prev_is_boundary = c.is_whitespace();
+        out
     }
-    flush(&mut word, &mut out, &mut seen);
-    out
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // -- normalize_tag_name --
+    #[test]
+    fn content_words_match_the_reference_on_random_text() {
+        const PIECES: &[&str] = &[
+            "a",
+            "B",
+            "ab",
+            "Abc",
+            "the",
+            "and",
+            "we're",
+            "WE'RE",
+            "x1",
+            "123",
+            "4567",
+            "9",
+            "caf\u{e9}",
+            "\u{130}stanbul",
+            "\u{4e2d}\u{6587}",
+            "\u{df}",
+            "'",
+            "''",
+            "don't",
+            "-",
+            "_",
+            "#",
+            "##",
+            "#tag",
+            "#tag-x_y",
+            " ",
+            "  ",
+            "\n",
+            "\t",
+            ".",
+            ",",
+            "(",
+            ")",
+            "!",
+            "\u{a0}",
+            "\u{2003}",
+            "word",
+            "Zebra",
+            "naive",
+            "re-do",
+            "snake_case",
+            "ALLCAPS",
+            "\u{1f600}",
+            "e\u{301}",
+        ];
+        let mut state = 0x2545_F491_4F6C_DD1Du64;
+        let mut next = move || {
+            state ^= state >> 12;
+            state ^= state << 25;
+            state ^= state >> 27;
+            state.wrapping_mul(0x2545_F491_4F6C_DD1D)
+        };
+        for _ in 0..40_000 {
+            let len = (next() % 40) as usize;
+            let text: String = (0..len)
+                .map(|_| PIECES[(next() % PIECES.len() as u64) as usize])
+                .collect();
+            assert_eq!(
+                content_words(&text),
+                reference_content_words(&text),
+                "{text:?}"
+            );
+        }
+    }
 
     #[test]
     fn normalize_lowercases_and_trims() {
@@ -371,8 +519,6 @@ mod tests {
         assert_eq!(normalize_tag_name("#"), None);
         assert_eq!(normalize_tag_name("##  "), None);
     }
-
-    // -- extract_inline_tags --
 
     #[test]
     fn extracts_tags_at_start_and_after_whitespace() {
@@ -411,8 +557,6 @@ mod tests {
         );
     }
 
-    // -- derive_title --
-
     #[test]
     fn title_from_first_nonempty_line() {
         assert_eq!(derive_title("\n\nBuy milk\nand coffee"), "Buy milk");
@@ -436,7 +580,6 @@ mod tests {
             "Two shots"
         );
         assert_eq!(derive_title("![](attachments/a.png)"), "Untitled");
-        // An image inside a line of words is part of the title line.
         assert_eq!(derive_title("See ![](a.png) here"), "See ![](a.png) here");
     }
 
@@ -451,7 +594,6 @@ mod tests {
             derive_title("~~old plan~~ ==new== `plan`"),
             "old plan new plan"
         );
-        // Inside a word they are the word.
         assert_eq!(derive_title("C++ and a*b"), "C++ and a*b");
     }
 
@@ -489,8 +631,6 @@ mod tests {
             content_words("#my-tag_1 is 2026 ok, the ONE! It's 20 min"),
             vec!["min"]
         );
-        // A `#` inside a word is punctuation, not a tag; the rest of the word
-        // stays.
         assert_eq!(content_words("C#minor a#b"), vec!["minor"]);
     }
 

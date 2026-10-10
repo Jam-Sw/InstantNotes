@@ -1,23 +1,13 @@
-//! Notes brought in from other apps (Settings > Import): all of a batch in
-//! one transaction, each source note at most once per library.
-
 use super::notes::{insert_note, NewNote};
 use super::settings::setting_put;
 use super::*;
 use std::collections::{BTreeMap, HashSet};
 
 impl Store {
-    /// The source ids already imported from `source` whose note still
-    /// exists, in the Trash or not.
     pub fn imported_ids(&self, source: &str) -> Result<HashSet<String>> {
         Ok(imported(&self.conn, source)?.into_keys().collect())
     }
 
-    /// Insert `items` as notes, skipping any imported before, filed in the
-    /// Space named `space` (created if new, and only if a note lands; none
-    /// when blank). Each keeps its dates; its title comes from its body, and
-    /// its `#words` become tags, as for any note. They are stamped as opened
-    /// now: an import is not a capture waiting in Revisit.
     pub fn import_notes(
         &mut self,
         source: &str,
@@ -75,13 +65,10 @@ impl Store {
     }
 }
 
-/// Settings key holding, for one source, which note each source id became.
 fn record_key(source: &str) -> String {
     format!("import.{source}")
 }
 
-/// The record for `source`, keeping only entries whose note still exists: a
-/// note destroyed for good frees its source note to be imported again.
 fn imported(conn: &Connection, source: &str) -> Result<BTreeMap<String, String>> {
     let raw: Option<String> = conn
         .query_row(
@@ -90,7 +77,6 @@ fn imported(conn: &Connection, source: &str) -> Result<BTreeMap<String, String>>
             |r| r.get(0),
         )
         .optional()?;
-    // A record that cannot be parsed is rebuilt by the next import.
     let record: BTreeMap<String, String> = raw
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default();

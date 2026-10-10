@@ -1,9 +1,3 @@
-//! Attachment cleanup (SEQUENCE.md unit 11). An image pasted into a note is a
-//! file under `<app data>/attachments`, referenced from the body as
-//! `attachments/<name>`. Destroying the last note that references it removes
-//! the file; nothing a note, the trash, or the capture draft still refers to
-//! is ever removed. Real SQLite and real tempdirs throughout.
-
 use instantnotes_core::attachments::{list_attachments, referenced_names, remove_attachment};
 use instantnotes_core::types::*;
 use instantnotes_core::Store;
@@ -26,8 +20,6 @@ fn names(list: &[&str]) -> Vec<String> {
     list.iter().map(|s| s.to_string()).collect()
 }
 
-// ---- finding references ----
-
 #[test]
 fn finds_every_attachment_a_body_references() {
     let body = "intro ![](attachments/a1.png) and ![alt](attachments/b-2.JPG)\n\
@@ -41,8 +33,6 @@ fn ignores_a_bare_folder_mention_and_linked_originals() {
     assert!(referenced_names("see the attachments/ folder").is_empty());
     assert!(referenced_names("![](/Users/me/Pictures/cat.png)").is_empty());
 }
-
-// ---- which files are still referenced ----
 
 #[test]
 fn a_destroyed_notes_images_become_unreferenced() {
@@ -130,8 +120,6 @@ fn a_whiteboard_canvas_holds_its_images() {
         .is_empty());
 }
 
-// ---- removing files ----
-
 #[test]
 fn removing_takes_the_file_and_an_identical_vault_copy() {
     let dir = tempfile::tempdir().unwrap();
@@ -146,7 +134,6 @@ fn removing_takes_the_file_and_an_identical_vault_copy() {
     assert!(!vault.path().join("x.png").exists());
 }
 
-/// A vault copy that differs was changed outside the app: not ours to remove.
 #[test]
 fn removing_keeps_a_vault_copy_that_was_changed() {
     let dir = tempfile::tempdir().unwrap();
@@ -216,8 +203,6 @@ fn listing_a_missing_folder_is_empty() {
         .is_empty());
 }
 
-// ---- the store's removal: re-checked, and carried into the vault ----
-
 #[test]
 fn the_store_removes_only_what_nothing_references() {
     let mut s = store();
@@ -227,7 +212,6 @@ fn the_store_removes_only_what_nothing_references() {
     }
     create(&mut s, "![](attachments/kept.png)");
 
-    // Callers pass candidates; the store checks them again itself.
     let done = s
         .remove_unreferenced_attachments(dir.path(), names(&["kept.png", "loose.png"]))
         .unwrap();

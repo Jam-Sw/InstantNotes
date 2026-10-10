@@ -4,20 +4,24 @@
   import FormatToolbar from "$lib/components/FormatToolbar.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import WhiteboardCanvas from "$lib/components/whiteboard/WhiteboardCanvas.svelte";
+  import SheetGrid from "$lib/components/sheet/SheetGrid.svelte";
+  import { filledRows, parseSheet } from "$lib/sheet/model";
   import { library } from "$lib/stores/library.svelte";
   import { agents } from "$lib/stores/agents.svelte";
   import { editorPrefs } from "$lib/stores/editor.svelte";
   import { imagePrefs } from "$lib/stores/images.svelte";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
-  import { importImageFile, allowImageFile, openUrl, popOutNote } from "$lib/api/client";
+  import { importImageFile, allowImageFile, openUrl, popOutNote, tagSuggestion } from "$lib/api/client";
   import { modKey, shiftKey } from "$lib/platform";
   import { theme } from "$lib/stores/theme.svelte";
   import { effectiveVariant } from "$lib/themes/apply";
   import { attachmentMarkdown } from "$lib/editor/images";
   import { formatDate, formatExact, wordCount } from "$lib/format";
+  import type { TagSuggestion } from "$lib/api/types";
   import type { FormatKind } from "$lib/markdown-format";
   import { NO_MARKS, type ActiveMarks } from "$lib/markdown-active";
+  import { clientLabel } from "$lib/agent-activity";
   import { isSyntheticNoteId } from "$lib/synthetic";
   import { autosize, singleLine } from "$lib/title-field";
 
@@ -31,17 +35,38 @@
   let active = $state<ActiveMarks>({ ...NO_MARKS });
 
   const isBoard = $derived(library.selected?.contentKind === "whiteboard");
-  // A synthetic note (the update Space's release notes) is not user data: its
-  // body can be typed in, but it has no tags, no Space, and no lifecycle.
+  const isSheet = $derived(library.selected?.contentKind === "sheet");
+  const isSurface = $derived(isBoard || isSheet);
+  const sheetShape = $derived.by(() => {
+    if (!isSheet) return null;
+    const grid = parseSheet(library.selected?.surfaceData);
+    return { rows: filledRows(grid), cols: grid.cols.length };
+  });
   const isVirtual = $derived(isSyntheticNoteId(library.selected?.id));
-  // The board follows the app's light or dark look, including themes that
-  // only come in one of the two.
+  const suggestion = $derived(library.suggestions.find((s) => s.noteId === library.selected?.id));
+  const lastWriter = $derived(library.selected ? agents.lastWriter(library.selected.id) : null);
+  const writer = $derived(lastWriter === "instantnotes" ? null : lastWriter);
+  let suggestedTag = $state<TagSuggestion | null>(null);
+
+  const selectedId = $derived(library.selected?.id);
+  const selectedVersion = $derived(library.selected?.updatedAt);
+  const selectedTagKey = $derived(library.selectedTags.map((t) => t.id).join(","));
+
+  $effect(() => {
+    const id = selectedId;
+    void selectedVersion;
+    void selectedTagKey;
+    suggestedTag = null;
+    if (!id || isVirtual) return;
+    tagSuggestion(id).then(
+      (tag) => {
+        if (library.selected?.id === id) suggestedTag = tag;
+      },
+      () => {},
+    );
+  });
   const boardTheme = $derived(effectiveVariant(theme.activeTheme, theme.resolvedVariant));
 
-  // Insert an image from a file the user picks. Honors the storage setting:
-  // "copy" reads it into the attachments folder; "link" references it in place
-  // (allowed into the asset scope so it renders). Pasting or dropping still
-  // captures images directly in the editor.
   async function insertImage() {
     const picked = await open({
       multiple: false,
@@ -74,8 +99,6 @@
   }
 
   async function confirmDestroy() {
-    // Snapshot the id when the dialog opens: the selection could otherwise
-    // drift while it is up, and the confirm must act on the note it named.
     const id = library.selected?.id;
     if (!id) return;
     const ok = await confirmDialog.ask({
@@ -89,7 +112,6 @@
 </script>
 
 {#if library.selected && library.isSticky(library.selected.id)}
-  <!-- The sticky is this note's only editor while it is out. -->
   {@const id = library.selected.id}
   <div class="pane-header" data-tauri-drag-region></div>
   <div class="popped-out">
@@ -105,10 +127,8 @@
     </div>
   </div>
 {:else if library.selected}
-  <!-- The header holds what is done to the note, in two groups kept apart:
-       what goes into the text, then what becomes of the note. The note's own
-       name and where it is filed belong to the page below. -->
   <header class="pane-header editor-header" data-tauri-drag-region>
+    <span class="header-title" data-tauri-drag-region>{library.selected.title || "Untitled"}</span>
     {#if !isVirtual}
       {#if library.selected.isDeleted}
         <div class="icon-group">
@@ -130,7 +150,7 @@
           </button>
         </div>
       {:else}
-        {#if !isBoard}
+        {#if !isSurface}
           <div class="icon-group">
             <button
               class="icon-btn"
@@ -190,17 +210,15 @@
       {/if}
     {/if}
   </header>
-  {#if !isBoard && editorPrefs.toolbarOpen}
+  {#if !isSurface && editorPrefs.toolbarOpen}
     <FormatToolbar {active} onFormat={(k) => editorRef?.applyFormat(k)} />
   {/if}
   <div
     class="doc"
-    class:wide={isBoard}
+    class:wide={isSurface}
     style="--editor-zoom: {editorPrefs.zoom}; --image-max-height: {imagePrefs.maxPreviewHeight}px"
   >
   <div class="doc-head">
-    <!-- A textarea, so a long title wraps in the column instead of being
-         clipped. Still one line of text: Enter commits, breaks become spaces. -->
     <textarea
       class="title-input"
       rows="1"
@@ -233,6 +251,15 @@
     <form onsubmit={submitTag}>
       <input class="tag-input" placeholder="Add tag…" bind:value={tagInput} />
     </form>
+    {#if suggestedTag}
+      <button
+        class="chip suggest-chip"
+        title={`${Math.round(suggestedTag.probability * 100)}% sure, from ${suggestedTag.reasons.join(", ")}`}
+        onclick={() => library.addTag(suggestedTag?.tag ?? "")}
+      >
+        + #{suggestedTag.tag}
+      </button>
+    {/if}
     <span class="bar-divider"></span>
     {#each library.selectedWorkspaces as ws (ws.id)}
       <span class="chip workspace-chip">
@@ -258,12 +285,28 @@
         <option value={ws.name}></option>
       {/each}
     </datalist>
+    {#if suggestion}
+      <button
+        class="chip suggest-chip"
+        title="Suggested from this note's tags and words"
+        onclick={() => library.addSelectedToWorkspace(suggestion.spaceName)}
+      >
+        + {suggestion.spaceName}
+      </button>
+    {/if}
+    {#if writer}
+      <span
+        class="agent-mark"
+        role="img"
+        title="Last changed by {clientLabel(writer)}"
+        aria-label="Last changed by {clientLabel(writer)}"
+      ></span>
+    {/if}
   </div>
   {/if}
   </div>
   {#if isBoard}
     <div class="editor-body board-body">
-      <!-- One canvas per note: a new id mounts a fresh board. -->
       {#key library.selected.id}
         <WhiteboardCanvas
           noteId={library.selected.id}
@@ -273,6 +316,18 @@
           onchange={(id, edit) => library.editBoard(id, edit)}
           registerFlush={(flush) => library.onBeforeFlush(flush)}
           onlinkopen={(url) => void openUrl(url)}
+        />
+      {/key}
+    </div>
+  {:else if isSheet}
+    <div class="editor-body sheet-body" data-agent={agents.noteMark(library.selected.id)}>
+      {#key library.selected.id}
+        <SheetGrid
+          noteId={library.selected.id}
+          surfaceData={library.selected.surfaceData}
+          readonly={library.selected.isDeleted}
+          onchange={(id, surfaceData) => library.editSheet(id, surfaceData)}
+          registerFlush={(flush) => library.onBeforeFlush(flush)}
         />
       {/key}
     </div>
@@ -305,6 +360,11 @@
       <span class="error">{library.error}</span>
     {:else if isBoard}
       <span>Whiteboard</span>
+    {:else if sheetShape}
+      <span>
+        {sheetShape.rows} {sheetShape.rows === 1 ? "row" : "rows"} · {sheetShape.cols}
+        {sheetShape.cols === 1 ? "column" : "columns"}
+      </span>
     {:else}
       {@const n = wordCount(library.selected.body)}
       <span>{n} {n === 1 ? "word" : "words"}</span>
@@ -353,14 +413,20 @@
     color: var(--accent-text);
     border-color: var(--accent);
   }
-  /* Layout comes from .pane-header (app.css); actions sit at the far end. */
   .editor-header {
     justify-content: flex-end;
     gap: 0;
   }
-  /* The note: its name, where it is filed, then its text, all in one column
-     of reading width. The column is measured in the editor's own type, so
-     the heading lines up with the text at every zoom. */
+  .header-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-family: var(--font-ui);
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
   .doc {
     flex: 1;
     min-height: 0;
@@ -375,13 +441,11 @@
     max-width: calc(var(--measure) + 32px * var(--density));
     margin: 0 auto;
     padding: 8px calc(16px * var(--density)) 0;
+    container-type: inline-size;
   }
-  /* A whiteboard runs edge to edge, so its heading does too. */
   .doc.wide .doc-head {
     max-width: none;
   }
-  /* Wraps within the column; the textarea is sized to its lines by
-     `autosize`, so it never scrolls or shows a resize grip. */
   .title-input {
     display: block;
     width: 100%;
@@ -396,6 +460,11 @@
     resize: none;
     overflow: hidden;
     overflow-wrap: anywhere;
+  }
+  @container (max-width: 440px) {
+    .title-input {
+      font-size: 1.4em;
+    }
   }
   .action {
     padding: 4px 10px;
@@ -413,7 +482,6 @@
     color: var(--text-secondary);
     font-style: italic;
   }
-  /* Retries exhausted; the edit stays queued and flushes keep attempting it. */
   .save-state.failed {
     color: var(--danger);
     font-weight: 500;
@@ -431,7 +499,6 @@
       opacity: 0;
     }
   }
-  /* Where the note is filed: a quiet row under its name, closed by a rule. */
   .tag-bar {
     display: flex;
     flex-wrap: wrap;
@@ -478,6 +545,23 @@
     background: var(--bg-hover);
     color: var(--text-secondary);
   }
+  .suggest-chip {
+    background: transparent;
+    border: 1px dashed var(--accent);
+    color: var(--accent-text);
+    cursor: pointer;
+  }
+  .suggest-chip:hover {
+    background: var(--accent-soft);
+  }
+  .agent-mark {
+    width: 8px;
+    height: 8px;
+    margin: 0 4px;
+    border: 1.25px solid var(--accent);
+    border-radius: 50%;
+    opacity: 0.7;
+  }
   .editor-body {
     flex: 1;
     min-height: 0;
@@ -486,6 +570,13 @@
     position: relative;
     margin-top: 10px;
     border-top: 1px solid var(--border);
+  }
+  .sheet-body {
+    display: flex;
+    flex-direction: column;
+    margin-top: 10px;
+    border-top: 1px solid var(--border);
+    overflow: hidden;
   }
   .status-bar {
     display: flex;

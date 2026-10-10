@@ -1,8 +1,3 @@
-// Contrast - a high-contrast theme for low vision, bright rooms, and anyone
-// who wants text to be unmistakable: true black and white grounds, every
-// text tone at or above WCAG AA against them, firm borders, a larger base
-// size, and a single saturated accent. No translucency anywhere.
-
 import type { Theme } from "../types";
 import { MONO_STACK, SANS_STACK } from "../fonts";
 

@@ -1,7 +1,3 @@
-// @vitest-environment jsdom
-// The whiteboard canvas's save path. Excalidraw, React, and ReactDOM are
-// replaced with recorders: the test drives `onChange` exactly as Excalidraw
-// calls it and checks what reaches the save queue, and when.
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, cleanup, waitFor } from "@testing-library/svelte";
 import WhiteboardCanvas from "./WhiteboardCanvas.svelte";
@@ -113,7 +109,6 @@ describe("WhiteboardCanvas", () => {
     expect(edit.body).toBe("ship it");
     const saved = JSON.parse(edit.surfaceData).data;
     expect(saved.elements.map((e: { id: string }) => e.id)).toEqual(["r1", "t1"]);
-    // Selection is session state, not part of the board.
     expect(saved.appState).not.toHaveProperty("selectedElementIds");
     expect(saved.appState.viewBackgroundColor).toBe("#fff");
   });
@@ -145,8 +140,6 @@ describe("WhiteboardCanvas", () => {
     expect(Object.keys(saved.files)).toEqual(["f2"]);
   });
 
-  // The defect that kept the whiteboard off 0.9.0: an edit still waiting to
-  // be serialized was dropped when the board closed (note switch, quit).
   it("hands a waiting edit over when the board closes, instead of dropping it", async () => {
     const { view, onchange } = mount();
     await waitFor(() => expect(rendered.length).toBe(1));
@@ -163,7 +156,6 @@ describe("WhiteboardCanvas", () => {
     excalidrawProps().onChange([rect("r1", 2)], {}, {});
     flushHook()?.();
     expect(onchange).toHaveBeenCalledTimes(1);
-    // Nothing is left to fire later.
     await vi.advanceTimersByTimeAsync(1000);
     expect(onchange).toHaveBeenCalledTimes(1);
   });

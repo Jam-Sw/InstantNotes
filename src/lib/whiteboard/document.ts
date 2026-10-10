@@ -1,13 +1,5 @@
-// A whiteboard's stored canvas and the text written on it. Pure helpers: the
-// canvas component (ExcalidrawCanvas.svelte) and the library store use these,
-// and the Rust vault reads the same envelope (core/src/vault/board.rs).
-//
-// Stored in note.surfaceData:
-//   { "v": 1, "engine": "excalidraw", "data": { elements, appState, files } }
-
 const EXCALIDRAW_ENGINE = "excalidraw";
 
-/** The fields of an Excalidraw element this module reads. */
 export interface BoardElement {
   id: string;
   type: string;
@@ -38,11 +30,6 @@ export function serializeBoard(board: Board): string {
 const isObject = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === "object" && !Array.isArray(v);
 
-/**
- * The board stored in `surfaceData`. Anything unreadable, including boards
- * from the pre-release engines ("shell", "svelte-flow"), opens empty rather
- * than failing: the note itself stays intact either way.
- */
 export function parseBoard(raw: string | null | undefined): Board {
   let parsed: unknown;
   try {
@@ -61,12 +48,6 @@ export function parseBoard(raw: string | null | undefined): Board {
   };
 }
 
-/**
- * The words on a board, in reading order (top to bottom, then left to
- * right), one block per text element or named frame. This becomes the note's
- * body, so search, #tags, and the vault's Markdown file see what the board
- * shows.
- */
 export function boardText(elements: readonly BoardElement[]): string {
   return elements
     .filter((el) => !el.isDeleted)
@@ -85,12 +66,6 @@ export function boardText(elements: readonly BoardElement[]): string {
     .join("\n\n");
 }
 
-/**
- * A cheap identity for what a board holds. Excalidraw bumps an element's
- * version on every change to it, so this moves exactly when the drawing
- * does, and stays put for scrolling, zooming, and selection, which fire the
- * same change events but are not edits.
- */
 export function sceneFingerprint(
   elements: readonly { id: string; version: number }[],
   files: Record<string, unknown>,
@@ -104,8 +79,6 @@ export function sceneFingerprint(
   return `${elements.length}:${hash}`;
 }
 
-/** A board as a standard `.excalidraw` file: the same content the vault
- *  mirror writes beside the note (core/src/vault/board.rs), for Export. */
 export function excalidrawFile(board: Board): string {
   const file = {
     type: "excalidraw",

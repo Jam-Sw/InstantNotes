@@ -1,9 +1,6 @@
-// @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, fireEvent, cleanup, waitFor } from "@testing-library/svelte";
 
-// The toolbar is the only visible place a note can be started from, so the
-// store is mocked down to what it reads and what the two create paths call.
 const { newNote, newWhiteboard } = vi.hoisted(() => ({
   newNote: vi.fn(),
   newWhiteboard: vi.fn(),
@@ -34,8 +31,6 @@ vi.mock("$lib/stores/library.svelte", () => ({
   },
 }));
 vi.mock("$lib/stores/update-space", () => ({ updateSpace: { notes: [] } }));
-// A user who has agreed to the license and EULA; the locked list is
-// license-space.svelte.test.ts's subject.
 vi.mock("$lib/stores/license-space.svelte", () => ({ licenseSpace: { locked: false } }));
 
 import NoteList from "./NoteList.svelte";

@@ -1,45 +1,22 @@
-// Bump the app version in every file that must stay in lockstep, in one shot,
-// so a release can never ship with the manifests disagreeing. Run via
-// `npm run bump` (no shebang: Windows vitest cannot parse the file with one).
-//
-//   npm run bump 0.6.0
-//
-// Updates: package.json, package-lock.json, src-tauri/tauri.conf.json,
-// src-tauri/Cargo.toml, and the instantnotes entry in src-tauri/Cargo.lock. The
-// core crate (src-tauri/core) versions independently and is left untouched.
-// Prints the next steps (commit, tag, push); it does not git-commit for you.
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 
 const VERSION_RE = /^\d+\.\d+\.\d+$/;
 
-/** A release version is exactly three dot-separated numbers. */
 export function isValidVersion(v) {
   return VERSION_RE.test(v);
 }
 
-/** Rewrite the top-level `"version": "x.y.z"` in a JSON document. */
 export function bumpJsonVersion(text, next) {
   return text.replace(/("version"\s*:\s*")\d+\.\d+\.\d+(")/, `$1${next}$2`);
 }
 
-/**
- * Rewrite the `version = "x.y.z"` that immediately follows `name = "<pkg>"`,
- * which is how both Cargo.toml ([package]) and Cargo.lock ([[package]]) lay out
- * a crate. Dependency `version = "…"` lines and other crates are left alone.
- */
 export function bumpPackageVersion(text, name, next) {
   const re = new RegExp(`(name = "${name}"\\nversion = ")\\d+\\.\\d+\\.\\d+(")`);
   return text.replace(re, `$1${next}$2`);
 }
 
-/**
- * Rewrite both instantnotes version fields in package-lock.json: the root
- * `"version"` and the `packages[""].version` mirror of it. Both sit directly
- * after `"name": "instantnotes"`, so anchoring on that leaves every dependency's
- * `"version"` untouched. The global flag catches both entries in one pass.
- */
 export function bumpLockVersion(text, next) {
   return text.replace(
     /("name":\s*"instantnotes",\s*"version":\s*")\d+\.\d+\.\d+(")/g,
@@ -47,7 +24,6 @@ export function bumpLockVersion(text, next) {
   );
 }
 
-/** Read the current top-level version from a JSON document. */
 function readJsonVersion(text) {
   return text.match(/"version"\s*:\s*"(\d+\.\d+\.\d+)"/)?.[1] ?? null;
 }
@@ -75,7 +51,6 @@ function main(argv) {
   const cargoPath = join(root, "src-tauri", "Cargo.toml");
   const lockPath = join(root, "src-tauri", "Cargo.lock");
 
-  // Guard: package.json and tauri.conf.json should currently agree.
   const current = readJsonVersion(readFileSync(pkgPath, "utf8"));
   const confCurrent = readJsonVersion(readFileSync(confPath, "utf8"));
   if (current !== confCurrent) {

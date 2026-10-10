@@ -2,8 +2,7 @@ import { describe, expect, it } from "vitest";
 import { groupNotes } from "./note-groups";
 import type { Note } from "$lib/api/types";
 
-// Fixed local clock: mid-afternoon so day boundaries are unambiguous.
-const NOW = new Date(2026, 6, 10, 15, 0, 0); // 2026-07-10 15:00 local
+const NOW = new Date(2026, 6, 10, 15, 0, 0);
 
 function mkNote(id: string, updatedAt: Date, overrides: Partial<Note> = {}): Note {
   return {

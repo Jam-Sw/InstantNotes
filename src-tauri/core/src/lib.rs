@@ -5,6 +5,7 @@ pub mod domain;
 pub mod error;
 pub mod import;
 pub mod sensitive;
+pub mod sheet;
 pub mod store;
 pub mod types;
 pub mod vault;

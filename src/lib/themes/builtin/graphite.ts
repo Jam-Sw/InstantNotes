@@ -1,6 +1,3 @@
-// Graphite - neutral, macOS-native feel: Apple's system gray scale, the system
-// blue accent, and SF via the -apple-system stack. The closest InstantNotes
-// theme to a conventional macOS app; the base layer the Tahoe glass builds on.
 import type { Theme } from "../types";
 import { SANS_STACK, MONO_STACK } from "../fonts";
 
@@ -15,14 +12,9 @@ export const graphite: Theme = {
   metrics: {
     radius: "8px",
     density: 1.0,
-    // macOS-native: default leading/tracking, with a soft neutral elevation on
-    // overlays in the spirit of system sheets and menus.
     shadow: "0 1px 3px rgba(0, 0, 0, 0.10)",
     shadowLg: "0 12px 40px rgba(0, 0, 0, 0.24)",
   },
-  // Tahoe glass: ask macOS for the sidebar vibrancy material. The bgSidebar
-  // tokens carry alpha so the material shows through; off macOS they fall back
-  // to a near-solid panel over bg.
   material: "sidebar",
   dark: {
     bg: "#1d1d1f",

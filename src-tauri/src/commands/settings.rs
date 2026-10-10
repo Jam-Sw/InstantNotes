@@ -1,5 +1,3 @@
-//! Settings key/value commands.
-
 use crate::*;
 
 #[tauri::command(async)]

@@ -1,6 +1,4 @@
 <script lang="ts">
-  // A labeled on/off row: the shared switch control used across settings pages
-  // so related toggles group together with one consistent look.
   import PrefRow from "./PrefRow.svelte";
   let {
     label,
@@ -18,9 +16,6 @@
 
   const subId = $props.id();
 
-  // The guard is not redundant with the disabled attribute: that stops a real
-  // click, this keeps "onchange never fires while disabled" true of the
-  // component itself, whoever dispatches the event.
   function flip() {
     if (disabled) return;
     onchange(!checked);

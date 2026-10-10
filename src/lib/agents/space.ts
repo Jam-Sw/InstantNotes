@@ -1,11 +1,6 @@
-// The synthetic Space that holds the agent trace: one note per agent
-// conversation, newest first. Like the update Space, nothing here is stored:
-// the Space and its notes are derived from the trace and rendered through the
-// ordinary sidebar and note rows, so they cannot be searched, tagged, or
-// synced. Pure, so it stays unit-testable without runes.
-
 import type { Note } from "$lib/api/types";
 import {
+  agentKind,
   agentName,
   describeActivity,
   type AgentActivity,
@@ -13,7 +8,6 @@ import {
   type AgentSession,
 } from "$lib/agent-activity";
 
-/** Sentinel ids no real workspace or note can hold (ids are UUIDs). */
 export const AGENTS_SPACE_ID = "agents-space";
 export const AGENTS_SPACE_NAME = "Agents";
 const NOTE_PREFIX = "agent-session:";
@@ -26,22 +20,16 @@ export function isAgentNoteId(id: string | null | undefined): boolean {
   return !!id && id.startsWith(NOTE_PREFIX);
 }
 
-/** @internal */
 export function agentNoteId(session: string): string {
   return NOTE_PREFIX + session;
 }
 
-/** The session a synthetic note stands for, or null for any other note. */
 export function sessionOfNote(id: string | null | undefined): string | null {
   return id && isAgentNoteId(id) ? id.slice(NOTE_PREFIX.length) : null;
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-/**
- * "3 changes · 5 reads · 1 failed": what the session did, for its list row.
- * @internal
- */
 export function sessionSummary(s: AgentSession): string {
   const parts: string[] = [];
   if (s.writes) parts.push(plural(s.writes, "change", "changes"));
@@ -50,25 +38,21 @@ export function sessionSummary(s: AgentSession): string {
   return parts.join(" · ");
 }
 
-/** A conversation: what an agent did (the trace) joined with whether it is
- *  still connected (its process). `connectedAt` is null for a conversation
- *  traced before connections were kept. */
+interface AgentClock {
+  session: string;
+  inAt: number | null;
+  outAt: number | null;
+}
+
 export interface AgentConversation extends AgentSession {
   connected: boolean;
-  connectedAt: number | null;
-  disconnectedAt: number | null;
-  /** The client's name for its session, its id for it, and where it runs,
-   *  for a client that says (Claude Code does). */
+  clocks: AgentClock[];
   label: string | null;
   clientSession: string | null;
   cwd: string | null;
-  /** True when the session was matched from the outside, not stated. */
   inferred: boolean;
 }
 
-/** Join the trace's sessions with the connections. A connected agent that
- *  has asked for nothing yet still gets a conversation; an ended one that
- *  never asked for anything does not. Connected first, then most recent. */
 export function joinConversations(
   sessions: AgentSession[],
   presence: AgentPresence[],
@@ -78,13 +62,15 @@ export function joinConversations(
     const p = known.get(s.session);
     return {
       ...s,
-      // The connection knows its client best: it has the handshake and the
-      // process that started the server, where a trace row has only what
-      // was known when the call was made.
       client: p?.client ?? s.client,
       connected: p?.connected ?? false,
-      connectedAt: p?.connectedAt ?? null,
-      disconnectedAt: p?.disconnectedAt ?? null,
+      clocks: [
+        {
+          session: s.session,
+          inAt: p?.connectedAt ?? null,
+          outAt: p?.connected ? null : (p?.disconnectedAt ?? s.endedAt),
+        },
+      ],
       label: p?.label ?? null,
       clientSession: p?.clientSession ?? null,
       cwd: p?.cwd ?? null,
@@ -104,21 +90,37 @@ export function joinConversations(
       writes: 0,
       errors: 0,
       connected: true,
-      connectedAt: p.connectedAt,
-      disconnectedAt: null,
+      clocks: [{ session: p.session, inAt: p.connectedAt, outAt: null }],
       label: p.label ?? null,
       clientSession: p.clientSession ?? null,
       cwd: p.cwd ?? null,
       inferred: p.matched === "inferred",
     });
   }
-  return out.sort(
-    (a, b) => Number(b.connected) - Number(a.connected) || b.endedAt - a.endedAt,
-  );
+  const order = (a: AgentConversation, b: AgentConversation) =>
+    Number(b.connected) - Number(a.connected) || b.endedAt - a.endedAt;
+  const leads = new Map<string, AgentConversation>();
+  const merged: AgentConversation[] = [];
+  for (const c of out.sort(order)) {
+    const key = c.clientSession && `${agentKind(c.client)}:${c.clientSession}`;
+    const lead = key ? leads.get(key) : undefined;
+    if (!lead) {
+      if (key) leads.set(key, c);
+      merged.push(c);
+      continue;
+    }
+    lead.entries = [...lead.entries, ...c.entries].sort((a, b) => b.seq - a.seq);
+    lead.startedAt = Math.min(lead.startedAt, c.startedAt);
+    lead.endedAt = Math.max(lead.endedAt, c.endedAt);
+    lead.reads += c.reads;
+    lead.writes += c.writes;
+    lead.errors += c.errors;
+    lead.clocks = [...lead.clocks, ...c.clocks];
+  }
+  for (const c of merged) c.clocks.sort((a, b) => (a.inAt ?? 0) - (b.inAt ?? 0));
+  return merged.sort(order);
 }
 
-/** One note per conversation. `doing` is the call a conversation is in the
- *  middle of, if any: its row says that, and settles back to the summary. */
 export function buildAgentNotes(
   conversations: AgentConversation[],
   doing: (session: string) => AgentActivity | null = () => null,
@@ -126,9 +128,8 @@ export function buildAgentNotes(
   return conversations.map((s) => {
     const now = doing(s.session);
     return {
-      id: agentNoteId(s.session),
+      id: agentNoteId(s.clocks[0]?.session ?? s.session),
       title: agentName(s.client, s.label),
-      // Only the list row ever shows this; opening the note renders the trace.
       body: now
         ? describeActivity(now)
         : sessionSummary(s) || (s.connected ? "Connected. Nothing asked yet." : ""),

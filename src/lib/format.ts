@@ -1,31 +1,27 @@
-// Small presentation helpers shared by the library views.
+const timeFormat = new Intl.DateTimeFormat([], { hour: "numeric", minute: "2-digit" });
+const shortDateFormat = new Intl.DateTimeFormat([], { month: "short", day: "numeric" });
+const exactFormat = new Intl.DateTimeFormat([], {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+});
 
-/** Today shows a time (e.g. "3:04 PM"); any other day shows a short date
- *  (e.g. "Jun 5"). */
 export function formatDate(iso: string): string {
   const d = new Date(iso);
   const today = new Date();
-  const sameDay = d.toDateString() === today.toDateString();
-  return sameDay
-    ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-    : d.toLocaleDateString([], { month: "short", day: "numeric" });
+  const sameDay =
+    d.getFullYear() === today.getFullYear() &&
+    d.getMonth() === today.getMonth() &&
+    d.getDate() === today.getDate();
+  return sameDay ? timeFormat.format(d) : shortDateFormat.format(d);
 }
 
-/** Full local date and time to the minute (e.g. "Jul 11, 2026, 2:55 PM").
- *  The always-available exact stamp: shown inline when the user opts in, and
- *  offered on hover everywhere the short `formatDate` is displayed. */
 export function formatExact(iso: string): string {
-  return new Date(iso).toLocaleString([], {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return exactFormat.format(new Date(iso));
 }
 
-/** Human byte size (e.g. "0 B", "340 KB", "1.2 MB"). Base-1024, one decimal
- *  once past kilobytes. */
 export function formatBytes(n: number): string {
   if (!Number.isFinite(n) || n <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -35,12 +31,23 @@ export function formatBytes(n: number): string {
   return `${shown} ${units[i]}`;
 }
 
-/** One-line note preview: collapse all whitespace, trim, cap at 90 chars. */
 export function preview(body: string): string {
+  const head = body.length > 1024 ? body.slice(0, 1024) : body;
+  const collapsed = head.replace(/\s+/g, " ").trim();
+  if (head === body || collapsed.length > 90) return collapsed.slice(0, 90);
   return body.replace(/\s+/g, " ").trim().slice(0, 90);
 }
 
-/** Whitespace-delimited word count; 0 for a blank body. */
+export function sheetPreview(body: string): string {
+  const cells = body
+    .split("\n")
+    .filter((line) => !/^\|(?:\s*-+\s*\|)+\s*$/.test(line))
+    .flatMap((line) => line.replace(/^\|/, "").replace(/\|$/, "").split(/(?<!\\)\|/))
+    .map((cell) => cell.replace(/\\\|/g, "|").replace(/<br>/g, " ").trim())
+    .filter(Boolean);
+  return cells.join(" · ").slice(0, 90);
+}
+
 export function wordCount(body: string): number {
   const trimmed = body.trim();
   return trimmed ? trimmed.split(/\s+/).length : 0;

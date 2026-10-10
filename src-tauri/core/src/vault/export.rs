@@ -1,11 +1,6 @@
-//! Stage 1 export: write the whole library to a chosen folder as a vault.
-//! One-way, no behavior change: SQLite stays authoritative (design.md,
-//! SEQUENCE.md unit 7). Attachment copying lives in the desktop shell layer,
-//! which is the one that knows where `<app data>/attachments` is.
-
 use super::{
-    atomic_write, canvas_rel, collision_key, note_filename, serialize_manifest, serialize_note,
-    Manifest, VaultNote,
+    atomic_write, collision_key, note_filename, serialize_manifest, serialize_note, surface_ext,
+    surface_rel, Manifest, VaultNote,
 };
 use crate::domain;
 use crate::error::Result;
@@ -16,9 +11,6 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-// list_notes pages at up to 5000 rows per call (store/notes.rs); page
-// through every state rather than trusting one call to return everything,
-// or a library past that size silently loses notes off the end.
 const LIST_PAGE: i64 = 5000;
 
 fn list_all(store: &Store, filter: NoteFilter) -> Result<Vec<Note>> {
@@ -40,10 +32,6 @@ fn list_all(store: &Store, filter: NoteFilter) -> Result<Vec<Note>> {
     Ok(out)
 }
 
-/// Gather every note (active, archived, and trashed) as `VaultNote`s, plus
-/// the tag/space manifest, from a live store. SEQUENCE.md unit 7's done
-/// condition: exporting this and re-parsing it must reproduce every field
-/// of every note.
 pub fn collect_from_store(store: &Store) -> Result<(Vec<VaultNote>, Manifest)> {
     let mut notes: Vec<Note> = Vec::new();
     for filter in [
@@ -73,10 +61,6 @@ pub fn collect_from_store(store: &Store) -> Result<(Vec<VaultNote>, Manifest)> {
     Ok((vault_notes, manifest))
 }
 
-/// Write every note plus `instantnotes.yaml` into `dest`, which is created
-/// if missing. Deleted notes land under `dest/trash/`; everything else at
-/// the vault root. Filenames are assigned in `notes` order, so collisions
-/// resolve deterministically for a given input order.
 pub fn export_vault(notes: &[VaultNote], manifest: &Manifest, dest: &Path) -> io::Result<()> {
     let trash_dir = dest.join("trash");
     fs::create_dir_all(&trash_dir)?;
@@ -100,8 +84,8 @@ pub fn export_vault(notes: &[VaultNote], manifest: &Manifest, dest: &Path) -> io
 
         let dir = if is_trashed { &trash_dir } else { dest };
         atomic_write(&dir.join(&filename), serialize_note(note).as_bytes())?;
-        if let Some(canvas) = &note.canvas {
-            atomic_write(&dir.join(canvas_rel(&filename)), canvas.as_bytes())?;
+        if let (Some(surface), Some(ext)) = (&note.surface, surface_ext(&note.kind)) {
+            atomic_write(&dir.join(surface_rel(&filename, ext)), surface.as_bytes())?;
         }
     }
 
@@ -131,7 +115,7 @@ mod tests {
             tags: Vec::new(),
             spaces: Vec::new(),
             kind: crate::types::CONTENT_KIND_DOCUMENT.to_string(),
-            canvas: None,
+            surface: None,
         }
     }
 
@@ -190,7 +174,6 @@ mod tests {
             .collect();
         bodies.sort();
         assert_eq!(bodies.len(), 2, "one note overwrote the other");
-        // Sorted by full text, so by frontmatter id: aaaaaa-1 first.
         assert!(bodies[0].ends_with("upper") && bodies[1].ends_with("lower"));
     }
 
@@ -202,8 +185,6 @@ mod tests {
             note("bbbbbb-2", Some("Notes"), "trashed", true),
         ];
         export_vault(&notes, &Manifest::default(), dir.path()).unwrap();
-        // Same plain name in each location is fine; they don't collide with
-        // each other, only within their own directory.
         assert!(dir.path().join("Notes.md").exists());
         assert!(dir.path().join("trash").join("Notes.md").exists());
     }

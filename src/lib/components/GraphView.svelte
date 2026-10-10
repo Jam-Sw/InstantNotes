@@ -1,8 +1,4 @@
 <script lang="ts">
-  // The Graph view (SEQUENCE.md units 13 and 13g): the library drawn as
-  // notes, tags, and Spaces, linked by what each note carries, and beside it
-  // where the unfiled notes belong. Derived on every open and every change;
-  // the only thing stored is a dismissed suggestion.
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import {
@@ -16,6 +12,7 @@
   import type { SpaceSuggestion } from "$lib/api/types";
   import { LIBRARY_CHANGED_EVENTS } from "$lib/api/events";
   import { library } from "$lib/stores/library.svelte";
+  import { agents } from "$lib/stores/agents.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
   import { debounce } from "$lib/debounce";
   import {
@@ -26,22 +23,18 @@
     type Graph,
     type GraphNode,
   } from "$lib/graph/layout";
+  import { FRONT, centroid, projector, turn, type Orbit } from "$lib/graph/projection";
+  import { clampLabel, nodeLabel, placeLabels } from "$lib/graph/labels";
 
-  // Layout work per animation frame, so a large library settles over a few
-  // frames instead of freezing the view while it does.
   const FRAME_BUDGET_MS = 12;
   const KIND_LABEL = { note: "Note", tag: "Tag", space: "Space" } as const;
   const ZOOM = { min: 0.2, max: 4 };
-  // Note titles show from this zoom up; hubs are always labeled.
   const NOTE_LABEL_ZOOM = 1.3;
-  // The lens: the open note, its tags and Spaces, and the notes they gather.
   const LENS_HOPS = 2;
-  // Suggestions listed at once; the rest come a page at a time, so two
-  // hundred of them read as a list, not a wall, and the canvas draws the
-  // dashed edges of the rows on screen only.
+  const KEY_TURN = 20;
   const PAGE = 25;
 
-  let graph = $state<Graph | null>(null);
+  let graph = $state.raw<Graph | null>(null);
   let failed = $state(false);
   let suggestions = $state<SpaceSuggestion[]>([]);
   let pages = $state(1);
@@ -49,18 +42,14 @@
   let width = $state(800);
   let height = $state(600);
   let view = $state({ x: 400, y: 300, k: 1 });
-  // The lens frames the open note's neighborhood; "Show all" is the escape
-  // and stays until the lens is chosen again.
+  let orbit = $state<Orbit>(FRONT);
   let lens = $state(true);
-  // Until the user pans or zooms, the view keeps itself framed as the
-  // layout settles; after that it stays where they put it.
   let userMoved = false;
-  let positions = new Map<string, { x: number; y: number }>();
+  let positions = new Map<string, { x: number; y: number; z: number }>();
   let frame: number | null = null;
   let host: HTMLDivElement;
   let lastLib: Awaited<ReturnType<typeof libraryGraph>> | null = null;
 
-  // Frames where the platform has them (a test DOM may not).
   const hasRaf = typeof requestAnimationFrame === "function";
   const raf = (f: () => void): number =>
     hasRaf ? requestAnimationFrame(f) : (setTimeout(f, 16) as unknown as number);
@@ -69,32 +58,77 @@
   const shown = $derived(suggestions.slice(0, pages * PAGE));
   const more = $derived(suggestions.length - shown.length);
   const suggestedSpace = $derived(new Map(shown.map((s) => [s.noteId, s.spaceName])));
+  const agentWritten = $derived(
+    new Set(
+      agents.recent
+        .filter(
+          (e) =>
+            e.kind === "write" &&
+            e.status === "ok" &&
+            e.client !== "instantnotes" &&
+            e.revertedAt === null,
+        )
+        .flatMap((e) => e.noteIds),
+    ),
+  );
   const byId = $derived(new Map((graph?.nodes ?? []).map((n) => [n.id, n])));
   const currentId = $derived(
     library.selected && byId.has(library.selected.id) ? library.selected.id : null,
   );
-  // The lit neighborhood: what the pointer or focus is on, one link out;
-  // else the open note's lens.
   const lit = $derived.by(() => {
     if (!graph) return null;
     if (hovered) return neighbors(graph, hovered);
     return currentId && lens ? neighbors(graph, currentId, LENS_HOPS) : null;
   });
 
+  const pivot = $derived.by(() => {
+    const nodes = graph?.nodes ?? [];
+    const around = graph && lens && currentId ? neighbors(graph, currentId, LENS_HOPS) : null;
+    return centroid(around ? nodes.filter((n) => around.has(n.id)) : nodes);
+  });
+  const projected = $derived.by(() => {
+    const project = projector(orbit, pivot);
+    return new Map((graph?.nodes ?? []).map((n) => [n.id, project(n)]));
+  });
+  const painted = $derived(
+    [...(graph?.nodes ?? [])].sort((a, b) => projected.get(b.id)!.depth - projected.get(a.id)!.depth),
+  );
+  const labeled = $derived.by(() => {
+    const candidates = [];
+    for (const n of graph?.nodes ?? []) {
+      if (!showLabel(n)) continue;
+      const p = projected.get(n.id)!;
+      const focus =
+        n.id === currentId ? 4 : n.id === hovered ? 3 : lit?.has(n.id) ? 2 : 0;
+      const hub = n.kind === "note" ? 0 : 1e4 + n.degree * 10;
+      const r = nodeRadius(n) * p.scale;
+      candidates.push({
+        ...nodeLabel(n.id, n.label, p.x, p.y, r, focus * 1e6 + hub - p.depth),
+        pinned: focus >= 3,
+      });
+    }
+    const discs = (graph?.nodes ?? []).map((n) => {
+      const p = projected.get(n.id)!;
+      return { x: p.x, y: p.y, r: nodeRadius(n) * p.scale };
+    });
+    return placeLabels(candidates, discs);
+  });
+
+  const labelsOn = $derived(view.k >= NOTE_LABEL_ZOOM);
+
   function showLabel(n: GraphNode): boolean {
-    return n.kind !== "note" || view.k >= NOTE_LABEL_ZOOM || !!lit?.has(n.id);
+    return n.kind !== "note" || labelsOn || !!lit?.has(n.id);
   }
 
   function nodeName(n: GraphNode): string {
     const base = `${KIND_LABEL[n.kind]}: ${n.label}`;
     const space = n.kind === "note" ? suggestedSpace.get(n.id) : undefined;
-    return space ? `${base}, suggested for ${space}` : base;
+    const named = space ? `${base}, suggested for ${space}` : base;
+    return n.kind === "note" && agentWritten.has(n.id) ? `${named}, written by an agent` : named;
   }
 
   async function load() {
     try {
-      // Suggestions are a help, not the graph: when they fail the graph
-      // still draws, with none.
       const [lib, next] = await Promise.all([
         libraryGraph(),
         spaceSuggestions().catch(() => [] as SpaceSuggestion[]),
@@ -109,7 +143,6 @@
   }
   const reload = debounce(() => void load(), 80);
 
-  /** Redraw from what is already loaded, after the list changed locally. */
   function redraw() {
     if (lastLib) settle(buildGraph(lastLib, shown));
   }
@@ -121,21 +154,21 @@
       frame = null;
       const started = performance.now();
       let rested = false;
-      while (!rested && performance.now() - started < FRAME_BUDGET_MS) rested = run.step(4);
+      while (!rested && performance.now() - started < FRAME_BUDGET_MS) rested = run.step(1);
       graph = run.snapshot();
-      positions = new Map(graph.nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
+      positions = new Map(graph.nodes.map((n) => [n.id, { x: n.x, y: n.y, z: n.z }]));
       if (!userMoved) frameView();
       if (!rested) frame = raf(step);
     };
     step();
   }
 
-  /** Center the open note's lens when it is on the graph and the lens is
-   *  on, else fit the whole library. */
   function frameView() {
     if (!graph || graph.nodes.length === 0) return;
     const around = lens && currentId ? neighbors(graph, currentId, LENS_HOPS) : null;
-    const shownNodes = graph.nodes.filter((n) => !around || around.has(n.id));
+    const shownNodes = graph.nodes
+      .filter((n) => !around || around.has(n.id))
+      .map((n) => projected.get(n.id)!);
     const xs = shownNodes.map((n) => n.x);
     const ys = shownNodes.map((n) => n.y);
     const pad = 60;
@@ -171,14 +204,10 @@
     }
   }
 
-  // ---- suggestions ----
-
   function drop(s: SpaceSuggestion) {
     suggestions = suggestions.filter((x) => !(x.noteId === s.noteId && x.spaceId === s.spaceId));
   }
 
-  /** One tap: the note joins the Space. The membership is the data, and the
-   *  model learns from it on the next read; Undo takes it out again. */
   async function accept(s: SpaceSuggestion) {
     drop(s);
     redraw();
@@ -194,8 +223,6 @@
     }
   }
 
-  /** "Not this one": the pair is remembered on this device and not shown
-   *  again; nothing about the note changes. Undo forgets the dismissal. */
   async function dismiss(s: SpaceSuggestion) {
     drop(s);
     redraw();
@@ -220,21 +247,35 @@
   const percent = (p: number) => `${Math.round(p * 100)}%`;
   const because = (s: SpaceSuggestion) => s.reasons.map((r) => r.label).join(", ");
 
-  // ---- pan and zoom ----
-
-  let drag = $state<{ id: number; x: number; y: number } | null>(null);
+  let drag = $state<{ id: number; x: number; y: number; turn: boolean } | null>(null);
 
   function onPointerDown(e: PointerEvent) {
-    if ((e.target as Element).closest(".node")) return;
-    drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    if ((e.target as Element).closest(".node") && e.button !== 2) return;
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, turn: e.button === 2 || e.shiftKey };
     (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
   }
 
   function onPointerMove(e: PointerEvent) {
     if (!drag || drag.id !== e.pointerId) return;
     userMoved = true;
-    view = { ...view, x: view.x + e.clientX - drag.x, y: view.y + e.clientY - drag.y };
+    const dx = e.clientX - drag.x;
+    const dy = e.clientY - drag.y;
+    if (drag.turn) orbit = turn(orbit, dx, dy);
+    else view = { ...view, x: view.x + dx, y: view.y + dy };
     drag = { ...drag, x: e.clientX, y: e.clientY };
+  }
+
+  function onHostKey(e: KeyboardEvent) {
+    const step = {
+      ArrowLeft: [-KEY_TURN, 0],
+      ArrowRight: [KEY_TURN, 0],
+      ArrowUp: [0, -KEY_TURN],
+      ArrowDown: [0, KEY_TURN],
+    }[e.key];
+    if (!step || e.altKey || e.ctrlKey || e.metaKey) return;
+    e.preventDefault();
+    userMoved = true;
+    orbit = turn(orbit, step[0], step[1]);
   }
 
   function onPointerUp() {
@@ -247,7 +288,6 @@
     const rect = host.getBoundingClientRect();
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
-    // A trackpad pinch arrives as a ctrl+wheel with small deltas.
     const factor = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.002));
     const k = Math.min(ZOOM.max, Math.max(ZOOM.min, view.k * factor));
     view = { k, x: px - ((px - view.x) * k) / view.k, y: py - ((py - view.y) * k) / view.k };
@@ -262,8 +302,6 @@
     const observer =
       typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
     observer?.observe(host);
-    // Registered by hand: a wheel listener has to be non-passive to keep the
-    // page from scrolling while it zooms.
     host.addEventListener("wheel", onWheel, { passive: false });
     const unlisten = Promise.all(
       LIBRARY_CHANGED_EVENTS.map((event) => listen(event, () => reload())),
@@ -303,7 +341,6 @@
   </header>
 
   <div class="graph-body">
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       class="graph-host"
       class:panning={drag !== null}
@@ -312,6 +349,8 @@
       onpointermove={onPointerMove}
       onpointerup={onPointerUp}
       onpointercancel={onPointerUp}
+      onkeydown={onHostKey}
+      oncontextmenu={(e) => e.preventDefault()}
     >
       {#if failed}
         <p class="graph-empty">The graph couldn't load. Your notes are fine; try again in a moment.</p>
@@ -324,8 +363,8 @@
         <svg {width} {height} role="group" aria-label="Notes, tags, and Spaces">
           <g transform="translate({view.x} {view.y}) scale({view.k})">
             {#each graph.edges as e, i (i)}
-              {@const a = byId.get(e.source)}
-              {@const b = byId.get(e.target)}
+              {@const a = projected.get(e.source)}
+              {@const b = projected.get(e.target)}
               {#if a && b}
                 <line
                   class="edge {e.kind} {e.tagSource ?? ''}"
@@ -338,14 +377,15 @@
                 />
               {/if}
             {/each}
-            {#each graph.nodes as n (n.id)}
-              {@const r = nodeRadius(n)}
+            {#each painted as n (n.id)}
+              {@const p = projected.get(n.id)!}
+              {@const r = nodeRadius(n) * p.scale}
               <g
                 class="node {n.kind}"
                 class:dim={lit && !lit.has(n.id)}
                 class:current={currentId === n.id}
                 class:suggested={n.suggested}
-                transform="translate({n.x} {n.y})"
+                transform="translate({p.x} {p.y})"
                 role="button"
                 tabindex="0"
                 aria-label={nodeName(n)}
@@ -361,10 +401,21 @@
                 {:else}
                   <circle {r} style:fill={n.kind === "tag" && n.color ? n.color : null} />
                 {/if}
-                {#if showLabel(n)}
-                  <text y={r + 12} class:hub={n.kind !== "note"}>{n.label}</text>
+                {#if n.kind === "note" && agentWritten.has(n.id)}
+                  <circle class="agent-ring" r={r + 3} />
                 {/if}
               </g>
+            {/each}
+            {#each painted as n (n.id)}
+              {@const at = labeled.get(n.id)}
+              {#if at}
+                <text
+                  class:hub={n.kind !== "note"}
+                  class:dim={lit && !lit.has(n.id)}
+                  x={at.x}
+                  y={at.y}>{clampLabel(n.label)}</text
+                >
+              {/if}
             {/each}
           </g>
         </svg>
@@ -372,8 +423,6 @@
     </div>
 
     {#if shown.length > 0}
-      <!-- The suggestions, as a list beside the canvas: each row is one
-           dashed edge, and a row under the pointer or focus lights it. -->
       <aside class="suggestions" aria-label="Filing suggestions">
         <h3>
           Where these belong
@@ -432,8 +481,7 @@
         <li><svg width="22" height="8" aria-hidden="true"><line class="edge tag inline" x1="1" y1="4" x2="21" y2="4" /></svg>tag written in the note</li>
         <li><svg width="22" height="8" aria-hidden="true"><line class="edge tag manual" x1="1" y1="4" x2="21" y2="4" /></svg>tag added</li>
         <li><svg width="22" height="8" aria-hidden="true"><line class="edge space" x1="1" y1="4" x2="21" y2="4" /></svg>Space</li>
-        <li><svg width="22" height="8" aria-hidden="true"><line class="edge suggested" x1="1" y1="4" x2="21" y2="4" /></svg>suggested Space</li>
-      </ul>
+        <li><svg width="22" height="8" aria-hidden="true"><line class="edge suggested" x1="1" y1="4" x2="21" y2="4" /></svg>suggested Space</li>      </ul>
       {#if graph.unconnectedNotes > 0}
         <span class="foot-note">
           {plural(graph.unconnectedNotes, "note", "notes")} with no tags or Spaces
@@ -456,7 +504,6 @@
     height: 100%;
     background: var(--bg);
   }
-  /* Layout comes from .pane-header (app.css). */
   .graph-bar {
     gap: 12px;
     padding-right: 16px;
@@ -467,7 +514,7 @@
     font-weight: 700;
   }
   .graph-counts {
-    color: var(--text-tertiary);
+    color: var(--text-secondary);
     font-size: 12px;
     font-family: var(--font-meta);
   }
@@ -503,10 +550,6 @@
   svg {
     display: block;
   }
-  /* Edges tell their kind by pattern and weight, never by color alone, so
-     the legend reads the same for every eye: a written tag is a thin solid
-     line, an added tag is dotted, a Space is a heavier solid line, and a
-     suggestion is dashed in the accent. */
   .edge {
     stroke: var(--border);
     stroke-width: 1;
@@ -547,13 +590,17 @@
     stroke: var(--bg);
     stroke-width: 1.5;
   }
-  /* A note drawn for its suggestion alone is hollow and dashed: not yet
-     anyone's. */
   .node.suggested circle,
   .node.suggested rect {
     fill: var(--bg);
     stroke: var(--accent);
     stroke-dasharray: 3 2;
+  }
+  .node.note circle.agent-ring {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 1.25;
+    stroke-opacity: 0.7;
   }
   .node.tag circle {
     fill: var(--tag);
@@ -588,6 +635,12 @@
     fill: var(--text);
     font-weight: 600;
   }
+  text {
+    transition: opacity 120ms ease;
+  }
+  text.dim {
+    opacity: 0.2;
+  }
   .graph-empty {
     position: absolute;
     inset: 0;
@@ -602,13 +655,13 @@
     cursor: default;
   }
 
-  /* ---- the suggestion list ---- */
   .suggestions {
     flex: none;
     width: 280px;
     min-height: 0;
     overflow-y: auto;
-    border-left: 1px solid var(--border);
+    background: var(--surface-list);
+    border-left: 1px solid var(--divider);
     padding: 10px 12px 12px;
     font-size: 12.5px;
   }
@@ -622,7 +675,7 @@
     color: var(--text);
   }
   .sug-count {
-    color: var(--text-tertiary);
+    color: var(--text-secondary);
     font-family: var(--font-meta);
     font-weight: 500;
   }
@@ -675,7 +728,7 @@
     font-weight: 600;
   }
   .sug-pct {
-    color: var(--text-tertiary);
+    color: var(--text-secondary);
     font-family: var(--font-meta);
     font-size: 11px;
   }
@@ -716,7 +769,6 @@
     background: var(--bg-hover);
   }
 
-  /* ---- the footer: legend and what is left out ---- */
   .graph-foot {
     display: flex;
     flex-wrap: wrap;
@@ -725,7 +777,7 @@
     margin: 0;
     padding: 6px 16px;
     border-top: 1px solid var(--border);
-    color: var(--text-tertiary);
+    color: var(--text-secondary);
     font-size: 11px;
     font-family: var(--font-meta);
   }

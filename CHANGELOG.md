@@ -7,6 +7,65 @@ in-app updater, written for users. Newest first.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.4]
+
+### Added
+- Sheet notes: a third note kind, a cell grid (Tab/Enter entry, range paste to and from Sheets, Excel and
+  Numbers, undo, resizable columns). Stored in the vault as a Markdown table plus a `.csv`.
+- Agents: `edit_note` replaces one exact `oldText` that occurs once; `append_sheet_rows` adds rows to a sheet.
+- Agents: `search_notes` takes `detail: "titles"` and `status` `pinned`/`trash`; `get_note` takes `maxChars`
+  and `bodyOffset`; `suggest_space` takes `offset`.
+- Agents: Settings > Agents sets per-kind tags for every note an agent creates, and Block, which refuses all
+  of that agent's calls.
+- Agents: an agent's page shows a clock-in punch card, keeps a reconnect under the same session as one
+  conversation, and offers "End session".
+- Agents: a note an agent last changed shows "Last changed by" and the agent's name in the editor, and a
+  ring in the graph.
+- Graph: 3D layout (`d3-force-3d`, `forceZ` slab, Barnes-Hut `theta` 1.2); right-drag, Shift+drag or the
+  arrow keys rotate it.
+- Notes: one-tap tag suggestions from the note's own words; Settings > Editor sets Eager, Balanced, Careful
+  or off.
+- Notes: a link dropped from a browser becomes a Markdown link with the page title.
+- Capture: recent notes are listed under the box; Tab picks one and Enter appends the capture to it.
+- Capture (Linux, Wayland): the welcome screen says the global shortcut fires only while an X11 app is
+  focused, and suggests binding `instantnotes capture`.
+- Settings: search lists every matching setting across all pages.
+- Sidebar: with many Spaces, the six largest plus the open one show, and a "more" row opens the rest.
+
+### Changed
+- Speed at 20,000 notes: note list 79 ms to 3 ms, tag and Space lists 3 s to 30 ms, filing suggestions 5 s
+  to 2 s on their own read connection, so saves and searches never wait for them.
+- Search: one- to three-letter prefixes are up to 7x faster via a prefix index; the library re-indexes once
+  on first launch (about 3 s at 20,000 notes). Results are unchanged.
+- Startup: the first screen loads a quarter of the JavaScript; the editor, Settings and the Graph load just
+  after launch.
+- Theme: saved colors apply before first paint; on Linux and Windows the window opens in the theme's
+  background instead of white.
+- Updater: the first automatic check runs 8 s after launch; "Check for updates" stays immediate.
+- Saves no longer wait on the agent connection check, and large vault writes are split into smaller pieces.
+- Integrity scan: libraries over 4 MB are scanned only after an unclean exit, a read error, a week, or on
+  first open; smaller ones at every launch.
+- Agents: writes return notes without bodies; `get_note`/`get_notes` cap bodies at `maxChars` (12,000;
+  60,000 shared per `get_notes`).
+- Agents: `search_notes` defaults to 10 results, refuses an empty query, returns a `hint` on no match and
+  echoes `limit`; its results carry `kind`.
+- Agents: `create_note` and `add_to_space` return `createdSpace`; resource reads are traced; a sheet's view
+  returns `sheet.header`.
+- Agents: `INSTRUCTIONS`, tool descriptions and refusals rewritten: a new thought is a new note via
+  `create_note`, and each refusal names the next step.
+- Graph: labels never overlap; they are placed by priority under or over their node (`rbush`), above all
+  nodes.
+
+### Fixed
+- Updater: the installed-update note offers "Restart now" (`restart_app`); closing the window only hid it to
+  the tray, so the old version kept running.
+- Layout: below 960 px the sidebar hides, and its toggle brings it back over the list.
+- Editor: wrapped list items hang under their text; in a narrow editor the title shrinks and shows in the
+  top bar.
+- Spaces and filters: switching keeps the open note when it is also in the new view.
+- Graph: labels are cut at 28 characters and kept off other nodes unless open, hovered or lit; the side
+  panel has a solid background and darker small text.
+
 ## [0.9.3] - 2026-10-02
 
 ### Added

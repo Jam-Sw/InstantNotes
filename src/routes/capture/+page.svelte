@@ -1,7 +1,4 @@
 <script lang="ts">
-  // Capture panel: the product promise. Bare textarea on the latency-critical
-  // path, no editor framework here. Enter saves and dismisses, Shift+Enter is
-  // a newline, and Esc dismisses the window while preserving the draft.
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -10,11 +7,15 @@
     captureInputReady,
     createNote,
     deleteSetting,
+    getNote,
     getSetting,
     hideCapture,
+    listNotes,
     openLibrary,
     setSetting,
+    updateNote,
   } from "$lib/api/client";
+  import type { Note } from "$lib/api/types";
   import { debounce } from "$lib/debounce";
   import { modKey } from "$lib/platform";
   import { theme } from "$lib/stores/theme.svelte";
@@ -22,18 +23,16 @@
   import LicenseLocked from "$lib/components/LicenseLocked.svelte";
 
   const DRAFT_KEY = "capture.draft";
-  // One visible beat of "Saved" before the panel hides, so success reads as more
-  // than the window merely closing. Small on purpose so it adds no real latency.
   const SAVED_HINT_MS = 300;
+  const RECENT = 3;
 
   let text = $state("");
   let saving = $state(false);
   let saved = $state(false);
   let errorMsg = $state<string | null>(null);
-  // Absent while the license gate stands in for it (LicenseLocked).
+  let recent = $state<Note[]>([]);
+  let target = $state<Note | null>(null);
   let textarea = $state<HTMLTextAreaElement>();
-  // Set while we hide the panel ourselves so the blur that hiding triggers does
-  // not fire a second dismiss; cleared when focus returns on the next reveal.
   let hiding = false;
 
   const persistDraft = debounce((value: string) => {
@@ -50,30 +49,23 @@
   onMount(() => {
     void theme.init();
     void restoreDraft();
+    void loadRecent();
     const unlisten = listen(EVENTS.CAPTURE_SHOWN, () => {
-      // Re-read the theme: it may have changed in the library while hidden.
       void theme.init();
       void restoreDraft();
+      target = null;
+      void loadRecent();
       textarea?.focus();
-      // After the next paint the textarea is genuinely accepting input;
-      // report it so the shell can close this reveal's latency sample.
       requestAnimationFrame(() => void captureInputReady());
     });
-    // Dismiss on outside click like Spotlight/Raycast/Things: this panel is
-    // always-on-top on every Space, so a click elsewhere would otherwise strand
-    // a floating window. dismiss(false) persists the draft, making this safe.
     const unfocus = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
       if (focused) {
         hiding = false;
         return;
       }
-      // Never dismiss mid-save, nor react to the blur our own hide just caused.
       if (saving || hiding) return;
       void dismiss(false);
     });
-    // Quit handshake: push a debounced draft write through before the process
-    // exits, so the draft is not 300ms stale on the next launch. Only the
-    // library window and stickies answer with quit_app.
     const unlistenQuit = listen(EVENTS.APP_QUIT_REQUESTED, () => {
       persistDraft.flush();
     });
@@ -90,9 +82,35 @@
       const draft = await getSetting<string>(DRAFT_KEY);
       if (draft && !text) text = draft;
     } catch {
-      // Draft restore is best-effort; capture must never block on it.
     }
     textarea?.focus();
+  }
+
+  async function loadRecent() {
+    try {
+      const notes = await listNotes({ sortBy: "lastOpenedAt", sortOrder: "desc", bodyChars: 0 });
+      recent = notes.filter((n) => n.lastOpenedAt && n.contentKind === "document").slice(0, RECENT);
+    } catch {
+      recent = [];
+    }
+  }
+
+  function pick(note: Note | null) {
+    target = note;
+    textarea?.focus();
+  }
+
+  function nextTarget() {
+    const at = target ? recent.findIndex((n) => n.id === target?.id) : -1;
+    pick(recent[at + 1] ?? null);
+  }
+
+  async function addTo(id: string, body: string) {
+    const note = await getNote(id);
+    await updateNote(id, {
+      body: note.body.trim() ? `${note.body.trimEnd()}\n\n${body}` : body,
+      expectedUpdatedAt: note.updatedAt,
+    });
   }
 
   function onInput() {
@@ -103,9 +121,6 @@
   async function save(openLibraryAfter = false) {
     const body = text.trim();
     if (!body) {
-      // Nothing to save; still honor the shortcut's intent to reveal the library.
-      // Mark the hide first: the library stealing focus fires a blur that would
-      // otherwise run a second, concurrent dismiss.
       hiding = true;
       if (openLibraryAfter) await openLibrary();
       await dismiss(true);
@@ -113,11 +128,12 @@
     }
     saving = true;
     try {
-      await createNote({ body });
+      if (target) await addTo(target.id, body);
+      else await createNote({ body });
       text = "";
+      target = null;
       persistDraft.cancel();
       void deleteSetting(DRAFT_KEY);
-      // Hold "Saved" for one beat; the textarea stays disabled via `saving`.
       saved = true;
       await new Promise<void>((resolve) => setTimeout(resolve, SAVED_HINT_MS));
       if (openLibraryAfter) await openLibrary();
@@ -130,7 +146,6 @@
     }
   }
 
-  // Hide the panel ourselves, marking the hide so the blur it triggers is ignored.
   async function hidePanel() {
     hiding = true;
     await hideCapture();
@@ -149,8 +164,10 @@
   function onKeydown(e: KeyboardEvent) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      // Cmd/Ctrl+Enter also opens the library after saving (ctrl for win/linux parity).
       void save(e.metaKey || e.ctrlKey);
+    } else if (e.key === "Tab" && !e.shiftKey && recent.length > 0) {
+      e.preventDefault();
+      nextTarget();
     } else if (e.key === "Escape") {
       e.preventDefault();
       void dismiss(false);
@@ -167,11 +184,25 @@
     bind:value={text}
     oninput={onInput}
     onkeydown={onKeydown}
-    placeholder="What's on your mind?"
+    placeholder={target ? `Add to “${target.title || "Untitled"}”` : "What's on your mind?"}
     aria-label="Quick capture"
     spellcheck="true"
     disabled={saving}
   ></textarea>
+  {#if recent.length > 0}
+    <div class="targets" role="group" aria-label="Add to a note you had open">
+      {#each recent as note (note.id)}
+        <button
+          class="target"
+          aria-pressed={target?.id === note.id}
+          onclick={() => pick(target?.id === note.id ? null : note)}
+        >
+          ↳ {note.title || "Untitled"}
+        </button>
+      {/each}
+      <span class="target-hint"><kbd>tab</kbd></span>
+    </div>
+  {/if}
   <div class="footer" data-tauri-drag-region>
     <div class="tags">
       {#each liveTags as tag (tag)}
@@ -229,6 +260,34 @@
     color: var(--text-tertiary);
   }
 
+  .targets {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 12px;
+    overflow: hidden;
+  }
+  .target {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border: 1px dashed var(--border);
+    border-radius: 99px;
+    padding: 1px 8px;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+  .target[aria-pressed="true"] {
+    border-style: solid;
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--text);
+  }
+  .target-hint {
+    flex-shrink: 0;
+    color: var(--text-tertiary);
+  }
   .footer {
     display: flex;
     justify-content: space-between;

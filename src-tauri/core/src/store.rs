@@ -1,19 +1,25 @@
-//! SQLite-backed store: the single writer for all persistent state.
-//! FTS5 is kept in sync by triggers; tag search goes through note_tags joins,
-//! never FTS.
-
 use crate::domain;
 use crate::error::{AppError, Result};
 use crate::types::*;
-use chrono::{SecondsFormat, Utc};
+use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
-/// Ordered schema migrations; user_version tracks how many have run. Public so
-/// tests can build fixtures at a historical schema version.
+const ALWAYS_VERIFY_BELOW_BYTES: u64 = 4 * 1024 * 1024;
+const VERIFY_EVERY_DAYS: i64 = 7;
+const RECORD_REFRESH_DAYS: i64 = 1;
+const INTEGRITY_CHECKED_KEY: &str = "integrity.checked_at";
+const SUSPECT_SUFFIX: &str = ".verify";
+const SESSION_SUFFIX: &str = ".open";
+
+fn sibling(path: &Path, suffix: &str) -> PathBuf {
+    let mut name = path.as_os_str().to_os_string();
+    name.push(suffix);
+    PathBuf::from(name)
+}
+
 pub const MIGRATIONS: &[&str] = &[
-    // v1 — initial schema
     r#"
 CREATE TABLE notes (
   seq            INTEGER PRIMARY KEY,
@@ -59,9 +65,6 @@ CREATE TABLE settings (
   updated_at TEXT NOT NULL
 );
 
--- content_rowid is an explicit INTEGER PRIMARY KEY alias (`seq`), per the
--- FTS5 external-content documentation pattern; the implicit rowid is not
--- guaranteed stable across VACUUM.
 CREATE VIRTUAL TABLE notes_fts USING fts5(
   title, body,
   content='notes', content_rowid='seq',
@@ -81,7 +84,6 @@ CREATE TRIGGER notes_au AFTER UPDATE OF title, body ON notes BEGIN
   INSERT INTO notes_fts(rowid, title, body) VALUES (new.seq, new.title, new.body);
 END;
 "#,
-    // v2 — workspaces: named note collections, many-to-many like tags
     r#"
 CREATE TABLE workspaces (
   id         TEXT PRIMARY KEY,
@@ -98,27 +100,15 @@ CREATE TABLE note_workspaces (
 );
 CREATE INDEX idx_note_workspaces_ws ON note_workspaces(workspace_id);
 "#,
-    // v3: drop the unused sync scaffolding (written, never read).
     r#"
 ALTER TABLE notes DROP COLUMN sync_state;
 ALTER TABLE notes DROP COLUMN version;
 ALTER TABLE notes DROP COLUMN last_synced_at;
 "#,
-    // v4: note surface mode, document (markdown) or whiteboard (canvas
-    // host). Pre-release builds shipped these columns, so libraries they
-    // touched are already at v4 with them: v4 must mean this everywhere.
     r#"
 ALTER TABLE notes ADD COLUMN content_kind TEXT NOT NULL DEFAULT 'document';
 ALTER TABLE notes ADD COLUMN surface_data TEXT;
 "#,
-    // v5: the vault mirror (feat-portable-vault-sync stage 2, design.md §5).
-    // vault_path is where the note's file was last written, relative to the
-    // vault root; file_sha is the sha256 of those bytes. vault_dirty is set
-    // by the triggers below in the same transaction as any write that
-    // changes what the note's file holds, so a crash between the commit and
-    // the file write still leaves the note marked for the next flush.
-    // last_opened_at is deliberately absent from the watched columns: it is
-    // device-local and never written to the vault (design.md §7.2).
     r#"
 ALTER TABLE notes ADD COLUMN vault_path  TEXT;
 ALTER TABLE notes ADD COLUMN file_sha    TEXT;
@@ -127,7 +117,6 @@ CREATE INDEX idx_notes_vault_dirty ON notes(vault_dirty) WHERE vault_dirty = 1;
 CREATE INDEX idx_notes_vault_path ON notes(vault_path COLLATE NOCASE)
   WHERE vault_path IS NOT NULL;
 
--- A hard-deleted note leaves no row to flag, so its file is queued here.
 CREATE TABLE vault_tombstones (
   vault_path TEXT PRIMARY KEY,
   file_sha   TEXT
@@ -147,7 +136,6 @@ CREATE TRIGGER notes_vault_ad AFTER DELETE ON notes
     VALUES (old.vault_path, old.file_sha);
 END;
 
--- Edge changes, including the cascades from deleting a tag or a space.
 CREATE TRIGGER note_tags_vault_ai AFTER INSERT ON note_tags BEGIN
   UPDATE notes SET vault_dirty = 1 WHERE id = new.note_id;
 END;
@@ -161,8 +149,6 @@ CREATE TRIGGER note_workspaces_vault_ad AFTER DELETE ON note_workspaces BEGIN
   UPDATE notes SET vault_dirty = 1 WHERE id = old.note_id;
 END;
 
--- Names are what the frontmatter carries; a color change touches only
--- instantnotes.yaml, which the flush compares on its own.
 CREATE TRIGGER tags_vault_au AFTER UPDATE OF name ON tags
   WHEN old.name IS NOT new.name BEGIN
   UPDATE notes SET vault_dirty = 1
@@ -174,12 +160,6 @@ CREATE TRIGGER workspaces_vault_au AFTER UPDATE OF name ON workspaces
     WHERE id IN (SELECT note_id FROM note_workspaces WHERE workspace_id = new.id);
 END;
 "#,
-    // v6: whiteboards in the vault. A board's canvas is a `.excalidraw` file
-    // beside its note file (vault/board.rs); board_sha is the sha256 of the
-    // canvas bytes last written, so the canvas gets the same "only remove
-    // what still holds our bytes" rule as the note file. The update trigger
-    // now also watches the whiteboard columns, and a hard delete queues the
-    // canvas for removal alongside the note file.
     r#"
 ALTER TABLE notes ADD COLUMN board_sha TEXT;
 
@@ -202,11 +182,6 @@ CREATE TRIGGER notes_vault_ad AFTER DELETE ON notes
     WHERE old.board_sha IS NOT NULL;
 END;
 "#,
-    // v7: the agent activity trace (API.md section 15). Every call an agent
-    // makes through the MCP server is one row; a write also carries `before`,
-    // the note as it was (fields, tags, Spaces) as JSON, so the app can put
-    // it back. Written by the MCP process, read by the app, which appends
-    // its own `revert` rows. Pruned to the newest ACTIVITY_KEEP rows.
     r#"
 CREATE TABLE agent_activity (
   seq              INTEGER PRIMARY KEY,
@@ -230,18 +205,10 @@ CREATE TABLE agent_activity (
   reverts          INTEGER
 );
 "#,
-    // v8: the raw exchange behind a traced call. `request` is the JSON-RPC
-    // message the agent sent and `response` the one it got back, whole, so
-    // the app can show exactly what crossed the wire. NULL on rows from
-    // before this, and on the app's own `revert` rows, which no agent sent.
     r#"
 ALTER TABLE agent_activity ADD COLUMN request TEXT;
 ALTER TABLE agent_activity ADD COLUMN response TEXT;
 "#,
-    // v9: agent connections. One row per MCP server process: who connected
-    // and when, and when it said goodbye. A process that dies without saying
-    // so is found out by the lock it held (`store/activity.rs`), and the app
-    // closes its row.
     r#"
 CREATE TABLE agent_sessions (
   session         TEXT PRIMARY KEY,
@@ -250,30 +217,49 @@ CREATE TABLE agent_sessions (
   disconnected_at INTEGER
 );
 "#,
-    // v10: which instance of the client a connection is. `label` is the
-    // name the client gives its own session (Claude Code's `/rename`),
-    // `client_session` that session's id, `cwd` where it runs, and
-    // `client_pid` the client's process, which is how its name is looked up
-    // while it lives. All NULL for a client that tells us none of it.
     r#"
 ALTER TABLE agent_sessions ADD COLUMN label TEXT;
 ALTER TABLE agent_sessions ADD COLUMN client_session TEXT;
 ALTER TABLE agent_sessions ADD COLUMN cwd TEXT;
 ALTER TABLE agent_sessions ADD COLUMN client_pid INTEGER;
 "#,
-    // v11: how a connection's session was identified. `exact` when the
-    // client said so itself (Claude Code); `inferred` when it was matched
-    // from the client's own records (Codex, Hermes; see `clients.rs`).
     r#"
 ALTER TABLE agent_sessions ADD COLUMN matched TEXT;
+"#,
+    r#"
+DROP TRIGGER notes_vault_ad;
+CREATE TRIGGER notes_vault_ad AFTER DELETE ON notes
+  WHEN old.vault_path IS NOT NULL BEGIN
+  INSERT OR REPLACE INTO vault_tombstones (vault_path, file_sha)
+    VALUES (old.vault_path, old.file_sha);
+  INSERT OR REPLACE INTO vault_tombstones (vault_path, file_sha)
+    SELECT substr(old.vault_path, 1, length(old.vault_path) - 3)
+             || CASE old.content_kind WHEN 'sheet' THEN '.csv' ELSE '.excalidraw' END,
+           old.board_sha
+    WHERE old.board_sha IS NOT NULL;
+END;
+"#,
+    r#"
+DROP INDEX idx_notes_flags;
+CREATE INDEX idx_notes_list ON notes(is_deleted, is_archived, is_pinned DESC, updated_at DESC, id);
+CREATE INDEX idx_notes_revisit ON notes(created_at, id)
+  WHERE is_deleted = 0 AND is_archived = 0 AND last_opened_at IS NULL;
+"#,
+    r#"
+DROP TABLE notes_fts;
+CREATE VIRTUAL TABLE notes_fts USING fts5(
+  title, body,
+  content='notes', content_rowid='seq',
+  tokenize='porter unicode61',
+  prefix='1 2 3'
+);
+INSERT INTO notes_fts(notes_fts) VALUES ('rebuild');
 "#,
 ];
 
 const NOTE_COLUMNS: &str = "id, title, body, created_at, updated_at, last_opened_at, \
      is_pinned, is_archived, is_deleted, deleted_at, content_kind, surface_data";
 
-/// `NOTE_COLUMNS` for list queries: the whiteboard canvas stays out of list
-/// rows (see `Note::surface_data`).
 const LIST_COLUMNS: &str = "id, title, body, created_at, updated_at, last_opened_at, \
      is_pinned, is_archived, is_deleted, deleted_at, content_kind, NULL";
 
@@ -286,7 +272,6 @@ fn now_iso() -> String {
     iso(std::time::SystemTime::now())
 }
 
-/// The one clock every row and session stamp shares. Zero if the system clock sits before 1970.
 pub fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -294,8 +279,6 @@ pub fn now_ms() -> i64 {
         .unwrap_or_default()
 }
 
-/// The one timestamp format the store writes (and callers show), which also
-/// sorts as text.
 pub fn iso(t: std::time::SystemTime) -> String {
     chrono::DateTime::<Utc>::from(t).to_rfc3339_opts(SecondsFormat::Micros, true)
 }
@@ -406,16 +389,10 @@ fn attach_tag(conn: &Connection, note_id: &str, tag_id: &str, source: &str) -> R
     Ok(())
 }
 
-/// Build an FTS5 MATCH expression from raw user text. Tokens are reduced to
-/// word characters so user input can never produce FTS syntax errors. Other
-/// punctuation splits words, as the unicode61 tokenizer does when indexing:
-/// "CachyOS/Arch" is indexed as `cachyos` `arch`, so it must be queried that
-/// way, not as `CachyOSArch`.
 fn fts_match_expr(text: &str) -> Option<String> {
     fts_match_expr_with(text, false)
 }
 
-/// `fts_match_expr`, optionally matching any of the words instead of all.
 fn fts_match_expr_with(text: &str, any_term: bool) -> Option<String> {
     let tokens: Vec<&str> = text
         .split(|c: char| !(c.is_alphanumeric() || c == '-' || c == '_'))
@@ -435,40 +412,92 @@ fn fts_match_expr_with(text: &str, any_term: bool) -> Option<String> {
 }
 
 impl Store {
-    /// Open (creating if needed) the database, applying migrations.
     pub fn open(path: &Path) -> Result<Self> {
+        Self::open_policy(path, true, ALWAYS_VERIFY_BELOW_BYTES)
+    }
+
+    pub fn open_for_agent(path: &Path) -> Result<Self> {
+        Self::open_policy(path, false, ALWAYS_VERIFY_BELOW_BYTES)
+    }
+
+    pub fn mark_library_suspect(path: &Path) {
+        let _ = std::fs::write(sibling(path, SUSPECT_SUFFIX), b"");
+    }
+
+    pub fn mark_session_open(path: &Path) {
+        let _ = std::fs::write(sibling(path, SESSION_SUFFIX), b"");
+    }
+
+    pub fn mark_session_closed(path: &Path) {
+        let _ = std::fs::remove_file(sibling(path, SESSION_SUFFIX));
+    }
+
+    fn last_integrity_check(conn: &Connection) -> Option<DateTime<Utc>> {
+        let raw: String = conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = ?1",
+                params![INTEGRITY_CHECKED_KEY],
+                |r| r.get(0),
+            )
+            .ok()?;
+        let stamp: String = serde_json::from_str(&raw).ok()?;
+        DateTime::parse_from_rfc3339(&stamp)
+            .ok()
+            .map(|at| at.with_timezone(&Utc))
+    }
+
+    fn needs_integrity_check(
+        path: &Path,
+        last: Option<DateTime<Utc>>,
+        own_session: bool,
+        always_below: u64,
+    ) -> bool {
+        let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+        if size < always_below
+            || sibling(path, SUSPECT_SUFFIX).exists()
+            || (own_session && sibling(path, SESSION_SUFFIX).exists())
+        {
+            return true;
+        }
+        match last {
+            Some(at) => {
+                let age = Utc::now().signed_duration_since(at);
+                age > Duration::days(VERIFY_EVERY_DAYS) || age < Duration::days(-1)
+            }
+            None => true,
+        }
+    }
+
+    fn open_policy(path: &Path, own_session: bool, always_below: u64) -> Result<Self> {
         let conn = Connection::open(path)
             .map_err(|e| AppError::Storage(format!("cannot open database: {e}")))?;
-        // Wait for a competing writer instead of failing immediately with
-        // SQLITE_BUSY. The same file is legitimately opened by more than one
-        // process (a dev build alongside the installed release, or a second
-        // launch), so a writer can briefly hold the lock; without a timeout that
-        // surfaces to the user as a hard "database is locked" error.
         conn.busy_timeout(std::time::Duration::from_secs(5))
             .map_err(|e| AppError::Storage(format!("cannot set busy timeout: {e}")))?;
-        // A filesystem that refuses WAL (some network mounts) leaves the
-        // connection silently in rollback mode, defeating the crash-safety this
-        // app relies on; treat that as an unusable storage location.
         let journal_mode: String = conn.query_row("PRAGMA journal_mode = WAL", [], |r| r.get(0))?;
         if !journal_mode.eq_ignore_ascii_case("wal") {
             return Err(AppError::Storage(format!(
                 "storage location does not support WAL journaling (got '{journal_mode}')"
             )));
         }
-        // NORMAL is the standard, crash-safe pairing with WAL: fsync at
-        // checkpoints rather than on every commit. Safe against app crashes; only
-        // an OS crash or power loss can drop commits still sitting in the WAL.
         conn.pragma_update(None, "synchronous", "NORMAL")
             .map_err(|e| AppError::Storage(format!("cannot set synchronous mode: {e}")))?;
+        let last = Self::last_integrity_check(&conn);
+        let verify = Self::needs_integrity_check(path, last, own_session, always_below);
         Self::backup_before_migration(path, &conn)?;
-        Self::init(conn)
+        let mut store = Self::init(conn, verify)?;
+        if verify {
+            let _ = std::fs::remove_file(sibling(path, SUSPECT_SUFFIX));
+            let due = last.is_none_or(|at| {
+                Utc::now().signed_duration_since(at) > Duration::days(RECORD_REFRESH_DAYS)
+            });
+            if due {
+                let _ =
+                    store.set_setting(INTEGRITY_CHECKED_KEY, serde_json::Value::String(now_iso()));
+            }
+        }
+        Ok(store)
     }
 
-    /// Open the store, recovering from a corrupt database file by setting it
-    /// aside and starting fresh. The returned bool is true only when recovery
-    /// happened. Non-corruption failures (permissions, a WAL-hostile mount)
-    /// propagate unchanged so a transient or fixable problem never discards
-    /// good data.
     pub fn open_or_recover(path: &Path) -> Result<(Self, bool)> {
         match Self::open(path) {
             Ok(store) => Ok((store, false)),
@@ -481,26 +510,32 @@ impl Store {
         }
     }
 
-    /// In-memory store for tests that don't need restart semantics.
+    pub fn open_reader(path: &Path) -> Result<Self> {
+        let conn = Connection::open(path)
+            .map_err(|e| AppError::Storage(format!("cannot open database: {e}")))?;
+        conn.busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(|e| AppError::Storage(format!("cannot set busy timeout: {e}")))?;
+        conn.pragma_update(None, "query_only", "ON")
+            .map_err(|e| AppError::Storage(format!("cannot set read-only mode: {e}")))?;
+        Ok(Store { conn, vault: None })
+    }
+
     pub fn open_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()
             .map_err(|e| AppError::Storage(format!("cannot open database: {e}")))?;
-        Self::init(conn)
+        Self::init(conn, true)
     }
 
-    fn init(mut conn: Connection) -> Result<Self> {
+    fn init(mut conn: Connection, verify: bool) -> Result<Self> {
         conn.pragma_update(None, "foreign_keys", "ON")?;
-        // Take the write lock when a transaction begins, not at its first
-        // write. The library is also opened by agent processes
-        // (`instantnotes mcp`); a deferred transaction that reads and then
-        // writes fails at once with SQLITE_BUSY on the upgrade instead of
-        // waiting out the busy timeout.
         conn.set_transaction_behavior(rusqlite::TransactionBehavior::Immediate);
-        let check: String = conn.query_row("PRAGMA quick_check", [], |r| r.get(0))?;
-        if check != "ok" {
-            return Err(AppError::Corruption(format!(
-                "database integrity check failed: {check}"
-            )));
+        if verify {
+            let check: String = conn.query_row("PRAGMA quick_check", [], |r| r.get(0))?;
+            if check != "ok" {
+                return Err(AppError::Corruption(format!(
+                    "database integrity check failed: {check}"
+                )));
+            }
         }
         let mut store = Store { conn, vault: None };
         store.migrate()?;
@@ -511,9 +546,6 @@ impl Store {
         let current: i64 = self
             .conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        // A user_version past the last known migration means this file was
-        // written by a newer build; its schema is unknown to us, so refuse
-        // rather than run queries that assume the older shape.
         if current > MIGRATIONS.len() as i64 {
             return Err(AppError::SchemaTooNew {
                 found: current,
@@ -539,9 +571,6 @@ impl Store {
         Ok(())
     }
 
-    /// Copy an existing library aside before migrating it. Runs only for a
-    /// file that already carries an older schema (0 < v < len). A backup
-    /// failure fails the open rather than migrating without a net.
     fn backup_before_migration(path: &Path, conn: &Connection) -> Result<()> {
         let current: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         if current <= 0 || current >= MIGRATIONS.len() as i64 {
@@ -550,19 +579,13 @@ impl Store {
         let mut backup = path.as_os_str().to_os_string();
         backup.push(format!(".backup-v{current}"));
         let backup_path = PathBuf::from(backup);
-        // VACUUM INTO refuses to overwrite; clear any leftover from a prior
-        // interrupted attempt first.
         if backup_path.exists() {
             std::fs::remove_file(&backup_path)
                 .map_err(|e| AppError::Storage(format!("cannot clear stale backup: {e}")))?;
         }
-        // The path is interpolated as a SQL string literal, so double any single
-        // quotes it contains.
         let escaped = backup_path.to_string_lossy().replace('\'', "''");
         conn.execute_batch(&format!("VACUUM INTO '{escaped}'"))
             .map_err(|e| match AppError::from(e) {
-                // A corrupt source keeps its classification so open_or_recover
-                // can still set the file aside instead of giving up.
                 AppError::Corruption(msg) => {
                     AppError::Corruption(format!("pre-migration backup failed: {msg}"))
                 }
@@ -571,8 +594,6 @@ impl Store {
         Ok(())
     }
 
-    /// Rename a corrupt database and its WAL/SHM siblings to a free
-    /// ".corrupt-N" suffix, without clobbering the salvaged file.
     fn move_corrupt_aside(path: &Path) -> Result<()> {
         let mut n = 1;
         let target = loop {
@@ -586,8 +607,6 @@ impl Store {
         };
         std::fs::rename(path, &target)
             .map_err(|e| AppError::Storage(format!("cannot set corrupt database aside: {e}")))?;
-        // WAL/SHM belong to the corrupt file; move them out of the way too so
-        // the fresh database starts clean. They may be absent.
         for ext in ["-wal", "-shm"] {
             let mut sibling = path.as_os_str().to_os_string();
             sibling.push(ext);
@@ -601,19 +620,12 @@ impl Store {
         Ok(())
     }
 
-    /// SQLite's `data_version`: moves only when another connection (an agent
-    /// process, say) commits to this file. This connection's own writes never
-    /// move it, so a change means someone else wrote.
     pub fn data_version(&self) -> Result<i64> {
         Ok(self
             .conn
             .query_row("PRAGMA data_version", [], |r| r.get(0))?)
     }
 
-    /// Whether the file is still at the schema this build migrated it to. A
-    /// long-lived second process (an agent server) checks this before each
-    /// write, so a newer app that migrated the file meanwhile is never
-    /// written to through older code.
     pub fn schema_is_current(&self) -> Result<bool> {
         let version: i64 = self
             .conn
@@ -645,13 +657,13 @@ mod tags;
 mod vault;
 mod workspaces;
 
+pub use notes::REVISIT_AFTER_MS;
+
 #[cfg(test)]
 mod pragma_tests {
     use super::Store;
     use tempfile::tempdir;
 
-    /// An on-disk database must be WAL with a non-zero busy timeout, so a
-    /// competing writer is waited for rather than failing with SQLITE_BUSY.
     #[test]
     fn open_sets_concurrency_pragmas() {
         let dir = tempdir().unwrap();
@@ -669,12 +681,127 @@ mod pragma_tests {
             .unwrap();
         assert_eq!(busy_timeout, 5000);
 
-        // 1 == NORMAL
         let synchronous: i64 = store
             .conn
             .query_row("PRAGMA synchronous", [], |r| r.get(0))
             .unwrap();
         assert_eq!(synchronous, 1);
+    }
+}
+
+#[cfg(test)]
+mod integrity_tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn library(path: &Path) {
+        let mut s = Store::open_policy(path, true, 0).unwrap();
+        for i in 0..400 {
+            s.create_note(CreateNoteInput {
+                body: Some(format!("note {i} {}", "filler ".repeat(40))),
+                ..Default::default()
+            })
+            .unwrap();
+        }
+    }
+
+    fn damage(path: &Path) {
+        let mut bytes = std::fs::read(path).unwrap();
+        let from = bytes.len() / 2;
+        for b in &mut bytes[from..from + 8192] {
+            *b = 0x5A;
+        }
+        std::fs::write(path, bytes).unwrap();
+    }
+
+    fn backdate_record(path: &Path, days: i64) {
+        let at = (Utc::now() - Duration::days(days)).to_rfc3339_opts(SecondsFormat::Millis, true);
+        let conn = Connection::open(path).unwrap();
+        conn.execute(
+            "UPDATE settings SET value = ?1 WHERE key = ?2",
+            params![serde_json::to_string(&at).unwrap(), INTEGRITY_CHECKED_KEY],
+        )
+        .unwrap();
+    }
+
+    fn is_corruption(result: Result<Store>) -> bool {
+        matches!(result, Err(e) if e.is_corruption())
+    }
+
+    #[test]
+    fn a_recent_check_lets_a_large_library_open_without_scanning() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("library.db");
+        library(&path);
+        damage(&path);
+        assert!(Store::open_policy(&path, true, 0).is_ok());
+    }
+
+    #[test]
+    fn a_small_library_is_always_scanned() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("library.db");
+        library(&path);
+        damage(&path);
+        assert!(is_corruption(Store::open_policy(&path, true, u64::MAX)));
+    }
+
+    #[test]
+    fn a_suspect_marker_forces_the_scan() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("library.db");
+        library(&path);
+        damage(&path);
+        Store::mark_library_suspect(&path);
+        assert!(is_corruption(Store::open_policy(&path, true, 0)));
+        assert!(is_corruption(Store::open_policy(&path, false, 0)));
+    }
+
+    #[test]
+    fn an_unclean_session_forces_the_scan_for_the_app_only() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("library.db");
+        library(&path);
+        damage(&path);
+        Store::mark_session_open(&path);
+        assert!(is_corruption(Store::open_policy(&path, true, 0)));
+        assert!(Store::open_policy(&path, false, 0).is_ok());
+        Store::mark_session_closed(&path);
+        assert!(Store::open_policy(&path, true, 0).is_ok());
+    }
+
+    #[test]
+    fn a_week_old_record_forces_the_scan() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("library.db");
+        library(&path);
+        backdate_record(&path, VERIFY_EVERY_DAYS + 1);
+        damage(&path);
+        assert!(is_corruption(Store::open_policy(&path, true, 0)));
+    }
+
+    #[test]
+    fn a_record_from_the_future_forces_the_scan() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("library.db");
+        library(&path);
+        backdate_record(&path, -3);
+        damage(&path);
+        assert!(is_corruption(Store::open_policy(&path, true, 0)));
+    }
+
+    #[test]
+    fn a_passed_scan_clears_the_suspect_marker_and_records_the_time() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("library.db");
+        library(&path);
+        backdate_record(&path, VERIFY_EVERY_DAYS + 1);
+        Store::mark_library_suspect(&path);
+        let store = Store::open_policy(&path, true, 0).unwrap();
+        assert!(!sibling(&path, SUSPECT_SUFFIX).exists());
+        let stamp = store.get_setting(INTEGRITY_CHECKED_KEY).unwrap().unwrap();
+        let at = DateTime::parse_from_rfc3339(stamp.as_str().unwrap()).unwrap();
+        assert!(Utc::now().signed_duration_since(at) < Duration::minutes(1));
     }
 }
 
@@ -694,8 +821,6 @@ mod migration_tests {
         cols
     }
 
-    /// A v2 database still carries the sync columns; the v3 migration drops
-    /// them without losing a note.
     #[test]
     fn v3_drops_sync_columns_and_preserves_notes() {
         let dir = tempdir().unwrap();
@@ -730,8 +855,6 @@ mod migration_tests {
         assert!(all.iter().any(|n| n.id == "n1"));
     }
 
-    /// A pre-release library at v4 (content_kind, surface_data) must open,
-    /// not be refused as too new, and gain the vault columns.
     #[test]
     fn a_whiteboard_v4_library_migrates_to_the_vault_schema() {
         let dir = tempdir().unwrap();
@@ -771,8 +894,6 @@ mod migration_tests {
         assert_eq!(store.get_note("n1", false).unwrap().body, "the body");
     }
 
-    /// A library at v5 (the vault mirror without whiteboards) gains the
-    /// canvas hash column, and a board's canvas is tombstoned with its note.
     #[test]
     fn v6_tracks_whiteboard_canvases_in_the_vault() {
         let dir = tempdir().unwrap();
@@ -813,8 +934,255 @@ mod migration_tests {
         );
     }
 
-    /// A v3 library gains the vault mirror columns on open; its notes
-    /// survive and start clean (nothing is pending until a vault is configured).
+    #[test]
+    fn v12_tombstones_a_sheet_csv_beside_a_board_canvas() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("v11.db");
+        {
+            let conn = Connection::open(&path).unwrap();
+            for sql in &MIGRATIONS[..11] {
+                conn.execute_batch(sql).unwrap();
+            }
+            conn.pragma_update(None, "user_version", 11i64).unwrap();
+        }
+
+        let store = Store::open(&path).unwrap();
+        store
+            .conn
+            .execute_batch(
+                "INSERT INTO notes (id, title, body, created_at, updated_at, content_kind, \
+                 vault_path, file_sha, board_sha) VALUES \
+                 ('b1', 'B', '', 't', 't', 'whiteboard', 'B.md', 'a', 'b'), \
+                 ('s1', 'S', '', 't', 't', 'sheet', 'S.md', 'c', 'd');
+                 DELETE FROM notes WHERE id IN ('b1', 's1');",
+            )
+            .unwrap();
+        let mut stmt = store
+            .conn
+            .prepare("SELECT vault_path, file_sha FROM vault_tombstones ORDER BY vault_path")
+            .unwrap();
+        let rows: Vec<(String, String)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        assert_eq!(
+            rows,
+            vec![
+                ("B.excalidraw".to_string(), "b".to_string()),
+                ("B.md".to_string(), "a".to_string()),
+                ("S.csv".to_string(), "d".to_string()),
+                ("S.md".to_string(), "c".to_string()),
+            ]
+        );
+    }
+
+    fn index_names(conn: &Connection) -> Vec<String> {
+        let mut stmt = conn.prepare("PRAGMA index_list('notes')").unwrap();
+        stmt.query_map([], |r| r.get::<_, String>(1))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect()
+    }
+
+    fn plan(conn: &Connection, sql: &str) -> String {
+        let mut stmt = conn.prepare(&format!("EXPLAIN QUERY PLAN {sql}")).unwrap();
+        stmt.query_map([], |r| r.get::<_, String>(3))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect::<Vec<_>>()
+            .join(" | ")
+    }
+
+    #[test]
+    fn v13_swaps_the_flags_index_for_the_list_and_revisit_indexes() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("v12.db");
+        {
+            let conn = Connection::open(&path).unwrap();
+            for sql in &MIGRATIONS[..12] {
+                conn.execute_batch(sql).unwrap();
+            }
+            conn.pragma_update(None, "user_version", 12i64).unwrap();
+            conn.execute(
+                "INSERT INTO notes (id, title, body, created_at, updated_at) \
+                 VALUES ('n1', 'Kept', 'the body', 't', 't')",
+                [],
+            )
+            .unwrap();
+            assert!(index_names(&conn).contains(&"idx_notes_flags".to_string()));
+        }
+
+        let mut store = Store::open(&path).unwrap();
+        let indexes = index_names(&store.conn);
+        assert!(!indexes.contains(&"idx_notes_flags".to_string()));
+        assert!(indexes.contains(&"idx_notes_list".to_string()));
+        assert!(indexes.contains(&"idx_notes_revisit".to_string()));
+        assert_eq!(store.get_note("n1", false).unwrap().body, "the body");
+    }
+
+    #[test]
+    fn v14_adds_a_prefix_index_to_search_and_keeps_every_result() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("v13.db");
+        let words = [
+            "alpha",
+            "alphabet",
+            "beta",
+            "gamma",
+            "garden",
+            "gardening",
+            "delta",
+            "note",
+            "notes",
+            "quick",
+            "quickly",
+            "wonder",
+            "world",
+            "word",
+            "words",
+            "work",
+            "working",
+        ];
+        {
+            let conn = Connection::open(&path).unwrap();
+            for sql in &MIGRATIONS[..13] {
+                conn.execute_batch(sql).unwrap();
+            }
+            conn.pragma_update(None, "user_version", 13i64).unwrap();
+            for i in 0..60 {
+                let title = format!(
+                    "{} {}",
+                    words[i % words.len()],
+                    words[(i * 7) % words.len()]
+                );
+                let body = (0..40)
+                    .map(|j| words[(i * 3 + j * 5) % words.len()])
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                conn.execute(
+                    "INSERT INTO notes (id, title, body, created_at, updated_at) \
+                     VALUES (?1, ?2, ?3, 't', 't')",
+                    rusqlite::params![format!("n{i}"), title, body],
+                )
+                .unwrap();
+            }
+            conn.execute(
+                "UPDATE notes SET body = body || ' extra' WHERE id = 'n3'",
+                [],
+            )
+            .unwrap();
+            conn.execute("DELETE FROM notes WHERE id = 'n9'", [])
+                .unwrap();
+        }
+
+        let store = Store::open(&path).unwrap();
+        let ddl: String = store
+            .conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE name = 'notes_fts'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(ddl.contains("prefix='1 2 3'"), "{ddl}");
+
+        store
+            .conn
+            .execute_batch(
+                "CREATE VIRTUAL TABLE notes_fts_plain USING fts5(\
+                   title, body, content='notes', content_rowid='seq', \
+                   tokenize='porter unicode61'); \
+                 INSERT INTO notes_fts_plain(notes_fts_plain) VALUES ('rebuild');",
+            )
+            .unwrap();
+        let ranked = |table: &str, q: &str| -> Vec<(String, f64)> {
+            let expr = crate::store::fts_match_expr(q).unwrap();
+            let mut stmt = store
+                .conn
+                .prepare(&format!(
+                    "SELECT n.id, bm25({table}) FROM {table} \
+                     JOIN notes n ON n.seq = {table}.rowid \
+                     WHERE {table} MATCH ?1 ORDER BY bm25({table}), {table}.rowid"
+                ))
+                .unwrap();
+            let rows = stmt
+                .query_map([expr], |r| Ok((r.get(0)?, r.get(1)?)))
+                .unwrap();
+            rows.collect::<rusqlite::Result<Vec<_>>>().unwrap()
+        };
+        let mut matched = 0;
+        for q in [
+            "a",
+            "al",
+            "alp",
+            "alph",
+            "w",
+            "wo",
+            "wor",
+            "word",
+            "work working",
+            "g",
+            "ga",
+            "qui",
+            "n",
+            "extra",
+            "zzz",
+            "alpha beta",
+            "d",
+        ] {
+            let with_prefix = ranked("notes_fts", q);
+            assert_eq!(with_prefix, ranked("notes_fts_plain", q), "{q}");
+            assert_eq!(
+                store
+                    .search_notes(q, 500)
+                    .unwrap()
+                    .into_iter()
+                    .map(|r| r.note_id)
+                    .collect::<Vec<_>>(),
+                with_prefix.iter().map(|r| r.0.clone()).collect::<Vec<_>>(),
+                "{q}"
+            );
+            matched += with_prefix.len();
+        }
+        assert!(matched > 200);
+
+        store
+            .conn
+            .execute(
+                "UPDATE notes SET body = 'freshly written wonderland' WHERE id = 'n4'",
+                [],
+            )
+            .unwrap();
+        let hits = store.search_notes("wonderl", 10).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].note_id, "n4");
+    }
+
+    #[test]
+    fn the_default_list_reads_in_index_order_without_sorting() {
+        let store = Store::open_in_memory().unwrap();
+        let listed = plan(
+            &store.conn,
+            "SELECT id FROM notes WHERE is_deleted = 0 AND is_archived = 0 \
+             ORDER BY is_pinned DESC, updated_at DESC, id ASC LIMIT 500",
+        );
+        assert!(listed.contains("idx_notes_list"), "{listed}");
+        assert!(!listed.contains("TEMP B-TREE"), "{listed}");
+    }
+
+    #[test]
+    fn the_revisit_filter_can_use_its_own_index() {
+        let store = Store::open_in_memory().unwrap();
+        let counted = plan(
+            &store.conn,
+            "SELECT COUNT(*) FROM notes INDEXED BY idx_notes_revisit \
+             WHERE is_deleted = 0 AND is_archived = 0 AND last_opened_at IS NULL \
+             AND created_at < 'z'",
+        );
+        assert!(counted.contains("idx_notes_revisit"), "{counted}");
+    }
+
     #[test]
     fn v3_library_gains_vault_columns_and_preserves_notes() {
         let dir = tempdir().unwrap();

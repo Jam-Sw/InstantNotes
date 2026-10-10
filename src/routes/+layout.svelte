@@ -3,17 +3,8 @@
   import { theme } from "$lib/stores/theme.svelte";
   let { children } = $props();
 
-  // The license agreement is not a wrapper here: each window gates itself
-  // (installers' agreement gate, rendered as the License Space in the library
-  // and as LicenseLocked in capture and stickies).
-
-  // Apply the persisted theme as early as possible. The CSS base fallback
-  // (Manuscript dark) covers first paint before this resolves.
   void theme.init();
 
-  // Dev-only marker. Its presence proves the live dev build is loaded (it does
-  // not exist in production), and the timestamp changes on every fresh load, so
-  // a stale webview is immediately obvious. Compiled out of release builds.
   const buildTag = import.meta.env.DEV ? new Date().toLocaleTimeString() : "";
 </script>
 

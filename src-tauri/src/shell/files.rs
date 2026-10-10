@@ -1,14 +1,5 @@
-//! Path-validated byte I/O for paths the user picks through native dialogs:
-//! portable `.intheme.json` themes, note export, and pasted/dropped image
-//! attachments. The dialogs run in JS; Rust only reads/writes the chosen path,
-//! so no broad filesystem capability is needed.
-
 use crate::*;
 
-/// Reject anything that isn't an absolute path to a `.json` file. The path is
-/// chosen by the user through a native save/open dialog but arrives here from the
-/// webview, so this guard keeps the command from becoming a way to read or write
-/// arbitrary files anywhere on disk.
 fn validate_theme_path(path: &str) -> CmdResult<()> {
     let p = std::path::Path::new(path);
     if !p.is_absolute() {
@@ -43,13 +34,15 @@ fn validate_export_path(path: &str) -> CmdResult<()> {
     if !p.is_absolute() {
         return Err(CmdError::storage("export path must be absolute"));
     }
-    let is_allowed = p
-        .extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "md" | "txt" | "excalidraw"));
+    let is_allowed = p.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+        matches!(
+            e.to_ascii_lowercase().as_str(),
+            "md" | "txt" | "excalidraw" | "csv"
+        )
+    });
     if !is_allowed {
         return Err(CmdError::storage(
-            "export file must have a .md, .txt, or .excalidraw extension",
+            "export file must have a .md, .txt, .excalidraw, or .csv extension",
         ));
     }
     Ok(())
@@ -61,11 +54,6 @@ pub fn export_note_file(path: String, contents: String) -> CmdResult<()> {
     std::fs::write(&path, contents)
         .map_err(|e| CmdError::storage(format!("could not write export file: {e}")))
 }
-
-// Pasted/dropped images live as files under <app data>/attachments and notes
-// reference them by relative `attachments/<name>` markdown paths, so exported
-// markdown stays portable and the DB stays lean. The webview reads them back
-// through the asset protocol (scoped to this directory in tauri.conf.json).
 
 const ATTACHMENT_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp"];
 
@@ -85,9 +73,6 @@ pub fn get_attachments_dir(app: AppHandle) -> CmdResult<String> {
     Ok(attachments_dir(&app)?.to_string_lossy().into_owned())
 }
 
-/// Store one image. The body is the raw bytes (not JSON) so a screenshot paste
-/// doesn't pay for number-array serialization; the extension rides in a header.
-/// Returns the generated filename; the caller builds `attachments/<name>`.
 #[tauri::command(async)]
 pub fn save_attachment(app: AppHandle, request: tauri::ipc::Request<'_>) -> CmdResult<String> {
     let ext = request
@@ -108,13 +93,10 @@ pub fn save_attachment(app: AppHandle, request: tauri::ipc::Request<'_>) -> CmdR
         return Err(CmdError::validation("attachment is empty"));
     }
     let name = write_attachment(&attachments_dir(&app)?, bytes, &ext)?;
-    // Best effort: a vault that can't take it now gets it at next launch.
     let _ = mirror_attachments(&app);
     Ok(name)
 }
 
-/// Write one image into the attachments folder under a new name. The caller
-/// builds `attachments/<name>` and mirrors the folder into the vault.
 fn write_attachment(dir: &std::path::Path, bytes: &[u8], ext: &str) -> CmdResult<String> {
     let name = format!("{}.{ext}", uuid::Uuid::new_v4());
     std::fs::write(dir.join(&name), bytes)
@@ -122,9 +104,6 @@ fn write_attachment(dir: &std::path::Path, bytes: &[u8], ext: &str) -> CmdResult
     Ok(name)
 }
 
-/// Store image bytes brought in from elsewhere (an imported sticky): PNG,
-/// JPEG, GIF, and WebP as they are, known by their first bytes rather than a
-/// file name; anything else converted to PNG where the system can.
 pub(crate) fn store_image(dir: &std::path::Path, bytes: &[u8]) -> CmdResult<String> {
     if let Some(ext) = sniff_image(bytes) {
         return write_attachment(dir, bytes, ext);
@@ -134,7 +113,6 @@ pub(crate) fn store_image(dir: &std::path::Path, bytes: &[u8]) -> CmdResult<Stri
     write_attachment(dir, &png, "png")
 }
 
-/// The attachment extension for bytes in a format every webview shows.
 fn sniff_image(b: &[u8]) -> Option<&'static str> {
     if b.starts_with(b"\x89PNG\r\n\x1a\n") {
         Some("png")
@@ -149,9 +127,6 @@ fn sniff_image(b: &[u8]) -> Option<&'static str> {
     }
 }
 
-/// TIFF (a pasted "Pasted Graphic.tiff"), HEIC, BMP, and the rest ImageIO
-/// reads, as PNG, by the system's own `sips`. It works on a copy in a fresh
-/// temporary folder, so it never reads the folder the image came from.
 #[cfg(target_os = "macos")]
 fn to_png(bytes: &[u8]) -> Option<Vec<u8>> {
     use std::process::{Command, Stdio};
@@ -194,9 +169,6 @@ fn image_ext(path: &std::path::Path) -> CmdResult<String> {
     Ok(ext)
 }
 
-/// Copy an image the user picked through a file dialog into the attachments
-/// directory (the "copy in" storage mode). Returns the stored filename; the
-/// caller builds `attachments/<name>`, exactly like a pasted image.
 #[tauri::command(async)]
 pub fn import_image_file(app: AppHandle, path: String) -> CmdResult<String> {
     let src = std::path::Path::new(&path);
@@ -214,10 +186,6 @@ pub fn import_image_file(app: AppHandle, path: String) -> CmdResult<String> {
     Ok(name)
 }
 
-/// Allow one existing local image to load through the asset protocol (the
-/// "link the original file" storage mode). Only an existing image file is
-/// permitted, and only that specific file, so the scope is never widened to a
-/// whole directory. Idempotent: re-allowing on every note open is fine.
 #[tauri::command(async)]
 pub fn allow_image_file(app: AppHandle, path: String) -> CmdResult<()> {
     let p = std::path::Path::new(&path);
@@ -234,9 +202,6 @@ pub fn allow_image_file(app: AppHandle, path: String) -> CmdResult<()> {
     Ok(())
 }
 
-/// Reveal the attachments folder in the OS file manager, from the Images
-/// settings page. Uses the opener from Rust (like `open_url`), so it needs no
-/// frontend opener capability.
 #[tauri::command(async)]
 pub fn open_attachments_folder(app: AppHandle) -> CmdResult<()> {
     let dir = attachments_dir(&app)?;
@@ -246,12 +211,8 @@ pub fn open_attachments_folder(app: AppHandle) -> CmdResult<()> {
     Ok(())
 }
 
-/// How long the Settings cleanup leaves a new image alone: a fresh paste can
-/// belong to an edit that has not saved yet.
 const CLEANUP_GRACE: std::time::Duration = std::time::Duration::from_secs(3600);
 
-/// Stored images nothing references, older than `CLEANUP_GRACE`, with their
-/// total size.
 fn unused_attachment_files(
     store: &Store,
     dir: &std::path::Path,
@@ -272,7 +233,6 @@ fn unused_attachment_files(
     Ok((unused, summary))
 }
 
-/// How many stored images no note uses any more, for Settings > Images.
 #[tauri::command(async)]
 pub fn unused_attachments(
     state: State<'_, AppState>,
@@ -283,9 +243,6 @@ pub fn unused_attachments(
     Ok(unused_attachment_files(&store, &dir)?.1)
 }
 
-/// Remove the stored images no note uses (and their unchanged copies in the
-/// live vault). The store stays locked throughout, so nothing can start
-/// referencing one of them mid-cleanup.
 #[tauri::command(async)]
 pub fn remove_unused_attachments(
     state: State<'_, AppState>,
@@ -297,9 +254,6 @@ pub fn remove_unused_attachments(
     Ok(store.remove_unreferenced_attachments(&dir, unused)?)
 }
 
-/// Best-effort count and total byte size of stored attachments, for the
-/// dashboard. A missing or unreadable directory reports zero rather than
-/// failing the whole stats call.
 pub fn attachments_stats(app: &AppHandle) -> (i64, i64) {
     let Ok(dir) = attachments_dir(app) else {
         return (0, 0);
@@ -325,7 +279,6 @@ mod tests {
         export_theme_file, import_theme_file, sniff_image, store_image, validate_export_path,
     };
 
-    /// A real PNG, the one `textutil` put in the Stickies fixture.
     const PNG: &[u8] = include_bytes!(
         "../../core/tests/fixtures/stickies/6E2F9C31-8B4A-4D7E-A1C5-2D9E7F3B8A64.rtfd/Attachment.png"
     );
@@ -345,7 +298,6 @@ mod tests {
     fn a_tiff_is_stored_as_a_png() {
         let dir = std::env::temp_dir().join(format!("instantnotes-tiff-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
-        // A genuine TIFF, as a pasted "Pasted Graphic.tiff" would be.
         let (png, tiff) = (dir.join("in.png"), dir.join("in.tiff"));
         std::fs::write(&png, PNG).unwrap();
         let made = std::process::Command::new("/usr/bin/sips")
@@ -382,16 +334,11 @@ mod tests {
     }
 
     #[test]
-    fn note_export_accepts_markdown_text_and_excalidraw_only() {
-        // What counts as absolute is platform specific: on Windows a leading
-        // separator is not enough without a drive prefix, so "/tmp/a.md" is a
-        // relative path there and would fail the absolute check before the
-        // extension is ever looked at. Build the fixtures from temp_dir(),
-        // which is absolute everywhere.
+    fn note_export_accepts_markdown_text_excalidraw_and_csv_only() {
         let dir = std::env::temp_dir();
         let path = |name: &str| dir.join(name).to_string_lossy().into_owned();
 
-        for name in ["a.md", "a.TXT", "board.excalidraw"] {
+        for name in ["a.md", "a.TXT", "board.excalidraw", "sheet.csv"] {
             let p = path(name);
             assert!(validate_export_path(&p).is_ok(), "{p}");
         }
@@ -399,7 +346,6 @@ mod tests {
             let p = path(name);
             assert!(validate_export_path(&p).is_err(), "{p}");
         }
-        // A relative path is refused whatever its extension.
         assert!(validate_export_path("relative/a.md").is_err());
     }
 
@@ -429,10 +375,8 @@ mod tests {
 
     #[test]
     fn theme_path_validation_rejects_non_absolute_and_non_json() {
-        // Relative path -> rejected before any filesystem access.
         assert!(export_theme_file("relative/theme.json".into(), "{}".into()).is_err());
         assert!(import_theme_file("relative/theme.json".into()).is_err());
-        // Absolute but not a .json file -> rejected.
         assert!(import_theme_file("/tmp/not-a-theme.txt".into()).is_err());
     }
 }

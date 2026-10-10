@@ -23,7 +23,6 @@ const SAMPLE = `# Changelog
 - The very first thing.
 `;
 
-// 0.9.0 sits undated in the real changelog until the release is cut.
 const UNDATED = `# Changelog
 
 ## [Unreleased]
@@ -39,10 +38,6 @@ const UNDATED = `# Changelog
 - Spaces.
 `;
 
-// Force CRLF whatever the input already has. On a Windows checkout the bundled
-// CHANGELOG.md arrives as CRLF, so replacing "\n" alone would make it "\r\r\n"
-// and test something no checkout produces. Template literals in this file are
-// always LF: the language normalizes line endings inside them when parsing.
 const toCRLF = (s: string) => s.replace(/\r?\n/g, "\r\n");
 
 describe("parseChangelog", () => {
@@ -64,7 +59,6 @@ describe("parseChangelog", () => {
 
   it("stops at the next release heading", () => {
     const r = parseChangelog(SAMPLE, "0.8.0");
-    // Nothing from 0.7.0 leaks in.
     const all = r!.sections.flatMap((s) => s.items).join(" ");
     expect(all).not.toContain("The very first thing");
   });
@@ -79,9 +73,6 @@ describe("parseChangelog", () => {
     expect(r!.sections).toHaveLength(0);
   });
 
-  // A release is undated for its whole pre-release life: the date is written
-  // when it is cut. The dashboard shows that section the entire time, so an
-  // undated heading has to parse like any other.
   it("reads a release heading that carries no date", () => {
     const r = parseChangelog(UNDATED, "0.9.0");
     expect(r).not.toBeNull();
@@ -96,10 +87,6 @@ describe("parseChangelog", () => {
     expect(r!.sections.flatMap((s) => s.items).join(" ")).not.toContain("Spaces");
   });
 
-  // A Windows checkout converts the file to CRLF, so the parser sees a trailing
-  // \r on every line. `.` does not match \r and the bullet pattern has no `\s*`
-  // before its `$`, so splitting on "\n" alone dropped every item and the
-  // dashboard showed an empty "What's new" on Windows only.
   it("parses a CRLF changelog the same as an LF one", () => {
     const lf = parseChangelog(SAMPLE, "0.8.0");
     const crlf = parseChangelog(toCRLF(SAMPLE), "0.8.0");
@@ -115,10 +102,6 @@ describe("parseChangelog", () => {
     expect(r!.sections.length).toBeGreaterThan(0);
   });
 
-  // The bundled file is the input the dashboard actually parses, and the
-  // version the app reports is the section it looks for. If a release is cut
-  // without a changelog entry, "What's new" silently disappears; this fails
-  // instead.
   it("finds a section for the running version in the bundled changelog", () => {
     const r = parseChangelog(changelogRaw, pkg.version);
     expect(r).not.toBeNull();

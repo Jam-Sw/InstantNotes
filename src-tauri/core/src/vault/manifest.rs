@@ -1,7 +1,3 @@
-//! `instantnotes.yaml`: what has no note to live on (design.md §3.4): tag
-//! colors and the list of spaces, including empty ones, which no note
-//! frontmatter would otherwise mention.
-
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -18,9 +14,6 @@ pub struct ManifestSpace {
     pub created: String,
 }
 
-/// Tags keyed by name in a `BTreeMap` (not the `tags` table's opaque id, per
-/// design.md §3.4: "identity is the name") so the file sorts deterministically
-/// and diffs cleanly under git.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Manifest {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -94,8 +87,6 @@ mod tests {
 
     #[test]
     fn an_empty_space_survives_the_round_trip() {
-        // The whole reason spaces are listed explicitly: an empty space has
-        // no note referencing it and would otherwise vanish on rebuild.
         let mut m = Manifest::default();
         m.spaces.push(ManifestSpace {
             name: "Someday".to_string(),

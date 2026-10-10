@@ -1,13 +1,3 @@
-//! Attachment cleanup (SEQUENCE.md unit 11). Pasted and copied-in images live
-//! as files under `<app data>/attachments`, and notes reference them as
-//! `attachments/<name>`. Destroying the last note that references a file
-//! should remove it, so the folder stops growing forever.
-//!
-//! This module is the careful half: finding references in text, and removing
-//! one named file (plus the live vault's copy of it, only while that copy is
-//! still identical). Which names are still referenced is a store question
-//! (`store/attachments.rs`); when to ask it is the shell's.
-
 use std::collections::BTreeSet;
 use std::fs;
 use std::io;
@@ -20,9 +10,6 @@ fn is_name_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-')
 }
 
-/// Every attachment name referenced in `text`, as `attachments/<name>`. Wider
-/// than the Markdown image syntax on purpose (HTML `src`, a link, a mention
-/// in prose): a false match only keeps a file, a missed one would lose it.
 pub fn referenced_names(text: &str) -> BTreeSet<String> {
     let mut found = BTreeSet::new();
     let mut rest = text;
@@ -37,14 +24,10 @@ pub fn referenced_names(text: &str) -> BTreeSet<String> {
     found
 }
 
-/// A bare file name: never a path, never `.` or `..`.
 fn is_plain_name(name: &str) -> bool {
     !name.is_empty() && name.chars().all(is_name_char) && name.chars().any(|c| c != '.')
 }
 
-/// Remove `dir/name`, and `vault_dir/name` too when it holds the same bytes
-/// (a copy that differs was changed outside the app and is left alone).
-/// Returns the bytes freed in `dir`; a file already gone frees nothing.
 pub fn remove_attachment(dir: &Path, vault_dir: Option<&Path>, name: &str) -> io::Result<u64> {
     if !is_plain_name(name) {
         return Err(io::Error::new(
@@ -68,9 +51,6 @@ pub fn remove_attachment(dir: &Path, vault_dir: Option<&Path>, name: &str) -> io
     Ok(bytes.len() as u64)
 }
 
-/// The files directly in `dir` as `(name, size)`, skipping folders and
-/// hidden files. With `modified_before`, only files last changed before
-/// then: a fresh paste may belong to an edit that has not saved yet.
 pub fn list_attachments(
     dir: &Path,
     modified_before: Option<SystemTime>,

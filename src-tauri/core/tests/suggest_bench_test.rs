@@ -1,26 +1,11 @@
-//! The model comparison behind the Graph's filing suggestions. Four ways to
-//! say which Space an unfiled note belongs in are run on the same synthetic
-//! libraries, and the shipped one (`classify::Model`, Dirichlet-Multinomial
-//! naive Bayes) has to beat or match the rest on what the feature needs:
-//! top-1 accuracy with 2 to 6 Spaces of uneven size, calibration of the
-//! shown percentage, cold start at two notes per Space, not letting a big
-//! Space win on size alone, naming three reasons, and cost at thousands of
-//! notes. The numbers print with `--nocapture`; the proposal records them.
-//!
-//! The alternatives live here, not in the crate: they are the argument, not
-//! the product.
-
 use instantnotes_core::classify::{features, Example, Features, Model, Params};
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
-
-// ---- a seeded generator, so every run measures the same libraries ----
 
 struct Rng(u64);
 
 impl Rng {
     fn next(&mut self) -> u64 {
-        // xorshift64*
         self.0 ^= self.0 >> 12;
         self.0 ^= self.0 << 25;
         self.0 ^= self.0 >> 27;
@@ -34,17 +19,11 @@ impl Rng {
     }
 }
 
-/// A note with a known Space: its features, and which Space it truly is.
 struct Labeled {
     features: Features,
     truth: usize,
 }
 
-/// A library of `sizes.len()` Spaces holding `sizes[i]` filed notes each,
-/// plus `held_out` unfiled notes per Space whose Space is known. Each Space
-/// has its own topic words and two topic tags; every note also draws from a
-/// shared background vocabulary, and one note in five mentions a word from
-/// another topic, as real notes do.
 fn library(
     rng: &mut Rng,
     sizes: &[usize],
@@ -56,8 +35,6 @@ fn library(
     let background: Vec<String> = (0..300).map(|i| format!("common{i}")).collect();
     let topics: Vec<Vec<String>> = (0..k)
         .map(|c| {
-            // Neighbouring topics share a third of their words, as "Work"
-            // and "Projects" would; the rest is the topic's own.
             (0..topic_words)
                 .map(|i| {
                     if i < topic_words / 3 {
@@ -115,8 +92,6 @@ fn library(
     (filed, test)
 }
 
-// ---- the contenders: each answers (best class, probability, reasons) ----
-
 struct Answer {
     class: usize,
     probability: f64,
@@ -129,7 +104,6 @@ trait Method {
     fn answer(&self, note: &Features) -> Option<Answer>;
 }
 
-/// The shipped model.
 struct NaiveBayes {
     params: Params,
     model: Option<Model>,
@@ -186,9 +160,6 @@ fn argmax(v: &[f64]) -> usize {
         .unwrap()
 }
 
-/// Complement naive Bayes (Rennie et al. 2003): score a Space by how badly
-/// the note fits every other Space. Same smoothing and tempering as the
-/// shipped model, so the comparison is about the estimator.
 struct ComplementNB {
     alpha: f64,
     show_at: f64,
@@ -234,7 +205,6 @@ impl Method for ComplementNB {
         let v = self.vocab.len() as f64;
         let scores: Vec<f64> = (0..k)
             .map(|c| {
-                // Counts of everything but c.
                 let total: f64 = (0..k).filter(|i| *i != c).map(|i| self.totals[i]).sum();
                 let complement: f64 = informative
                     .iter()
@@ -254,7 +224,6 @@ impl Method for ComplementNB {
         if p[best] < self.show_at {
             return None;
         }
-        // A reason is a feature rarer in the complement than overall.
         let reasons = informative
             .iter()
             .filter(|(f, _)| {
@@ -277,9 +246,6 @@ impl Method for ComplementNB {
     }
 }
 
-/// TF-IDF centroid per Space, cosine similarity, softmax at a temperature.
-/// The temperature is the knob that turns a similarity into a percentage,
-/// and nothing in the data sets it; the sweep below tries three.
 struct Centroid {
     temperature: f64,
     show_at: f64,
@@ -358,7 +324,6 @@ impl Method for Centroid {
         if p[best] < self.show_at {
             return None;
         }
-        // A reason is a feature contributing to the winning cosine.
         let reasons = v
             .keys()
             .filter(|f| self.centroids[best].contains_key(*f))
@@ -372,8 +337,6 @@ impl Method for Centroid {
     }
 }
 
-/// k nearest filed notes by Jaccard similarity over features, voting with
-/// their similarity as weight.
 struct Knn {
     k: usize,
     show_at: f64,
@@ -419,7 +382,6 @@ impl Method for Knn {
         if probability < self.show_at {
             return None;
         }
-        // A reason is a feature shared with a voting neighbour of the winner.
         let shared: HashSet<&String> = scored
             .iter()
             .filter(|(_, t, _)| *t == best)
@@ -433,20 +395,12 @@ impl Method for Knn {
     }
 }
 
-// ---- the scorecard ----
-
 #[derive(Debug, Default, Clone)]
 struct Score {
-    /// Top-1 accuracy over the notes the method would show.
     precision: f64,
-    /// Share of test notes the method shows a suggestion for.
     coverage: f64,
-    /// Expected calibration error over the shown suggestions, 5 bins from
-    /// 0.5 to 1: mean |confidence - accuracy| weighted by bin size.
     ece: f64,
-    /// Share of shown suggestions naming three reasons.
     three_reasons: f64,
-    /// Accuracy on notes whose true Space is not the largest, shown or not.
     small_space_recall: f64,
     millis: f64,
 }
@@ -535,7 +489,6 @@ struct Scenario {
     name: &'static str,
     sizes: Vec<usize>,
     held_out: usize,
-    /// Notes of 60 to 200 words instead of 4 to 15.
     long: bool,
 }
 
@@ -625,18 +578,15 @@ fn run(params: Params, verbose: bool, all: bool) -> HashMap<(&'static str, &'sta
     out
 }
 
-/// The comparison that chose the model. Run with `--nocapture` to read it.
 #[test]
 fn naive_bayes_holds_up_against_the_alternatives() {
     let results = run(Params::default(), true, true);
     let nb = |scenario: &'static str| &results[&(scenario, "naive Bayes (shipped)")];
 
-    // Accurate where it speaks, on every library shape past the cold start.
     for s in scenarios().iter().filter(|s| s.name != COLD_START) {
         let r = nb(s.name);
         assert!(r.precision >= 0.9, "{}: precision {}", s.name, r.precision);
         assert!(r.coverage >= 0.6, "{}: coverage {}", s.name, r.coverage);
-        // Three reasons nearly always: the explanation is native.
         assert!(
             r.three_reasons >= 0.9,
             "{}: reasons {}",
@@ -644,15 +594,9 @@ fn naive_bayes_holds_up_against_the_alternatives() {
             r.three_reasons
         );
     }
-    // Calibrated: a shown percentage is within a few points of how often it
-    // is right.
     for s in ["2 Spaces, 30/70", "3 Spaces, 10/40/150", "6 Spaces, 5..160"] {
         assert!(nb(s).ece <= 0.1, "{s}: ECE {}", nb(s).ece);
     }
-    // Two notes per Space is enough to start, and the right behaviour there
-    // is to say less, not to guess: it speaks for about half the notes and
-    // is right three times in four when it does, which the shown percentage
-    // reflects (its calibration error is the lowest of the four).
     let cold = nb(COLD_START);
     assert!(
         cold.precision >= 0.75,
@@ -664,12 +608,9 @@ fn naive_bayes_holds_up_against_the_alternatives() {
         "cold start coverage {}",
         cold.coverage
     );
-    // A giant Space does not swallow the small ones' notes.
     assert!(nb("one giant, 400 vs 10/10/10").small_space_recall >= 0.8);
-    // Thousands of notes recount in well under a second.
     assert!(nb("5,000 notes, 8 Spaces").millis < 1000.0);
 
-    // And it is not beaten by any alternative on the whole.
     let mean = |method: &'static str, pick: fn(&Score) -> f64| -> f64 {
         let v: Vec<f64> = scenarios()
             .iter()
@@ -691,8 +632,6 @@ fn naive_bayes_holds_up_against_the_alternatives() {
     }
 }
 
-/// The tuning behind `Params::default()`: alpha, the show threshold, and the
-/// evidence cap, each swept with the others held. Read with `--nocapture`.
 #[test]
 fn the_defaults_come_from_a_sweep() {
     let base = Params::default();

@@ -33,7 +33,6 @@ describe("selectAsset", () => {
   });
 });
 
-/** A fetch stand-in keyed by the release tag in the URL. */
 function fakeFetch(byTag: Record<string, { name: string; size: number }[]>) {
   return vi.fn(async (url: string) => {
     const tag = Object.keys(byTag).find((t) => url.includes(`/tags/${t}`));

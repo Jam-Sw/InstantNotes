@@ -1,12 +1,7 @@
-// The native folder picker, for the settings pages that ask for a folder.
-// On macOS a folder chosen here is also one the app may read, even another
-// app's data, which is why Settings > Import goes through it.
-
 import { open } from "@tauri-apps/plugin-dialog";
 
 export type FolderChoice = { path: string } | { cancelled: true } | { error: string };
 
-/** Prompt for one folder, optionally starting in `defaultPath`. */
 export async function pickFolder(options: {
   title: string;
   defaultPath?: string;

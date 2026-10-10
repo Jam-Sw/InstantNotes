@@ -4,7 +4,6 @@ import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import { highlightExtension } from "./markdown-extensions";
 
-// Same parser setup as the editor.
 function treeNames(doc: string): string[] {
   const state = EditorState.create({
     doc,

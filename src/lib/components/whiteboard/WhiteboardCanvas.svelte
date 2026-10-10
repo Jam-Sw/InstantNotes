@@ -1,14 +1,4 @@
 <script lang="ts">
-  // A whiteboard's canvas: Excalidraw, a React component, hosted in a Svelte
-  // island. Mounted once per note; the editor keys it by note id.
-  //
-  // Saving. Excalidraw reports every pointer move, scroll, and selection as
-  // a change; only a new scene fingerprint counts as an edit. Edits are
-  // serialized at most every SERIALIZE_MS and handed to the library's save
-  // queue, which debounces, retries, and flushes them on note switch, trash,
-  // and quit like any body edit. The library collects an edit still waiting
-  // here through onBeforeFlush, and unmounting hands it over too, so no
-  // stroke is dropped on the way out.
   import { onMount, untrack } from "svelte";
   import type { ComponentProps } from "react";
   import type { Root } from "react-dom/client";
@@ -31,7 +21,6 @@
 
   interface Props {
     noteId: string;
-    /** Read once, at mount: after that the canvas is the source of truth. */
     surfaceData: string | null | undefined;
     readonly: boolean;
     theme: "light" | "dark";
@@ -44,8 +33,6 @@
     $props();
 
   const SERIALIZE_MS = 250;
-  // What a board keeps of Excalidraw's view state. Scroll and zoom ride
-  // along with the next real edit; on their own they are not worth a save.
   const KEPT_APP_STATE = ["viewBackgroundColor", "gridSize", "zoom", "scrollX", "scrollY"];
 
   const id = untrack(() => noteId);
@@ -72,15 +59,12 @@
     timer ??= setTimeout(flush, SERIALIZE_MS);
   }
 
-  /** Hand the waiting edit, if any, to the save queue now. */
   function flush() {
     if (timer) clearTimeout(timer);
     timer = null;
     if (!pending) return;
     const { elements, appState, files } = pending;
     pending = null;
-    // Excalidraw keeps deleted elements (and the images they held) in the
-    // live scene for undo; a saved board keeps only what is on it.
     const live = elements.filter((el) => !el.isDeleted);
     const used = new Set(live.map((el) => el.fileId).filter((f) => typeof f === "string"));
     const kept = Object.fromEntries(Object.entries(files).filter(([fid]) => used.has(fid)));
@@ -109,12 +93,8 @@
           elements: initial.elements,
           appState: { ...initial.appState, collaborators: new Map() },
           files: initial.files,
-          // A board that remembers where it was scrolled opens there.
           scrollToContent: initial.elements.length > 0 && initial.appState.scrollX === undefined,
         };
-        // The stock menu and welcome screen advertise Excalidraw's own site,
-        // file saving, and "saved in your browser"; none of that applies to
-        // a board inside a note, which saves itself.
         const menu = h(
           MainMenu,
           { key: "menu" },
@@ -132,7 +112,6 @@
         root = ReactDOM.createRoot(host);
         render = () => {
           const props: ExcalidrawProps = {
-            // Stored elements are Excalidraw's own output, read back loosely.
             initialData: initialData as unknown as ExcalidrawProps["initialData"],
             theme,
             viewModeEnabled: readonly,
@@ -172,7 +151,6 @@
     };
   });
 
-  // Theme and read-only follow the app live, without remounting the board.
   $effect(() => {
     void theme;
     void readonly;

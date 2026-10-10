@@ -1,11 +1,3 @@
-// The library store when an agent writes to the library from another process
-// (instantnotes mcp): the open note takes the agent's edit when the user has
-// nothing unsaved, and a save that meets an agent's edit keeps the user's
-// typing, says so, and offers the agent's version back.
-//
-// Same harness as library.svelte.test.ts: client and events mocked, fake
-// timers, a fresh module graph per test.
-
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
@@ -95,7 +87,6 @@ const write = (noteId: string): AgentActivity => ({
   reverts: null,
 });
 
-/** Load a fresh store, run init, and hand back the external-change listener. */
 async function setup() {
   const { library } = await import("$lib/stores/library.svelte");
   const { toasts } = await import("$lib/stores/toasts.svelte");
@@ -136,7 +127,6 @@ describe("an agent writes to the open note", () => {
     expect(mockGetNote).toHaveBeenLastCalledWith("n1", false);
     expect(library.selected?.body).toBe("Plan\n- agent step");
 
-    // The next save is based on the agent's version, so it is no conflict.
     mockUpdateNote.mockResolvedValueOnce(mkNote("n1", { body: "Plan\n- agent step!", updatedAt: T2 }));
     library.editBody("Plan\n- agent step!");
     await vi.advanceTimersByTimeAsync(400);
@@ -168,6 +158,81 @@ describe("an agent writes to the open note", () => {
   });
 });
 
+describe("an agent appends rows to the open sheet", () => {
+  const grid = (rows: string[][]) =>
+    JSON.stringify({ v: 1, engine: "grid", data: { cols: rows[0].map(() => ({ w: 120 })), rows } });
+  const rowsOf = (raw: string | null | undefined) => JSON.parse(raw ?? "").data.rows as string[][];
+  const BASE = grid([["Date", "ms"], ["d1", "1"], ["", ""]]);
+  const THEIRS = grid([["Date", "ms"], ["d1", "1"], ["a1", "9"]]);
+
+  async function openSheet() {
+    const { library } = await import("$lib/stores/library.svelte");
+    await library.init();
+    const call = mockListen.mock.calls.find(([name]) => name === EVENTS.LIBRARY_EXTERNAL_CHANGE);
+    const external = call![1] as (e: { payload: unknown }) => void;
+    mockGetNote.mockResolvedValueOnce(mkNote("s1", { contentKind: "sheet", surfaceData: BASE }));
+    await library.select("s1");
+    return { library, external };
+  }
+
+  it("with nothing unsaved, the grid takes the agent's version whole", async () => {
+    const { library, external } = await openSheet();
+    mockGetNote.mockResolvedValueOnce(
+      mkNote("s1", { contentKind: "sheet", surfaceData: THEIRS, body: "table", updatedAt: T1 }),
+    );
+    external({ payload: [{ ...write("s1"), tool: "append_sheet_rows" }] });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(library.selected?.surfaceData).toBe(THEIRS);
+    expect(library.selected?.body).toBe("table");
+    mockUpdateNote.mockResolvedValueOnce(mkNote("s1", { contentKind: "sheet", updatedAt: T2 }));
+    library.editSheet("s1", grid([["Date", "ms"], ["d1", "1"], ["a1", "9"], ["d2", "2"]]));
+    await vi.advanceTimersByTimeAsync(400);
+    expect(mockUpdateNote.mock.calls[0][1].expectedUpdatedAt).toBe(T1);
+  });
+
+  it("with unsaved cells, the agent's rows join the grid and the waiting save", async () => {
+    const { library, external } = await openSheet();
+    const mine = grid([["Date", "ms"], ["d1", "11"], ["d2", "2"]]);
+    library.editSheet("s1", mine);
+    mockGetNote.mockResolvedValueOnce(
+      mkNote("s1", { contentKind: "sheet", surfaceData: THEIRS, updatedAt: T1 }),
+    );
+    mockUpdateNote.mockResolvedValueOnce(mkNote("s1", { contentKind: "sheet", updatedAt: T2 }));
+
+    external({ payload: [{ ...write("s1"), tool: "append_sheet_rows" }] });
+    await vi.advanceTimersByTimeAsync(0);
+
+    const shown = rowsOf(library.selected?.surfaceData);
+    expect(shown).toEqual([["Date", "ms"], ["d1", "11"], ["d2", "2"], ["a1", "9"]]);
+    await vi.advanceTimersByTimeAsync(400);
+    const [, patch] = mockUpdateNote.mock.calls[0];
+    expect(rowsOf(patch.surfaceData)).toEqual(shown);
+    expect(patch.expectedUpdatedAt).toBe(T1);
+  });
+
+  it("a save that meets the agent's append carries its rows instead of losing them", async () => {
+    const { library } = await openSheet();
+    const mine = grid([["Date", "ms"], ["d1", "11"], ["", ""]]);
+    mockUpdateNote
+      .mockRejectedValueOnce(new ApiError("CONFLICT" as never, "changed"))
+      .mockResolvedValueOnce(mkNote("s1", { contentKind: "sheet", updatedAt: T2 }));
+    mockGetNote.mockResolvedValueOnce(
+      mkNote("s1", { contentKind: "sheet", surfaceData: THEIRS, updatedAt: T1 }),
+    );
+
+    library.editSheet("s1", mine);
+    await vi.advanceTimersByTimeAsync(400);
+
+    expect(mockUpdateNote).toHaveBeenCalledTimes(2);
+    const [, retry] = mockUpdateNote.mock.calls[1];
+    expect(retry.expectedUpdatedAt).toBe(T1);
+    expect(rowsOf(retry.surfaceData)).toEqual([["Date", "ms"], ["d1", "11"], ["a1", "9"]]);
+    expect(rowsOf(library.selected?.surfaceData)).toEqual([["Date", "ms"], ["d1", "11"], ["a1", "9"]]);
+    expect(library.saveState).toBe("saved");
+  });
+});
+
 describe("a save meets an agent's edit", () => {
   it("keeps the user's typing, names the agent, and offers theirs back", async () => {
     const { library, toasts, agents } = await setup();
@@ -190,7 +255,6 @@ describe("a save meets an agent's edit", () => {
     expect(toast.message).toBe("Claude Code's change to this note was replaced by your typing.");
     expect(toast.action?.label).toBe("Restore theirs");
 
-    // Restoring is an ordinary edit, based on the version just written.
     mockUpdateNote.mockResolvedValueOnce(mkNote("n1", { body: theirs, updatedAt: "2026-01-01T00:07:00.000000Z" }));
     toast.action!.run();
     expect(library.selected?.body).toBe(theirs);
@@ -203,7 +267,6 @@ describe("a save meets an agent's edit", () => {
     mockUpdateNote
       .mockRejectedValueOnce(new ApiError("CONFLICT" as never, "changed"))
       .mockResolvedValueOnce(mkNote("n1", { body: "Plan, mine", updatedAt: T2 }));
-    // Pinned elsewhere: newer version, same body.
     mockGetNote.mockResolvedValueOnce(mkNote("n1", { isPinned: true, updatedAt: T1 }));
 
     library.editBody("Plan, mine");
@@ -211,5 +274,24 @@ describe("a save meets an agent's edit", () => {
 
     expect(mockUpdateNote).toHaveBeenCalledTimes(2);
     expect(toasts.items).toHaveLength(0);
+  });
+});
+
+describe("another window adds to the open note", () => {
+  it("takes the new text in place, so the next edit builds on it", async () => {
+    const { library } = await setup();
+    const changed = mockListen.mock.calls.find(([name]) => name === EVENTS.NOTES_CHANGED)![1] as () => void;
+    const appended = mkNote("n1", { body: "Plan\n\nfrom the capture panel", updatedAt: T1 });
+    vi.mocked(listNotes).mockResolvedValue([appended]);
+    mockGetNote.mockResolvedValueOnce(appended);
+
+    changed();
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(library.selected?.body).toBe("Plan\n\nfrom the capture panel");
+    mockUpdateNote.mockResolvedValueOnce(mkNote("n1", { body: `${appended.body}!`, updatedAt: T2 }));
+    library.editBody(`${appended.body}!`);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(mockUpdateNote).toHaveBeenLastCalledWith("n1", { body: `${appended.body}!`, expectedUpdatedAt: T1 });
   });
 });

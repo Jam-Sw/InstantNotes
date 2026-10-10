@@ -1,8 +1,3 @@
-// Terminal - phosphor green on near-black, monospace throughout, tight radius
-// and dense spacing. The flourish block in app.css adds the blinking caret,
-// uppercase section labels, and the row prefix. Light variant keeps the green
-// signal on a high-contrast light ground.
-
 import type { Theme } from "../types";
 import { SANS_STACK, MONO_STACK } from "../fonts";
 
@@ -17,8 +12,6 @@ export const terminal: Theme = {
   metrics: {
     radius: "4px",
     density: 0.82,
-    // Flat and dense: tight line-height, slight mono tracking, no ambient lift,
-    // a hard tight drop on overlays, and modals that stay as sharp as buttons.
     leading: "1.3",
     tracking: "0.02em",
     shadow: "none",

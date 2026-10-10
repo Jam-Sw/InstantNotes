@@ -1,9 +1,8 @@
-// The theme store: what it reads back from settings (and what it refuses),
-// how auto resolves against the system appearance, and custom themes.
-
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getSetting, setSetting, setWindowTheme, setWindowVibrancy } from "$lib/api/client";
+import { BODY_FONTS } from "$lib/themes/fonts";
 import { manuscript } from "$lib/themes/builtin/manuscript";
+import { terminal } from "$lib/themes/builtin/terminal";
 import { DEFAULT_THEME_ID } from "$lib/themes/builtin";
 import type { Theme } from "$lib/themes/types";
 
@@ -19,10 +18,9 @@ const mockSetSetting = vi.mocked(setSetting);
 const mockSetWindowTheme = vi.mocked(setWindowTheme);
 const mockSetWindowVibrancy = vi.mocked(setWindowVibrancy);
 
+const BOOT_KEY = "instantnotes.boot";
 const custom: Theme = { ...manuscript, id: "custom-1", name: "Custom One" };
 
-// The OS appearance jsdom does not model: what matchMedia answers, and the
-// listener the store hangs on it so a change can be driven by hand.
 let systemDark = true;
 let onSystemChange: ((e: { matches: boolean }) => void) | null = null;
 
@@ -30,7 +28,6 @@ function settings(values: Record<string, unknown>) {
   mockGetSetting.mockImplementation(async (key: string) => values[key] ?? null);
 }
 
-/** Fresh module graph so the singleton store starts clean. */
 async function load() {
   const mod = await import("./theme.svelte");
   return mod.theme;
@@ -121,8 +118,48 @@ describe("loading from settings", () => {
     await theme.init();
     expect(document.documentElement.dataset.theme).toBe("terminal");
     expect(document.documentElement.style.getPropertyValue("--font-ui")).not.toBe("");
-    expect(mockSetWindowTheme).toHaveBeenCalledWith("light");
+    expect(mockSetWindowTheme).toHaveBeenCalledWith("light", terminal.light!.bg);
     expect(mockSetWindowVibrancy).toHaveBeenCalled();
+  });
+});
+
+describe("remembering the theme for the next launch", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("stores what the boot script replays once the settings have loaded", async () => {
+    settings({ "theme.active": "terminal", "theme.mode": "light" });
+    const theme = await load();
+    await theme.init();
+    const snapshot = JSON.parse(localStorage.getItem(BOOT_KEY) ?? "null");
+    expect(snapshot.themeId).toBe("terminal");
+    expect(snapshot.mode).toBe("light");
+    expect(snapshot.light.vars["--bg"]).toBe(terminal.light!.bg);
+    expect(snapshot.dark.vars["--bg"]).toBe(terminal.dark!.bg);
+  });
+
+  it("keeps the body font choice in it", async () => {
+    settings({ "theme.font.body": BODY_FONTS[0].id });
+    const theme = await load();
+    await theme.init();
+    expect(JSON.parse(localStorage.getItem(BOOT_KEY) ?? "null").bodyFont).toBe(BODY_FONTS[0].value);
+  });
+
+  it("follows a change of theme", async () => {
+    const theme = await load();
+    await theme.init();
+    theme.setTheme("terminal");
+    expect(JSON.parse(localStorage.getItem(BOOT_KEY) ?? "null").themeId).toBe("terminal");
+  });
+
+  it("leaves the stored theme alone when the settings could not be read", async () => {
+    localStorage.setItem(BOOT_KEY, "kept");
+    mockGetSetting.mockRejectedValue(new Error("busy"));
+    const theme = await load();
+    await theme.init();
+    theme.setMode("light");
+    expect(localStorage.getItem(BOOT_KEY)).toBe("kept");
   });
 });
 

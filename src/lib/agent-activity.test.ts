@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  agentKind,
   canRevert,
   claudeCodeCommand,
   clientLabel,
@@ -11,7 +12,9 @@ import {
   mcpServersJson,
   parseAccess,
   parseActivityLog,
+  parseBlocked,
   parseNotify,
+  parseTags,
   timeAgo,
   type AgentActivity,
 } from "./agent-activity";
@@ -65,8 +68,20 @@ describe("agent activity", () => {
     expect(describeActivity(entry({ tool: "revert", client: "instantnotes" }))).toBe(
       "Reverted a change to “Groceries”",
     );
+    expect(describeActivity(entry({ tool: "get_notes", noteCount: 3 }))).toBe(
+      "Reading “Groceries” and 2 more",
+    );
+    expect(describeActivity(entry({ tool: "edit_note", kind: "write" }))).toBe("Editing “Groceries”");
+    expect(describeActivity(entry({ tool: "append_sheet_rows", kind: "write" }))).toBe(
+      "Adding rows to “Groceries”",
+    );
+    expect(describeActivity(entry({ tool: "suggest_space" }))).toBe("Looking for where notes belong");
+    expect(describeActivity(entry({ tool: "resources/read" }))).toBe("Reading “Groceries”");
+    expect(describeActivity(entry({ tool: "resources/list" }))).toBe("Looking through your notes");
+    expect(
+      describeActivity(entry({ tool: "append_sheet_rows", status: "error", error: "x" })),
+    ).toBe("Tried to add rows to a sheet, but it failed");
     expect(clientLabel("instantnotes")).toBe("You");
-    // A failed call says what was tried, never a made-up outcome.
     expect(
       describeActivity(entry({ tool: "update_note", status: "error", error: "NOT_FOUND: gone" })),
     ).toBe("Tried to edit a note, but it failed");
@@ -108,6 +123,22 @@ describe("agent activity", () => {
     expect(parseAccess(null)).toBe("off");
     expect(parseNotify("all")).toBe("all");
     expect(parseNotify(undefined)).toBe("writes");
+  });
+
+  it("names the kind of agent from the client's own name", () => {
+    expect(agentKind("claude-code")).toBe("claude-code");
+    expect(agentKind("Codex-MCP-Client")).toBe("codex");
+    expect(agentKind("Cursor")).toBe("cursor");
+    expect(parseBlocked(["codex", 2, null])).toEqual(["codex"]);
+    expect(parseBlocked({})).toEqual([]);
+  });
+
+  it("keeps only well-formed tag lists per kind of agent", () => {
+    expect(parseTags({ codex: ["codex", 3, "ai"], hermes: [], cursor: "x" })).toEqual({
+      codex: ["codex", "ai"],
+    });
+    expect(parseTags(["codex"])).toEqual({});
+    expect(parseTags(null)).toEqual({});
   });
 
   it("drops malformed log entries", () => {

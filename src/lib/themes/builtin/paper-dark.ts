@@ -1,7 +1,3 @@
-// Paper Dark - warm sepia dark with a clay accent; the cozy, low-glare reading
-// direction. Light variant is warm paper with the same clay, for a notebook
-// feel in daylight.
-
 import type { Theme } from "../types";
 import { SANS_STACK, MONO_STACK } from "../fonts";
 
@@ -16,8 +12,6 @@ export const paperDark: Theme = {
   metrics: {
     radius: "8px",
     density: 1.0,
-    // Cozy reading: loose line-height for long-form, and warm low-glare
-    // shadows that lift overlays without a cold edge.
     leading: "1.65",
     shadow: "0 2px 8px rgba(14, 9, 4, 0.40)",
     shadowLg: "0 20px 52px rgba(8, 5, 2, 0.55)",

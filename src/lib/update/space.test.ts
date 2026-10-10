@@ -55,7 +55,6 @@ describe("buildUpdateNotes", () => {
     expect(notes[0].title).toBe("update 0.9.0 → 0.10.0");
     expect(notes[1].title).toBe("What's new in 0.10.0");
     expect(notes[1].body).toBe(view.notes);
-    // Ordinary notes in every way the list cares about.
     expect(notes.every((n) => n.contentKind === "document")).toBe(true);
     expect(notes.every((n) => !n.isArchived && !n.isDeleted)).toBe(true);
   });

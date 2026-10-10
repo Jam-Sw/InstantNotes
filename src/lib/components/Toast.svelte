@@ -1,8 +1,4 @@
 <script lang="ts">
-  // Undo-toast host: mounted once in +page.svelte, bottom-right so it never
-  // sits over the centered command palette / update / confirm overlays.
-  // Queue, timers, and eviction all live in the toasts store; this file is
-  // display plus hover pause/resume wiring.
   import { toasts } from "$lib/stores/toasts.svelte";
   import { fly } from "svelte/transition";
 
@@ -45,8 +41,6 @@
     display: flex;
     flex-direction: column-reverse;
     gap: 8px;
-    /* The stack's own padding-box has no hit area between toasts; only the
-       toasts themselves should intercept pointer events. */
     pointer-events: none;
   }
   .toast {

@@ -1,65 +1,33 @@
-//! The agent activity trace: every call an agent made through the MCP
-//! server, what it touched, and, for a write, the note as it was just before,
-//! so the user can put it back.
-//!
-//! Rows are written by the MCP process (`instantnotes-agents`) and read by
-//! the app, which also writes the one row kind of its own: a revert. The
-//! trace has its own table rather than a settings blob so appending is one
-//! INSERT and the app's watcher can tell what is new from `seq` alone.
-//!
-//! Revert is symmetric: it records itself as an activity row carrying a
-//! snapshot of the note as it was before the revert, so a revert can be
-//! reverted. A note an agent created has no "before"; reverting its creation
-//! moves it to the Trash, never deletes it for good.
-
 use super::*;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-/// How many rows the trace keeps. Old rows are pruned on insert.
 pub const ACTIVITY_KEEP: i64 = 2000;
 
-/// One recorded call, as the app lists it.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentActivity {
-    /// Monotonic row id; the app's cursor.
     pub seq: i64,
-    /// Epoch milliseconds.
     pub at: i64,
-    /// The MCP process that made the call; groups a conversation's calls.
     pub session: String,
-    /// The client's own name from the handshake ("claude-code", "cursor"),
-    /// or "instantnotes" for a revert the user made in the app.
     pub client: String,
     pub tool: String,
-    /// `read`, `search`, or `write`.
     pub kind: String,
-    /// `ok` or `error`.
     pub status: String,
-    /// What the tool refused with, when `status` is `error`.
     pub error: Option<String>,
     pub duration_ms: i64,
     pub note_ids: Vec<String>,
     pub note_count: i64,
-    /// The first few touched notes' titles.
     pub titles: Vec<String>,
     pub space: Option<String>,
     pub tag: Option<String>,
     pub query: Option<String>,
-    /// The note's `updated_at` after this write, to tell whether it was edited since.
     pub after_updated_at: Option<String>,
-    /// Whether a snapshot exists to revert to (or the note was created and
-    /// can be trashed).
     pub revertable: bool,
-    /// Set once this row has been reverted; it cannot be reverted again.
     pub reverted_at: Option<i64>,
-    /// The `seq` of the row this revert undid, for a revert row.
     pub reverts: Option<i64>,
 }
 
-/// What a write is about to replace, with its edges, so `revert` can restore
-/// exactly this. `None` for a note that does not exist yet (a create).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteSnapshot {
@@ -72,15 +40,12 @@ pub struct NoteSnapshot {
     pub is_deleted: bool,
     pub deleted_at: Option<String>,
     pub updated_at: String,
-    /// (tag name, source) for every tag edge.
     pub tags: Vec<(String, String)>,
-    /// Space names.
     pub spaces: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surface_data: Option<String>,
 }
 
-/// The raw exchange behind a call: the JSON-RPC message the agent sent and
-/// the one it got back, as JSON text. `None` where none was kept (a row from
-/// before they were, or the app's own revert).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ActivityWire {
@@ -88,31 +53,20 @@ pub struct ActivityWire {
     pub response: Option<String>,
 }
 
-/// One agent connection: an MCP server process, from start to end.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentSession {
     pub session: String,
     pub client: String,
-    /// Epoch milliseconds.
     pub connected_at: i64,
-    /// Set when the process ended, by itself or once the app finds it gone.
     pub disconnected_at: Option<i64>,
-    /// The name the client gives this session of its own ("bob", after
-    /// Claude Code's `/rename bob`), when it has one.
     pub label: Option<String>,
-    /// The client's own id for the session.
     pub client_session: Option<String>,
-    /// Where the client is running.
     pub cwd: Option<String>,
-    /// The client's process, while it lives.
     pub client_pid: Option<i64>,
-    /// How the session was identified: `exact` (the client said) or
-    /// `inferred` (matched from the client's own records).
     pub matched: Option<String>,
 }
 
-/// What a client lets its server know about the session it belongs to.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ClientSession {
     pub label: Option<String>,
@@ -122,19 +76,13 @@ pub struct ClientSession {
     pub matched: Option<String>,
 }
 
-/// How long an ended connection's row is kept.
 const SESSION_KEEP_MS: i64 = 30 * 24 * 60 * 60 * 1000;
 
-/// The file an agent process holds locked for as long as it lives, beside
-/// the library. The operating system lets go of the lock however the process
-/// ends, which is what makes "connected" true after a crash too.
 pub fn session_lock_path(db: &Path, session: &str) -> PathBuf {
     db.with_file_name("agent-sessions")
         .join(format!("{session}.lock"))
 }
 
-/// Take the session's lock, for the life of the returned file. `None` when
-/// the file cannot be made or locked; the session then reads as ended.
 pub fn hold_session_lock(db: &Path, session: &str) -> Option<std::fs::File> {
     let path = session_lock_path(db, session);
     std::fs::create_dir_all(path.parent()?).ok()?;
@@ -143,9 +91,6 @@ pub fn hold_session_lock(db: &Path, session: &str) -> Option<std::fs::File> {
     Some(file)
 }
 
-/// Whether the process behind a session still holds its lock. A lock this
-/// call can take belongs to no one: the process is gone, and its file is
-/// cleared away.
 pub fn session_alive(db: &Path, session: &str) -> bool {
     let path = session_lock_path(db, session);
     let Ok(file) = std::fs::File::open(&path) else {
@@ -159,12 +104,10 @@ pub fn session_alive(db: &Path, session: &str) -> bool {
             false
         }
         Err(std::fs::TryLockError::WouldBlock) => true,
-        // Cannot tell: say what the row says.
         Err(std::fs::TryLockError::Error(_)) => true,
     }
 }
 
-/// A call to record. Everything the server knows once the tool returned.
 #[derive(Debug, Clone, Default)]
 pub struct ActivityRecord {
     pub session: String,
@@ -181,8 +124,6 @@ pub struct ActivityRecord {
     pub tag: Option<String>,
     pub query: Option<String>,
     pub after_updated_at: Option<String>,
-    /// The note before the write, when it existed. `Some(None)` means "the
-    /// note did not exist" (a create): revertable by trashing it.
     pub before: Option<Option<NoteSnapshot>>,
     pub reverts: Option<i64>,
 }
@@ -217,14 +158,14 @@ fn row_to_activity(row: &rusqlite::Row<'_>) -> rusqlite::Result<AgentActivity> {
     })
 }
 
-/// The note with its edges, inside the caller's connection. `Ok(None)` when
-/// there is no such note.
 fn snapshot(conn: &Connection, id: &str) -> Result<Option<NoteSnapshot>> {
     let head = conn
         .query_row(
             "SELECT title, title_is_auto, body, is_pinned, is_archived, is_deleted, \
-             deleted_at, updated_at FROM notes WHERE id = ?1",
-            params![id],
+             deleted_at, updated_at, \
+             CASE content_kind WHEN ?2 THEN surface_data ELSE NULL END \
+             FROM notes WHERE id = ?1",
+            params![id, CONTENT_KIND_SHEET],
             |r| {
                 Ok((
                     r.get::<_, String>(0)?,
@@ -235,6 +176,7 @@ fn snapshot(conn: &Connection, id: &str) -> Result<Option<NoteSnapshot>> {
                     r.get::<_, i64>(5)? != 0,
                     r.get::<_, Option<String>>(6)?,
                     r.get::<_, String>(7)?,
+                    r.get::<_, Option<String>>(8)?,
                 ))
             },
         )
@@ -248,6 +190,7 @@ fn snapshot(conn: &Connection, id: &str) -> Result<Option<NoteSnapshot>> {
         is_deleted,
         deleted_at,
         updated_at,
+        surface_data,
     )) = head
     else {
         return Ok(None);
@@ -278,17 +221,16 @@ fn snapshot(conn: &Connection, id: &str) -> Result<Option<NoteSnapshot>> {
         updated_at,
         tags,
         spaces,
+        surface_data,
     }))
 }
 
-/// Make the note match `snap` exactly: fields, tags with their sources, and
-/// Spaces. Tags and Spaces named in the snapshot are created if they are
-/// gone. Runs inside the caller's transaction.
 fn restore(tx: &Connection, snap: &NoteSnapshot) -> Result<()> {
     let now = now_iso();
     let changed = tx.execute(
         "UPDATE notes SET title = ?1, title_is_auto = ?2, body = ?3, is_pinned = ?4, \
-         is_archived = ?5, is_deleted = ?6, deleted_at = ?7, updated_at = ?8 WHERE id = ?9",
+         is_archived = ?5, is_deleted = ?6, deleted_at = ?7, updated_at = ?8, \
+         surface_data = COALESCE(?10, surface_data) WHERE id = ?9",
         params![
             snap.title,
             i64::from(snap.title_is_auto),
@@ -298,7 +240,8 @@ fn restore(tx: &Connection, snap: &NoteSnapshot) -> Result<()> {
             i64::from(snap.is_deleted),
             snap.deleted_at,
             now,
-            snap.id
+            snap.id,
+            snap.surface_data
         ],
     )?;
     if changed == 0 {
@@ -328,14 +271,10 @@ fn restore(tx: &Connection, snap: &NoteSnapshot) -> Result<()> {
 }
 
 impl Store {
-    /// The note as it is right now, for a write about to replace it. `None`
-    /// when no such note exists.
     pub fn snapshot_note(&self, id: &str) -> Result<Option<NoteSnapshot>> {
         snapshot(&self.conn, id)
     }
 
-    /// Append one call to the trace; returns its `seq`. Prunes the oldest
-    /// rows past `ACTIVITY_KEEP`.
     pub fn record_activity(&mut self, rec: ActivityRecord) -> Result<i64> {
         let before = match &rec.before {
             None => None,
@@ -381,8 +320,6 @@ impl Store {
         Ok(seq)
     }
 
-    /// Rows newer than `after_seq`, oldest first: what the app's watcher
-    /// announces.
     pub fn activity_since(&self, after_seq: i64, limit: i64) -> Result<Vec<AgentActivity>> {
         let mut stmt = self.conn.prepare(&format!(
             "SELECT {COLUMNS} FROM agent_activity WHERE seq > ?1 ORDER BY seq ASC LIMIT ?2"
@@ -391,7 +328,6 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
-    /// The trace, newest first.
     pub fn list_activity(&self, limit: i64, offset: i64) -> Result<Vec<AgentActivity>> {
         let mut stmt = self.conn.prepare(&format!(
             "SELECT {COLUMNS} FROM agent_activity ORDER BY seq DESC LIMIT ?1 OFFSET ?2"
@@ -403,7 +339,6 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
-    /// Attach the raw exchange to a row already recorded.
     pub fn set_activity_wire(&mut self, seq: i64, request: &str, response: &str) -> Result<()> {
         self.conn.execute(
             "UPDATE agent_activity SET request = ?1, response = ?2 WHERE seq = ?3",
@@ -412,7 +347,6 @@ impl Store {
         Ok(())
     }
 
-    /// The raw exchange a row holds.
     pub fn activity_wire(&self, seq: i64) -> Result<ActivityWire> {
         self.conn
             .query_row(
@@ -429,8 +363,6 @@ impl Store {
             .ok_or_else(|| AppError::NotFound(format!("activity {seq} not found")))
     }
 
-    /// The newest `seq`, or 0 for an empty trace. One indexed lookup: cheap
-    /// enough to poll.
     pub fn latest_activity_seq(&self) -> Result<i64> {
         Ok(self.conn.query_row(
             "SELECT COALESCE(MAX(seq), 0) FROM agent_activity",
@@ -439,7 +371,6 @@ impl Store {
         )?)
     }
 
-    /// The snapshot a write row carries, to preview what a revert restores.
     pub fn activity_before(&self, seq: i64) -> Result<Option<NoteSnapshot>> {
         let raw: Option<Option<String>> = self
             .conn
@@ -452,16 +383,11 @@ impl Store {
         match raw {
             None => Err(AppError::NotFound(format!("activity {seq} not found"))),
             Some(None) => Ok(None),
-            // The column holds `Option<NoteSnapshot>` as JSON: `null` is a
-            // create, which has no before.
             Some(Some(json)) => serde_json::from_str::<Option<NoteSnapshot>>(&json)
                 .map_err(|e| AppError::Storage(format!("corrupt snapshot: {e}"))),
         }
     }
 
-    /// Undo a write: put the note back as the row's snapshot has it, or, for a
-    /// create, move the new note to the Trash. Records the revert as its own
-    /// row so it can be reverted in turn. Returns that row's `seq`.
     pub fn revert_activity(&mut self, seq: i64) -> Result<i64> {
         let (before, reverted_at, note_ids): (Option<String>, Option<i64>, String) = self
             .conn
@@ -537,8 +463,6 @@ impl Store {
         Ok(new_seq)
     }
 
-    /// Forget the trace, and the connections that have ended. Notes are
-    /// untouched.
     pub fn clear_activity(&mut self) -> Result<()> {
         self.conn.execute("DELETE FROM agent_activity", [])?;
         self.conn.execute(
@@ -548,7 +472,6 @@ impl Store {
         Ok(())
     }
 
-    /// An agent process started. Also drops rows of connections long ended.
     pub fn open_agent_session(&mut self, session: &str, client: &str) -> Result<()> {
         let now = now_ms();
         self.conn.execute(
@@ -563,8 +486,6 @@ impl Store {
         Ok(())
     }
 
-    /// What the client told its server about the session it belongs to. Only
-    /// what is given is written: a later call with less never erases more.
     pub fn describe_agent_session(&mut self, session: &str, about: &ClientSession) -> Result<()> {
         self.conn.execute(
             "UPDATE agent_sessions SET label = COALESCE(?1, label), \
@@ -583,7 +504,6 @@ impl Store {
         Ok(())
     }
 
-    /// The client said who it is.
     pub fn name_agent_session(&mut self, session: &str, client: &str) -> Result<()> {
         self.conn.execute(
             "UPDATE agent_sessions SET client = ?1 WHERE session = ?2 AND client <> ?1",
@@ -592,7 +512,6 @@ impl Store {
         Ok(())
     }
 
-    /// The agent process ended. Keeps the first time it was said.
     pub fn close_agent_session(&mut self, session: &str) -> Result<()> {
         self.conn.execute(
             "UPDATE agent_sessions SET disconnected_at = ?1 \
@@ -602,7 +521,6 @@ impl Store {
         Ok(())
     }
 
-    /// Connections, newest first.
     pub fn list_agent_sessions(&self, limit: i64) -> Result<Vec<AgentSession>> {
         let mut stmt = self.conn.prepare(
             "SELECT session, client, connected_at, disconnected_at, label, client_session, \

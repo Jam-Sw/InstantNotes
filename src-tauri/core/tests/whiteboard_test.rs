@@ -1,7 +1,3 @@
-//! Whiteboard notes in the store: a note whose `content_kind` is
-//! `whiteboard` keeps its canvas in `surface_data` and the text written on
-//! the canvas in `body`, so search and inline tags keep working.
-
 use instantnotes_core::types::*;
 use instantnotes_core::Store;
 
@@ -52,8 +48,6 @@ fn converting_sets_the_kind_and_board_and_keeps_the_body() {
     assert_eq!(wb.body, "planning notes");
 }
 
-/// A whiteboard's body is the text on its canvas, rewritten on every save;
-/// a title that followed it would jump around as shapes move.
 #[test]
 fn converting_freezes_an_auto_title() {
     let mut s = store();
@@ -149,8 +143,6 @@ fn an_unknown_kind_is_rejected() {
     assert_eq!(err.code(), "VALIDATION_ERROR");
 }
 
-/// Boards can carry pasted images, so list rows, which every refresh ships
-/// to the UI, leave the board out; opening the note brings it.
 #[test]
 fn list_rows_carry_the_kind_but_not_the_board() {
     let mut s = store();

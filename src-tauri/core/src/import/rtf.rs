@@ -1,28 +1,13 @@
-//! RTF, as the Cocoa text system writes it (Apple Stickies, TextEdit), to the
-//! Markdown the editor renders. The mapping is in the feat-stickies-import
-//! design, section 4.
-//!
-//! The input is bytes, not text: RTF is 7-bit with `\'hh` escapes in the
-//! document's code page, and Cocoa also writes one raw byte (0xAC) after
-//! each attachment. The reader is one loop over a stack of group states, with
-//! no recursion, so a file costs time in proportion to its size and nothing
-//! more.
-
 use std::mem::take;
 
-/// Everything past this is left out of the conversion.
 pub const MAX_RTF_BYTES: usize = 16 * 1024 * 1024;
 
-/// Convert `rtf` to Markdown. `image` is asked for each attachment by its
-/// file name and returns the Markdown that stands for it, or `None` when it
-/// could not be brought in, which the note then says in its place.
 pub fn to_markdown(rtf: &[u8], image: impl FnMut(&str) -> Option<String>) -> String {
     let mut reader = Reader::new(image);
     reader.read(&rtf[..rtf.len().min(MAX_RTF_BYTES)]);
     reader.finish()
 }
 
-/// How a run of text looks, as far as Markdown can say it.
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 struct Style {
     bold: bool,
@@ -30,18 +15,13 @@ struct Style {
     strike: bool,
 }
 
-/// What a group's text is for.
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 enum Dest {
     #[default]
     Text,
-    /// Not rendered: font and color tables, list definitions, metadata.
     Skip,
-    /// `{\*\fldinst ...}`: a field's instruction, `HYPERLINK "url"`.
     FieldInst,
-    /// `{\listtext ...}`: the list marker Cocoa drew for this paragraph.
     ListText,
-    /// `{\NeXTGraphic name \width...}`: an attachment's file name.
     Graphic,
 }
 
@@ -49,9 +29,7 @@ enum Dest {
 struct Group {
     style: Style,
     dest: Dest,
-    /// The link every character of this group belongs to.
     link: Option<String>,
-    /// `\ucN`: fallback characters that follow each `\uN`.
     uc: usize,
 }
 
@@ -61,13 +39,10 @@ enum Piece {
         style: Style,
         link: Option<String>,
     },
-    /// Markdown written as is (an image).
     Raw(String),
-    /// A line break inside a paragraph.
     Break,
 }
 
-/// Groups whose first control word says they are not text.
 const SKIPPED: &[&str] = &[
     "fonttbl",
     "colortbl",
@@ -89,9 +64,7 @@ struct Reader<F> {
     image: F,
     group: Group,
     stack: Vec<Group>,
-    /// The next token is the first in its group.
     group_start: bool,
-    /// The group began with `\*`: skip it unless it is one we read.
     starred: bool,
     lines: Vec<String>,
     para: Vec<Piece>,
@@ -100,10 +73,8 @@ struct Reader<F> {
     inst: String,
     graphic: String,
     graphic_named: bool,
-    /// Right after an attachment, Cocoa writes a placeholder character.
     after_graphic: bool,
     high_surrogate: Option<u32>,
-    /// `\uc` fallback characters still to skip.
     fallback: usize,
 }
 
@@ -150,8 +121,6 @@ impl<F: FnMut(&str) -> Option<String>> Reader<F> {
     }
 
     fn open_group(&mut self) {
-        // A group starts as its parent is, so the children of a skipped or
-        // collecting group stay skipped or collecting.
         let inner = self.group.clone();
         self.stack.push(take(&mut self.group));
         self.group = inner;
@@ -162,7 +131,7 @@ impl<F: FnMut(&str) -> Option<String>> Reader<F> {
 
     fn close_group(&mut self) {
         let Some(outer) = self.stack.pop() else {
-            return; // an unbalanced brace: nothing to close
+            return;
         };
         let closed = std::mem::replace(&mut self.group, outer);
         self.fallback = 0;
@@ -178,7 +147,6 @@ impl<F: FnMut(&str) -> Option<String>> Reader<F> {
         }
     }
 
-    /// A backslash at `input[i - 1]`; returns where reading resumes.
     fn control(&mut self, input: &[u8], mut i: usize) -> usize {
         let Some(&next) = input.get(i) else {
             return i;
@@ -201,7 +169,7 @@ impl<F: FnMut(&str) -> Option<String>> Reader<F> {
                 b'~' => self.char(' '),
                 b'_' => self.char('-'),
                 b'*' if first => self.starred = true,
-                _ => {} // \- optional hyphen, \: index subentry, \| formula
+                _ => {}
             }
             return i;
         }
@@ -221,7 +189,7 @@ impl<F: FnMut(&str) -> Option<String>> Reader<F> {
             .ok()
             .and_then(|n| n.parse::<i64>().ok());
         if i < input.len() && input[i] == b' ' {
-            i += 1; // the delimiter belongs to the control word
+            i += 1;
         }
         self.word(word, param);
         i
@@ -256,7 +224,6 @@ impl<F: FnMut(&str) -> Option<String>> Reader<F> {
             }
         }
         if self.group.dest == Dest::Graphic {
-            // The name ends where the attachment's properties begin.
             self.graphic_named = true;
             return;
         }
@@ -291,7 +258,6 @@ impl<F: FnMut(&str) -> Option<String>> Reader<F> {
         }
     }
 
-    /// `\uN`, joining UTF-16 surrogate pairs, then the fallback to skip.
     fn unicode(&mut self, unit: u32) {
         let c = match (self.high_surrogate.take(), unit) {
             (None, 0xD800..=0xDBFF) => {
@@ -301,7 +267,7 @@ impl<F: FnMut(&str) -> Option<String>> Reader<F> {
             (Some(high), 0xDC00..=0xDFFF) => {
                 char::from_u32(0x10000 + ((high - 0xD800) << 10) + (unit - 0xDC00))
             }
-            (_, 0xD800..=0xDFFF) => None, // an unpaired half
+            (_, 0xD800..=0xDFFF) => None,
             (_, unit) => char::from_u32(unit),
         };
         if let Some(c) = c {
@@ -310,7 +276,6 @@ impl<F: FnMut(&str) -> Option<String>> Reader<F> {
         self.fallback = self.group.uc;
     }
 
-    /// A character read from the text itself (not `\uN`).
     fn char(&mut self, c: char) {
         self.group_start = false;
         if self.fallback > 0 {
@@ -367,7 +332,6 @@ impl<F: FnMut(&str) -> Option<String>> Reader<F> {
         let line = match marker {
             Some(marker) => {
                 let indent = "  ".repeat(self.list_level);
-                // A line break inside an item stays inside the item.
                 let hang = " ".repeat(indent.len() + marker.len() + 1);
                 format!(
                     "{indent}{marker} {}",
@@ -393,9 +357,6 @@ impl<F: FnMut(&str) -> Option<String>> Reader<F> {
     }
 }
 
-/// The Markdown marker for what Cocoa drew as a list marker: the number of
-/// a numbered item, a dash for any bullet. `None` when the paragraph is not
-/// a list item.
 fn list_marker(drawn: &str) -> Option<String> {
     let drawn = drawn.trim();
     if drawn.is_empty() {
@@ -409,7 +370,6 @@ fn list_marker(drawn: &str) -> Option<String> {
     })
 }
 
-/// The URL of a `HYPERLINK "url"` field instruction.
 fn hyperlink(inst: &str) -> Option<String> {
     let rest = inst.trim().strip_prefix("HYPERLINK")?.trim();
     let url = match rest.strip_prefix('"') {
@@ -443,8 +403,6 @@ fn render(pieces: &[Piece]) -> String {
     out
 }
 
-/// A run with its emphasis. Markers never touch whitespace (`**bold **` is
-/// not Markdown), so a run's leading and trailing spaces go outside them.
 fn styled(text: &str, style: Style) -> String {
     let core = text.trim();
     if style == Style::default() || core.is_empty() {
@@ -464,8 +422,6 @@ fn styled(text: &str, style: Style) -> String {
     format!("{lead}{s}{trail}")
 }
 
-/// Windows-1252, the code page Cocoa writes (`\ansicpg1252`). Its 0xA0-0xFF
-/// half is Latin-1; only 0x80-0x9F differs.
 fn cp1252(b: u8) -> char {
     const HIGH: [char; 32] = [
         '\u{20AC}', '\u{81}', '\u{201A}', '\u{0192}', '\u{201E}', '\u{2026}', '\u{2020}',

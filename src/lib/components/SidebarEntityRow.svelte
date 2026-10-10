@@ -1,11 +1,4 @@
 <script lang="ts">
-  // One entity in the sidebar (a space or a tag): click selects, double-click
-  // renames in place, right-click (or Shift+F10) opens the row's context menu.
-  // No resting chrome; a row is just the entity. Shared by spaces and tags,
-  // parameterized by the count field, an optional prefix (# for tags), and the
-  // name normalizer each uses. A read-only row (the synthetic Update Space) is
-  // the same row with the management gestures switched off, and an optional
-  // `suffix` snippet can trail the label.
   import type { Snippet } from "svelte";
 
   let {
@@ -34,7 +27,6 @@
     active: boolean;
     editing: boolean;
     readonly?: boolean;
-    /** An agent is looking through this Space or tag right now. */
     agent?: boolean;
     onSelect: () => void;
     onStartRename: () => void;
@@ -53,8 +45,6 @@
 
   const countLabel = $derived(`${count} note${count === 1 ? "" : "s"}`);
 
-  // Seed and focus the input when the parent puts this row into edit mode;
-  // hand focus back to the row itself when editing ends.
   $effect(() => {
     if (editing && !wasEditing) {
       editValue = name;
@@ -71,8 +61,6 @@
 
   async function commitRename() {
     if (!editing) return;
-    // The backend normalizes the name; mirror it here so "same name" is a
-    // no-op instead of a round-trip.
     const normalized = normalize(editValue);
     if (!normalized) {
       editError = `${noun} name can't be empty`;
@@ -84,7 +72,7 @@
       return;
     }
     const result = await onRename(normalized);
-    if (!editing) return; // blurred away while the request was in flight
+    if (!editing) return;
     if (result.ok) {
       onDoneRename();
     } else {
@@ -108,7 +96,6 @@
     onMenu(e.clientX, e.clientY);
   }
 
-  // Shift+F10 is the keyboard's right-click.
   function onRowKeydown(e: KeyboardEvent) {
     if (e.shiftKey && e.key === "F10") {
       e.preventDefault();
@@ -154,7 +141,6 @@
 {/if}
 
 <style>
-  /* Mirrors the sidebar's .nav-item so a row reads as one of the list. */
   .nav-item {
     display: flex;
     justify-content: space-between;

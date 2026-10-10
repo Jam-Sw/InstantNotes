@@ -1,7 +1,3 @@
-// Horizontal rule construct: `---` renders as an actual rule. Caret contact
-// reveals the raw dashes so the rule stays editable; the widget lets clicks
-// through so CM places the caret, which is what reveals it.
-
 import { Decoration, WidgetType } from "@codemirror/view";
 import type { SyntaxNodeRef } from "@lezer/common";
 import type { ConstructSpec, Emit, ScanContext } from "../types";
@@ -15,7 +11,6 @@ class HrWidget extends WidgetType {
     s.className = "cm-wysiwyg-hr";
     return s;
   }
-  // Let CM place the caret on click, which reveals the raw `---`.
   ignoreEvent(): boolean {
     return false;
   }

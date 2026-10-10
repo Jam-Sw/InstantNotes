@@ -1,15 +1,8 @@
-// List marker constructs: - / * / + render as a bullet, 1. as its number.
-// These are "never" reveal: the marker stays an object. The kernel's atomic
-// ranges make the caret step over it whole and backspace delete it whole
-// (with markerBackspaceKeymap covering the revealed-marker cases).
-
 import { Decoration, WidgetType } from "@codemirror/view";
 import type { SyntaxNodeRef } from "@lezer/common";
 import type { ConstructSpec, Emit, ScanContext } from "../types";
 
 class BulletWidget extends WidgetType {
-  // All bullets are identical; report equality so the DOM node survives
-  // rebuilds instead of flickering.
   eq(): boolean {
     return true;
   }
@@ -43,6 +36,7 @@ class NumberWidget extends WidgetType {
 }
 
 const bulletDeco = Decoration.replace({ widget: new BulletWidget() });
+const listLine = Decoration.line({ class: "cm-wysiwyg-list-item" });
 
 const LIST_RE = /^(\s*)([-*+]|\d+\.)\s+/;
 
@@ -54,8 +48,7 @@ export class ListSpec implements ConstructSpec {
     const line = cx.state.doc.lineAt(node.from);
     const m = line.text.match(LIST_RE);
     if (!m) return false;
-    // The marker range covers marker char(s) plus trailing space, after any
-    // indent.
+    emit.line(line.from, listLine);
     const from = line.from + m[1].length;
     const to = line.from + m[0].length;
     const owner = emit.construct(from, to, "never");

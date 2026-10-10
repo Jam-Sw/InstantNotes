@@ -1,16 +1,8 @@
-// Save queue, race token, and quit-flush tests for the library store. Each
-// test is built to fail if the guarded behavior regresses.
-//
-// $lib/api/client and @tauri-apps/api/event are mocked and timers are fake,
-// so debounce/retry timing is deterministic. `library` is a module-level
-// singleton, so every test loads a fresh copy via vi.resetModules() + dynamic
-// import; vi.mock's factory is not re-run, so the mock functions keep stable
-// identity across the file.
-
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addNoteToWorkspace,
   ApiError,
+  countNotes,
   createNote,
   deleteWorkspace,
   destroyNotes,
@@ -62,6 +54,7 @@ vi.mock("$lib/api/client", () => {
     setNotesFlags: vi.fn(),
     destroyNotes: vi.fn(),
     listNotes: vi.fn(),
+    countNotes: vi.fn().mockResolvedValue(0),
     searchNotes: vi.fn(),
     spaceSuggestions: vi.fn().mockResolvedValue([]),
     listTags: vi.fn(),
@@ -86,8 +79,6 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(),
 }));
 
-// Converting a note lays its text onto the board through Excalidraw's own
-// element builder; the stand-in keeps each skeleton and stamps an id.
 vi.mock("@excalidraw/excalidraw", () => ({
   convertToExcalidrawElements: vi.fn((skeletons: object[]) =>
     skeletons.map((sk, i) => ({ ...sk, id: `el${i}`, version: 1 })),
@@ -98,6 +89,7 @@ const mockCreateNote = vi.mocked(createNote);
 const mockGetNote = vi.mocked(getNote);
 const mockUpdateNote = vi.mocked(updateNote);
 const mockListNotes = vi.mocked(listNotes);
+const mockCountNotes = vi.mocked(countNotes);
 const mockSearchNotes = vi.mocked(searchNotes);
 const mockListTags = vi.mocked(listTags);
 const mockListWorkspaces = vi.mocked(listWorkspaces);
@@ -141,7 +133,6 @@ function mkSearchResult(id: string): SearchResult {
   };
 }
 
-/** A promise plus its resolve/reject, so races can be driven by hand. */
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason: unknown) => void;
@@ -152,7 +143,6 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-/** Fresh module graph so the singleton store instance starts clean. */
 async function load() {
   const mod = await import("$lib/stores/library.svelte");
   return mod.library;
@@ -209,18 +199,14 @@ describe("save queue", () => {
     mockUpdateNote.mockReturnValueOnce(write.promise);
 
     library.editBody("new body");
-    // #unsaved is set synchronously in editBody, before the debounce fires.
     expect(library.saveState).toBe("saving");
     expect(mockUpdateNote).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(400);
-    // A document save names the version it was based on (the one opened), so
-    // an agent's write in between is caught rather than overwritten.
     expect(mockUpdateNote).toHaveBeenCalledWith("n1", {
       body: "new body",
       expectedUpdatedAt: "2026-01-01T00:00:00Z",
     });
-    // Write still in flight: must not claim "saved" over unpersisted data.
     expect(library.saveState).toBe("saving");
 
     write.resolve(mkNote("n1", { body: "new body" }));
@@ -239,8 +225,6 @@ describe("save queue", () => {
     library.editBody("retry body");
     await vi.advanceTimersByTimeAsync(400);
     expect(mockUpdateNote).toHaveBeenCalledTimes(1);
-    // First failure alone must not surface as "failed" -- it's still
-    // waiting out the retry backoff.
     expect(library.saveState).toBe("saving");
     expect(library.error).toBeNull();
 
@@ -281,7 +265,6 @@ describe("flushPendingEdits", () => {
 
     library.editBody("flush me");
     const flushed = library.flushPendingEdits();
-    // The write must fire synchronously off the flush, not off the timer.
     expect(mockUpdateNote).toHaveBeenCalledWith("n1", {
       body: "flush me",
       expectedUpdatedAt: "2026-01-01T00:00:00Z",
@@ -303,9 +286,6 @@ describe("flushPendingEdits", () => {
     library.editBody("will fail");
     await library.flushPendingEdits();
 
-    // Queued edit survives the failure: saveState is "failed", not "saved",
-    // and a later flush would still have something to retry (proven by the
-    // note staying selected/dirty rather than the state resetting to idle).
     expect(library.saveState).toBe("failed");
     expect(library.error).toBe(
       "Your note couldn't be saved. Please try again.",
@@ -313,9 +293,6 @@ describe("flushPendingEdits", () => {
   });
 
   it("fixed: a flush of one dirty note performs exactly one write attempt, and no timer survives once it resolves", async () => {
-    // flushPendingEdits cancels the debounce outright and performs its own
-    // single no-retry persist, so a failing flush writes exactly once and
-    // leaves no retry timer behind.
     const library = await load();
     await selectNote(library, "n1");
 
@@ -326,7 +303,6 @@ describe("flushPendingEdits", () => {
     expect(mockUpdateNote).toHaveBeenCalledTimes(1);
     expect(library.saveState).toBe("failed");
 
-    // No retry timer was scheduled, so nothing fires after the retry window.
     await vi.advanceTimersByTimeAsync(2000);
     expect(mockUpdateNote).toHaveBeenCalledTimes(1);
   });
@@ -340,8 +316,6 @@ describe("destroy paths drop queued edits (regression: fixed 2026-07-08)", () =>
     library.editBody("about to be destroyed");
     await library.bulkDestroy();
 
-    // Past debounce (400ms) and past the retry window (2000ms): if the
-    // queued edit were not dropped, updateNote would fire here.
     await vi.advanceTimersByTimeAsync(3000);
 
     expect(mockUpdateNote).not.toHaveBeenCalled();
@@ -376,8 +350,6 @@ describe("destroy paths drop queued edits (regression: fixed 2026-07-08)", () =>
   });
 
   it("control: without a destroy, the same queued edit does reach updateNote", async () => {
-    // Sanity check for the tests above: the fake-timer harness does drive the
-    // debounce through to a write when nothing intervenes.
     const library = await load();
     await selectNote(library, "n1");
     mockUpdateNote.mockResolvedValue(mkNote("n1", { body: "kept" }));
@@ -407,11 +379,9 @@ describe("soft delete flushes queued edits (Undo restores the last keystrokes)",
       expectedUpdatedAt: "2026-01-01T00:00:00Z",
     });
     expect(mockSoftDeleteNote).toHaveBeenCalledWith("n1");
-    // The write must land before the trash, or a restore loses the edit.
     const write = mockUpdateNote.mock.invocationCallOrder[0];
     const trash = mockSoftDeleteNote.mock.invocationCallOrder[0];
     expect(write).toBeLessThan(trash);
-    // Nothing further fires later: no leftover debounce, no retry timer.
     await vi.advanceTimersByTimeAsync(3000);
     expect(mockUpdateNote).toHaveBeenCalledTimes(1);
   });
@@ -449,7 +419,6 @@ describe("soft delete flushes queued edits (Undo restores the last keystrokes)",
 
     expect(mockSoftDeleteNote).toHaveBeenCalledWith("n1");
     expect(library.error).toBeTruthy();
-    // The failed edit is dropped with the trashed note; no retry fires later.
     await vi.advanceTimersByTimeAsync(3000);
     expect(mockUpdateNote).toHaveBeenCalledTimes(1);
   });
@@ -473,14 +442,13 @@ describe("refresh race token", () => {
 
     older.resolve([mkNote("older")]);
     await p1;
-    // The stale response must be discarded, not applied after the fact.
     expect(library.notes.map((n) => n.id)).toEqual(["newer"]);
   });
 
   it("a slow older search refresh cannot clobber a newer one", async () => {
     const library = await load();
     library.setSearch("q");
-    await vi.advanceTimersByTimeAsync(0); // let the immediate search-text set land; refresh below is called directly
+    await vi.advanceTimersByTimeAsync(0);
 
     const older = deferred<SearchResult[]>();
     const newer = deferred<SearchResult[]>();
@@ -524,12 +492,9 @@ describe("search debounce", () => {
     expect(mockSearchNotes).not.toHaveBeenCalled();
 
     library.setSearch("");
-    // Immediate: listNotes fires synchronously off the clear, not gated by
-    // the 150ms debounce.
     expect(mockListNotes).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(200);
-    // The canceled debounce must never fire the stale query.
     expect(mockSearchNotes).not.toHaveBeenCalled();
   });
 });
@@ -556,8 +521,8 @@ describe("init ordering", () => {
     gate.resolve(() => {});
     await initPromise;
 
-    // Two listNotes calls: the visible list and the revisit count.
-    expect(mockListNotes).toHaveBeenCalledTimes(2);
+    expect(mockListNotes).toHaveBeenCalledTimes(1);
+    expect(mockCountNotes).toHaveBeenCalledTimes(1);
     expect(mockListTags).toHaveBeenCalledTimes(1);
     expect(mockListWorkspaces).toHaveBeenCalledTimes(1);
   });
@@ -570,8 +535,8 @@ describe("init ordering", () => {
     await Promise.all([p1, p2]);
 
     expect(mockListen).toHaveBeenCalledTimes(5);
-    // Two listNotes calls: the visible list and the revisit count.
-    expect(mockListNotes).toHaveBeenCalledTimes(2);
+    expect(mockListNotes).toHaveBeenCalledTimes(1);
+    expect(mockCountNotes).toHaveBeenCalledTimes(1);
     expect(mockListTags).toHaveBeenCalledTimes(1);
     expect(mockListWorkspaces).toHaveBeenCalledTimes(1);
   });
@@ -580,6 +545,7 @@ describe("init ordering", () => {
     const library = await load();
     await library.init();
     mockListNotes.mockClear();
+    mockCountNotes.mockClear();
 
     const handler = mockListen.mock.calls.find(
       (c) => c[0] === EVENTS.NOTES_CHANGED,
@@ -589,12 +555,10 @@ describe("init ordering", () => {
 
     expect(mockListNotes).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(50);
-    // The debounce window releases both the list and the revisit count.
-    expect(mockListNotes).toHaveBeenCalledTimes(2);
+    expect(mockListNotes).toHaveBeenCalledTimes(1);
+    expect(mockCountNotes).toHaveBeenCalledTimes(1);
   });
 });
-
-// ---- Spaces rework: scoped tag chips + undo-able workspace delete ----
 
 function mkTagWithCount(id: string, name: string): TagWithCount {
   return {
@@ -626,19 +590,20 @@ describe("scoped tag filter (chips inside a workspace)", () => {
 
     library.selectWorkspace("ws1");
     await vi.advanceTimersByTimeAsync(0);
-    expect(mockListNotes).toHaveBeenLastCalledWith({ workspaceId: "ws1" });
+    expect(mockListNotes).toHaveBeenLastCalledWith({ workspaceId: "ws1", bodyChars: 2048 });
 
     library.toggleScopedTag("t-school");
     await vi.advanceTimersByTimeAsync(0);
     expect(mockListNotes).toHaveBeenLastCalledWith({
       workspaceId: "ws1",
       tagIds: ["t-school"],
+      bodyChars: 2048,
     });
 
     library.toggleScopedTag("t-school");
     await vi.advanceTimersByTimeAsync(0);
     expect(library.scopedTagId).toBeNull();
-    expect(mockListNotes).toHaveBeenLastCalledWith({ workspaceId: "ws1" });
+    expect(mockListNotes).toHaveBeenLastCalledWith({ workspaceId: "ws1", bodyChars: 2048 });
 
     library.toggleScopedTag("t-school");
     await vi.advanceTimersByTimeAsync(0);
@@ -661,7 +626,7 @@ describe("scoped tag filter (chips inside a workspace)", () => {
     library.setTagFilter("t-global");
     await vi.advanceTimersByTimeAsync(0);
     expect(library.scopedTagId).toBeNull();
-    expect(mockListNotes).toHaveBeenLastCalledWith({ tagIds: ["t-global"] });
+    expect(mockListNotes).toHaveBeenLastCalledWith({ tagIds: ["t-global"], bodyChars: 2048 });
   });
 
   it("drops a scoped tag that vanished from the workspace's visible notes", async () => {
@@ -675,12 +640,11 @@ describe("scoped tag filter (chips inside a workspace)", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(library.scopedTagId).toBe("t-school");
 
-    // The last #school note was edited away; the chip data comes back empty.
     mockListWorkspaceTags.mockResolvedValue([]);
     await library.refresh();
     await vi.advanceTimersByTimeAsync(0);
     expect(library.scopedTagId).toBeNull();
-    expect(mockListNotes).toHaveBeenLastCalledWith({ workspaceId: "ws1" });
+    expect(mockListNotes).toHaveBeenLastCalledWith({ workspaceId: "ws1", bodyChars: 2048 });
   });
 });
 
@@ -773,10 +737,8 @@ describe("revisit mode (open-loop resurfacing)", () => {
     const library = await load();
     library.selectRevisit();
     await vi.advanceTimersByTimeAsync(0);
-    // The rule itself (never opened, older than the window, oldest first)
-    // lives in the store, which expands this flag; core's own tests pin it.
     const filter = mockListNotes.mock.lastCall?.[0];
-    expect(filter).toEqual({ revisit: true });
+    expect(filter).toEqual({ revisit: true, bodyChars: 2048 });
   });
 
   it("keeps the count in lockstep, and opening a note burns it down live", async () => {
@@ -786,13 +748,19 @@ describe("revisit mode (open-loop resurfacing)", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(library.revisitCount).toBe(2);
 
-    // getNote's touch releases n1; the store re-queries on open because the
-    // backend emits no change event for a touch.
     mockListNotes.mockResolvedValue([mkNote("n2")]);
     await selectNote(library, "n1");
     await vi.advanceTimersByTimeAsync(0);
     expect(library.revisitCount).toBe(1);
     expect(library.notes.map((n) => n.id)).toEqual(["n2"]);
+  });
+
+  it("counts the open loops with a count, not by listing them", async () => {
+    mockCountNotes.mockResolvedValue(7);
+    const library = await load();
+    await library.init();
+    expect(library.revisitCount).toBe(7);
+    expect(mockCountNotes).toHaveBeenLastCalledWith({ revisit: true });
   });
 
   it("creating a note exits revisit mode, like it exits trash", async () => {
@@ -801,8 +769,6 @@ describe("revisit mode (open-loop resurfacing)", () => {
     mockGetNote.mockResolvedValue(mkNote("new1"));
     library.selectRevisit();
     await library.newNote();
-    // A brand-new note can never match the Revisit filter; staying in the
-    // mode would hide the note the user just asked for.
     expect(library.revisitMode).toBe(false);
     await vi.advanceTimersByTimeAsync(0);
   });
@@ -846,7 +812,6 @@ describe("whiteboards", () => {
     expect(mockUpdateNote).toHaveBeenCalledWith("b1", { surfaceData: "next", body: "words" });
     await vi.advanceTimersByTimeAsync(0);
     expect(library.saveState).toBe("saved");
-    // The reply leaves the canvas out; the open note keeps its own copy.
     expect(library.selected?.surfaceData).toBe("next");
   });
 
@@ -900,7 +865,6 @@ describe("whiteboards", () => {
     await library.convertToWhiteboard();
 
     const calls = mockUpdateNote.mock.calls;
-    // The pending body edit lands first, so nothing typed is lost.
     expect(calls[0]).toEqual([
       "n1",
       { body: "Roadmap\nship it today", expectedUpdatedAt: "2026-01-01T00:00:00Z" },
@@ -962,6 +926,74 @@ describe("whiteboards", () => {
   });
 });
 
+describe("sheets", () => {
+  const grid = (rows: string[][]) =>
+    JSON.stringify({ v: 1, engine: "grid", data: { cols: rows[0].map(() => ({ w: 120 })), rows } });
+  const GRID = grid([["Date", "ms"], ["d1", "1"], ["", ""]]);
+  const TABLE = "| Date | ms |\n| --- | --- |\n| d1 | 1 |";
+
+  it("queues a grid save like a body edit, with the version it was based on, and shows the store's table", async () => {
+    const library = await load();
+    await selectNote(library, "s1", { contentKind: "sheet", surfaceData: GRID, body: TABLE });
+    const next = grid([["Date", "ms"], ["d1", "1"], ["d2", "2"]]);
+    mockUpdateNote.mockResolvedValue(
+      mkNote("s1", { contentKind: "sheet", body: `${TABLE}\n| d2 | 2 |`, updatedAt: "2026-01-01T00:01:00Z" }),
+    );
+
+    library.editSheet("s1", next);
+    expect(library.saveState).toBe("saving");
+    expect(library.selected?.surfaceData).toBe(next);
+    expect(library.selected?.body).toBe(TABLE);
+
+    await vi.advanceTimersByTimeAsync(400);
+    expect(mockUpdateNote).toHaveBeenCalledWith("s1", {
+      surfaceData: next,
+      expectedUpdatedAt: "2026-01-01T00:00:00Z",
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.saveState).toBe("saved");
+    expect(library.selected?.body).toBe(`${TABLE}\n| d2 | 2 |`);
+    expect(library.selected?.surfaceData).toBe(next);
+  });
+
+  it("quit and a note switch collect the cell still being typed in", async () => {
+    const library = await load();
+    await selectNote(library, "s1", { contentKind: "sheet", surfaceData: GRID });
+    mockUpdateNote.mockResolvedValue(mkNote("s1", { contentKind: "sheet" }));
+    const off = library.onBeforeFlush(() => library.editSheet("s1", "typed"));
+
+    await library.flushPendingEdits();
+    expect(mockUpdateNote).toHaveBeenCalledWith("s1", {
+      surfaceData: "typed",
+      expectedUpdatedAt: "2026-01-01T00:00:00Z",
+    });
+    off();
+  });
+
+  it("New sheet creates a note and makes it a sheet; the store supplies the grid", async () => {
+    const library = await load();
+    mockCreateNote.mockResolvedValue(mkNote("new1"));
+    mockGetNote.mockResolvedValue(mkNote("new1"));
+    mockUpdateNote.mockResolvedValue(mkNote("new1", { contentKind: "sheet", title: "Untitled sheet" }));
+
+    await library.newSheet();
+
+    expect(mockCreateNote).toHaveBeenCalled();
+    expect(mockUpdateNote).toHaveBeenCalledWith("new1", { contentKind: "sheet" });
+    expect(library.selected?.contentKind).toBe("sheet");
+    expect(library.selected?.title).toBe("Untitled sheet");
+  });
+
+  it("New sheet never converts the open note when creating the new one fails", async () => {
+    const library = await load();
+    await selectNote(library, "n1", { body: "my writing" });
+    mockCreateNote.mockRejectedValue(new Error("disk full"));
+    await library.newSheet();
+    expect(mockUpdateNote).not.toHaveBeenCalled();
+    expect(library.selected?.contentKind).toBe("document");
+  });
+});
+
 describe("graph view", () => {
   it("is its own place: entering it leaves every other view", async () => {
     const library = await load();
@@ -1007,6 +1039,25 @@ describe("graph view", () => {
   });
 });
 
+describe("space suggestions", () => {
+  it("keeps the suggestions along with their count", async () => {
+    const library = await load();
+    const { spaceSuggestions } = await import("$lib/api/client");
+    const suggestion = {
+      noteId: "n1",
+      noteTitle: "Lasagne",
+      spaceId: "ws1",
+      spaceName: "Recipes",
+      probability: 0.9,
+      reasons: [],
+    };
+    vi.mocked(spaceSuggestions).mockResolvedValueOnce([suggestion]);
+    await library.refreshSuggestionCount();
+    expect(library.suggestions).toEqual([suggestion]);
+    expect(library.suggestionCount).toBe(1);
+  });
+});
+
 describe("the update Space (synthetic)", () => {
   it("is never queried and holds no store rows of its own", async () => {
     const library = await load();
@@ -1031,7 +1082,6 @@ describe("the update Space (synthetic)", () => {
 
     library.editBody("typed into the release notes");
     expect(library.selected?.body).toBe("typed into the release notes");
-    // Nothing is ever written: a synthetic note is not user data.
     await vi.advanceTimersByTimeAsync(3000);
     expect(mockUpdateNote).not.toHaveBeenCalled();
     expect(library.saveState).not.toBe("saving");
@@ -1129,5 +1179,133 @@ describe("stickies", () => {
     await library.deleteSelected();
     expect(mockPopInNote).toHaveBeenCalledTimes(2);
     expect(mockSoftDeleteNote).toHaveBeenCalledWith("n1");
+  });
+});
+
+describe("each view remembers its open note", () => {
+  it("reopens the note left open in a Space when that Space is shown again", async () => {
+    const library = await load();
+    mockListNotes.mockImplementation(async (f) =>
+      f?.workspaceId === "ws1" ? [mkNote("a"), mkNote("b")] : [mkNote("c")],
+    );
+    library.selectWorkspace("ws1");
+    await vi.advanceTimersByTimeAsync(0);
+    await selectNote(library, "b");
+
+    library.selectWorkspace("ws2");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.selected).toBeNull();
+
+    mockGetNote.mockResolvedValueOnce(mkNote("b"));
+    library.selectWorkspace("ws1");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.selected?.id).toBe("b");
+  });
+
+  it("does not reopen a note that has left the Space, or one closed before leaving", async () => {
+    const library = await load();
+    let ws1 = [mkNote("a")];
+    mockListNotes.mockImplementation(async (f) => (f?.workspaceId === "ws1" ? ws1 : []));
+    library.selectWorkspace("ws1");
+    await vi.advanceTimersByTimeAsync(0);
+    await selectNote(library, "a");
+    library.selectWorkspace("ws2");
+    await vi.advanceTimersByTimeAsync(0);
+
+    ws1 = [];
+    library.selectWorkspace("ws1");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.selected).toBeNull();
+
+    ws1 = [mkNote("a")];
+    library.selectWorkspace("ws2");
+    await vi.advanceTimersByTimeAsync(0);
+    library.selectWorkspace("ws1");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.selected).toBeNull();
+    expect(mockGetNote).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets a note opened right after the switch win over the remembered one", async () => {
+    const library = await load();
+    mockListNotes.mockResolvedValue([mkNote("a"), mkNote("x")]);
+    library.selectWorkspace(null);
+    await vi.advanceTimersByTimeAsync(0);
+    await selectNote(library, "a");
+    library.selectWorkspace("ws1");
+    await vi.advanceTimersByTimeAsync(0);
+
+    mockGetNote.mockResolvedValueOnce(mkNote("x"));
+    library.selectWorkspace(null);
+    const opening = library.select("x");
+    await vi.advanceTimersByTimeAsync(0);
+    await opening;
+    expect(library.selected?.id).toBe("x");
+    expect(mockGetNote).toHaveBeenLastCalledWith("x", true);
+  });
+
+  it("carries the open note into a Space that lists it", async () => {
+    const library = await load();
+    mockListNotes.mockImplementation(async (f) =>
+      f?.workspaceId === "ws1" ? [mkNote("b")] : [mkNote("a"), mkNote("b")],
+    );
+    library.selectWorkspace(null);
+    await vi.advanceTimersByTimeAsync(0);
+    await selectNote(library, "b");
+
+    mockGetNote.mockResolvedValueOnce(mkNote("b"));
+    library.selectWorkspace("ws1");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.selected?.id).toBe("b");
+  });
+
+  it("returns to the open note after a status pill round trip", async () => {
+    const library = await load();
+    mockListNotes.mockImplementation(async (f) =>
+      f?.isArchived || f?.isDeleted ? [] : [mkNote("a")],
+    );
+    library.selectWorkspace(null);
+    await vi.advanceTimersByTimeAsync(0);
+    await selectNote(library, "a");
+
+    library.setStatusFilter("archived");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.selected).toBeNull();
+
+    mockGetNote.mockResolvedValueOnce(mkNote("a"));
+    library.setStatusFilter("active");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.selected?.id).toBe("a");
+  });
+
+  it("returns to the open note when its chip is toggled off", async () => {
+    const library = await load();
+    mockListWorkspaceTags.mockResolvedValue([mkTagWithCount("t1", "one")]);
+    mockListNotes.mockImplementation(async (f) =>
+      f?.tagIds ? [] : [mkNote("a")],
+    );
+    library.selectWorkspace("ws1");
+    await vi.advanceTimersByTimeAsync(0);
+    await selectNote(library, "a");
+
+    library.toggleScopedTag("t1");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.selected).toBeNull();
+
+    mockGetNote.mockResolvedValueOnce(mkNote("a"));
+    library.toggleScopedTag("t1");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.selected?.id).toBe("a");
+  });
+
+  it("writes a pending edit before leaving the view", async () => {
+    const library = await load();
+    mockListNotes.mockResolvedValue([mkNote("a")]);
+    mockUpdateNote.mockResolvedValue(mkNote("a", { body: "typed" }));
+    await selectNote(library, "a");
+    library.editBody("typed");
+    expect(mockUpdateNote).not.toHaveBeenCalled();
+    library.selectWorkspace("ws1");
+    expect(mockUpdateNote).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,10 +1,6 @@
-// Turning a document into a whiteboard, from the palette. It is one-way, so
-// it asks first, and the dialog says exactly what happens to the text.
-
 import { library } from "$lib/stores/library.svelte";
 import { confirmDialog } from "$lib/stores/confirm.svelte";
 
-/** Ask, then convert the open note. True only when it converted. */
 export async function confirmConvertToWhiteboard(): Promise<boolean> {
   const note = library.selected;
   if (!note || note.isDeleted || note.contentKind === "whiteboard") return false;

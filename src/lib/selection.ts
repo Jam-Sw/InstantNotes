@@ -1,7 +1,3 @@
-// Pure multi-selection logic for the note list. The store owns the state;
-// these helpers only compute the next selection from an ordered id list.
-
-/** Toggle membership of `id`, returning a new set. */
 export function toggleSelection(
   selected: ReadonlySet<string>,
   id: string,
@@ -15,10 +11,6 @@ export function toggleSelection(
   return next;
 }
 
-/**
- * Inclusive range between `anchorId` and `targetId` in list order.
- * Falls back to just the target when the anchor is missing from `ids`.
- */
 export function rangeSelection(
   ids: readonly string[],
   anchorId: string | null,
@@ -31,10 +23,6 @@ export function rangeSelection(
   return new Set(ids.slice(lo, hi + 1));
 }
 
-/**
- * Id `delta` rows away from `currentId`, clamped to the list. Starts from the
- * first row when there is no current id; null only for an empty list.
- */
 export function stepId(
   ids: readonly string[],
   currentId: string | null,

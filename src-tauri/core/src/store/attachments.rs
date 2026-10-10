@@ -1,18 +1,10 @@
-//! Which attachment files are still referenced (`crate::attachments`).
-//! Every note counts, in any state: trashed and archived notes keep their
-//! images, since both can come back. So does the capture draft, which holds
-//! text that is not a note yet.
-
 use super::*;
 use crate::attachments::{referenced_names, remove_attachment};
 use std::collections::BTreeSet;
 
-/// The setting the capture window keeps its unsent draft in.
 const CAPTURE_DRAFT_SETTING: &str = "capture.draft";
 
 impl Store {
-    /// Attachment names the notes `ids` reference, in their text or, for a
-    /// whiteboard, its canvas.
     pub fn attachment_names_of(&self, ids: &[String]) -> Result<BTreeSet<String>> {
         let mut names = BTreeSet::new();
         let mut stmt = self
@@ -30,8 +22,6 @@ impl Store {
         Ok(names)
     }
 
-    /// Of `names`, the ones nothing references any more: no note in any
-    /// state, and not the capture draft. Sorted.
     pub fn unreferenced_attachments(
         &self,
         names: impl IntoIterator<Item = String>,
@@ -44,8 +34,6 @@ impl Store {
             .into_iter()
             .map(|n| n.to_ascii_lowercase())
             .collect();
-        // Case-insensitive, like the disks attachments usually live on: a
-        // reference spelled `A.PNG` still shows `a.png` there.
         let mut stmt = self.conn.prepare(
             "SELECT 1 FROM notes WHERE instr(lower(body), ?1) > 0 \
              OR instr(lower(COALESCE(surface_data, '')), ?1) > 0 LIMIT 1",
@@ -65,11 +53,6 @@ impl Store {
         Ok(out)
     }
 
-    /// Remove, from the attachments folder `dir`, each of `names` that
-    /// nothing references, re-checked here rather than trusted, along with
-    /// the live vault's unchanged copy. Callers hold the store for the whole
-    /// call, so no save can add a reference between the check and the
-    /// removal. A file that cannot be removed is skipped, not fatal.
     pub fn remove_unreferenced_attachments(
         &self,
         dir: &Path,
