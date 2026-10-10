@@ -1,0 +1,22 @@
+src-tauri/src/lib.rs
+  s_1ccb913dce9b29::t_1694135d886662 9,134-141,149-160
+CHANGELOG.md
+  s_1ccb913dce9b29::t_dc0b9801574bf5 11
+  s_1ccb913dce9b29::t_67b7c67dd36874 12-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e64c8f0870db7a9eeab72b937ae2d1c15d93d80e",
+  "prompts": {},
+  "sessions": {
+    "s_1ccb913dce9b29": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e7be9512-6e4e-4421-aa54-4da04f44fd7a",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
