@@ -1,0 +1,29 @@
+CHANGELOG.md
+  s_1ccb913dce9b29::t_30873fe48815c3 10,12
+package-lock.json
+  s_1ccb913dce9b29::t_f5b8410d5356b6 3,9
+package.json
+  s_1ccb913dce9b29::t_facf02fbfb8198 3
+src-tauri/Cargo.lock
+  s_1ccb913dce9b29::t_e7a47f0789544f 1911
+src-tauri/Cargo.toml
+  s_1ccb913dce9b29::t_58548257f56c30 8
+src-tauri/tauri.conf.json
+  s_1ccb913dce9b29::t_d3d7fc222b833e 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "85fc373f7ee9ff06e90df02b1338db4ae6487c9c",
+  "prompts": {},
+  "sessions": {
+    "s_1ccb913dce9b29": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e7be9512-6e4e-4421-aa54-4da04f44fd7a",
+        "model": "unknown"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
