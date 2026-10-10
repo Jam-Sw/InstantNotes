@@ -1908,7 +1908,7 @@ dependencies = [
 
 [[package]]
 name = "instantnotes"
-version = "0.9.4"
+version = "0.9.5"
 dependencies = [
  "instantnotes-agents",
  "instantnotes-core",

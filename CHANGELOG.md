@@ -7,8 +7,9 @@ in-app updater, written for users. Newest first.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.4]
+## [0.9.5]
 
+## [0.9.4] - 2026-10-09
 ### Added
 - Sheet notes: a third note kind, a cell grid (Tab/Enter entry, range paste to and from Sheets, Excel and
   Numbers, undo, resizable columns). Stored in the vault as a Markdown table plus a `.csv`.
