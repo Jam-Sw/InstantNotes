@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use tauri::menu::{Menu, MenuBuilder, MenuItem, PredefinedMenuItem, Submenu, SubmenuBuilder};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, State};
-use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_opener::OpenerExt;
 
 pub(crate) static LIBRARY_DB: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
@@ -131,6 +131,14 @@ pub fn run() {
                 Ok(ok) => ok,
                 Err(e) if e.is_schema_too_new() => {
                     let handle = app.handle().clone();
+                    if let Some(library) = app.get_webview_window("library") {
+                        let on_close = handle.clone();
+                        library.on_window_event(move |event| {
+                            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                                on_close.exit(1);
+                            }
+                        });
+                    }
                     app.dialog()
                         .message(
                             "This notes library was created by a newer version of \
@@ -138,7 +146,18 @@ pub fn run() {
                         )
                         .title("Library too new")
                         .kind(MessageDialogKind::Error)
-                        .show(move |_| handle.exit(1));
+                        .buttons(MessageDialogButtons::OkCancelCustom(
+                            "Update".into(),
+                            "Quit".into(),
+                        ))
+                        .show(move |update| {
+                            if update {
+                                show_library_window(&handle);
+                                let _ = handle.emit(events::UPDATER_CHECK, ());
+                            } else {
+                                handle.exit(1);
+                            }
+                        });
                     return Ok(());
                 }
                 Err(e) => return Err(format!("cannot open store: {e}").into()),

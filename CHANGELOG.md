@@ -8,6 +8,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.9.5]
+### Fixed
+- "Library too new" offers Update (opens the in-app updater) or Quit instead of exiting on OK; closing the
+  window quits.
 
 ## [0.9.4] - 2026-10-09
 ### Added
