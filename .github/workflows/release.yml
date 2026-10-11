@@ -124,8 +124,10 @@ jobs:
     env:
       VERSION: ${{ needs.plan.outputs.version }}
       IMAGE: ghcr.io/jam-sw/instantnotes-server
+      DOCKER_CONFIG: ${{ runner.temp }}/docker
     steps:
       - uses: actions/checkout@v7
+      - run: mkdir -p "$DOCKER_CONFIG" && echo '{}' > "$DOCKER_CONFIG/config.json"
       - run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
       - run: docker build --pull -t "$IMAGE:$VERSION" .
       - run: docker push "$IMAGE:$VERSION"
