@@ -24,6 +24,7 @@ jobs:
       ship: ${{ steps.plan.outputs.ship }}
     steps:
       - uses: actions/checkout@v7
+      - run: echo "$HOME/.local/bin:$HOME/.cargo/bin:$(ls -d "$HOME"/.local/share/nvm/v*/bin | sort -V | tail -1)" >> "$GITHUB_PATH"
 
       - id: plan
         run: |
@@ -59,6 +60,7 @@ jobs:
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v7
+      - run: echo "$HOME/.local/bin:$HOME/.cargo/bin:$(ls -d "$HOME"/.local/share/nvm/v*/bin | sort -V | tail -1)" >> "$GITHUB_PATH"
       - run: echo "INSTANTNOTES_BUILDCACHE=$HOME/.cache/instantnotes-build/linux" >> "$GITHUB_ENV"
       - run: instantnotes-buildroot run . sh -c 'npm ci --no-audit --no-fund && npm run tauri -- build --bundles appimage'
       - run: |
@@ -78,6 +80,7 @@ jobs:
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v7
+      - run: echo "$HOME/.local/bin:$HOME/.cargo/bin:$(ls -d "$HOME"/.local/share/nvm/v*/bin | sort -V | tail -1)" >> "$GITHUB_PATH"
       - run: echo "CARGO_TARGET_DIR=$HOME/.cache/instantnotes-build/windows/target" >> "$GITHUB_ENV"
       - run: npm ci --no-audit --no-fund
       - run: npm run tauri -- build --runner cargo-xwin --target x86_64-pc-windows-msvc --bundles nsis
@@ -98,6 +101,7 @@ jobs:
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v7
+      - run: echo "$HOME/.local/bin:$HOME/.cargo/bin:$(ls -d "$HOME"/.local/share/nvm/v*/bin | sort -V | tail -1)" >> "$GITHUB_PATH"
       - id: mac
         run: |
           if [ "$(ssh -o BatchMode=yes -o ConnectTimeout=10 mac-builder status 2>/dev/null)" != online ]; then
@@ -126,6 +130,7 @@ jobs:
       IMAGE: ghcr.io/jam-sw/instantnotes-server
     steps:
       - uses: actions/checkout@v7
+      - run: echo "$HOME/.local/bin:$HOME/.cargo/bin:$(ls -d "$HOME"/.local/share/nvm/v*/bin | sort -V | tail -1)" >> "$GITHUB_PATH"
       - run: |
           mkdir -p "$RUNNER_TEMP/docker" && echo '{}' > "$RUNNER_TEMP/docker/config.json"
           echo "DOCKER_CONFIG=$RUNNER_TEMP/docker" >> "$GITHUB_ENV"
@@ -143,6 +148,7 @@ jobs:
       VERSION: ${{ needs.plan.outputs.version }}
     steps:
       - uses: actions/checkout@v7
+      - run: echo "$HOME/.local/bin:$HOME/.cargo/bin:$(ls -d "$HOME"/.local/share/nvm/v*/bin | sort -V | tail -1)" >> "$GITHUB_PATH"
       - run: node .github/release-manifest.mjs "$VERSION"
       - if: always()
         run: instantnotes-prune
