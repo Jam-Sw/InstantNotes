@@ -37,6 +37,7 @@ const BODY_LIMIT: usize = 32 * 1024 * 1024;
 const KEEPALIVE: Duration = Duration::from_secs(15);
 const IDLE_SWEEP: Duration = Duration::from_secs(60);
 const SYNC_TICK: Duration = Duration::from_secs(1);
+const SIGN_IN_NOTES: usize = 400;
 
 pub(crate) fn log(event: &str, fields: &[(&str, &str)]) {
     let mut line = String::from(event);
@@ -319,8 +320,9 @@ async fn callback(State(state): State<AppState>, Query(q): Query<CallbackQuery>)
                 "auth.signed_in",
                 &[("library", &libraries::folder_name(&person.sub))],
             );
+            let sizes = note_sizes(&state, &person.sub);
             let id = state.sessions.create(person);
-            let mut response = statics::html(StatusCode::OK, statics::SIGNED_IN.to_string());
+            let mut response = statics::html(StatusCode::OK, statics::signed_in(&sizes));
             response.headers_mut().insert(
                 header::SET_COOKIE,
                 cookie(&state, &id, Some(state.sessions.ttl())),
@@ -332,6 +334,21 @@ async fn callback(State(state): State<AppState>, Query(q): Query<CallbackQuery>)
             statics::html(StatusCode::BAD_REQUEST, statics::error_page(&e))
         }
     }
+}
+
+fn note_sizes(state: &AppState, sub: &str) -> Vec<usize> {
+    state
+        .libraries
+        .with(sub, |lib| {
+            Ok(lib
+                .store
+                .list_notes(instantnotes_core::types::NoteFilter::default())?
+                .iter()
+                .take(SIGN_IN_NOTES)
+                .map(|n| n.title.chars().count() + n.body.chars().count())
+                .collect())
+        })
+        .unwrap_or_default()
 }
 
 async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Response {

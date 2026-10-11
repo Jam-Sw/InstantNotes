@@ -100,7 +100,10 @@ async fn healthz_and_sign_in_page_need_no_session() {
     assert_eq!(anon.get("/healthz").await.status(), 200);
     let home = anon.get("/").await;
     assert_eq!(home.status(), 200);
-    assert!(home.text().await.unwrap().contains("/auth/login"));
+    let page = home.text().await.unwrap();
+    assert!(page.contains("/auth/login"));
+    assert!(page.contains(r#"id="signin-data">{"notes":48}</script>"#));
+    assert!(!page.contains("signin:done\",{detail"));
     let (status, body) = anon.call("list_notes", json!({})).await;
     assert_eq!(status, 401);
     assert_eq!(body["code"], "UNAUTHORIZED");
