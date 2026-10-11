@@ -1,0 +1,106 @@
+src-tauri/server/Cargo.toml
+  s_5b5638c1c85e81::t_452aa5506c07e4 20
+  s_5b5638c1c85e81::t_c178a6c42ad962 1-19,21-29
+src-tauri/server/src/config.rs
+  s_5b5638c1c85e81::t_a89c843b33ac99 1-68
+src/lib/agreements.svelte.ts
+  s_5b5638c1c85e81::t_6baa8400673b63 2-3,71-82,86-89,97
+src/lib/commands.ts
+  s_5b5638c1c85e81::t_6baa8400673b63 10,134,188-193
+src/lib/api/runtime.ts
+  s_5b5638c1c85e81::t_6baa8400673b63 1-3,5-6
+  s_5b5638c1c85e81::t_1b3f569a355920 4
+src/lib/components/settings/SettingsImages.svelte
+  s_5b5638c1c85e81::t_6baa8400673b63 3,154-156
+src/lib/stores/updater.svelte.ts
+  s_5b5638c1c85e81::t_6baa8400673b63 3,51
+src-tauri/server/src/libraries.rs
+  s_5b5638c1c85e81::t_39b601890f1f3f 77-80
+  s_5b5638c1c85e81::t_a89c843b33ac99 1-76,81-151
+src/lib/components/LicenseNote.svelte
+  s_5b5638c1c85e81::t_6baa8400673b63 3,19
+src/lib/stores/agents.svelte.ts
+  s_5b5638c1c85e81::t_6baa8400673b63 1,11,70
+src/lib/stores/library.svelte.ts
+  s_5b5638c1c85e81::t_6baa8400673b63 43,62,209
+src-tauri/server/src/events.rs
+  s_5b5638c1c85e81::t_a89c843b33ac99 1-53
+src/lib/components/WelcomeScreen.svelte
+  s_5b5638c1c85e81::t_6baa8400673b63 7,60
+src-tauri/server/src/statics.rs
+  s_5b5638c1c85e81::t_39b601890f1f3f 49-52,54-79,93-97,104,120-122
+  s_5b5638c1c85e81::t_33a27fa202c50d 1-48,53,80-92,98-103,105-119,123-162
+src-tauri/server/src/api.rs
+  s_5b5638c1c85e81::t_39b601890f1f3f 78,165-167,262-265,322-324
+  s_5b5638c1c85e81::t_cfe4b0a0bfb48e 1-77,79-164,168-261,266-321,325-399
+src-tauri/src/main.rs
+  s_5b5638c1c85e81::t_b5796d0ab75296 7-9
+src/lib/stores/theme.svelte.ts
+  s_5b5638c1c85e81::t_6baa8400673b63 2,98,116
+src/lib/components/settings/SettingsVault.svelte
+  s_5b5638c1c85e81::t_6baa8400673b63 6
+src-tauri/server/tests/isolation_test.rs
+  s_5b5638c1c85e81::t_6a4b3de14174d8 1-102,111-112,117-119,123,129-143,148-152,157-173,178-184,193-204,217-221,233-251,256-274
+  s_5b5638c1c85e81::t_39b601890f1f3f 103-110,113-116,120-122,124-128,144-147,153-156,174-177,185-192,205-216,222-232,252-255
+  s_5b5638c1c85e81::t_be4d8020406c8c 275-291,296,302-306,311,317-324
+  s_5b5638c1c85e81::t_8ca53f6c336ab0 292-295,297-301,307-310,312-316
+src/lib/components/NoteList.svelte
+  s_5b5638c1c85e81::t_6baa8400673b63 7,312
+src-tauri/server/src/main.rs
+  s_5b5638c1c85e81::t_b5796d0ab75296 1,7-8
+  s_5b5638c1c85e81::t_39b601890f1f3f 2-6
+src/lib/api/client.ts
+  s_5b5638c1c85e81::t_6baa8400673b63 2-3,57-86,92,99-100,183-189,230-242
+Dockerfile
+  s_5b5638c1c85e81::t_7cfcbd755fd2a3 18
+  s_5b5638c1c85e81::t_f6e88431256e68 1-17,19-31
+src-tauri/Cargo.toml
+  s_5b5638c1c85e81::t_c178a6c42ad962 2,27
+src/lib/components/NoteEditor.svelte
+  s_5b5638c1c85e81::t_6baa8400673b63 16,156-165,178-187
+src-tauri/server/src/sessions.rs
+  s_5b5638c1c85e81::t_39b601890f1f3f 122-125
+  s_5b5638c1c85e81::t_a89c843b33ac99 1-121,126-127
+src/lib/components/SettingsView.svelte
+  s_5b5638c1c85e81::t_6baa8400673b63 17,62-65,99-105
+src/lib/api/events.ts
+  s_5b5638c1c85e81::t_1b3f569a355920 29
+  s_5b5638c1c85e81::t_6baa8400673b63 1-28,30-44
+src-tauri/server/src/oidc.rs
+  s_5b5638c1c85e81::t_33a27fa202c50d 1-204,211-219
+  s_5b5638c1c85e81::t_39b601890f1f3f 205-210
+src/lib/components/GraphView.svelte
+  s_5b5638c1c85e81::t_6baa8400673b63 12
+.dockerignore
+  s_5b5638c1c85e81::t_1b3f569a355920 1-18
+CHANGELOG.md
+  s_5b5638c1c85e81::t_7cfcbd755fd2a3 11-22
+src/routes/+page.svelte
+  s_5b5638c1c85e81::t_6baa8400673b63 4-6,31,85-86,194
+src/lib/editor/index.ts
+  s_5b5638c1c85e81::t_6baa8400673b63 5,46
+src-tauri/server/src/lib.rs
+  s_5b5638c1c85e81::t_39b601890f1f3f 123-126,172-179,284,377,385-387,396
+  s_5b5638c1c85e81::t_b5796d0ab75296 1-122,127-171,180-283,285-376,378-384,388-395,397-459
+.github/workflows/release.yml
+  s_5b5638c1c85e81::t_7cfcbd755fd2a3 10,119-133
+  s_5b5638c1c85e81::t_dc59e6bcdd5241 134
+src-tauri/Cargo.lock
+  s_5b5638c1c85e81::t_c278f1103a84bb 225-297,524-525,562-578,591-599,1237-1242,1453,1456,1478,1481-1482,1763-1768,1791,2034,2076-2093,2276-2285,2436-2441,2453-2458,3102-3110,3194-3250,3272-3326,3421,3427,3539,3566,3603,3827-3837,3867-3878,4775,4777,4781-4791,4802-4813,6015-6034
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "be4400bbe6eec12d7e5dbbf0c430a0a8293dd800",
+  "prompts": {},
+  "sessions": {
+    "s_5b5638c1c85e81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "710326b9-77a6-4a80-9877-993e4c47d608",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
