@@ -17,6 +17,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Web mode: with `INSTANTNOTES_VAULT_ROOT` set, each person's library syncs with
   `<INSTANTNOTES_VAULT_ROOT>/<sub>` like any other device (first cycle before the first request, then every 5 s
   while open), and changes reach open pages as `notes:changed` and `vault:synced`. Unset, nothing changes.
+- Web mode: new sign-in page (`statics::SIGN_IN`); after sign-in `statics::signed_in` shows the person's notes (up to
+  `SIGN_IN_NOTES` = 400, sized by title and body length) as the field and hands off once the library is open.
 - `confirm_vault_removals`, `vault:synced { noteIds }`; `get_vault_status` adds `transport`, `reachable`,
   `unreachable`, `lastSyncedAt`, `heldRemovals`, `conflicts`.
 
