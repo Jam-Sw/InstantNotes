@@ -1,4 +1,4 @@
-import { listen } from "@tauri-apps/api/event";
+import { isWeb } from "$lib/api/runtime";
 import {
   clearAgentActivity,
   getAgentConnection,
@@ -8,7 +8,7 @@ import {
   revertAgentActivity,
   setSetting,
 } from "$lib/api/client";
-import { EVENTS } from "$lib/api/events";
+import { EVENTS, listen } from "$lib/api/events";
 import { friendlyError } from "$lib/errors";
 import { toasts } from "$lib/stores/toasts.svelte";
 import {
@@ -67,6 +67,7 @@ class AgentsStore {
   async init(): Promise<void> {
     if (this.#loaded) return;
     this.#loaded = true;
+    if (isWeb) return;
     await listen<unknown>(EVENTS.LIBRARY_EXTERNAL_CHANGE, (e) => {
       this.play(parseActivityLog(e.payload));
     });

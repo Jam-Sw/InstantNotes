@@ -1,10 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { listen } from "@tauri-apps/api/event";
   import { exportVaultToFolder } from "$lib/vault-export";
   import { chooseVaultFolder, describeVaultReport } from "$lib/vault-mirror";
   import { getVaultStatus, setVaultFolder, verifyVault } from "$lib/api/client";
-  import { EVENTS } from "$lib/api/events";
+  import { EVENTS, listen } from "$lib/api/events";
   import type { VaultStatus } from "$lib/api/types";
   import { toasts } from "$lib/stores/toasts.svelte";
   import PrefRow from "$lib/components/settings/PrefRow.svelte";

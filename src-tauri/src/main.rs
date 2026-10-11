@@ -4,6 +4,9 @@ fn main() {
     if let Some(code) = instantnotes_agents::run_from_args(std::env::args_os().skip(1)) {
         std::process::exit(code);
     }
+    if let Some(code) = instantnotes_server::run_from_args(std::env::args_os().skip(1)) {
+        std::process::exit(code);
+    }
 
     #[cfg(target_os = "linux")]
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {

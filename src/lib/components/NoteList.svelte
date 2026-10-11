@@ -4,6 +4,7 @@
   import { clientLabel } from "$lib/agent-activity";
   import { formatDate, formatExact, preview, sheetPreview } from "$lib/format";
   import { captureShortcut, modKey, shiftKey } from "$lib/platform";
+  import { isWeb } from "$lib/api/runtime";
   import { parseHighlightSegments } from "$lib/highlight";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
@@ -308,7 +309,7 @@
   />
 {/if}
 
-{#if rowMenu}
+{#if rowMenu && !isWeb}
   {@const id = rowMenu.id}
   <ContextMenu
     x={rowMenu.x}

@@ -1,5 +1,5 @@
 [workspace]
-members = ["core", "agents"]
+members = ["core", "agents", "server"]
 resolver = "2"
 
 [package]
@@ -24,6 +24,7 @@ tauri-plugin-opener = "2"
 tauri-plugin-single-instance = "2"
 instantnotes-core = { path = "core" }
 instantnotes-agents = { path = "agents" }
+instantnotes-server = { path = "server" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 uuid = { version = "1", features = ["v4"] }

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { isWeb } from "$lib/api/runtime";
   import { imagePrefs, IMAGE_HEIGHT_RANGE, type ImageStorage } from "$lib/stores/images.svelte";
   import {
     getLibraryStats,
@@ -150,7 +151,9 @@
       <span class="attach-path" title={attachmentsDir}>{attachmentsDir || "-"}</span>
     </div>
     <div class="attach-actions">
-      <button class="folder-btn" onclick={openFolder}>Open attachments folder</button>
+      {#if !isWeb}
+        <button class="folder-btn" onclick={openFolder}>Open attachments folder</button>
+      {/if}
       <button class="folder-btn" disabled={!unused?.count || removing} onclick={removeUnused}>
         Remove unused…
       </button>

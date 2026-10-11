@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { listen } from "@tauri-apps/api/event";
   import {
     addNoteToWorkspace,
     dismissSpaceSuggestion,
@@ -10,7 +9,7 @@
     spaceSuggestions,
   } from "$lib/api/client";
   import type { SpaceSuggestion } from "$lib/api/types";
-  import { LIBRARY_CHANGED_EVENTS } from "$lib/api/events";
+  import { LIBRARY_CHANGED_EVENTS, listen } from "$lib/api/events";
   import { library } from "$lib/stores/library.svelte";
   import { agents } from "$lib/stores/agents.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";

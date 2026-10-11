@@ -2,6 +2,7 @@ import { keymap } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
 import { markdownKeymap } from "@codemirror/lang-markdown";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { isWeb } from "$lib/api/runtime";
 
 import { previewKernel } from "./kernel";
 import { CaretGuard } from "./caret";
@@ -42,7 +43,7 @@ export function editorKernel(opts: EditorKernelOpts): Extension {
       new QuoteSpec(),
       new HrSpec(),
       new TaskSpec(),
-      new ImageSpec(opts.convertSrc ?? convertFileSrc),
+      new ImageSpec(opts.convertSrc ?? (isWeb ? (path) => path : convertFileSrc)),
     ],
     textSpecs: [new TagSpec()],
     rescanOn: [linkPrefsField, attachmentsBaseField],

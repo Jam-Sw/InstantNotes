@@ -1,0 +1,29 @@
+[package]
+name = "instantnotes-server"
+version = "0.9.5"
+description = "InstantNotes headless web mode: the core behind an HTTP API and the static UI. No Tauri."
+edition = "2021"
+
+[lib]
+name = "instantnotes_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "instantnotes-server"
+path = "src/main.rs"
+
+[dependencies]
+instantnotes-core = { path = "../core" }
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "query"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "fs", "signal"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "form"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rand = "0.9"
+base64 = "0.22"
+sha2 = "0.11"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"

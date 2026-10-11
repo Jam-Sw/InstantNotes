@@ -1,5 +1,6 @@
 <script lang="ts">
   import { quitApp } from "$lib/api/client";
+  import { isWeb } from "$lib/api/runtime";
   import { agreements } from "$lib/agreements.svelte";
   import { licenseSpace } from "$lib/stores/license-space.svelte";
 
@@ -15,7 +16,7 @@
     <div class="license-text" tabindex="0" role="document">{doc.text}</div>
     <footer class="license-foot">
       <p class="muted">{agreements.copy.lead}</p>
-      <button class="btn" onclick={() => void quitApp()}>{agreements.copy.decline}</button>
+      <button class="btn" onclick={() => (isWeb ? location.assign("/auth/logout") : void quitApp())}>{agreements.copy.decline}</button>
       {#if agreed}
         <span class="agreed">✓ {agreements.copy.agreed}</span>
       {:else}

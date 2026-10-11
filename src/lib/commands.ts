@@ -7,6 +7,7 @@ import { confirmConvertToWhiteboard } from "$lib/whiteboard/convert";
 import { exportTheme, importTheme } from "$lib/themes/share";
 import { BODY_FONTS } from "$lib/themes/fonts";
 import { modKey, shiftKey } from "$lib/platform";
+import { isWeb } from "$lib/api/runtime";
 import { isSyntheticNoteId } from "$lib/synthetic";
 import type { Command } from "$lib/command-filter";
 
@@ -130,7 +131,7 @@ export function buildCommands(): Command[] {
         },
       },
     );
-    if (!n.isDeleted && !isSyntheticNoteId(n.id)) {
+    if (!isWeb && !n.isDeleted && !isSyntheticNoteId(n.id)) {
       const out = library.isSticky(n.id);
       commands.push({
         id: "note.sticky",
@@ -183,9 +184,13 @@ export function buildCommands(): Command[] {
       group: "Theme",
       run: () => theme.setMode("auto"),
     },
-    { id: "theme.import", title: "Import theme…", group: "Theme", run: () => void importTheme() },
-    { id: "theme.export", title: "Export current theme…", group: "Theme", run: () => void exportTheme() },
   );
+  if (!isWeb) {
+    commands.push(
+      { id: "theme.import", title: "Import theme…", group: "Theme", run: () => void importTheme() },
+      { id: "theme.export", title: "Export current theme…", group: "Theme", run: () => void exportTheme() },
+    );
+  }
 
   return commands;
 }

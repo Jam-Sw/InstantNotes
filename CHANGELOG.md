@@ -8,6 +8,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.9.5]
+### Added
+- `instantnotes serve`: a headless web mode (no window, no Tauri) serving the UI and a `POST /api/<command>`
+  allow list, an SSE change stream at `/api/events`, OIDC sign-in (PKCE, `/auth/login`, `/auth/callback`,
+  `/auth/logout`) and one library per `sub` under `INSTANTNOTES_DATA_DIR/libraries/<sub>/`, closed after 10 min
+  idle. Configured by `INSTANTNOTES_LISTEN`, `_DATA_DIR`, `_PUBLIC_URL`, `_OIDC_ISSUER`, `_OIDC_CLIENT_ID`,
+  `_OIDC_CLIENT_SECRET`, `_UI_DIR`.
+- Release workflow builds and pushes `ghcr.io/jam-sw/instantnotes-server:<version>` (`Dockerfile`, distroless,
+  uid 1000, read-only root).
+- Web UI: `call()` posts to `/api/<command>` and `listen()` reads the SSE stream when the page carries
+  `<meta name="instantnotes-runtime" content="web">`; stickies, vault, agents, feedback, updater, file dialogs
+  and window commands are hidden there. License acceptance is stored in the person's library.
+
 ### Fixed
 - "Library too new" offers Update (opens the in-app updater) or Quit instead of exiting on OK; closing the
   window quits.

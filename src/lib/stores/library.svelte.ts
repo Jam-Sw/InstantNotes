@@ -40,7 +40,7 @@ import type {
 } from "$lib/api/types";
 import { debounce } from "$lib/debounce";
 import { ERROR_CODES } from "$lib/api/error-codes";
-import { EVENTS } from "$lib/api/events";
+import { EVENTS, listen } from "$lib/api/events";
 import { friendlyError, SAVE_CONFLICT_MESSAGE } from "$lib/errors";
 import { isSyntheticNoteId, isSyntheticSpaceId } from "$lib/synthetic";
 import {
@@ -59,7 +59,7 @@ import { announceOverwrite } from "$lib/stores/agents.svelte";
 import { mayHaveWritten, parseActivityLog, type AgentActivity } from "$lib/agent-activity";
 import { boardFromText } from "$lib/whiteboard/excalidraw";
 import { appendRows, parseSheet, serializeSheet } from "$lib/sheet/model";
-import { listen } from "@tauri-apps/api/event";
+import { isWeb } from "$lib/api/runtime";
 
 export type { StatusFilter } from "$lib/stores/library/navigation.svelte";
 
@@ -206,6 +206,7 @@ class LibraryStore {
   }
 
   async refreshStickies(): Promise<void> {
+    if (isWeb) return;
     try {
       const next = new Set(await listStickies());
       const returned = [...this.stickyIds].filter((id) => !next.has(id));

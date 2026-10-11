@@ -1,5 +1,6 @@
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { installUpdate, restartApp } from "$lib/api/client";
+import { isWeb } from "$lib/api/runtime";
 import { toasts } from "$lib/stores/toasts.svelte";
 import { fetchUpdateSizeDelta } from "$lib/update/release-size";
 
@@ -47,7 +48,7 @@ class UpdaterStore {
   }
 
   start() {
-    if (this.#timer) return;
+    if (isWeb || this.#timer) return;
     this.#timer = setInterval(() => void this.checkNow(), RECHECK_INTERVAL_MS);
     this.#firstCheck = setTimeout(() => void this.checkNow(), FIRST_CHECK_DELAY_MS);
   }
