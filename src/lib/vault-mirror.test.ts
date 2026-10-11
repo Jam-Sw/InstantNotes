@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { open } from "@tauri-apps/plugin-dialog";
-import { chooseVaultFolder, describeVaultReport } from "./vault-mirror";
+import {
+  chooseVaultFolder,
+  describeVaultReport,
+  describeVaultStatus,
+  parseVaultSynced,
+} from "./vault-mirror";
+import type { VaultStatus } from "$lib/api/types";
 import type { VaultReport } from "$lib/api/types";
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
@@ -79,5 +85,53 @@ describe("describeVaultReport", () => {
       "5 files are not notes InstantNotes wrote: 1.md, 2.md, 3.md and 2 more",
       "instantnotes.yaml does not match your tags and Spaces.",
     ]);
+  });
+});
+
+describe("parseVaultSynced", () => {
+  it("reads the note ids and drops anything else", () => {
+    expect(parseVaultSynced({ noteIds: ["a", 2, "b"] })).toEqual(["a", "b"]);
+    expect(parseVaultSynced(null)).toEqual([]);
+    expect(parseVaultSynced({ noteIds: "a" })).toEqual([]);
+  });
+});
+
+describe("describeVaultStatus", () => {
+  const status = (over: Partial<VaultStatus>): VaultStatus => ({
+    path: "/mnt/kel/notes",
+    transport: "folder",
+    reachable: true,
+    unreachable: null,
+    pending: 0,
+    lastError: null,
+    lastFlushedAt: null,
+    lastSyncedAt: null,
+    heldRemovals: 0,
+    conflicts: 0,
+    ...over,
+  });
+
+  it("puts being offline before anything else", () => {
+    expect(
+      describeVaultStatus(
+        status({ reachable: false, unreachable: "cannot list", lastError: "x", pending: 1 }),
+      ),
+    ).toEqual({ line: "Offline: cannot list. 1 note will sync when it's back.", tone: "warn" });
+  });
+
+  it("then held removals, then errors, then work in flight", () => {
+    expect(describeVaultStatus(status({ heldRemovals: 1, lastError: "x" })).line).toBe(
+      "Waiting: 1 note went missing from the folder at once.",
+    );
+    expect(describeVaultStatus(status({ lastError: "x", pending: 2 }))).toEqual({
+      line: "Problem: x",
+      tone: "warn",
+    });
+    expect(describeVaultStatus(status({ pending: 2 }))).toEqual({
+      line: "Syncing 2 notes…",
+      tone: "busy",
+    });
+    expect(describeVaultStatus(status({})).line).toBe("Up to date");
+    expect(describeVaultStatus(status({ path: null })).line).toBe("");
   });
 });

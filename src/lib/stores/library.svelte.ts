@@ -57,6 +57,7 @@ import {
 import { toasts } from "$lib/stores/toasts.svelte";
 import { announceOverwrite } from "$lib/stores/agents.svelte";
 import { mayHaveWritten, parseActivityLog, type AgentActivity } from "$lib/agent-activity";
+import { parseVaultSynced } from "$lib/vault-mirror";
 import { boardFromText } from "$lib/whiteboard/excalidraw";
 import { appendRows, parseSheet, serializeSheet } from "$lib/sheet/model";
 import { isWeb } from "$lib/api/runtime";
@@ -189,6 +190,10 @@ class LibraryStore {
       listen(EVENTS.STICKIES_CHANGED, () => void this.refreshStickies()),
       listen<unknown>(EVENTS.LIBRARY_EXTERNAL_CHANGE, (e) => {
         void this.#adoptExternal(parseActivityLog(e.payload));
+      }),
+      listen<unknown>(EVENTS.VAULT_SYNCED, (e) => {
+        const open = this.selected;
+        if (open && parseVaultSynced(e.payload).includes(open.id)) void this.#adoptExternalNote(open);
       }),
     ]);
     await Promise.all([
@@ -896,12 +901,11 @@ class LibraryStore {
 
   async #adoptExternal(entries: AgentActivity[]): Promise<void> {
     const open = this.selected;
-    if (!open || isSyntheticNoteId(open.id) || open.contentKind === "whiteboard") return;
-    if (!mayHaveWritten(entries, open.id)) return;
-    await this.#adoptExternalNote(open);
+    if (open && mayHaveWritten(entries, open.id)) await this.#adoptExternalNote(open);
   }
 
   async #adoptExternalNote(open: Note): Promise<void> {
+    if (isSyntheticNoteId(open.id) || open.contentKind === "whiteboard") return;
     if (open.contentKind === "sheet") return this.#adoptExternalSheet(open.id);
     const shown = open.body;
     const fresh = await this.#saveQueue.readExternal(

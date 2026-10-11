@@ -18,10 +18,10 @@ Usage: See the [plugin's readme](https://github.com/jamubc/toolbox/tree/main/plu
 - **Quick Capture:** Global hotkey (`Opt` / `Ctrl+Shift+Space`) with drafts.
 - **Command Palette:** `Cmd/Ctrl+P` for actions, search, and themes.
 - **Flexible Organization:** Group notes with Spaces and `#inline` tags instead of strict folders.
-- **Plain Markdown Vault:** Keep a live copy of every note as a Markdown file in a folder you choose, readable in any editor.
+- **Plain Markdown Vault and Sync:** Keep every note as a Markdown file in a folder you choose, readable in any editor. Point several devices at the same folder (a network drive, Syncthing, Dropbox) and they stay in sync; edits made in the folder come back in.
 - **Agents, on your terms:** Connect Claude Code, Codex, or Cursor over MCP (Settings > Agents). Off until you turn it on; what an agent reads or changes lights up as it happens, every call is traced, and every change can be reverted.
 - **Themes:** Eight built-in themes with live previews, light and dark, shareable as files.
-- **100% Local & Private:** Everything lives in a local SQLite database. Zero telemetry.
+- **100% Local & Private:** Your library lives in a local SQLite database, and in the vault folder if you set one. No server, zero telemetry.
 
 ## Installation
 > The builds are unsigned, You will likely be prompted on first launch.

@@ -54,6 +54,7 @@ export const EVENTS = {
   UPDATER_CHECK: "updater:check",
   SHORTCUT_FAILED: "shortcut:failed",
   VAULT_STATUS: "vault:status",
+  VAULT_SYNCED: "vault:synced",
   APP_QUIT_REQUESTED: "app:quit-requested",
   CAPTURE_SHOWN: "capture:shown",
   MENU_TOGGLE_STICKY: "menu:toggle-sticky",

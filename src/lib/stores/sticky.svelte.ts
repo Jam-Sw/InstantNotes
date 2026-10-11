@@ -104,8 +104,12 @@ export class StickyNote {
 
   async adoptExternal(entries: AgentActivity[]): Promise<void> {
     const open = this.note;
-    if (!open || this.gone || open.contentKind === "whiteboard") return;
-    if (!mayHaveWritten(entries, open.id)) return;
+    if (open && mayHaveWritten(entries, open.id)) await this.adoptSynced([open.id]);
+  }
+
+  async adoptSynced(ids: string[]): Promise<void> {
+    const open = this.note;
+    if (!open || !ids.includes(open.id) || this.gone || open.contentKind === "whiteboard") return;
     if (open.contentKind === "sheet") {
       const taken = await this.#queue.readExternalSheet(
         open.id,

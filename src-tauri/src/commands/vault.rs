@@ -59,10 +59,17 @@ pub fn set_vault_folder(
             .map_err(CmdError::storage)?;
     }
     locked(&state)?.configure_vault(path.as_deref().map(std::path::Path::new))?;
-    if path.is_some() {
-        let _ = mirror_attachments(&app);
-        request_vault_flush(&app);
-    }
+    request_vault_sync(&app);
+    Ok(locked(&state)?.vault_status()?)
+}
+
+#[tauri::command(async)]
+pub fn confirm_vault_removals(
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> CmdResult<VaultStatus> {
+    locked(&state)?.confirm_vault_removals()?;
+    request_vault_sync(&app);
     Ok(locked(&state)?.vault_status()?)
 }
 

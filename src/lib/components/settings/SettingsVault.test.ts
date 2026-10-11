@@ -3,7 +3,12 @@ import { render, fireEvent, cleanup, waitFor } from "@testing-library/svelte";
 import SettingsVault from "./SettingsVault.svelte";
 import { exportVaultToFolder } from "$lib/vault-export";
 import { chooseVaultFolder } from "$lib/vault-mirror";
-import { getVaultStatus, setVaultFolder, verifyVault } from "$lib/api/client";
+import {
+  confirmVaultRemovals,
+  getVaultStatus,
+  setVaultFolder,
+  verifyVault,
+} from "$lib/api/client";
 import { toasts } from "$lib/stores/toasts.svelte";
 import type { VaultStatus } from "$lib/api/types";
 
@@ -18,15 +23,35 @@ vi.mock("$lib/api/client", () => ({
   getVaultStatus: vi.fn(),
   setVaultFolder: vi.fn(),
   verifyVault: vi.fn(),
+  confirmVaultRemovals: vi.fn(),
 }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(() => Promise.resolve(() => {})),
 }));
 
-const OFF: VaultStatus = { path: null, pending: 0, lastError: null, lastFlushedAt: null };
+const OFF: VaultStatus = {
+  path: null,
+  transport: null,
+  reachable: false,
+  unreachable: null,
+  pending: 0,
+  lastError: null,
+  lastFlushedAt: null,
+  lastSyncedAt: null,
+  heldRemovals: 0,
+  conflicts: 0,
+};
 
 function on(overrides: Partial<VaultStatus> = {}): VaultStatus {
-  return { path: "/Users/me/Vault", pending: 0, lastError: null, lastFlushedAt: "t", ...overrides };
+  return {
+    ...OFF,
+    path: "/Users/me/Vault",
+    transport: "folder",
+    reachable: true,
+    lastFlushedAt: "t",
+    lastSyncedAt: "2026-10-07T12:00:00.000000Z",
+    ...overrides,
+  };
 }
 
 afterEach(cleanup);
@@ -37,6 +62,7 @@ beforeEach(() => {
   vi.mocked(getVaultStatus).mockReset().mockResolvedValue(OFF);
   vi.mocked(setVaultFolder).mockReset();
   vi.mocked(verifyVault).mockReset();
+  vi.mocked(confirmVaultRemovals).mockReset();
   toasts.items = [];
 });
 
@@ -44,7 +70,7 @@ describe("SettingsVault live mirror", () => {
   it("offers to choose a folder while mirroring is off", async () => {
     const { findByRole, queryByRole } = render(SettingsVault);
     expect(await findByRole("button", { name: /Choose folder/ })).toBeTruthy();
-    expect(queryByRole("button", { name: /Stop mirroring/ })).toBeNull();
+    expect(queryByRole("button", { name: /Stop syncing/ })).toBeNull();
   });
 
   it("starts mirroring into the picked folder", async () => {
@@ -56,7 +82,7 @@ describe("SettingsVault live mirror", () => {
 
     expect(setVaultFolder).toHaveBeenCalledWith("/Users/me/Vault");
     expect(await findByText("/Users/me/Vault")).toBeTruthy();
-    expect(await findByText(/Writing 12 notes/)).toBeTruthy();
+    expect(await findByText(/Syncing 12 notes/)).toBeTruthy();
   });
 
   it("does nothing when the folder picker is cancelled", async () => {
@@ -87,18 +113,42 @@ describe("SettingsVault live mirror", () => {
     expect(await findByText(/Up to date/)).toBeTruthy();
   });
 
-  it("explains a missing folder as paused, not failed", async () => {
+  it("explains a missing folder as offline, with the changes waiting for it", async () => {
     vi.mocked(getVaultStatus).mockResolvedValue(
-      on({ pending: 3, lastError: "vault folder not found: /Volumes/USB/Vault" }),
+      on({ reachable: false, pending: 3, unreachable: "vault folder not found: /Volumes/USB/Vault" }),
     );
     const { findByText } = render(SettingsVault);
-    expect(await findByText(/Paused: the folder can't be found/)).toBeTruthy();
+    expect(await findByText(/Offline: the folder can't be found. 3 notes will sync/)).toBeTruthy();
   });
 
-  it("shows any other error as paused with its message", async () => {
+  it("explains an empty mount point as an unmounted drive", async () => {
+    vi.mocked(getVaultStatus).mockResolvedValue(
+      on({ reachable: false, unreachable: "vault folder has no instantnotes.yaml: /mnt/kel" }),
+    );
+    const { findByText } = render(SettingsVault);
+    expect(await findByText(/check that it's mounted/)).toBeTruthy();
+  });
+
+  it("shows any other error as a problem with its message", async () => {
     vi.mocked(getVaultStatus).mockResolvedValue(on({ lastError: "note x: disk full" }));
     const { findByText } = render(SettingsVault);
-    expect(await findByText(/Paused: note x: disk full/)).toBeTruthy();
+    expect(await findByText(/Problem: note x: disk full/)).toBeTruthy();
+  });
+
+  it("holds a mass removal until the user moves the notes to the Trash", async () => {
+    vi.mocked(getVaultStatus).mockResolvedValue(on({ heldRemovals: 40 }));
+    vi.mocked(confirmVaultRemovals).mockResolvedValue(on());
+    const { findByRole, findByText } = render(SettingsVault);
+    expect(await findByText(/40 notes went missing/)).toBeTruthy();
+    await fireEvent.click(await findByRole("button", { name: /Move 40 notes to Trash/ }));
+    expect(confirmVaultRemovals).toHaveBeenCalled();
+    expect(await findByText(/Up to date/)).toBeTruthy();
+  });
+
+  it("counts conflicts kept as copies", async () => {
+    vi.mocked(getVaultStatus).mockResolvedValue(on({ conflicts: 2 }));
+    const { findByText } = render(SettingsVault);
+    expect(await findByText(/2 notes changed in two places/)).toBeTruthy();
   });
 
   it("stops mirroring and returns to the off state", async () => {
@@ -106,7 +156,7 @@ describe("SettingsVault live mirror", () => {
     vi.mocked(setVaultFolder).mockResolvedValue(OFF);
     const { findByRole } = render(SettingsVault);
 
-    await fireEvent.click(await findByRole("button", { name: /Stop mirroring/ }));
+    await fireEvent.click(await findByRole("button", { name: /Stop syncing/ }));
 
     expect(setVaultFolder).toHaveBeenCalledWith(null);
     expect(await findByRole("button", { name: /Choose folder/ })).toBeTruthy();

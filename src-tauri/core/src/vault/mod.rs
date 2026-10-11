@@ -3,20 +3,31 @@ pub mod manifest;
 pub mod mirror;
 pub mod naming;
 pub mod parse;
+pub mod reconcile;
+pub mod scan;
 pub mod serialize;
 pub mod surface;
+pub mod sync;
+pub mod transport;
 pub mod write;
 
 pub use export::{collect_from_store, export_vault};
-pub use manifest::{parse_manifest, serialize_manifest, Manifest, ManifestSpace, ManifestTag};
+pub use manifest::{
+    merge_manifest, parse_manifest, serialize_manifest, Manifest, ManifestSpace, ManifestTag,
+};
 pub use mirror::{check_vault_location, is_within, FlushOutcome, VaultReport, VaultStatus};
 pub use naming::{candidate_filenames, collision_key, note_filename};
 pub use parse::{parse_note, ParseError};
+pub use scan::{
+    is_vault_root, list_vault, Listing, Stamp, ATTACHMENTS_DIR, MANIFEST_FILE, TRASH_DIR,
+};
 pub use serialize::serialize_note;
 pub use surface::{
-    canvas_file, is_vault_file_name, note_of_surface, same_canvas, same_surface, surface_ext,
-    surface_file, surface_rel, CANVAS_EXT, SHEET_EXT,
+    canvas_file, canvas_surface, is_vault_file_name, note_of_surface, same_canvas, same_surface,
+    surface_ext, surface_file, surface_from_file, surface_rel, CANVAS_EXT, SHEET_EXT,
 };
+pub use sync::{CycleReport, StoreLock, Syncer};
+pub use transport::{Folder, Reach, Transport};
 pub use write::{atomic_write, copy_dir_recursive, copy_missing_files};
 
 use serde::{Deserialize, Serialize};

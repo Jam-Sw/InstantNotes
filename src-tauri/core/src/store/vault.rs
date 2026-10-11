@@ -1,20 +1,28 @@
 use super::*;
+use crate::vault::reconcile::equivalent;
+use crate::vault::transport::{reach, Reach, FOLDER};
 use crate::vault::{
     atomic_write, candidate_filenames, is_vault_file_name, note_of_surface, parse_note,
     same_surface, serialize_manifest, serialize_note, surface_ext, surface_file, surface_rel,
     FlushOutcome, Manifest, ManifestSpace, ManifestTag, VaultNote, VaultReport, VaultStatus,
+    MANIFEST_FILE, TRASH_DIR,
 };
 use sha2::{Digest, Sha256};
 use std::fs;
 
 const VAULT_PATH_SETTING: &str = "vault.path";
-const MANIFEST_FILE: &str = "instantnotes.yaml";
-const TRASH_DIR: &str = "trash";
+const TRANSPORT_SETTING: &str = "vault.transport";
+pub(super) const MANIFEST_BASE_SETTING: &str = "vault.manifestBase";
 
 pub(crate) struct VaultState {
     root: PathBuf,
-    last_error: Option<String>,
+    pub(super) last_error: Option<String>,
     last_flushed_at: Option<String>,
+    pub(super) last_synced_at: Option<String>,
+    pub(super) unreachable: Option<String>,
+    pub(super) held_removals: usize,
+    pub(super) conflicts: usize,
+    pub(super) allow_mass_removal: bool,
 }
 
 impl VaultState {
@@ -23,23 +31,36 @@ impl VaultState {
             root,
             last_error: None,
             last_flushed_at: None,
+            last_synced_at: None,
+            unreachable: None,
+            held_removals: 0,
+            conflicts: 0,
+            allow_mass_removal: false,
         }
     }
 }
 
-fn sha256_hex(bytes: &[u8]) -> String {
+enum Written {
+    Done,
+    Deferred,
+}
+
+pub(super) fn sha256_hex(bytes: &[u8]) -> String {
     Sha256::digest(bytes)
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect()
 }
 
-fn io_error(context: &str, path: &Path, e: std::io::Error) -> AppError {
+pub(super) fn io_error(context: &str, path: &Path, e: std::io::Error) -> AppError {
     AppError::Storage(format!("{context} {}: {e}", path.display()))
 }
 
-fn root_missing(root: &Path) -> AppError {
-    AppError::Storage(format!("vault folder not found: {}", root.display()))
+fn root_unreachable(root: &Path) -> Option<AppError> {
+    match reach(root) {
+        Reach::Ready => None,
+        Reach::Unreachable(why) => Some(AppError::Storage(why)),
+    }
 }
 
 fn same_file(a: &Path, b: &Path) -> bool {
@@ -57,7 +78,7 @@ fn same_file(a: &Path, b: &Path) -> bool {
     }
 }
 
-fn holds_our_bytes(path: &Path, sha: Option<&str>) -> bool {
+pub(super) fn holds_our_bytes(path: &Path, sha: Option<&str>) -> bool {
     match (fs::read(path), sha) {
         (Ok(bytes), Some(sha)) => sha256_hex(&bytes) == sha,
         _ => false,
@@ -84,6 +105,11 @@ impl Store {
                 root.display()
             )));
         }
+        let marker = root.join(MANIFEST_FILE);
+        if !marker.exists() {
+            atomic_write(&marker, serialize_manifest(&Manifest::default()).as_bytes())
+                .map_err(|e| io_error("cannot write", &marker, e))?;
+        }
         let root_str = root.to_string_lossy().into_owned();
         if self.saved_vault_root()?.as_deref() != Some(root_str.as_str()) {
             self.forget_vault_paths()?;
@@ -103,20 +129,39 @@ impl Store {
         self.vault.as_ref().map(|v| v.root.as_path())
     }
 
+    pub fn vault_transport(&self) -> Result<String> {
+        Ok(self
+            .get_setting(TRANSPORT_SETTING)?
+            .and_then(|v| v.as_str().map(str::to_string))
+            .unwrap_or_else(|| FOLDER.to_string()))
+    }
+
     pub fn vault_status(&self) -> Result<VaultStatus> {
         let Some(state) = &self.vault else {
             return Ok(VaultStatus {
                 path: None,
+                transport: None,
+                reachable: false,
+                unreachable: None,
                 pending: 0,
                 last_error: None,
                 last_flushed_at: None,
+                last_synced_at: None,
+                held_removals: 0,
+                conflicts: 0,
             });
         };
         Ok(VaultStatus {
             path: Some(state.root.to_string_lossy().into_owned()),
+            transport: Some(self.vault_transport()?),
+            reachable: state.unreachable.is_none(),
+            unreachable: state.unreachable.clone(),
             pending: self.pending_vault_writes()?,
             last_error: state.last_error.clone(),
             last_flushed_at: state.last_flushed_at.clone(),
+            last_synced_at: state.last_synced_at.clone(),
+            held_removals: state.held_removals,
+            conflicts: state.conflicts,
         })
     }
 
@@ -202,8 +247,8 @@ impl Store {
             .vault_root()
             .ok_or_else(|| AppError::Validation("no vault folder is set".into()))?
             .to_path_buf();
-        if !root.is_dir() {
-            return Err(root_missing(&root));
+        if let Some(e) = root_unreachable(&root) {
+            return Err(e);
         }
         let mut report = VaultReport {
             pending: self.pending_vault_writes()?,
@@ -286,6 +331,10 @@ impl Store {
             [],
         )?;
         tx.execute("DELETE FROM vault_tombstones", [])?;
+        tx.execute(
+            "DELETE FROM settings WHERE key = ?1",
+            params![MANIFEST_BASE_SETTING],
+        )?;
         tx.commit()?;
         Ok(())
     }
@@ -325,8 +374,8 @@ impl Store {
     }
 
     fn flush_into(&mut self, root: &Path, max: usize) -> Result<FlushOutcome> {
-        if !root.is_dir() {
-            return Err(root_missing(root));
+        if let Some(e) = root_unreachable(root) {
+            return Err(e);
         }
         let trash = root.join(TRASH_DIR);
         fs::create_dir_all(&trash).map_err(|e| io_error("cannot create", &trash, e))?;
@@ -378,25 +427,22 @@ impl Store {
         };
         for (id, old) in dirty {
             match self.write_note_file(root, &id, &old) {
-                Ok(()) => out.written += 1,
+                Ok(Written::Done) => out.written += 1,
+                Ok(Written::Deferred) => out.deferred += 1,
                 Err(e) => out.errors.push(format!("note {id}: {e}")),
             }
         }
 
-        let manifest = serialize_manifest(&self.vault_manifest()?);
-        let manifest_path = root.join(MANIFEST_FILE);
-        if fs::read(&manifest_path).ok().as_deref() != Some(manifest.as_bytes()) {
-            if let Err(e) = atomic_write(&manifest_path, manifest.as_bytes()) {
-                out.errors
-                    .push(io_error("cannot write", &manifest_path, e).to_string());
-            }
+        match self.sync_vault_manifest(root) {
+            Ok(changed) => out.manifest_changed = changed,
+            Err(e) => out.errors.push(e.to_string()),
         }
 
         out.remaining = self.pending_vault_writes()?;
         Ok(out)
     }
 
-    fn write_note_file(&mut self, root: &Path, id: &str, old: &WrittenFiles) -> Result<()> {
+    fn write_note_file(&mut self, root: &Path, id: &str, old: &WrittenFiles) -> Result<Written> {
         let note = self.vault_note(id)?;
         let bytes = serialize_note(&note);
         let surface = note.surface.as_deref();
@@ -419,6 +465,16 @@ impl Store {
                 name
             };
             if old_rel == Some(rel.as_str()) {
+                let own = |path: &Path, sha: Option<&str>| {
+                    fs::symlink_metadata(path).is_err() || holds_our_bytes(path, sha)
+                };
+                let surface_own = ext.is_none_or(|ext| {
+                    own(&root.join(surface_rel(&rel, ext)), old.board_sha.as_deref())
+                        || old.board_sha.is_none()
+                });
+                if !own(&root.join(&rel), old.sha.as_deref()) || !surface_own {
+                    return Ok(Written::Deferred);
+                }
                 chosen = Some(rel);
                 break;
             }
@@ -429,7 +485,16 @@ impl Store {
             let adopted = fs::read_to_string(&path)
                 .ok()
                 .and_then(|text| parse_note(&text).ok())
-                .is_some_and(|existing| existing.id == id);
+                .is_some_and(|existing| {
+                    existing.id == id
+                        && equivalent(
+                            &existing,
+                            &VaultNote {
+                                surface: None,
+                                ..note.clone()
+                            },
+                        )
+                });
             let ours = |path: &Path, old: Option<&Path>| {
                 fs::symlink_metadata(path).is_err()
                     || old.is_some_and(|old| same_file(old, path))
@@ -491,6 +556,6 @@ impl Store {
                 id
             ],
         )?;
-        Ok(())
+        Ok(Written::Done)
     }
 }

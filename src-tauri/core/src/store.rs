@@ -655,6 +655,7 @@ mod stats;
 mod suggest;
 mod tags;
 mod vault;
+mod vault_sync;
 mod workspaces;
 
 pub use notes::REVISIT_AFTER_MS;

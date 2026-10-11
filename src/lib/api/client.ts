@@ -264,6 +264,7 @@ export const getVaultStatus = () => call<VaultStatus>("get_vault_status");
 export const setVaultFolder = (path: string | null) =>
   call<VaultStatus>("set_vault_folder", { path });
 export const verifyVault = () => call<VaultReport>("verify_vault");
+export const confirmVaultRemovals = () => call<VaultStatus>("confirm_vault_removals");
 
 export const stickiesLocation = () => call<string | null>("stickies_location");
 export const scanStickies = (folder: string) => call<StickiesScan>("scan_stickies", { folder });

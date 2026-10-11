@@ -1,8 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { exportVaultToFolder } from "$lib/vault-export";
-  import { chooseVaultFolder, describeVaultReport } from "$lib/vault-mirror";
-  import { getVaultStatus, setVaultFolder, verifyVault } from "$lib/api/client";
+  import { chooseVaultFolder, describeVaultReport, describeVaultStatus } from "$lib/vault-mirror";
+  import {
+    confirmVaultRemovals,
+    getVaultStatus,
+    setVaultFolder,
+    verifyVault,
+  } from "$lib/api/client";
   import { EVENTS, listen } from "$lib/api/events";
   import type { VaultStatus } from "$lib/api/types";
   import { toasts } from "$lib/stores/toasts.svelte";
@@ -29,18 +34,7 @@
     return () => void unlisten.then((off) => off());
   });
 
-  const statusLine = $derived.by(() => {
-    if (!status?.path) return "";
-    if (status.lastError) {
-      return status.lastError.startsWith("vault folder not found")
-        ? "Paused: the folder can't be found. Reconnect its drive or choose another folder."
-        : `Paused: ${status.lastError}`;
-    }
-    if (status.pending > 0) {
-      return `Writing ${status.pending} ${status.pending === 1 ? "note" : "notes"}…`;
-    }
-    return "Up to date";
-  });
+  const described = $derived(status ? describeVaultStatus(status) : { line: "", tone: "ok" });
 
   async function chooseFolder() {
     if (busy) return;
@@ -61,7 +55,7 @@
     }
   }
 
-  async function stopMirroring() {
+  async function stopSyncing() {
     if (busy) return;
     busy = true;
     try {
@@ -69,7 +63,20 @@
       reportLines = [];
       toasts.show("Stopped. The files already written stay in the folder.");
     } catch (e) {
-      toasts.show(`Couldn't stop mirroring: ${errorMessage(e)}`);
+      toasts.show(`Couldn't stop syncing: ${errorMessage(e)}`);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function trashMissing() {
+    if (busy) return;
+    busy = true;
+    try {
+      status = await confirmVaultRemovals();
+      toasts.show("They'll move to the Trash on the next sync.");
+    } catch (e) {
+      toasts.show(`Couldn't do that: ${errorMessage(e)}`);
     } finally {
       busy = false;
     }
@@ -114,11 +121,11 @@
     on any device.
   </p>
 
-  <span class="group-label">Live vault</span>
+  <span class="group-label">Sync folder</span>
   {#if !status?.path}
     <PrefRow
-      label="Keep a live copy in a folder"
-      sub="Every change is written to the folder a moment after you make it. A synced folder carries your notes to your other devices."
+      label="Keep your notes in a folder"
+      sub="Changes are written to the folder a moment after you make them, and changes made in the folder come back in. Point each device at the same folder, such as a network drive or a Syncthing or Dropbox folder, and they stay in step."
     >
       {#snippet control()}
         <button class="primary-btn" disabled={busy || !status} onclick={chooseFolder}>
@@ -134,15 +141,40 @@
       </div>
       <div class="card-row">
         <span class="card-key">Status</span>
-        <span class="card-status" class:paused={!!status.lastError}>{statusLine}</span>
+        <span
+          class="card-status"
+          class:paused={described.tone === "warn"}
+          title={status.lastSyncedAt ? `Last synced ${new Date(status.lastSyncedAt).toLocaleString()}` : undefined}
+          >{described.line}</span
+        >
       </div>
+      {#if status.conflicts > 0}
+        <div class="card-row">
+          <span class="card-key">Conflicts</span>
+          <span class="card-status">
+            {status.conflicts === 1 ? "1 note" : `${status.conflicts} notes`} changed in two places; both
+            versions are kept, the other tagged #conflict
+          </span>
+        </div>
+      {/if}
+      {#if status.heldRemovals > 0}
+        <div class="held" role="alert">
+          <p>
+            Nothing was removed. If the folder is only partly there, wait for it to come back. If these
+            notes were deleted on another device, move them to the Trash here too.
+          </p>
+          <button class="card-btn" disabled={busy} onclick={trashMissing}>
+            Move {status.heldRemovals === 1 ? "1 note" : `${status.heldRemovals} notes`} to Trash
+          </button>
+        </div>
+      {/if}
       <div class="card-actions">
         <button class="card-btn" disabled={checking} onclick={checkVault}>
           {checking ? "Checking…" : "Check vault"}
         </button>
         <button class="card-btn" disabled={busy} onclick={chooseFolder}>Change folder…</button>
-        <button class="card-btn quiet" disabled={busy} onclick={stopMirroring}>
-          Stop mirroring
+        <button class="card-btn quiet" disabled={busy} onclick={stopSyncing}>
+          Stop syncing
         </button>
       </div>
     </div>
@@ -154,9 +186,9 @@
       </ul>
     {/if}
     <p class="fine-print">
-      InstantNotes writes these files; it does not read them back yet. An edit
-      made in the folder is replaced the next time that note changes here, and
-      Check vault lists any file that no longer matches.
+      Edits made in the folder, on another device or in another editor, come in
+      within a few seconds. A note deleted elsewhere moves to the Trash here. While
+      the folder is offline, your changes wait and sync when it's back.
     </p>
   {/if}
 
@@ -273,6 +305,18 @@
   .card-btn.quiet {
     margin-left: auto;
     color: var(--text-secondary);
+  }
+  .held {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+  }
+  .held p {
+    margin: 0 0 8px;
   }
   .report {
     margin: 10px 0 0;

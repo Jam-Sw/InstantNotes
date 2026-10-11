@@ -122,9 +122,15 @@ export interface FeedbackInput {
 
 export interface VaultStatus {
   path: string | null;
+  transport: string | null;
+  reachable: boolean;
+  unreachable: string | null;
   pending: number;
   lastError: string | null;
   lastFlushedAt: string | null;
+  lastSyncedAt: string | null;
+  heldRemovals: number;
+  conflicts: number;
 }
 
 export interface VaultReport {

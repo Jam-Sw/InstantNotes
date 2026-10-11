@@ -52,17 +52,17 @@ fn locked_reader<'a>(
 
 fn emit_notes_changed(app: &AppHandle) {
     let _ = app.emit(events::NOTES_CHANGED, ());
-    request_vault_flush(app);
+    request_vault_sync(app);
 }
 
 fn emit_tags_changed(app: &AppHandle) {
     let _ = app.emit(events::TAGS_CHANGED, ());
-    request_vault_flush(app);
+    request_vault_sync(app);
 }
 
 fn emit_workspaces_changed(app: &AppHandle) {
     let _ = app.emit(events::WORKSPACES_CHANGED, ());
-    request_vault_flush(app);
+    request_vault_sync(app);
 }
 
 pub(crate) struct ShortcutStatus {
@@ -177,14 +177,10 @@ pub fn run() {
                 analyst: Mutex::new(analyst),
             });
             app.manage(CaptureMetrics::default());
-            app.manage(start_vault_flusher(app.handle()));
+            app.manage(start_vault_sync(app.handle()));
             app.manage(start_agent_watcher(app.handle(), db_path.clone()));
             {
-                let handle = app.handle().clone();
-                std::thread::spawn(move || {
-                    let _ = mirror_attachments(&handle);
-                    request_vault_flush(&handle);
-                });
+                request_vault_sync(app.handle());
             }
             if recovered {
                 app.dialog()
@@ -506,6 +502,7 @@ pub fn run() {
             get_vault_status,
             set_vault_folder,
             verify_vault,
+            confirm_vault_removals,
             stickies_location,
             scan_stickies,
             import_stickies,

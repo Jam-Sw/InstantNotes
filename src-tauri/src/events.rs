@@ -9,6 +9,7 @@ pub const MENU_EXPORT_NOTE: &str = "menu:export-note";
 pub const UPDATER_CHECK: &str = "updater:check";
 pub const SHORTCUT_FAILED: &str = "shortcut:failed";
 pub const VAULT_STATUS: &str = "vault:status";
+pub const VAULT_SYNCED: &str = "vault:synced";
 pub const APP_QUIT_REQUESTED: &str = "app:quit-requested";
 pub const CAPTURE_SHOWN: &str = "capture:shown";
 pub const MENU_TOGGLE_STICKY: &str = "menu:toggle-sticky";
