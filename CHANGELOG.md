@@ -7,7 +7,9 @@ in-app updater, written for users. Newest first.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.5]
+## [0.10.0]
+
+## [0.9.5] - 2026-10-10
 ### Added
 - `instantnotes serve`: a headless web mode (no window, no Tauri) serving the UI and a `POST /api/<command>`
   allow list, an SSE change stream at `/api/events`, OIDC sign-in (PKCE, `/auth/login`, `/auth/callback`,
