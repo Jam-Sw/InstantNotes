@@ -1,4 +1,6 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
+import { clientId, isWeb } from "./runtime";
 import type { DownloadEvent } from "@tauri-apps/plugin-updater";
 import { ERROR_CODES, isErrorCode, type ErrorCode } from "./error-codes";
 import type {
@@ -52,16 +54,49 @@ function asApiError(e: unknown): ApiError {
   return new ApiError(ERROR_CODES.STORAGE_ERROR, String(e));
 }
 
+const SIGN_IN_PATH = "/auth/login";
+const MUTATION_HEADER = "X-InstantNotes";
+const CLIENT_HEADER = "X-InstantNotes-Client";
+
+function signedOut(): never {
+  location.assign(SIGN_IN_PATH);
+  throw new ApiError(ERROR_CODES.STORAGE_ERROR, "signed out");
+}
+
+async function webResult<T>(res: Response): Promise<T> {
+  if (res.status === 401) signedOut();
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!res.ok) throw data ?? { code: ERROR_CODES.STORAGE_ERROR, message: res.statusText };
+  return data as T;
+}
+
+async function callWeb<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  const res = await fetch(`/api/${cmd}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      [MUTATION_HEADER]: "1",
+      [CLIENT_HEADER]: clientId,
+    },
+    body: JSON.stringify(args ?? {}),
+  });
+  return webResult<T>(res);
+}
+
 async function call<T>(
   cmd: string,
   args?: Record<string, unknown>,
 ): Promise<T> {
   try {
+    if (isWeb) return await callWeb<T>(cmd, args);
     return await invoke<T>(cmd, args);
   } catch (e) {
     throw asApiError(e);
   }
 }
+
+export const appVersion = () => (isWeb ? call<string>("app_version") : getVersion());
 
 export const createNote = (input: CreateNoteInput) =>
   call<Note>("create_note", { input });
@@ -145,7 +180,13 @@ export const deleteSetting = (key: string) =>
 
 export const hideCapture = () => call<void>("hide_capture");
 export const openLibrary = () => call<void>("open_library");
-export const openUrl = (url: string) => call<void>("open_url", { url });
+export const openUrl = async (url: string): Promise<void> => {
+  if (isWeb) {
+    window.open(url, "_blank", "noopener");
+    return;
+  }
+  await call<void>("open_url", { url });
+};
 
 export const installUpdate = (
   rid: number,
@@ -186,6 +227,19 @@ export const saveAttachment = async (
   ext: string,
 ): Promise<string> => {
   try {
+    if (isWeb) {
+      const res = await fetch("/api/save_attachment", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "x-attachment-ext": ext,
+          [MUTATION_HEADER]: "1",
+          [CLIENT_HEADER]: clientId,
+        },
+        body: bytes as BodyInit,
+      });
+      return await webResult<string>(res);
+    }
     return await invoke<string>("save_attachment", bytes, {
       headers: { "x-attachment-ext": ext },
     });

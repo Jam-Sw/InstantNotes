@@ -1,4 +1,6 @@
 import manifest from '../../src-tauri/installer/agreements.json';
+import { isWeb } from '$lib/api/runtime';
+import { getSetting, setSetting } from '$lib/api/client';
 
 export interface AgreementDocument {
   id: string;
@@ -66,9 +68,25 @@ class Agreements {
     return this.documents.some((d) => d.id === id) && !this.pending.includes(id);
   }
 
+  #loaded = false;
+
+  async init(): Promise<void> {
+    if (!isWeb || this.#loaded) return;
+    this.#loaded = true;
+    try {
+      const stored = await getSetting<unknown>(KEY);
+      this.#stored = stored ?? {};
+    } catch {
+    }
+  }
+
   agree(id: string): void {
     const next = withAccepted(this.documents, this.#stored, id);
     this.#stored = next;
+    if (isWeb) {
+      void setSetting(KEY, next);
+      return;
+    }
     try {
       localStorage.setItem(KEY, JSON.stringify(next));
     } catch {
@@ -76,6 +94,7 @@ class Agreements {
   }
 
   refresh(): void {
+    if (isWeb) return;
     this.#stored = read();
   }
 }

@@ -4,6 +4,7 @@
   import { library } from "$lib/stores/library.svelte";
   import { updater } from "$lib/stores/updater.svelte";
   import { captureShortcut, modKey } from "$lib/platform";
+  import { isWeb } from "$lib/api/runtime";
   import type { ShortcutFailure } from "$lib/api/types";
 
   let { appVersion, onOpenUpdate }: { appVersion: string; onOpenUpdate: () => void } =
@@ -56,7 +57,7 @@
       {/if}
     </h2>
     <p>
-      Select a note{#if !shortcutConflict?.wayland}, or press <kbd>{captureShortcut}</kbd> anywhere to capture{/if}.
+      Select a note{#if !isWeb && !shortcutConflict?.wayland}, or press <kbd>{captureShortcut}</kbd> anywhere to capture{/if}.
     </p>
     <p class="hint-line">Press <kbd>{modKey}K</kbd> for commands and themes.</p>
     {#if shortcutConflict && !conflictDismissed}

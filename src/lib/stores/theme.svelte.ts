@@ -1,4 +1,5 @@
 import { getSetting, setSetting, setWindowVibrancy, setWindowTheme } from "$lib/api/client";
+import { isWeb } from "$lib/api/runtime";
 import { applyTheme } from "$lib/themes/apply";
 import { bootSnapshot, rememberBoot, windowBackground } from "$lib/themes/boot";
 import { BUILTIN_THEMES, DEFAULT_THEME_ID } from "$lib/themes/builtin";
@@ -94,7 +95,7 @@ class ThemeStore {
   }
 
   async #syncVibrancy(): Promise<void> {
-    if (location.pathname !== "/") return;
+    if (isWeb || location.pathname !== "/") return;
     const root = document.documentElement;
     const named = this.activeTheme.material;
     const material = !isMac || named === "none" ? null : (named ?? DEFAULT_MATERIAL);
@@ -112,7 +113,7 @@ class ThemeStore {
   }
 
   async #syncWindowTheme(): Promise<void> {
-    if (location.pathname.startsWith("/capture")) return;
+    if (isWeb || location.pathname.startsWith("/capture")) return;
     try {
       await setWindowTheme(
         this.resolvedVariant,

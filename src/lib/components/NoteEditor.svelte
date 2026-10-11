@@ -13,6 +13,7 @@
   import { confirmDialog } from "$lib/stores/confirm.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
   import { importImageFile, allowImageFile, openUrl, popOutNote, tagSuggestion } from "$lib/api/client";
+  import { isWeb } from "$lib/api/runtime";
   import { modKey, shiftKey } from "$lib/platform";
   import { theme } from "$lib/stores/theme.svelte";
   import { effectiveVariant } from "$lib/themes/apply";
@@ -152,14 +153,16 @@
       {:else}
         {#if !isSurface}
           <div class="icon-group">
-            <button
-              class="icon-btn"
-              title="Insert image from a file"
-              aria-label="Insert image"
-              onclick={insertImage}
-            >
-              <Icon name="image" />
-            </button>
+            {#if !isWeb}
+              <button
+                class="icon-btn"
+                title="Insert image from a file"
+                aria-label="Insert image"
+                onclick={insertImage}
+              >
+                <Icon name="image" />
+              </button>
+            {/if}
             <button
               class="icon-btn"
               title="Formatting tools"
@@ -172,14 +175,16 @@
           </div>
         {/if}
         <div class="icon-group">
-          <button
-            class="icon-btn"
-            title={`Pop out as a sticky (${modKey}${shiftKey}O)`}
-            aria-label="Pop out as a sticky"
-            onclick={() => void library.popOut(library.selected!.id)}
-          >
-            <Icon name="sticky" />
-          </button>
+          {#if !isWeb}
+            <button
+              class="icon-btn"
+              title={`Pop out as a sticky (${modKey}${shiftKey}O)`}
+              aria-label="Pop out as a sticky"
+              onclick={() => void library.popOut(library.selected!.id)}
+            >
+              <Icon name="sticky" />
+            </button>
+          {/if}
           <button
             class="icon-btn"
             title={library.selected.isPinned ? "Unpin" : "Pin"}

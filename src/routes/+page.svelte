@@ -1,10 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { getVersion } from "@tauri-apps/api/app";
-  import { listen } from "@tauri-apps/api/event";
   import { save } from "@tauri-apps/plugin-dialog";
-  import { exportNoteFile, quitApp, sheetCsv } from "$lib/api/client";
-  import { EVENTS } from "$lib/api/events";
+  import { appVersion as fetchAppVersion, exportNoteFile, quitApp, sheetCsv } from "$lib/api/client";
+  import { EVENTS, listen } from "$lib/api/events";
+  import { isWeb } from "$lib/api/runtime";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import NoteList from "$lib/components/NoteList.svelte";
   import UpdateNote from "$lib/components/UpdateNote.svelte";
@@ -29,6 +28,7 @@
   import { excalidrawFile, parseBoard } from "$lib/whiteboard/document";
   import { updateSpace } from "$lib/stores/update-space";
   import { licenseSpace } from "$lib/stores/license-space.svelte";
+  import { agreements } from "$lib/agreements.svelte";
   import LicenseNote from "$lib/components/LicenseNote.svelte";
   import { isMac } from "$lib/platform";
   import {
@@ -82,7 +82,8 @@
       void import("$lib/components/SettingsView.svelte");
       void import("$lib/components/GraphView.svelte");
     }, 5000);
-    void getVersion().then((v) => (appVersion = v));
+    void fetchAppVersion().then((v) => (appVersion = v));
+    void agreements.init();
     updater.start();
     let unlistenCheck: (() => void) | undefined;
     void listen(EVENTS.UPDATER_CHECK, async () => {
@@ -190,7 +191,7 @@
       paletteOpen = !paletteOpen;
       return;
     }
-    if (mod && e.shiftKey && (e.key === "a" || e.key === "A")) {
+    if (!isWeb && mod && e.shiftKey && (e.key === "a" || e.key === "A")) {
       e.preventDefault();
       if (agents.watching) library.selectWorkspace(null);
       else agents.show();

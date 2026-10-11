@@ -14,6 +14,7 @@
   import type { DashboardStats } from "$lib/api/types";
   import { formatBytes } from "$lib/format";
   import { isMac } from "$lib/platform";
+  import { isWeb } from "$lib/api/runtime";
   import { parseChangelog } from "$lib/changelog";
   import { theme } from "$lib/stores/theme.svelte";
   import { agents } from "$lib/stores/agents.svelte";
@@ -58,7 +59,10 @@
     entries: Entry[];
   }
 
-  const GROUPS: Group[] = [
+  const DESKTOP_ONLY: ReadonlySet<Page> = new Set<Page>(["vault", "import", "agents", "feedback"]);
+
+  const GROUPS: Group[] = (
+    [
     {
       label: "General",
       entries: [
@@ -92,7 +96,13 @@
         { id: "feedback", title: "Feedback", desc: "Report a bug or send an idea.", keywords: "bug issue idea report" },
       ],
     },
-  ];
+    ] as Group[]
+  )
+    .map((g) => ({
+      ...g,
+      entries: isWeb ? g.entries.filter((e) => !DESKTOP_ONLY.has(e.id)) : g.entries,
+    }))
+    .filter((g) => g.entries.length > 0);
 
   const TITLES: Record<Page, string> = Object.fromEntries(
     GROUPS.flatMap((g) => g.entries.map((e) => [e.id, e.title])),
