@@ -1,0 +1,111 @@
+src-tauri/core/tests/vault_mirror_test.rs
+  s_6f41455905bd24::t_abfa398002c0f5 358-359,369-375
+src-tauri/src/shell/files.rs
+  s_6f41455905bd24::t_abfa398002c0f5 96,185
+src/routes/sticky/+page.svelte
+  s_6f41455905bd24::t_abfa398002c0f5 25,118-119
+  s_6f41455905bd24::t_a379792ae88caa 120
+docs/DATA_MODEL.md
+  s_6f41455905bd24::t_abfa398002c0f5 203-212,214,237-262
+  s_6f41455905bd24::t_fb3e11dcf2f19d 263
+src-tauri/core/src/vault/mod.rs
+  s_6f41455905bd24::t_abfa398002c0f5 6-7,10-11,15-17,21-23,26-27,30
+  s_6f41455905bd24::t_f9821610debf49 29
+src-tauri/core/src/store/vault.rs
+  s_6f41455905bd24::t_abfa398002c0f5 2-3,8,14-15,19,21-25,34-38,43-48,55,59-63,81,108-112,132-138,143-145,149-151,156-158,162-164,250-251,334-337,377-378,430-431,436-438,445,468-477,488-497,559
+src/lib/components/settings/SettingsVault.test.ts
+  s_6f41455905bd24::t_abfa398002c0f5 6-11,26,32-43,46-54,65,73,85,116,118,121,124-132,135-151,159
+src-tauri/core/tests/vault_sync_test.rs
+  s_6f41455905bd24::t_3ecc86357b80b0 1-578
+src/lib/api/client.ts
+  s_6f41455905bd24::t_abfa398002c0f5 267
+src-tauri/src/lib.rs
+  s_6f41455905bd24::t_abfa398002c0f5 55,60,65,180,183,505
+src/lib/stores/library.svelte.test.ts
+  s_6f41455905bd24::t_abfa398002c0f5 516
+  s_6f41455905bd24::t_caa4f48dc8f363 538
+src/lib/vault-mirror.ts
+  s_6f41455905bd24::t_abfa398002c0f5 2,8-41
+  s_6f41455905bd24::t_097aa721eb439b 42
+src/lib/stores/sticky.svelte.ts
+  s_6f41455905bd24::t_abfa398002c0f5 107-112
+src-tauri/core/src/vault/manifest.rs
+  s_6f41455905bd24::t_abfa398002c0f5 33-81,86-164
+  s_6f41455905bd24::t_324d35ffe49f5c 165
+src-tauri/core/src/vault/mirror.rs
+  s_6f41455905bd24::t_abfa398002c0f5 7,10,18-20,24-26
+src-tauri/src/shell/mirror.rs
+  s_6f41455905bd24::t_abfa398002c0f5 2-3,12,16-22,26-46,49,52-95
+src-tauri/core/src/store.rs
+  s_6f41455905bd24::t_abfa398002c0f5 658
+src/lib/vault-mirror.test.ts
+  s_6f41455905bd24::t_abfa398002c0f5 3-9,90-137
+src/lib/stores/library.svelte.ts
+  s_6f41455905bd24::t_abfa398002c0f5 60,194,197
+  s_6f41455905bd24::t_beba927df96042 195-196,904,908
+README.md
+  s_6f41455905bd24::t_abfa398002c0f5 21,24
+src-tauri/core/src/sheet.rs
+  s_6f41455905bd24::t_abfa398002c0f5 205-282,329-367
+  s_6f41455905bd24::t_616e68772b46e6 368
+src/lib/stores/library.agents.svelte.test.ts
+  s_6f41455905bd24::t_abfa398002c0f5 299-325
+  s_6f41455905bd24::t_caa4f48dc8f363 298
+  s_6f41455905bd24::t_98a476a0d1df5e 326
+docs/API.md
+  s_6f41455905bd24::t_abfa398002c0f5 288-289,291,295-296,298-299,348-382
+  s_6f41455905bd24::t_67cea46160d310 383
+src/lib/api/events.ts
+  s_6f41455905bd24::t_abfa398002c0f5 57
+src-tauri/src/events.rs
+  s_6f41455905bd24::t_abfa398002c0f5 12
+src-tauri/src/commands/import.rs
+  s_6f41455905bd24::t_abfa398002c0f5 123
+src-tauri/src/commands/vault.rs
+  s_6f41455905bd24::t_abfa398002c0f5 62-72
+src-tauri/core/src/vault/surface.rs
+  s_6f41455905bd24::t_abfa398002c0f5 79-127,176-220
+  s_6f41455905bd24::t_a5126b72407091 221
+src/lib/api/types.ts
+  s_6f41455905bd24::t_abfa398002c0f5 125-127,131-133
+src-tauri/core/src/vault/sync.rs
+  s_6f41455905bd24::t_cea3ca8e4bfb28 1-176
+src/lib/components/settings/SettingsVault.svelte
+  s_6f41455905bd24::t_abfa398002c0f5 4-10,37,58,66-79,124,127-128,144-149,151-170,176-177,189-191,309-320
+openspec/changes/feat-vault-sync/design.md
+  s_6f41455905bd24::t_2a0110b2fd5ae6 1-324
+openspec/changes/feat-vault-sync/proposal.md
+  s_a0ef65d74463d8::t_f98d0b0bd9a156 1-85
+src-tauri/core/src/store/vault_sync.rs
+  s_a0ef65d74463d8::t_b91cd1cdbc5a74 1-653
+src-tauri/core/src/vault/reconcile.rs
+  s_a0ef65d74463d8::t_0a47053071e0fb 1-321
+src-tauri/core/src/vault/scan.rs
+  s_a0ef65d74463d8::t_b7baae5b60186b 1-221
+src-tauri/core/src/vault/transport.rs
+  s_a0ef65d74463d8::t_0863b56e981142 1-100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f579f8b6af180c195a479cbda6fe60fd34d4d3f8",
+  "prompts": {},
+  "sessions": {
+    "s_6f41455905bd24": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e597c0-f785-4100-a699-5fbbcdb7a8d7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    },
+    "s_a0ef65d74463d8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "52e242a3-013a-4a28-b5e9-c99c6da522c0",
+        "model": "unknown"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
