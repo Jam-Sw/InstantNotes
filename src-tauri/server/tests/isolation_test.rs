@@ -1,5 +1,10 @@
+use instantnotes_core::types::{CreateNoteInput, UpdateNotePatch};
+use instantnotes_core::vault::{Folder, Syncer};
+use instantnotes_core::Store;
 use instantnotes_server::{AppState, Config, Person};
 use serde_json::{json, Value};
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::Duration;
 
 struct Server {
@@ -9,6 +14,10 @@ struct Server {
 }
 
 async fn start() -> Server {
+    start_with(None).await
+}
+
+async fn start_with(vault_root: Option<PathBuf>) -> Server {
     let dir = tempfile::tempdir().unwrap();
     let ui = dir.path().join("ui");
     std::fs::create_dir_all(&ui).unwrap();
@@ -21,6 +30,7 @@ async fn start() -> Server {
         oidc_client_id: "client".into(),
         oidc_client_secret: "secret".into(),
         ui_dir: ui,
+        vault_root,
         idle_close: Duration::from_secs(600),
         session_ttl: Duration::from_secs(3600),
     };
@@ -321,4 +331,255 @@ async fn memory_per_active_person_is_printed() {
     let two = rss_kb();
     println!("rss_kb before={before} one_person={one} two_people={two}");
     assert_eq!(server.state.libraries.open_count(), 2);
+}
+
+struct Desk {
+    store: Mutex<Store>,
+    syncer: Syncer,
+}
+
+impl Desk {
+    fn new(folder: &Path, titles: &[&str]) -> Desk {
+        let mut store = Store::open_in_memory().unwrap();
+        for title in titles {
+            store
+                .create_note(CreateNoteInput {
+                    title: Some(title.to_string()),
+                    body: Some(format!("{title} body")),
+                    ..Default::default()
+                })
+                .unwrap();
+        }
+        store.configure_vault(Some(folder)).unwrap();
+        Desk {
+            store: Mutex::new(store),
+            syncer: Syncer::new(Box::new(Folder::new(folder.to_path_buf())), None),
+        }
+    }
+
+    fn sync(&mut self) {
+        let report = self.syncer.cycle(&self.store);
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert!(report.reached(), "{:?}", report.unreachable);
+    }
+
+    fn titles(&self) -> Vec<String> {
+        let mut titles: Vec<String> = self
+            .store
+            .lock()
+            .unwrap()
+            .list_notes(Default::default())
+            .unwrap()
+            .into_iter()
+            .map(|n| n.title)
+            .collect();
+        titles.sort();
+        titles
+    }
+}
+
+fn md_files(dir: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .filter(|n| n.ends_with(".md"))
+                .collect()
+        })
+        .unwrap_or_default();
+    names.sort();
+    names
+}
+
+async fn titles(client: &Client) -> Vec<String> {
+    let (status, notes) = client.call("list_notes", json!({})).await;
+    assert_eq!(status, 200, "{notes}");
+    let mut titles: Vec<String> = notes
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|n| n["title"].as_str().unwrap().to_string())
+        .collect();
+    titles.sort();
+    titles
+}
+
+async fn sync(server: &Server) {
+    let state = server.state.clone();
+    tokio::task::spawn_blocking(move || state.sync_vaults())
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn without_a_vault_root_no_library_syncs() {
+    let server = start().await;
+    let a = Client::new(
+        &server,
+        Some(server.state.sessions.create(person("alice-sub"))),
+    );
+    a.call("create_note", json!({ "input": { "body": "hello" } }))
+        .await;
+    sync(&server).await;
+    assert!(server.state.libraries.open_vaults().is_empty());
+    let (status, _) = a.call("get_vault_status", json!({})).await;
+    assert_eq!(status, 404);
+}
+
+#[tokio::test]
+async fn a_persons_vault_never_reaches_another_persons_library() {
+    let vaults = tempfile::tempdir().unwrap();
+    let alice_folder = vaults.path().join("alice-sub");
+    let bob_folder = vaults.path().join("bob-sub");
+    std::fs::create_dir_all(&alice_folder).unwrap();
+    std::fs::create_dir_all(&bob_folder).unwrap();
+    let mut alice_desk = Desk::new(&alice_folder, &["Alice one", "Alice two"]);
+    alice_desk.sync();
+    let mut bob_desk = Desk::new(&bob_folder, &["Bob one"]);
+    bob_desk.sync();
+
+    let server = start_with(Some(vaults.path().to_path_buf())).await;
+    let a = Client::new(
+        &server,
+        Some(server.state.sessions.create(person("alice-sub"))),
+    );
+    let b = Client::new(
+        &server,
+        Some(server.state.sessions.create(person("bob-sub"))),
+    );
+    let sneaky = Client::new(
+        &server,
+        Some(server.state.sessions.create(person("../alice-sub"))),
+    );
+    assert_eq!(titles(&a).await, vec!["Alice one", "Alice two"]);
+    assert_eq!(titles(&b).await, vec!["Bob one"]);
+    assert!(titles(&sneaky).await.is_empty());
+
+    let (status, _) = a
+        .call(
+            "create_note",
+            json!({ "input": { "title": "Alice web", "body": "from the browser" } }),
+        )
+        .await;
+    assert_eq!(status, 200);
+    sync(&server).await;
+    sync(&server).await;
+    bob_desk.sync();
+    alice_desk.sync();
+
+    assert_eq!(
+        md_files(&alice_folder),
+        vec!["Alice one.md", "Alice two.md", "Alice web.md"]
+    );
+    assert_eq!(md_files(&bob_folder), vec!["Bob one.md"]);
+    assert_eq!(titles(&b).await, vec!["Bob one"]);
+    assert_eq!(bob_desk.titles(), vec!["Bob one"]);
+    assert!(titles(&sneaky).await.is_empty());
+    assert_eq!(
+        alice_desk.titles(),
+        vec!["Alice one", "Alice two", "Alice web"]
+    );
+    let entries: Vec<String> = std::fs::read_dir(vaults.path())
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(entries.len(), 2, "{entries:?}");
+}
+
+#[tokio::test]
+async fn a_person_without_a_vault_folder_keeps_working_unsynced() {
+    let vaults = tempfile::tempdir().unwrap();
+    let server = start_with(Some(vaults.path().to_path_buf())).await;
+    let a = Client::new(
+        &server,
+        Some(server.state.sessions.create(person("alice-sub"))),
+    );
+    let (status, _) = a
+        .call("create_note", json!({ "input": { "body": "kept here" } }))
+        .await;
+    assert_eq!(status, 200);
+    sync(&server).await;
+    assert_eq!(titles(&a).await, vec!["kept here"]);
+    assert!(server.state.libraries.open_vaults().is_empty());
+    assert_eq!(std::fs::read_dir(vaults.path()).unwrap().count(), 0);
+}
+
+#[tokio::test]
+async fn edits_travel_both_ways_and_a_desktop_edit_reaches_the_open_page() {
+    let vaults = tempfile::tempdir().unwrap();
+    let folder = vaults.path().join("alice-sub");
+    std::fs::create_dir_all(&folder).unwrap();
+    let titles_in: Vec<String> = (1..=20).map(|i| format!("Desk {i:02}")).collect();
+    let refs: Vec<&str> = titles_in.iter().map(String::as_str).collect();
+    let mut desk = Desk::new(&folder, &refs);
+    desk.sync();
+
+    let server = start_with(Some(vaults.path().to_path_buf())).await;
+    let a = Client::new(
+        &server,
+        Some(server.state.sessions.create(person("alice-sub"))),
+    );
+    let (status, notes) = a.call("list_notes", json!({})).await;
+    assert_eq!(status, 200);
+    let notes = notes.as_array().unwrap().clone();
+    assert_eq!(notes.len(), 20);
+    let pick = |title: &str| {
+        notes.iter().find(|n| n["title"] == title).unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    let (web_id, desk_id) = (pick("Desk 01"), pick("Desk 02"));
+
+    let (status, _) = a
+        .call(
+            "update_note",
+            json!({ "id": web_id, "patch": { "body": "edited in the browser" } }),
+        )
+        .await;
+    assert_eq!(status, 200);
+    sync(&server).await;
+    let file = std::fs::read_to_string(folder.join("Desk 01.md")).unwrap();
+    assert!(file.contains("edited in the browser"), "{file}");
+    desk.sync();
+    assert_eq!(
+        desk.store
+            .lock()
+            .unwrap()
+            .get_note(&web_id, false)
+            .unwrap()
+            .body,
+        "edited in the browser"
+    );
+
+    let mut stream = a.get("/api/events").await;
+    assert_eq!(stream.status(), 200);
+    desk.store
+        .lock()
+        .unwrap()
+        .update_note(
+            &desk_id,
+            UpdateNotePatch {
+                body: Some("edited on the desktop".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    desk.sync();
+    tokio::time::sleep(Duration::from_millis(5100)).await;
+    sync(&server).await;
+    let mut seen = String::new();
+    while !seen.contains("event: vault:synced") {
+        let chunk = tokio::time::timeout(Duration::from_secs(2), stream.chunk())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        seen.push_str(&String::from_utf8_lossy(&chunk));
+    }
+    assert!(seen.contains(&desk_id), "{seen}");
+    let (_, note) = a.call("get_note", json!({ "id": desk_id })).await;
+    assert_eq!(note["body"], "edited on the desktop");
 }

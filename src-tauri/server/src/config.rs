@@ -9,6 +9,7 @@ pub const OIDC_ISSUER: &str = "INSTANTNOTES_OIDC_ISSUER";
 pub const OIDC_CLIENT_ID: &str = "INSTANTNOTES_OIDC_CLIENT_ID";
 pub const OIDC_CLIENT_SECRET: &str = "INSTANTNOTES_OIDC_CLIENT_SECRET";
 pub const UI_DIR: &str = "INSTANTNOTES_UI_DIR";
+pub const VAULT_ROOT: &str = "INSTANTNOTES_VAULT_ROOT";
 
 const DEFAULT_UI_DIR: &str = "/app/ui";
 const IDLE_CLOSE: Duration = Duration::from_secs(10 * 60);
@@ -23,6 +24,7 @@ pub struct Config {
     pub oidc_client_id: String,
     pub oidc_client_secret: String,
     pub ui_dir: PathBuf,
+    pub vault_root: Option<PathBuf>,
     pub idle_close: Duration,
     pub session_ttl: Duration,
 }
@@ -41,6 +43,13 @@ impl Config {
             .map_err(|e| format!("{LISTEN}: {e}"))?;
         let public_url = required(PUBLIC_URL)?.trim_end_matches('/').to_string();
         let oidc_issuer = required(OIDC_ISSUER)?.trim_end_matches('/').to_string();
+        let vault_root = std::env::var(VAULT_ROOT)
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .map(|v| PathBuf::from(v.trim()));
+        if vault_root.as_ref().is_some_and(|root| !root.is_absolute()) {
+            return Err(format!("{VAULT_ROOT} must be an absolute path"));
+        }
         Ok(Config {
             listen,
             data_dir: PathBuf::from(required(DATA_DIR)?),
@@ -53,6 +62,7 @@ impl Config {
                 .filter(|v| !v.trim().is_empty())
                 .map(PathBuf::from)
                 .unwrap_or_else(|| PathBuf::from(DEFAULT_UI_DIR)),
+            vault_root,
             idle_close: IDLE_CLOSE,
             session_ttl: SESSION_TTL,
         })

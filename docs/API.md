@@ -381,6 +381,16 @@ The rules are `openspec/changes/feat-vault-sync/design.md`; in short:
   version this device synced: additions and removals on either side both
   survive, and a removal never deletes a tag or Space a note here still uses.
 
+- **Web mode.** With `INSTANTNOTES_VAULT_ROOT` set, `instantnotes serve`
+  syncs each person's library with `<INSTANTNOTES_VAULT_ROOT>/<library folder>`
+  (the same name as under `<data>/libraries/`, from the person's OIDC `sub`),
+  by the same rules. The folder must already exist; the server never creates
+  it. A cycle runs before the first request after the library opens, then
+  after a change or every 5 s while the library is open, and a change from
+  the folder reaches the person's open pages as `notes:changed` and
+  `vault:synced` on `/api/events`. Unset, nothing syncs. The vault commands
+  stay desktop-only.
+
 In `verify_vault`, `missing` are notes whose file is gone, `diverged` are
 files whose contents no longer parse to their note, and `orphans` are `.md`
 files at the vault root or in `trash/` that the mirror did not write. Pending

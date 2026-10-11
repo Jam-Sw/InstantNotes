@@ -306,6 +306,38 @@ can restore theirs.
 
 Quit runs one flush chunk, as before. Ingest is not run at quit.
 
+## 11. The server as one more device
+
+`instantnotes serve` keeps one library per person (0.9.5). With
+`INSTANTNOTES_VAULT_ROOT` set, each person's library is one more device on
+that person's vault, and runs the same `Syncer` against it.
+
+- **Folder.** `<INSTANTNOTES_VAULT_ROOT>/<library folder>`, where the library
+  folder is the one under `<data>/libraries/`: the OIDC `sub` when it is
+  plain (letters, digits, `-`, `_`, up to 128), its SHA-256 otherwise. The
+  name never comes from anything the person types, so `..` and slashes
+  cannot reach another person's folder. `sub` and not `preferred_username`,
+  because a username can be renamed and then handed to someone else.
+- **Joining.** The server never creates the folder. When it exists and is not
+  yet this library's vault, the library opens it as `set_vault_folder` does
+  (marker created when missing, every note pending). When it is missing, the
+  library works unsynced, its edits pending. Mount the drive above the
+  person folders, so an unmounted drive leaves no person folder behind.
+- **When.** A cycle runs before the first request after the library opens,
+  so the first page already shows the folder's notes. After that, a 1 s
+  tick runs a cycle for an open library after a change through the API, or
+  when its transport interval (5 s) has passed. Only open libraries sync;
+  a library with a connected page stays open, and the others close after
+  10 min idle as in 0.9.5, so idle people cost nothing.
+- **Lock.** `Syncer::cycle` takes any `StoreLock`; the server lends the
+  person's `Mutex<Library>`, so ingest and flush still hold it 50 files at a
+  time.
+- **Events.** A cycle that changed notes sends `notes:changed` and
+  `vault:synced { noteIds }` to that person's event stream, and
+  `tags:changed` and `workspaces:changed` when it touched labels.
+- **Unset.** Without `INSTANTNOTES_VAULT_ROOT` no library attaches a vault
+  and no tick runs: 0.9.5 behaviour.
+
 ## 10. Rejected
 
 - **A `notify` watcher.** Neither SMB nor NFS delivers inotify events, and

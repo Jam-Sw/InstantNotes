@@ -5,6 +5,7 @@ mod libraries;
 mod oidc;
 mod sessions;
 mod statics;
+mod vaults;
 
 pub use config::Config;
 pub use sessions::Person;
@@ -18,7 +19,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use events::Hub;
 use instantnotes_core::AppError;
-use libraries::Libraries;
+use libraries::{Libraries, Library};
 use oidc::Oidc;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -35,6 +36,7 @@ const CLIENT_HEADER: &str = "x-instantnotes-client";
 const BODY_LIMIT: usize = 32 * 1024 * 1024;
 const KEEPALIVE: Duration = Duration::from_secs(15);
 const IDLE_SWEEP: Duration = Duration::from_secs(60);
+const SYNC_TICK: Duration = Duration::from_secs(1);
 
 pub(crate) fn log(event: &str, fields: &[(&str, &str)]) {
     let mut line = String::from(event);
@@ -77,12 +79,31 @@ impl AppState {
         );
         AppState(Arc::new(Inner {
             sessions: Sessions::new(config.session_ttl),
-            libraries: Libraries::new(&config.data_dir, config.idle_close),
+            libraries: Libraries::new(
+                &config.data_dir,
+                config.idle_close,
+                config.vault_root.clone(),
+            ),
             logins: Logins::default(),
             hub: Hub::default(),
             oidc,
             config,
         }))
+    }
+
+    pub fn sync_vaults(&self) {
+        vaults::sync_due(&self.libraries, &self.hub);
+    }
+
+    fn library<T>(
+        &self,
+        sub: &str,
+        f: impl FnOnce(&mut Library) -> Result<T, AppError>,
+    ) -> Result<T, AppError> {
+        if self.config.vault_root.is_some() {
+            vaults::first_sync(&self.libraries, &self.hub, sub);
+        }
+        self.libraries.with(sub, f)
     }
 }
 
@@ -147,10 +168,28 @@ pub fn run(config: Config) -> i32 {
                 }
             })
         };
+        let syncer = state.config.vault_root.as_ref().map(|root| {
+            log(
+                "serve.vault",
+                &[("vault_root", &root.display().to_string())],
+            );
+            let state = state.clone();
+            tokio::spawn(async move {
+                let mut tick = tokio::time::interval(SYNC_TICK);
+                loop {
+                    tick.tick().await;
+                    let state = state.clone();
+                    let _ = tokio::task::spawn_blocking(move || state.sync_vaults()).await;
+                }
+            })
+        });
         let served = axum::serve(listener, router(state.clone()))
             .with_graceful_shutdown(shutdown_signal())
             .await;
         sweeper.abort();
+        if let Some(syncer) = syncer {
+            syncer.abort();
+        }
         state.libraries.close_all();
         match served {
             Ok(()) => {
@@ -382,8 +421,12 @@ async fn command(
     let libraries_state = state.clone();
     let name = command.clone();
     let outcome = tokio::task::spawn_blocking(move || {
-        libraries_state.libraries.with(&sub, |lib| {
-            api::dispatch(lib, &name, &args, origin.as_deref())
+        libraries_state.library(&sub, |lib| {
+            let outcome = api::dispatch(lib, &name, &args, origin.as_deref())?;
+            if let Some(vault) = lib.vault.as_ref().filter(|_| !outcome.changes.is_empty()) {
+                vault.poke();
+            }
+            Ok(outcome)
         })
     })
     .await;
@@ -419,9 +462,7 @@ async fn save_attachment(
     let sub = person.sub;
     let libraries_state = state.clone();
     let saved = tokio::task::spawn_blocking(move || {
-        libraries_state
-            .libraries
-            .with(&sub, |lib| api::save_attachment(lib, &body, &ext))
+        libraries_state.library(&sub, |lib| api::save_attachment(lib, &body, &ext))
     })
     .await;
     match saved {
@@ -442,7 +483,7 @@ async fn attachment(
     let sub = person.sub;
     let libraries_state = state.clone();
     let path = tokio::task::spawn_blocking(move || {
-        libraries_state.libraries.with(&sub, |lib| {
+        libraries_state.library(&sub, |lib| {
             api::attachment_path(lib, &name)
                 .ok_or_else(|| AppError::NotFound(format!("attachment {name}")))
         })

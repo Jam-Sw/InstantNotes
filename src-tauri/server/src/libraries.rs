@@ -1,3 +1,4 @@
+use crate::vaults::{self, Vault};
 use instantnotes_core::{AppError, Store};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -12,12 +13,16 @@ pub struct Library {
     pub store: Store,
     pub db: PathBuf,
     pub attachments: PathBuf,
+    pub vault: Option<Arc<Vault>>,
     last_used: Instant,
 }
+
+pub type Synced = (Arc<Mutex<Library>>, Arc<Vault>);
 
 pub struct Libraries {
     root: PathBuf,
     idle: Duration,
+    vault_root: Option<PathBuf>,
     open: Mutex<HashMap<String, Arc<Mutex<Library>>>>,
 }
 
@@ -51,10 +56,11 @@ fn create_private_dir(dir: &Path) -> Result<(), AppError> {
 }
 
 impl Libraries {
-    pub fn new(data_dir: &Path, idle: Duration) -> Self {
+    pub fn new(data_dir: &Path, idle: Duration, vault_root: Option<PathBuf>) -> Self {
         Libraries {
             root: data_dir.join("libraries"),
             idle,
+            vault_root,
             open: Mutex::new(HashMap::new()),
         }
     }
@@ -70,8 +76,13 @@ impl Libraries {
         create_private_dir(&attachments)?;
         let db = dir.join(DB_FILE);
         let started = Instant::now();
-        let store = Store::open(&db)?;
+        let mut store = Store::open(&db)?;
         Store::mark_session_open(&db);
+        let vault = self
+            .vault_root
+            .as_deref()
+            .and_then(|root| vaults::attach(&mut store, root, sub, &attachments))
+            .map(Arc::new);
         crate::log(
             "library.open",
             &[
@@ -83,6 +94,7 @@ impl Libraries {
             store,
             db,
             attachments,
+            vault,
             last_used: Instant::now(),
         })
     }
@@ -112,6 +124,35 @@ impl Libraries {
             }
         }
         result
+    }
+
+    pub fn vault(&self, sub: &str) -> Result<Option<Synced>, AppError> {
+        let handle = self.handle(sub)?;
+        let vault = handle
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .vault
+            .clone();
+        Ok(vault.map(|vault| (handle, vault)))
+    }
+
+    pub fn open_vaults(&self) -> Vec<(String, Synced)> {
+        let open: Vec<(String, Arc<Mutex<Library>>)> = {
+            let open = self.open.lock().unwrap_or_else(|e| e.into_inner());
+            open.iter()
+                .map(|(sub, lib)| (sub.clone(), Arc::clone(lib)))
+                .collect()
+        };
+        open.into_iter()
+            .filter_map(|(sub, lib)| {
+                let vault = lib
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .vault
+                    .clone()?;
+                Some((sub, (lib, vault)))
+            })
+            .collect()
     }
 
     pub fn close_idle(&self) {
