@@ -576,3 +576,94 @@ fn a_whiteboard_canvas_travels_and_reads_back() {
     assert_eq!(got["data"]["elements"][0]["text"], "hello");
     assert!(share.path().join("Board.excalidraw").exists());
 }
+
+fn library_of(count: usize, prefix: &str) -> Store {
+    let mut store = Store::open_in_memory().unwrap();
+    for i in 0..count {
+        store
+            .create_note(CreateNoteInput {
+                title: Some(format!("{prefix} {i}")),
+                body: Some(format!("{prefix} body {i}")),
+                ..Default::default()
+            })
+            .unwrap();
+    }
+    store
+}
+
+fn joined(store: Store, root: &Path) -> Device {
+    let mut store = store;
+    store.configure_vault(Some(root)).unwrap();
+    Device::attach(store, root)
+}
+
+fn live(device: &Device) -> usize {
+    device.library().iter().filter(|n| !n.deleted).count()
+}
+
+#[test]
+fn an_empty_library_meeting_a_full_folder_takes_every_note() {
+    let share = tempfile::tempdir().unwrap();
+    let mut desk = joined(library_of(20, "Desk"), share.path());
+    desk.sync();
+    assert_eq!(md_files(share.path()).len(), 20);
+    let mut web = Device::join(share.path());
+    assert_eq!(web.sync().notes.len(), 20);
+    settle(&mut desk, &mut web);
+    assert_eq!(live(&web), 20);
+    assert_eq!(live(&desk), 20);
+    assert_eq!(md_files(share.path()).len(), 20);
+}
+
+#[test]
+fn a_full_library_meeting_an_empty_folder_fills_it_and_keeps_every_note() {
+    let share = tempfile::tempdir().unwrap();
+    let mut web = Device::join(share.path());
+    web.sync();
+    web.sync();
+    let mut desk = joined(library_of(20, "Desk"), share.path());
+    settle(&mut desk, &mut web);
+    assert_eq!(live(&desk), 20);
+    assert_eq!(live(&web), 20);
+    assert!(desk.library().iter().all(|n| !n.deleted));
+    assert_eq!(md_files(share.path()).len(), 20);
+}
+
+#[test]
+fn two_full_libraries_meeting_in_one_folder_keep_the_union() {
+    let share = tempfile::tempdir().unwrap();
+    let mut desk = joined(library_of(12, "Desk"), share.path());
+    desk.sync();
+    let mut web = joined(library_of(8, "Web"), share.path());
+    settle(&mut desk, &mut web);
+    assert_eq!(live(&desk), 20);
+    assert_eq!(live(&web), 20);
+    assert!(web.library().iter().all(|n| !n.deleted));
+    assert_eq!(titled(&web, "Desk ").len(), 12);
+    assert_eq!(titled(&desk, "Web ").len(), 8);
+    assert_eq!(md_files(share.path()).len(), 20);
+}
+
+#[test]
+fn one_note_edited_differently_on_both_sides_before_they_meet_keeps_both() {
+    let first = tempfile::tempdir().unwrap();
+    let (mut desk, mut web) = (Device::join(first.path()), Device::join(first.path()));
+    let n = desk.create("Plan", "v1");
+    settle(&mut desk, &mut web);
+    let second = tempfile::tempdir().unwrap();
+    let mut desk = joined(desk.store.into_inner().unwrap(), second.path());
+    let mut web = joined(web.store.into_inner().unwrap(), second.path());
+    desk.edit(&n.id, "from the desktop");
+    web.edit(&n.id, "from the web");
+    desk.sync();
+    assert_eq!(web.sync().conflicts, 1);
+    settle(&mut desk, &mut web);
+    let plans = titled(&desk, "Plan");
+    let mut bodies: Vec<&str> = plans.iter().map(|p| p.body.as_str()).collect();
+    bodies.sort();
+    assert_eq!(bodies, vec!["from the desktop", "from the web"]);
+    assert!(plans.iter().all(|p| !p.deleted));
+    let copies = titled(&desk, "Plan (conflict ");
+    assert_eq!(copies.len(), 1);
+    assert!(copies[0].tags.contains(&"conflict".to_string()));
+}
