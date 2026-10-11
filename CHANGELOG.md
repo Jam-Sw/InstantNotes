@@ -8,6 +8,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.10.0]
+### Added
+- Vault sync: the vault folder is read back (`Syncer::cycle`: pull, scan, ingest, removals, manifest merge,
+  flush, attachments, push; 5 s poll), so devices sharing one folder (network drive, Syncthing) stay in step;
+  `Transport` trait, `Folder` the first.
+- Sync conflicts keep both versions: the other becomes `<title> (conflict <date time>)` tagged `conflict`;
+  `instantnotes.yaml` merges per key against `vault.manifestBase`.
+- Web mode: with `INSTANTNOTES_VAULT_ROOT` set, each person's library syncs with
+  `<INSTANTNOTES_VAULT_ROOT>/<sub>` like any other device (first cycle before the first request, then every 5 s
+  while open), and changes reach open pages as `notes:changed` and `vault:synced`. Unset, nothing changes.
+- `confirm_vault_removals`, `vault:synced { noteIds }`; `get_vault_status` adds `transport`, `reachable`,
+  `unreachable`, `lastSyncedAt`, `heldRemovals`, `conflicts`.
+
+### Changed
+- Vault flush defers instead of overwriting a note file changed since its `file_sha`; the vault needs
+  `instantnotes.yaml` present (`set_vault_folder` creates it), so an empty mount point pauses sync.
+- A file deleted from the folder trashes its note here; more than half the library (over 20) at once is held
+  for `confirm_vault_removals`.
 
 ## [0.9.5] - 2026-10-10
 ### Added

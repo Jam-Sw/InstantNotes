@@ -349,6 +349,20 @@ with no loss in filing. It stays open until the in-app check in
 `changes/feat-agent-tool-surface/tasks.md` passes, then archives. See
 `changes/feat-agent-tool-surface/`.
 
+## 13j. `feat-vault-sync` (BUILT, open until checked in the app)
+
+The vault folder is read back, so devices sharing one folder keep one
+library: the maintainer's network drive on server-kel first, Syncthing,
+Dropbox, and git later through the same `Transport` seam. Each device keeps
+its own database; the folder is the only thing shared. It covers the ingest
+half of unit 9 (stage 3 of `feat-portable-vault-sync`) and the conflict rules
+of unit 10, with no migration: the merge base is the existing `file_sha`
+and one settings key. Built on its own branch, `0.10.0-pre`, as this file's
+branch model asks of stage 3, on 2026-10-07, with its tests green. It stays
+open until the two-device checks in `changes/feat-vault-sync/tasks.md` pass
+on the real share. Rebuild of a lost database from the vault, attachments
+moving into the vault, and the one-time migration stay with unit 9.
+
 ## 14. Local AI
 
 Needs embedding storage, so it cannot precede unit 10. Embeddings are a

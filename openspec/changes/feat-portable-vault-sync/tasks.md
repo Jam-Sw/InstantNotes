@@ -94,12 +94,21 @@ their canvases. The whiteboard returned first (unit 12): the vault now writes
 owes boards is the other direction: ingest must read the canvas file back
 into `surface_data`, and treat a board without one as an empty scene.
 
-- [ ] `notify` watcher with 150 ms debounce, wired into the Tauri shell layer
-- [ ] Echo suppression by `file_sha` comparison per `vault_path`
-- [ ] Ingest: upsert by frontmatter `id`; handle new / edited / moved / deleted
-- [ ] Unknown or absent `id`: adopt the file, assign an id, write back on flush
-- [ ] Reconstruct `note_tags.source` from body token presence
-- [ ] Dirty-buffer safety: never overwrite the open editor; write a conflict copy
+Delivered by `changes/feat-vault-sync` (0.10.0), which reads the folder back
+for sync. Where it differs from this list, its design records why.
+
+- [x] ~~`notify` watcher with 150 ms debounce~~ A 5 s polling scan in the shell
+      instead (`feat-vault-sync` design §2.1, §10): network drives deliver no
+      change events
+- [x] Echo suppression by `file_sha` comparison per `vault_path`
+- [x] Ingest: upsert by frontmatter `id`; handle new / edited / moved / deleted.
+      A deleted file trashes its note rather than destroying it
+- [x] Unknown or absent `id`: adopt the file, assign an id, write back on flush.
+      The id is derived from path and bytes, so two devices agree
+- [x] Reconstruct `note_tags.source` from body token presence
+- [x] Dirty-buffer safety: never overwrite the open editor; write a conflict copy.
+      The open editor follows the save queue's version check; the folder side
+      gets conflict copies (`feat-vault-sync` design §4.3)
 - [ ] `rebuild_from_disk()`: upsert-not-truncate so `last_opened_at` survives
 - [ ] Settings: "Rebuild cache from vault" (moved here from stage 2)
 - [ ] Attachments move into the vault; bodies unchanged (paths already relative)
@@ -112,8 +121,10 @@ into `surface_data`, and treat a board without one as an empty scene.
 - [ ] Pull on launch, focus, `online`, and before push
 - [ ] Debounced commit (30 s idle, blur, quit); push after commit
 - [ ] Non-fast-forward: `pull --rebase`, retry push
-- [ ] Markdown conflict → `<Title> (conflict from <device> <date>).md` with fresh id
-- [ ] `instantnotes.yaml` conflict → per-key last-write-wins
+- [x] Markdown conflict → `<Title> (conflict <date time>)` with a derived id
+      (`feat-vault-sync`; no device name, which the folder does not carry)
+- [x] `instantnotes.yaml` conflict → per-key three-way merge against the last
+      synced version (`feat-vault-sync`), not last-write-wins
 - [ ] Excalidraw element merge: match on element id, `MAX(version, versionNonce)`, honor `isDeleted`
 - [ ] PAT storage in the OS keychain (`keyring`)
 - [ ] Vault `.gitignore`
