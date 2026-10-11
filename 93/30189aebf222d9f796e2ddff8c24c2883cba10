@@ -1,0 +1,19 @@
+.github/workflows/release.yml
+  s_5b5638c1c85e81::t_bb3d640b18cbe7 127,130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9330189aebf222d9f796e2ddff8c24c2883cba10",
+  "prompts": {},
+  "sessions": {
+    "s_5b5638c1c85e81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "710326b9-77a6-4a80-9877-993e4c47d608",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
