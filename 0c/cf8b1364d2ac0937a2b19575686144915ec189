@@ -1,0 +1,19 @@
+src-tauri/core/tests/vault_sync_test.rs
+  s_6f41455905bd24::t_3ecc86357b80b0 579-669
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0ccf8b1364d2ac0937a2b19575686144915ec189",
+  "prompts": {},
+  "sessions": {
+    "s_6f41455905bd24": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6e597c0-f785-4100-a699-5fbbcdb7a8d7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
