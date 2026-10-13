@@ -1,0 +1,60 @@
+src/routes/+page.svelte
+  s_78f0975e18f204::t_7aedf481f16636 29
+  s_78f0975e18f204::t_4aafa45c6cd764 126-133
+  s_78f0975e18f204::t_407454e5966061 159
+src/lib/stores/links.svelte.ts
+  s_78f0975e18f204::t_8202b2a305cf5a 40-44
+src/lib/stores/images.svelte.ts
+  s_78f0975e18f204::t_7980e88ed25d1e 32-36
+src/lib/stores/editor.svelte.ts
+  s_78f0975e18f204::t_d60ae0ba5929a5 46-51
+src-tauri/core/src/store/server_sync.rs
+  s_78f0975e18f204::t_0473c819a1c519 803-808
+  s_78f0975e18f204::t_47adb16b1010a2 1,6-8,174-179,198-203,221-222,568-590,809-814,879-887,916-922
+CHANGELOG.md
+  s_78f0975e18f204::t_020eaa9556e971 25-28
+docs/API.md
+  s_78f0975e18f204::t_8633b30a0791f3 421
+docs/DATA_MODEL.md
+  s_78f0975e18f204::t_7a86fa735b4eff 274-283,295-296
+src-tauri/core/src/store.rs
+  s_78f0975e18f204::t_c2bd7160e69b1d 699-702
+src-tauri/core/src/store/settings.rs
+  s_78f0975e18f204::t_c25ea3da328191 2-57,86-114,128-205
+src-tauri/core/src/sync/cycle.rs
+  s_78f0975e18f204::t_432644a6baefa1 2-4,22,389-397
+src-tauri/core/src/sync/object.rs
+  s_78f0975e18f204::t_f803b2fb3b3f8f 7,21-22,57,85-91
+src-tauri/core/tests/server_sync_test.rs
+  s_78f0975e18f204::t_e790c3e787994f 630-678
+src-tauri/src/commands/settings.rs
+  s_78f0975e18f204::t_17ae4cdff5791f 13,18-22
+src-tauri/src/events.rs
+  s_78f0975e18f204::t_4a008765c5d1db 16
+src-tauri/src/shell/mirror.rs
+  s_78f0975e18f204::t_5dfcd6b6807890 68,84-89,162,171-173
+src-tauri/web/src/lib.rs
+  s_78f0975e18f204::t_78c62d0b34c8a6 166
+src/lib/api/events.ts
+  s_78f0975e18f204::t_82c81dd4785f00 29
+src/lib/web/library.ts
+  s_78f0975e18f204::t_9691c49f31e317 53
+src/lib/web/sync.ts
+  s_78f0975e18f204::t_a66e36408e23b2 28,202
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b750a4fe069b55808fd8c8a61b397a85234d255f",
+  "prompts": {},
+  "sessions": {
+    "s_78f0975e18f204": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8588110-69b5-41b5-b1c4-53a3f029dcb4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
