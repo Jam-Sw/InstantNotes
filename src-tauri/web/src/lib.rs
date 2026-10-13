@@ -93,6 +93,37 @@ pub fn save_attachment(bytes: &[u8], ext: &str) -> Result<String, JsValue> {
     Ok(name)
 }
 
+#[derive(serde::Deserialize)]
+struct LegacyNote {
+    md: String,
+    surface: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct Legacy {
+    notes: Vec<LegacyNote>,
+    manifest: String,
+}
+
+#[wasm_bindgen]
+pub fn import_legacy(legacy: &str) -> Result<usize, JsValue> {
+    let legacy: Legacy = serde_json::from_str(legacy).map_err(fail)?;
+    let notes: Vec<(String, Option<String>)> = legacy
+        .notes
+        .into_iter()
+        .map(|n| (n.md, n.surface))
+        .collect();
+    with(|s| s.import_legacy(&notes, Some(&legacy.manifest)))
+}
+
+#[wasm_bindgen]
+pub fn import_attachment(name: &str, bytes: &[u8]) -> Result<bool, JsValue> {
+    if !commands::valid_attachment_name(name) {
+        return Ok(false);
+    }
+    with(|s| s.save_attachment_file(name, bytes))
+}
+
 #[wasm_bindgen]
 pub fn attachment(name: &str) -> Result<Option<Vec<u8>>, JsValue> {
     if !commands::valid_attachment_name(name) {

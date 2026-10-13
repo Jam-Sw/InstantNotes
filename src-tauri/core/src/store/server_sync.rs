@@ -1,13 +1,16 @@
 use super::vault::MANIFEST_BASE_SETTING;
+use super::vault_sync::CONFLICT_TAG;
 use super::*;
 use crate::attachments::Attachments;
 use crate::sync::object::{attachment_key, note_key, sha_hex, Envelope, MANIFEST_KEY, NOTE_PREFIX};
-use crate::vault::reconcile::{decide, equivalent, Decision, Remote, Side, Synced};
+use crate::vault::reconcile::{decide, derived_id, equivalent, Decision, Remote, Side, Synced};
 use crate::vault::{
     merge_manifest, parse_manifest, parse_note, serialize_manifest, serialize_note, VaultNote,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+
+pub type LegacyNotes = Vec<(String, Option<String>)>;
 
 pub const SYNC_STATE_SETTING: &str = "sync.state";
 pub const MERGE_REVIEW_SETTING: &str = "sync.mergeReview";
@@ -568,6 +571,60 @@ impl Store {
         };
         self.record_remote(&attachment_key(file), name, Some(remote_sha))?;
         Ok(written)
+    }
+
+    pub fn export_legacy(&self) -> Result<(LegacyNotes, String)> {
+        let ids: Vec<String> = {
+            let mut stmt = self
+                .conn
+                .prepare("SELECT id FROM notes ORDER BY created_at, id")?;
+            let rows = stmt.query_map([], |r| r.get(0))?;
+            rows.collect::<rusqlite::Result<_>>()?
+        };
+        let mut notes = Vec::with_capacity(ids.len());
+        for id in ids {
+            let note = self.vault_note(&id)?;
+            notes.push((serialize_note(&note), note.surface.clone()));
+        }
+        Ok((notes, serialize_manifest(&self.vault_manifest()?)))
+    }
+
+    pub fn import_legacy(
+        &mut self,
+        notes: &[(String, Option<String>)],
+        manifest: Option<&str>,
+    ) -> Result<usize> {
+        let tx = self.conn.unchecked_transaction()?;
+        let mut added = 0;
+        for (md, surface) in notes {
+            let mut note = parse_note(md).map_err(|e| AppError::Validation(e.to_string()))?;
+            note.surface = surface.clone();
+            if self.vault_row(&note.id)?.is_some() {
+                if equivalent(&self.vault_note(&note.id)?, &note) {
+                    continue;
+                }
+                note.id = derived_id(&["legacy", &note.id]);
+                note.tags.push(CONFLICT_TAG.to_string());
+                if self.vault_row(&note.id)?.is_some() {
+                    continue;
+                }
+            }
+            self.insert_from_vault(&note)?;
+            self.conn.execute(
+                "UPDATE notes SET vault_dirty = 1 WHERE id = ?1",
+                params![note.id],
+            )?;
+            added += 1;
+        }
+        tx.commit()?;
+        if let Some(text) = manifest {
+            let theirs = parse_manifest(text)
+                .map_err(|e| AppError::Validation(format!("manifest cannot be read: {e}")))?;
+            let ours = self.vault_manifest()?;
+            let merged = merge_manifest(None, &ours, &theirs);
+            self.apply_manifest(&ours, &merged)?;
+        }
+        Ok(added)
     }
 
     pub fn save_attachment_file(&mut self, file: &str, bytes: &[u8]) -> Result<bool> {

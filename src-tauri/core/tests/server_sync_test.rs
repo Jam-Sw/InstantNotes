@@ -1243,3 +1243,61 @@ fn attachments_travel_between_a_folder_and_a_browser_database() {
         b"from the browser"
     );
 }
+
+#[test]
+fn an_old_web_library_moves_into_a_device_and_reaches_the_others() {
+    let mut old = Store::open_in_memory().unwrap();
+    let kept = old
+        .create_note(CreateNoteInput {
+            title: Some("From the old web".into()),
+            body: Some("written in the old web version".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    old.add_tag_to_note(&kept.id, "web").unwrap();
+    old.get_or_create_workspace("Reading").unwrap();
+    let (notes, manifest) = old.export_legacy().unwrap();
+
+    let (_server, mut a, mut b, _) = encrypted_pair();
+    assert_eq!(a.s().import_legacy(&notes, Some(&manifest)).unwrap(), 1);
+    assert_eq!(a.s().import_legacy(&notes, Some(&manifest)).unwrap(), 0);
+    settle(&mut [&mut a, &mut b]);
+    let note = b.note(&kept.id);
+    assert_eq!(note.body, "written in the old web version");
+    assert_eq!(note.created_at, kept.created_at);
+    let tags: Vec<String> = b
+        .s()
+        .tags_for_note(&kept.id)
+        .unwrap()
+        .into_iter()
+        .map(|t| t.name)
+        .collect();
+    assert_eq!(tags, vec!["web".to_string()]);
+    assert!(b
+        .s()
+        .list_workspaces()
+        .unwrap()
+        .iter()
+        .any(|w| w.workspace.name == "Reading"));
+}
+
+#[test]
+fn an_old_web_note_that_differs_from_a_device_copy_is_kept_twice() {
+    let mut old = Store::open_in_memory().unwrap();
+    let note = old
+        .create_note(CreateNoteInput {
+            title: Some("Shared".into()),
+            body: Some("the old web text".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    let (notes, manifest) = old.export_legacy().unwrap();
+    let a = Device::join(&Server::new(), None);
+    a.s().import_legacy(&notes, Some(&manifest)).unwrap();
+    a.edit(&note.id, "edited on this device");
+    let (again, _) = old.export_legacy().unwrap();
+    assert_eq!(a.s().import_legacy(&again, None).unwrap(), 1);
+    let bodies: Vec<String> = a.live().into_iter().map(|n| n.body).collect();
+    assert!(bodies.contains(&"edited on this device".to_string()));
+    assert!(bodies.contains(&"the old web text".to_string()));
+}

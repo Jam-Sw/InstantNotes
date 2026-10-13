@@ -63,6 +63,19 @@ pub enum JoinAnswer {
     Denied,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct LegacyNote {
+    pub md: String,
+    pub surface: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Legacy {
+    pub notes: Vec<LegacyNote>,
+    pub manifest: String,
+    pub attachments: Vec<String>,
+}
+
 pub struct Pkce {
     pub verifier: String,
     pub challenge: String,
@@ -430,6 +443,29 @@ impl Client {
 
     pub async fn devices(&self) -> Result<Vec<Device>, RemoteError> {
         self.json(|| self.request(Method::GET, "devices")).await
+    }
+
+    pub async fn legacy(&self) -> Result<Option<Legacy>, RemoteError> {
+        match self.json(|| self.request(Method::GET, "legacy")).await {
+            Ok(found) => Ok(Some(found)),
+            Err(RemoteError::Refused(why)) if why.contains("404") => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub async fn legacy_attachment(&self, name: &str) -> Result<Vec<u8>, RemoteError> {
+        let path = format!("legacy/attachments/{name}");
+        let response = self.send(|| self.request(Method::GET, &path)).await?;
+        Ok(response
+            .bytes()
+            .await
+            .map_err(|e| RemoteError::Unreachable(e.to_string()))?
+            .to_vec())
+    }
+
+    pub async fn drop_legacy(&self) -> Result<(), RemoteError> {
+        self.send(|| self.request(Method::DELETE, "legacy")).await?;
+        Ok(())
     }
 
     pub async fn revoke(&self, id: Option<&str>) -> Result<(), RemoteError> {

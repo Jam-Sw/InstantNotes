@@ -11,6 +11,9 @@ const OPEN_TRIES = 10;
 const OPEN_RETRY_MS = 300;
 const WAIT_SECONDS = 25;
 const PLAIN_OK = "instantnotes.plainOk";
+const LEGACY = "sync.legacy";
+const LEGACY_IMPORTED = "imported";
+const LEGACY_DONE = "done";
 
 type SyncAnswer = {
   stage: SyncStage | "unset";
@@ -75,11 +78,50 @@ function plainOk(): boolean {
   }
 }
 
+async function setting(key: string): Promise<unknown> {
+  const answer = JSON.parse(await run<string>("call", "get_setting", JSON.stringify({ key }), null));
+  return (answer as { value: unknown }).value;
+}
+
+async function setSetting(key: string, value: unknown): Promise<void> {
+  await run("call", "set_setting", JSON.stringify({ key, value }), null);
+}
+
+async function takeLegacy(): Promise<boolean> {
+  if ((await setting(LEGACY)) !== null) return false;
+  const res = await fetch(API + "legacy", { headers: HEADERS });
+  if (res.status === 404) {
+    await setSetting(LEGACY, LEGACY_DONE);
+    return false;
+  }
+  if (!res.ok) return false;
+  const legacy = (await res.json()) as { attachments: string[] };
+  for (const name of legacy.attachments) {
+    const file = await fetch(`${API}legacy/attachments/${encodeURIComponent(name)}`, {
+      headers: HEADERS,
+    });
+    if (file.ok) await run("import_attachment", name, new Uint8Array(await file.arrayBuffer()));
+  }
+  await run("import_legacy", JSON.stringify(legacy));
+  await setSetting(LEGACY, LEGACY_IMPORTED);
+  return true;
+}
+
+async function finishLegacy(answer: SyncAnswer): Promise<void> {
+  if (answer.stage !== "upToDate" || answer.retry) return;
+  if ((await setting(LEGACY)) !== LEGACY_IMPORTED) return;
+  const res = await fetch(API + "legacy", { method: "DELETE", headers: HEADERS });
+  if (res.ok || res.status === 404) await setSetting(LEGACY, LEGACY_DONE);
+}
+
 async function once(): Promise<void> {
   const key = await getKey();
+  const imported = await takeLegacy().catch(() => false);
+  if (imported) emit("notes:changed", { origin: null });
   const answer = JSON.parse(
     await run<string>("sync", key, allowRemovals, plainOk()),
   ) as SyncAnswer;
+  await finishLegacy(answer).catch(() => {});
   allowRemovals = false;
   if (answer.stage === "signedOut") location.assign("/auth/login");
   if (answer.dropKey) await clearKey();

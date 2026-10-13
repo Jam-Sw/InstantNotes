@@ -186,6 +186,26 @@ impl Libraries {
         }
     }
 
+    pub fn exists(&self, sub: &str) -> bool {
+        self.dir_for(sub).join(DB_FILE).is_file()
+    }
+
+    pub fn remove(&self, sub: &str) -> std::io::Result<bool> {
+        let mut open = self.open.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(lib) = open.remove(sub) {
+            if let Ok(lib) = lib.lock() {
+                Store::mark_session_closed(&lib.db);
+            }
+        }
+        let dir = self.dir_for(sub);
+        if !dir.exists() {
+            return Ok(false);
+        }
+        std::fs::remove_dir_all(&dir)?;
+        crate::log("legacy.removed", &[("library", &folder_name(sub))]);
+        Ok(true)
+    }
+
     pub fn open_count(&self) -> usize {
         self.open.lock().unwrap_or_else(|e| e.into_inner()).len()
     }

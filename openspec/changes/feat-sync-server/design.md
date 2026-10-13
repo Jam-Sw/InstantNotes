@@ -619,7 +619,7 @@ cookie with the `X-InstantNotes` header.
 | `POST commit` | `{ epoch, ops: [{ name, base, sha }], reset }`, all or nothing: `200 { head }`, `409 { conflicts }`, `409 WRONG_EPOCH`, `400` for a bad name or a missing upload. `epoch` is the current one, or the next while staging a switch (§4.10), when `reset` clears that staging epoch first. |
 | `POST switch` | `{ fromEpoch, builtAt, mode, recipient, expected }` (§4.10): `200 { epoch }`, `409 CONFLICT` when the old epoch moved, `409 INCOMPLETE`, `409 WRONG_EPOCH`. |
 | `GET devices`, `DELETE devices/{id}`, `DELETE devices` | List, revoke one, sign out everywhere. |
-| `GET legacy`, `DELETE legacy` | §8.2 only, while a 0.9.5 web library exists (section 8 of the tasks; not built yet). |
+| `GET legacy`, `GET legacy/attachments/{name}`, `DELETE legacy` | §8.2 only, while this person's 0.9.5 web library exists; `404` otherwise. |
 
 `/healthz`: `200 ok` when the data folder is writable and `server.db` opens,
 `503` with a reason otherwise.
@@ -734,13 +734,21 @@ Linux pulls the result. A join never destroys a note.
 A person who used 0.9.5's web mode has a plain library on the server. It
 stays read-only until moved:
 
-1. The first device of that person to join (desktop or browser) sees "Your
-   server has notes from its earlier web version. They'll be added to this
-   library and encrypted." and fetches them over HTTPS (`GET legacy`, the
-   library as vault files).
-2. It merges them by §8.1 and pushes them encrypted.
-3. It calls `DELETE legacy`; the server deletes `libraries/<person>/`, and logs
-   that it did.
+1. The first device of that person to sync after the upgrade (desktop or
+   browser) fetches them over HTTPS: `GET legacy` returns every note as vault
+   Markdown with its surface, the manifest (tags and Spaces), and attachment
+   names; `GET legacy/attachments/{name}` returns each image. The device
+   checks every name before writing it.
+2. It imports them as its own notes, keeping ids, times, tags and Spaces
+   (`Store::import_legacy`): a note it already has unchanged is skipped; one
+   with the same id but different content is kept twice, the copy tagged
+   `conflict`. Then its ordinary sync pushes them, encrypted when the library
+   is, and §8.1's rules apply on every other device.
+3. Only after a sync that reached the server with no errors does it call
+   `DELETE legacy`; the server deletes `libraries/<person>/` and logs
+   `legacy.removed`. The step is kept in the library (`sync.legacy`), so an
+   interrupted move resumes, and a device that finds nothing (`404`) never
+   asks again.
 
 Until then the server serves that library to nobody else and keeps it. The
 README tells operators that server backups taken before the move still hold
@@ -771,8 +779,28 @@ was read back after it, from OPFS.
 - **The same UI.** On the web, `call()` in `src/lib/api/client.ts` posts to the
   worker instead of `/api/<command>`, and `listen()` hears the worker's events
   instead of the server's SSE stream. The 40 web commands keep their names and
-  arguments. The server's `/api/<command>` routes and its per-person `Store`
-  are removed.
+  arguments: their dispatch moved from the server into the core
+  (`instantnotes_core::commands`), so the worker runs exactly the code the
+  server ran. The sync commands keep the desktop's names and answer with the
+  same `SyncServerStatus`, from `src/lib/web/sync.ts`, so Settings and the
+  join and review screens are the same components. The server's
+  `/api/<command>` routes and its per-person `Store` are removed.
+- **Never blocking on the network.** The sync engine is async (`Remote` is an
+  async trait), so the worker answers the UI between requests. The desktop
+  runs the same engine with `block_on` on its sync thread. The worker's
+  `Remote` is a small `fetch` client (`src-tauri/web/src/remote.rs`) sharing the
+  core's frame format and error mapping with the desktop's `reqwest` one; the
+  two long-polls (changes, join requests) run on the page, not in the worker.
+- **Images.** The browser has no folder, so attachments live in the same
+  database (`attachment_files(name, bytes)`); the core reaches them through
+  `Attachments::{Folder, Database}`. Image URLs stay `/api/attachments/<name>`:
+  the service worker answers them by asking the page, which asks the worker.
+- **Built only for the image.** The worker and its WebAssembly are plain files
+  under `static/web/` (`worker.js`, and `pkg/` built by
+  `scripts/build-web-core.sh`), outside Vite's module graph, so the desktop
+  builds and their CI need no WebAssembly toolchain. The Dockerfile's `web`
+  stage (Debian trixie, for a clang new enough for SQLite's C shim) builds
+  them; the bundle is about 2.5 MB before compression.
 - **One tab at a time.** The browser storage allows one open database per
   site. A second tab shows "InstantNotes is open in another tab" with **Use
   here**, which moves the library to that tab (Web Locks).

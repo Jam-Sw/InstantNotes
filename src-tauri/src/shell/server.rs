@@ -1,5 +1,6 @@
 use crate::*;
 use instantnotes_core::attachments::Attachments;
+use instantnotes_core::commands;
 use instantnotes_core::store::iso;
 use instantnotes_core::store::server_sync::MergeReview;
 use instantnotes_core::sync::crypto::{join_words, JoinKey, LibraryKey, Lock};
@@ -21,6 +22,9 @@ const SIGN_IN_WAIT: Duration = Duration::from_secs(10 * 60);
 const JOIN_ROUNDS: usize = 24;
 const LONG_POLL: u64 = 25;
 const BACKUPS_KEPT: usize = 3;
+const LEGACY_SETTING: &str = "sync.legacy";
+const LEGACY_IMPORTED: &str = "imported";
+const LEGACY_DONE: &str = "done";
 const SIGNED_IN_PAGE: &str = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n<!doctype html><meta charset=utf-8><title>InstantNotes</title><body style=\"font-family:system-ui;display:grid;place-items:center;min-height:90vh\"><p>Signed in. You can close this tab and return to InstantNotes.</p>";
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -897,6 +901,78 @@ pub(crate) fn build_engine(app: &AppHandle) -> Option<ServerEngine> {
         server_settings(&store)?
     };
     Some(ServerEngine { sync, settings })
+}
+
+fn legacy_step(app: &AppHandle) -> Option<String> {
+    let state = app.try_state::<AppState>()?;
+    let store = state.store.lock().ok()?;
+    store
+        .get_setting(LEGACY_SETTING)
+        .ok()
+        .flatten()
+        .and_then(|v| v.as_str().map(str::to_string))
+}
+
+fn set_legacy_step(app: &AppHandle, step: &str) {
+    if let Some(state) = app.try_state::<AppState>() {
+        if let Ok(mut store) = state.store.lock() {
+            let _ = store.set_setting(LEGACY_SETTING, serde_json::Value::String(step.into()));
+        }
+    }
+}
+
+pub(crate) fn take_legacy(app: &AppHandle, client: &Client) -> bool {
+    if legacy_step(app).is_some() {
+        return false;
+    }
+    let legacy = match tauri::async_runtime::block_on(client.legacy()) {
+        Ok(Some(found)) => found,
+        Ok(None) => {
+            set_legacy_step(app, LEGACY_DONE);
+            return false;
+        }
+        Err(_) => return false,
+    };
+    if let Ok(dir) = attachments_dir(app) {
+        for name in legacy
+            .attachments
+            .iter()
+            .filter(|n| commands::valid_attachment_name(n))
+        {
+            let path = dir.join(name);
+            if path.exists() {
+                continue;
+            }
+            if let Ok(bytes) = tauri::async_runtime::block_on(client.legacy_attachment(name)) {
+                let _ = std::fs::create_dir_all(&dir);
+                let _ = std::fs::write(&path, bytes);
+            }
+        }
+    }
+    let notes: Vec<(String, Option<String>)> = legacy
+        .notes
+        .into_iter()
+        .map(|n| (n.md, n.surface))
+        .collect();
+    let state = app.state::<AppState>();
+    let imported = match state.store.lock() {
+        Ok(mut store) => store.import_legacy(&notes, Some(&legacy.manifest)).is_ok(),
+        Err(_) => false,
+    };
+    if imported {
+        set_legacy_step(app, LEGACY_IMPORTED);
+    }
+    imported
+}
+
+pub(crate) fn finish_legacy(app: &AppHandle, client: &Client, report: &SyncReport) {
+    let pushed = report.reached() && report.errors.is_empty() && !report.retry;
+    if !pushed || legacy_step(app).as_deref() != Some(LEGACY_IMPORTED) {
+        return;
+    }
+    if tauri::async_runtime::block_on(client.drop_legacy()).is_ok() {
+        set_legacy_step(app, LEGACY_DONE);
+    }
 }
 
 pub(crate) fn record_report(app: &AppHandle, report: &SyncReport) {

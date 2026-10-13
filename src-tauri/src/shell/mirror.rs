@@ -73,11 +73,16 @@ pub(crate) fn start_vault_sync(app: &AppHandle) -> VaultSync {
                     if link.allow_removals.swap(false, Ordering::Relaxed) {
                         server.sync.confirm_removals();
                     }
+                    let imported = take_legacy(&handle, &server.sync.remote.client);
                     let report = tauri::async_runtime::block_on(
                         server.sync.cycle(&handle.state::<AppState>().store),
                     );
+                    finish_legacy(&handle, &server.sync.remote.client, &report);
                     record_report(&handle, &report);
-                    announce(&handle, &report.notes, report.labels_changed);
+                    announce(&handle, &report.notes, report.labels_changed || imported);
+                    if imported {
+                        let _ = handle.emit(events::NOTES_CHANGED, ());
+                    }
                     if report.mode_changed || report.signed_out {
                         stop.store(true, Ordering::Relaxed);
                         engine = None;

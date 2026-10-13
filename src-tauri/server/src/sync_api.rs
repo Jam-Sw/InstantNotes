@@ -48,6 +48,8 @@ pub fn routes() -> Router<AppState> {
         .route("/sync/v1/keys/requests/{id}/deny", post(deny_join))
         .route("/sync/v1/devices", get(devices).delete(revoke_all))
         .route("/sync/v1/devices/{id}", axum::routing::delete(revoke_one))
+        .route("/sync/v1/legacy", get(legacy).delete(drop_legacy))
+        .route("/sync/v1/legacy/attachments/{name}", get(legacy_attachment))
 }
 
 fn refusal(code: &str, status: StatusCode, message: &str) -> Response {
@@ -627,4 +629,69 @@ async fn revoke_all(
         ],
     );
     StatusCode::NO_CONTENT.into_response()
+}
+
+async fn legacy(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+) -> Response {
+    let c = signed_in!(state, peer, headers);
+    let sub = c.grant.person.sub.clone();
+    if !state.libraries.exists(&sub) {
+        return Refused::NotFound.into_response();
+    }
+    let exported = state.libraries.with(&sub, |lib| {
+        let (notes, manifest) = lib.store.export_legacy()?;
+        let attachments: Vec<String> =
+            instantnotes_core::attachments::list_attachments(&lib.attachments, None)
+                .map(|files| files.into_iter().map(|(name, _)| name).collect())
+                .unwrap_or_default();
+        Ok((notes, manifest, attachments))
+    });
+    match exported {
+        Ok((notes, manifest, attachments)) => {
+            let notes: Vec<serde_json::Value> = notes
+                .into_iter()
+                .map(|(md, surface)| json!({ "md": md, "surface": surface }))
+                .collect();
+            Json(json!({ "notes": notes, "manifest": manifest, "attachments": attachments }))
+                .into_response()
+        }
+        Err(e) => Refused::Storage(e.to_string()).into_response(),
+    }
+}
+
+async fn legacy_attachment(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(name): Path<String>,
+) -> Response {
+    let c = signed_in!(state, peer, headers);
+    if !instantnotes_core::commands::valid_attachment_name(&name) {
+        return Refused::NotFound.into_response();
+    }
+    let path = state
+        .libraries
+        .dir_for(&c.grant.person.sub)
+        .join(crate::libraries::ATTACHMENTS_DIR)
+        .join(&name);
+    match tokio::fs::read(path).await {
+        Ok(bytes) => bytes.into_response(),
+        Err(_) => Refused::NotFound.into_response(),
+    }
+}
+
+async fn drop_legacy(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+) -> Response {
+    let c = signed_in!(state, peer, headers);
+    match state.libraries.remove(&c.grant.person.sub) {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => Refused::NotFound.into_response(),
+        Err(e) => Refused::Storage(e.to_string()).into_response(),
+    }
 }

@@ -627,3 +627,51 @@ async fn a_switch_over_needs_a_complete_staging_and_an_unmoved_library() {
     let gone = b.post("blobs/fetch", json!({ "shas": [edit] })).await;
     assert!(gone.bytes().await.unwrap().len() < 8);
 }
+
+#[tokio::test]
+async fn an_old_web_library_is_handed_to_its_owner_only_and_then_deleted() {
+    let server = start().await;
+    let alice = server.device("alice", "Laptop");
+    let bob = server.device("bob", "Laptop");
+    assert_eq!(alice.get("legacy").await.status(), 404);
+    server
+        .state
+        .libraries
+        .with("alice", |lib| {
+            lib.store
+                .create_note(instantnotes_core::types::CreateNoteInput {
+                    title: Some("Old".into()),
+                    body: Some("from the old web version".into()),
+                    ..Default::default()
+                })?;
+            std::fs::write(lib.attachments.join("a1.png"), b"image").unwrap();
+            Ok(())
+        })
+        .unwrap();
+    let exported: Value = alice.get("legacy").await.json().await.unwrap();
+    assert!(exported["notes"][0]["md"]
+        .as_str()
+        .unwrap()
+        .contains("from the old web version"));
+    assert_eq!(exported["attachments"], json!(["a1.png"]));
+    let image = alice.get("legacy/attachments/a1.png").await;
+    assert_eq!(image.bytes().await.unwrap().as_ref(), b"image");
+    assert_eq!(bob.get("legacy").await.status(), 404);
+    assert_eq!(bob.get("legacy/attachments/a1.png").await.status(), 404);
+    assert_eq!(
+        alice
+            .get("legacy/attachments/..%2Flibrary.db")
+            .await
+            .status(),
+        404
+    );
+    let removed = alice
+        .http
+        .delete(alice.url("legacy"))
+        .bearer_auth(&alice.token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(removed.status(), 204);
+    assert_eq!(alice.get("legacy").await.status(), 404);
+}
