@@ -1,4 +1,5 @@
 use crate::*;
+use instantnotes_core::attachments::Attachments;
 use instantnotes_core::store::iso;
 use instantnotes_core::store::server_sync::MergeReview;
 use instantnotes_core::sync::crypto::{join_words, JoinKey, LibraryKey, Lock};
@@ -754,7 +755,11 @@ fn switch_encryption(
     let remote = connection(settings)?;
     let current = lock_from_keychain(settings);
     let state = app.state::<AppState>();
-    let mut sync = ServerSync::new(remote, current, attachments_dir(app).ok());
+    let mut sync = ServerSync::new(
+        remote,
+        current,
+        attachments_dir(app).ok().map(Attachments::Folder),
+    );
     let (next, mode, recipient, recovery) = if on {
         let key = LibraryKey::generate();
         let recipient = key.recipient();
@@ -846,7 +851,7 @@ pub(crate) fn build_engine(app: &AppHandle) -> Option<ServerEngine> {
             return None;
         }
     };
-    let attachments = attachments_dir(app).ok();
+    let attachments = attachments_dir(app).ok().map(Attachments::Folder);
     let mut sync = ServerSync::new(remote, lock_from_keychain(&settings), attachments.clone());
     let stop = |stage: &str, message: Option<String>| {
         link(app).set(|s| {

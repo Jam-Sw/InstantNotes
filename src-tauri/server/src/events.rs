@@ -1,26 +1,11 @@
-use serde_json::Value;
+pub use instantnotes_core::commands::{Change, NOTES_CHANGED, TAGS_CHANGED, WORKSPACES_CHANGED};
 use std::collections::HashMap;
 use std::sync::Mutex;
 use tokio::sync::broadcast;
 
-pub const NOTES_CHANGED: &str = "notes:changed";
-pub const TAGS_CHANGED: &str = "tags:changed";
-pub const WORKSPACES_CHANGED: &str = "workspaces:changed";
 pub const VAULT_SYNCED: &str = "vault:synced";
 
 const BUFFER: usize = 256;
-
-#[derive(Clone, Debug)]
-pub struct Change {
-    pub event: &'static str,
-    pub payload: Value,
-}
-
-impl Change {
-    pub fn new(event: &'static str, payload: Value) -> Self {
-        Change { event, payload }
-    }
-}
 
 #[derive(Default)]
 pub struct Hub {

@@ -1,6 +1,7 @@
 pub mod attachments;
 pub mod classify;
 pub mod clients;
+pub mod commands;
 pub mod domain;
 pub mod error;
 pub mod import;

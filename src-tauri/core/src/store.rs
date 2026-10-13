@@ -266,6 +266,10 @@ CREATE TABLE sync_objects (
   remote_sha TEXT
 );
 CREATE INDEX idx_sync_objects_name ON sync_objects(name);
+CREATE TABLE attachment_files (
+  name  TEXT PRIMARY KEY,
+  bytes BLOB NOT NULL
+);
 "#,
 ];
 

@@ -1,5 +1,6 @@
 use super::vault::MANIFEST_BASE_SETTING;
 use super::*;
+use crate::attachments::Attachments;
 use crate::sync::object::{attachment_key, note_key, sha_hex, Envelope, MANIFEST_KEY, NOTE_PREFIX};
 use crate::vault::reconcile::{decide, equivalent, Decision, Remote, Side, Synced};
 use crate::vault::{
@@ -547,24 +548,98 @@ impl Store {
         remote_sha: &str,
         file: &str,
         bytes: &[u8],
-        dir: Option<&Path>,
+        place: Option<&Attachments>,
     ) -> Result<bool> {
-        let mut written = false;
-        if let Some(dir) = dir {
-            let path = dir.join(file);
-            if std::fs::symlink_metadata(&path).is_err() {
-                std::fs::create_dir_all(dir)
-                    .map_err(|e| AppError::Storage(format!("cannot create attachments: {e}")))?;
-                crate::vault::atomic_write(&path, bytes)
-                    .map_err(|e| AppError::Storage(format!("cannot write attachment: {e}")))?;
-                written = true;
+        let written = match place {
+            Some(Attachments::Folder(dir)) => {
+                let path = dir.join(file);
+                let missing = std::fs::symlink_metadata(&path).is_err();
+                if missing {
+                    std::fs::create_dir_all(dir).map_err(|e| {
+                        AppError::Storage(format!("cannot create attachments: {e}"))
+                    })?;
+                    crate::vault::atomic_write(&path, bytes)
+                        .map_err(|e| AppError::Storage(format!("cannot write attachment: {e}")))?;
+                }
+                missing
             }
-        }
+            Some(Attachments::Database) => self.save_attachment_file(file, bytes)?,
+            None => false,
+        };
         self.record_remote(&attachment_key(file), name, Some(remote_sha))?;
         Ok(written)
     }
 
-    pub fn pending_server_pushes(&mut self, attachments: Option<&Path>) -> Result<Vec<Pending>> {
+    pub fn save_attachment_file(&mut self, file: &str, bytes: &[u8]) -> Result<bool> {
+        let added = self.conn.execute(
+            "INSERT OR IGNORE INTO attachment_files (name, bytes) VALUES (?1, ?2)",
+            params![file, bytes],
+        )?;
+        Ok(added > 0)
+    }
+
+    pub fn attachment_file(&self, file: &str) -> Result<Option<Vec<u8>>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT bytes FROM attachment_files WHERE name = ?1",
+                params![file],
+                |r| r.get(0),
+            )
+            .optional()?)
+    }
+
+    pub fn attachment_file_sizes(&self) -> Result<Vec<(String, u64)>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT name, length(bytes) FROM attachment_files ORDER BY name")?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get::<_, i64>(1)? as u64)))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    pub fn delete_attachment_file(&self, file: &str) -> Result<Option<u64>> {
+        Ok(self
+            .conn
+            .query_row(
+                "DELETE FROM attachment_files WHERE name = ?1 RETURNING length(bytes)",
+                params![file],
+                |r| r.get::<_, i64>(0),
+            )
+            .optional()?
+            .map(|n| n as u64))
+    }
+
+    fn attachment_names(&self, place: &Attachments) -> Result<Vec<String>> {
+        match place {
+            Attachments::Folder(dir) => Ok(crate::attachments::list_attachments(dir, None)
+                .map_err(|e| AppError::Storage(format!("cannot list attachments: {e}")))?
+                .into_iter()
+                .map(|(name, _)| name)
+                .collect()),
+            Attachments::Database => {
+                let mut stmt = self
+                    .conn
+                    .prepare("SELECT name FROM attachment_files ORDER BY name")?;
+                let rows = stmt.query_map([], |r| r.get(0))?;
+                Ok(rows.collect::<rusqlite::Result<_>>()?)
+            }
+        }
+    }
+
+    fn attachment_bytes(&self, place: &Attachments, file: &str) -> Result<Vec<u8>> {
+        match place {
+            Attachments::Folder(dir) => std::fs::read(dir.join(file))
+                .map_err(|e| AppError::Storage(format!("cannot read attachment: {e}"))),
+            Attachments::Database => self
+                .attachment_file(file)?
+                .ok_or_else(|| AppError::Storage(format!("attachment {file} is missing"))),
+        }
+    }
+
+    pub fn pending_server_pushes(
+        &mut self,
+        attachments: Option<&Attachments>,
+    ) -> Result<Vec<Pending>> {
         let mut out = Vec::new();
         let dirty: Vec<(String, Option<String>)> = {
             let mut stmt = self
@@ -623,10 +698,8 @@ impl Store {
                 plain: Some(Envelope::manifest(manifest).encode()),
             });
         }
-        if let Some(dir) = attachments {
-            let files = crate::attachments::list_attachments(dir, None)
-                .map_err(|e| AppError::Storage(format!("cannot list attachments: {e}")))?;
-            for (file, _) in files {
+        if let Some(place) = attachments {
+            for file in self.attachment_names(place)? {
                 let key = attachment_key(&file);
                 let known: bool = self
                     .conn
@@ -640,8 +713,7 @@ impl Store {
                 if known {
                     continue;
                 }
-                let bytes = std::fs::read(dir.join(&file))
-                    .map_err(|e| AppError::Storage(format!("cannot read attachment: {e}")))?;
+                let bytes = self.attachment_bytes(place, &file)?;
                 out.push(Pending {
                     key,
                     base: None,
@@ -697,7 +769,7 @@ impl Store {
         Ok(())
     }
 
-    pub fn all_server_objects(&self, attachments: Option<&Path>) -> Result<Vec<Pending>> {
+    pub fn all_server_objects(&self, attachments: Option<&Attachments>) -> Result<Vec<Pending>> {
         let ids: Vec<String> = {
             let mut stmt = self.conn.prepare(
                 "SELECT id FROM notes WHERE vault_path LIKE 'note:%' OR vault_dirty = 1",
@@ -718,12 +790,9 @@ impl Store {
             base: None,
             plain: Some(Envelope::manifest(serialize_manifest(&self.vault_manifest()?)).encode()),
         });
-        if let Some(dir) = attachments {
-            let files = crate::attachments::list_attachments(dir, None)
-                .map_err(|e| AppError::Storage(format!("cannot list attachments: {e}")))?;
-            for (file, _) in files {
-                let bytes = std::fs::read(dir.join(&file))
-                    .map_err(|e| AppError::Storage(format!("cannot read attachment: {e}")))?;
+        if let Some(place) = attachments {
+            for file in self.attachment_names(place)? {
+                let bytes = self.attachment_bytes(place, &file)?;
                 out.push(Pending {
                     key: attachment_key(&file),
                     base: None,

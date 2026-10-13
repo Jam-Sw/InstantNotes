@@ -1,4 +1,5 @@
 use futures_executor::block_on;
+use instantnotes_core::attachments::Attachments;
 use instantnotes_core::store::server_sync::MergeReview;
 use instantnotes_core::sync::crypto::{LibraryKey, Lock};
 use instantnotes_core::sync::cycle::{ModeCheck, ServerSync, SyncReport};
@@ -310,7 +311,7 @@ impl Device {
                     online: Rc::clone(&online),
                 },
                 lock_for(recovery),
-                Some(attachments.clone()),
+                Some(Attachments::Folder(attachments.clone())),
             ),
             online,
             attachments,
@@ -846,7 +847,7 @@ fn turning_encryption_on_and_off_rewrites_the_server_and_loses_nothing() {
             online: Rc::clone(&b.online),
         },
         lock_for(Some(&recovery)),
-        Some(b.attachments.clone()),
+        Some(Attachments::Folder(b.attachments.clone())),
     );
     settle(&mut [&mut b, &mut a]);
     let bodies: Vec<String> = a.live().into_iter().map(|n| n.body).collect();
@@ -864,7 +865,7 @@ fn turning_encryption_on_and_off_rewrites_the_server_and_loses_nothing() {
             online: Rc::clone(&b.online),
         },
         Lock::Plain,
-        Some(b.attachments.clone()),
+        Some(Attachments::Folder(b.attachments.clone())),
     );
     settle(&mut [&mut b, &mut a]);
     assert_eq!(b.live().len(), a.live().len());
@@ -1002,7 +1003,7 @@ fn rekey(
     device: &mut Device,
     server: &Rc<RefCell<Server>>,
     lock: Lock,
-    attachments: Option<PathBuf>,
+    attachments: Option<Attachments>,
 ) {
     device.sync = ServerSync::new(
         Handle {
@@ -1022,7 +1023,7 @@ fn a_device_with_the_wrong_key_catches_up_once_it_has_the_right_one() {
     let mut c = Device::join(&server, Some(&LibraryKey::generate().recovery()));
     assert!(!block_on(c.sync.cycle(&c.store)).errors.is_empty());
     assert!(!block_on(c.sync.cycle(&c.store)).errors.is_empty());
-    let attachments = Some(c.attachments.clone());
+    let attachments = Some(Attachments::Folder(c.attachments.clone()));
     rekey(&mut c, &server, lock_for(Some(&recovery)), attachments);
     c.sync();
     assert_eq!(c.live().len(), 1);
@@ -1207,4 +1208,38 @@ fn held_removals_do_not_block_other_edits() {
     assert_eq!(held.held_removals, 25);
     a.sync();
     assert_eq!(a.note(&notes[29].id).body, "edited and kept");
+}
+
+#[test]
+fn attachments_travel_between_a_folder_and_a_browser_database() {
+    let (server, mut desktop, mut browser, recovery) = encrypted_pair();
+    rekey(
+        &mut browser,
+        &server,
+        lock_for(Some(&recovery)),
+        Some(Attachments::Database),
+    );
+    std::fs::create_dir_all(&desktop.attachments).unwrap();
+    std::fs::write(
+        desktop.attachments.join("eeee5555.png"),
+        b"from the desktop",
+    )
+    .unwrap();
+    browser
+        .s()
+        .save_attachment_file("ffff6666.png", b"from the browser")
+        .unwrap();
+    settle(&mut [&mut desktop, &mut browser]);
+    assert_eq!(
+        browser
+            .s()
+            .attachment_file("eeee5555.png")
+            .unwrap()
+            .as_deref(),
+        Some(&b"from the desktop"[..])
+    );
+    assert_eq!(
+        std::fs::read(desktop.attachments.join("ffff6666.png")).unwrap(),
+        b"from the browser"
+    );
 }

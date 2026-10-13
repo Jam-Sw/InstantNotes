@@ -1,10 +1,16 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 const PREFIX: &str = "attachments/";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Attachments {
+    Folder(PathBuf),
+    Database,
+}
 
 fn is_name_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-')

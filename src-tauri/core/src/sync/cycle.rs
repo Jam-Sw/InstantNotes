@@ -1,10 +1,10 @@
 use super::crypto::{LibraryKey, Lock};
 use super::object::{plain_proof_text, sha_hex, Envelope, MANIFEST_KEY, MODE_KEY, NOTE_PREFIX};
 use super::remote::{Remote, RemoteChange, RemoteChanges, RemoteError, RemoteKeys, RemoteOp};
+use crate::attachments::Attachments;
 use crate::store::server_sync::{JoinCandidates, Pending, SyncState};
 use crate::vault::StoreLock;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::path::PathBuf;
 
 const MASS_REMOVAL_FLOOR: usize = 20;
 const DOWNLOAD_BATCH: usize = 200;
@@ -53,7 +53,7 @@ struct Sealed {
 pub struct ServerSync<R: Remote> {
     pub remote: R,
     lock: Lock,
-    attachments: Option<PathBuf>,
+    attachments: Option<Attachments>,
     allow_removals: bool,
 }
 
@@ -80,7 +80,7 @@ fn short(name: &str) -> &str {
 }
 
 impl<R: Remote> ServerSync<R> {
-    pub fn new(remote: R, lock: Lock, attachments: Option<PathBuf>) -> ServerSync<R> {
+    pub fn new(remote: R, lock: Lock, attachments: Option<Attachments>) -> ServerSync<R> {
         ServerSync {
             remote,
             lock,
@@ -388,7 +388,7 @@ impl<R: Remote> ServerSync<R> {
         {
             let dir = self.attachments.clone();
             if let Err(e) = with(store, |s| {
-                s.ingest_server_attachment(name, sha, file, &bytes, dir.as_deref())
+                s.ingest_server_attachment(name, sha, file, &bytes, dir.as_ref())
             }) {
                 report.errors.push(e.to_string());
                 return Ok(false);
@@ -477,7 +477,7 @@ impl<R: Remote> ServerSync<R> {
         report: &mut SyncReport,
     ) -> Result<(), RemoteError> {
         let dir = self.attachments.clone();
-        let pending = with(store, |s| s.pending_server_pushes(dir.as_deref()))?;
+        let pending = with(store, |s| s.pending_server_pushes(dir.as_ref()))?;
         let mut state = with(store, |s| s.sync_state())?;
         let mut batches = pending.into_iter().peekable();
         while batches.peek().is_some() {
@@ -559,7 +559,7 @@ impl<R: Remote> ServerSync<R> {
             }
             let state = with(store, |s| s.sync_state())?;
             let dir = self.attachments.clone();
-            let mut everything = with(store, |s| s.all_server_objects(dir.as_deref()))?;
+            let mut everything = with(store, |s| s.all_server_objects(dir.as_ref()))?;
             self.holds_everything(store, &everything).await?;
             if let (Lock::Encrypted(old), Lock::Plain) = (&self.lock, &next) {
                 let text = plain_proof_text(
