@@ -142,7 +142,9 @@ pub fn verify_backup(path: &Path) -> Result<Inspection> {
         return Err(refuse("it holds no notes table".into()));
     }
     let notes: i64 = conn
-        .query_row("SELECT count(*) FROM notes WHERE is_deleted = 0", [], |r| r.get(0))
+        .query_row("SELECT count(*) FROM notes WHERE is_deleted = 0", [], |r| {
+            r.get(0)
+        })
         .map_err(|e| refuse(e.to_string()))?;
     Ok(Inspection {
         made_at: made_at_of(path),
@@ -275,7 +277,11 @@ mod tests {
             .filter(|n| now.signed_duration_since(parse_name(n).unwrap()) <= Duration::days(7))
             .count();
         assert_eq!(within_week, 2 * 7);
-        let weekly: Vec<i64> = kept_ages.iter().copied().filter(|a| *a > 7 && *a <= 42).collect();
+        let weekly: Vec<i64> = kept_ages
+            .iter()
+            .copied()
+            .filter(|a| *a > 7 && *a <= 42)
+            .collect();
         assert!(weekly.len() == 5 || weekly.len() == 6, "{weekly:?}");
         let monthly: Vec<i64> = kept_ages.iter().copied().filter(|a| *a > 42).collect();
         assert!(monthly.len() >= 6 && monthly.len() <= 8, "{monthly:?}");
@@ -368,7 +374,8 @@ mod tests {
 
         let empty = dir.path().join("empty.db");
         let conn = Connection::open(&empty).unwrap();
-        conn.execute_batch("CREATE TABLE things (id INTEGER)").unwrap();
+        conn.execute_batch("CREATE TABLE things (id INTEGER)")
+            .unwrap();
         drop(conn);
         let err = verify_backup(&empty).unwrap_err();
         assert!(err.to_string().contains("no notes table"), "{err}");
@@ -433,7 +440,10 @@ mod tests {
             .set_setting("vault.transport", serde_json::json!("server"))
             .unwrap();
         store
-            .set_setting("vault.server", serde_json::json!({ "address": "https://example.org" }))
+            .set_setting(
+                "vault.server",
+                serde_json::json!({ "address": "https://example.org" }),
+            )
             .unwrap();
         store
             .set_setting("sync.state", serde_json::json!({ "cursor": 5 }))
@@ -442,7 +452,12 @@ mod tests {
         store.detach_sync().unwrap();
 
         assert!(store.vault_root().is_none());
-        for key in ["vault.path", "vault.transport", "vault.server", "sync.state"] {
+        for key in [
+            "vault.path",
+            "vault.transport",
+            "vault.server",
+            "sync.state",
+        ] {
             assert_eq!(store.get_setting(key).unwrap(), None, "{key}");
         }
         assert_eq!(store.vault_transport().unwrap(), "folder");

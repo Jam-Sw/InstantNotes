@@ -83,11 +83,17 @@ pub fn export_entries(notes: &[VaultNote], manifest: &Manifest) -> Vec<(String, 
         let prefix = if is_trashed { "trash/" } else { "" };
         entries.push((format!("{prefix}{filename}"), serialize_note(note)));
         if let (Some(surface), Some(ext)) = (&note.surface, surface_ext(&note.kind)) {
-            entries.push((format!("{prefix}{}", surface_rel(&filename, ext)), surface.clone()));
+            entries.push((
+                format!("{prefix}{}", surface_rel(&filename, ext)),
+                surface.clone(),
+            ));
         }
     }
 
-    entries.push(("instantnotes.yaml".to_string(), serialize_manifest(manifest)));
+    entries.push((
+        "instantnotes.yaml".to_string(),
+        serialize_manifest(manifest),
+    ));
     entries
 }
 
@@ -248,8 +254,13 @@ mod tests {
         let bytes = export_archive(&store).unwrap();
         let entries = crate::vault::archive::read(&bytes);
         let names: Vec<&str> = entries.iter().map(|(n, _)| n.as_str()).collect();
-        assert_eq!(names, vec!["Café.md", "instantnotes.yaml", "attachments/a.png"]);
+        assert_eq!(
+            names,
+            vec!["Café.md", "instantnotes.yaml", "attachments/a.png"]
+        );
         assert_eq!(entries[2].1, vec![1, 2, 3]);
-        assert!(String::from_utf8(entries[0].1.clone()).unwrap().ends_with("body ![](attachments/a.png)"));
+        assert!(String::from_utf8(entries[0].1.clone())
+            .unwrap()
+            .ends_with("body ![](attachments/a.png)"));
     }
 }
