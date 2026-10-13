@@ -17,6 +17,7 @@ const MARK: u8 = 0x80;
 pub enum CryptoError {
     BadKey,
     Unreadable,
+    NotVouched,
 }
 
 impl std::fmt::Display for CryptoError {
@@ -24,6 +25,10 @@ impl std::fmt::Display for CryptoError {
         match self {
             CryptoError::BadKey => write!(f, "that is not a valid recovery key"),
             CryptoError::Unreadable => write!(f, "an object could not be decrypted with this key"),
+            CryptoError::NotVouched => write!(
+                f,
+                "the key that arrived is not the one the words were made for, so it was not kept"
+            ),
         }
     }
 }
@@ -148,23 +153,25 @@ impl JoinKey {
         self.identity.to_public().to_string()
     }
 
-    pub fn unwrap(&self, wrapped: &str) -> Result<LibraryKey, CryptoError> {
+    pub fn unwrap(&self, wrapped: &str, recipient: &str) -> Result<LibraryKey, CryptoError> {
         let sealed = base64::engine::general_purpose::STANDARD
             .decode(wrapped.trim())
             .map_err(|_| CryptoError::Unreadable)?;
         let secret = age::decrypt(&self.identity, &sealed).map_err(|_| CryptoError::Unreadable)?;
         let text = String::from_utf8(secret).map_err(|_| CryptoError::Unreadable)?;
-        LibraryKey::from_recovery(&text)
+        let key = LibraryKey::from_recovery(&text)?;
+        if key.recipient() != recipient.trim() {
+            return Err(CryptoError::NotVouched);
+        }
+        Ok(key)
     }
 }
 
-pub fn join_words(public: &str) -> [&'static str; 3] {
-    let digest = Sha256::digest(public.trim().as_bytes());
-    [
-        WORDS[digest[0] as usize],
-        WORDS[digest[1] as usize],
-        WORDS[digest[2] as usize],
-    ]
+pub fn join_words(public: &str, recipient: &str) -> [&'static str; 6] {
+    let digest = Sha256::digest(
+        format!("instantnotes-join\n{}\n{}", public.trim(), recipient.trim()).as_bytes(),
+    );
+    std::array::from_fn(|i| WORDS[digest[i] as usize])
 }
 
 pub enum Lock {
@@ -322,10 +329,20 @@ mod tests {
         let joining = JoinKey::generate();
         let wrapped = library.wrap_for(&joining.public()).unwrap();
         assert_eq!(
-            joining.unwrap(&wrapped).unwrap().recipient(),
+            joining
+                .unwrap(&wrapped, &library.recipient())
+                .unwrap()
+                .recipient(),
             library.recipient()
         );
-        assert!(JoinKey::generate().unwrap(&wrapped).is_err());
+        assert!(JoinKey::generate()
+            .unwrap(&wrapped, &library.recipient())
+            .is_err());
+        let invented = LibraryKey::generate().wrap_for(&joining.public()).unwrap();
+        assert_eq!(
+            joining.unwrap(&invented, &library.recipient()).err(),
+            Some(CryptoError::NotVouched)
+        );
         assert!(!wrapped.contains(&library.recovery()));
     }
 
@@ -333,9 +350,15 @@ mod tests {
     fn join_words_are_the_same_on_both_sides_and_differ_for_another_key() {
         let joining = JoinKey::generate();
         let public = joining.public();
-        assert_eq!(join_words(&public), join_words(&format!(" {public}\n")));
+        let library = LibraryKey::generate().recipient();
+        assert_eq!(
+            join_words(&public, &library),
+            join_words(&format!(" {public}\n"), &library)
+        );
         let other = JoinKey::generate().public();
-        assert_ne!(join_words(&public), join_words(&other));
+        assert_ne!(join_words(&public, &library), join_words(&other, &library));
+        let swapped = LibraryKey::generate().recipient();
+        assert_ne!(join_words(&public, &library), join_words(&public, &swapped));
         assert_eq!(WORDS.iter().collect::<HashSet<_>>().len(), 256);
     }
 

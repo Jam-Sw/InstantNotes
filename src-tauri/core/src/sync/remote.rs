@@ -21,6 +21,8 @@ pub struct RemoteChanges {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteKeys {
+    #[serde(default)]
+    pub library_id: String,
     pub mode: Option<String>,
     pub recipient: Option<String>,
     pub epoch: i64,
@@ -65,7 +67,7 @@ pub trait Remote {
     fn missing(&mut self, shas: &[String]) -> Result<Vec<String>, RemoteError>;
     fn upload(&mut self, blobs: &[(String, Vec<u8>)]) -> Result<(), RemoteError>;
     fn download(&mut self, shas: &[String]) -> Result<Vec<(String, Vec<u8>)>, RemoteError>;
-    fn commit(&mut self, epoch: i64, ops: &[RemoteOp]) -> Result<i64, RemoteError>;
+    fn commit(&mut self, epoch: i64, ops: &[RemoteOp], reset: bool) -> Result<i64, RemoteError>;
     fn keys(&mut self) -> Result<RemoteKeys, RemoteError>;
     fn set_keys(&mut self, mode: &str, recipient: Option<&str>) -> Result<(), RemoteError>;
     fn switch(
@@ -74,5 +76,6 @@ pub trait Remote {
         built_at: i64,
         mode: &str,
         recipient: Option<&str>,
+        expected: usize,
     ) -> Result<i64, RemoteError>;
 }

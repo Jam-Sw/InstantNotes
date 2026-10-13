@@ -193,7 +193,35 @@ impl Store {
     pub fn forget_sync_bases(&mut self) -> Result<()> {
         self.conn
             .execute("UPDATE sync_objects SET remote_sha = NULL", [])?;
+        self.conn.execute(
+            "DELETE FROM settings WHERE key = ?1",
+            params![MANIFEST_BASE_SETTING],
+        )?;
         Ok(())
+    }
+
+    pub fn mark_unsent_dirty(&mut self) -> Result<usize> {
+        Ok(self.conn.execute(
+            "UPDATE notes SET vault_dirty = 1 WHERE vault_path LIKE 'note:%' AND vault_dirty = 0 \
+             AND NOT EXISTS (SELECT 1 FROM sync_objects s \
+                             WHERE s.key = notes.vault_path AND s.remote_sha IS NOT NULL)",
+            [],
+        )?)
+    }
+
+    pub fn staged_keys_cover(
+        &self,
+        live_names: &[String],
+        staged_keys: &HashSet<String>,
+    ) -> Result<Vec<String>> {
+        let mut missing = Vec::new();
+        for name in live_names {
+            match self.sync_object(name)? {
+                Some((key, _)) if staged_keys.contains(&key) => {}
+                _ => missing.push(name.clone()),
+            }
+        }
+        Ok(missing)
     }
 
     pub fn sync_object(&self, name: &str) -> Result<Option<(String, Option<String>)>> {
@@ -449,7 +477,7 @@ impl Store {
         Ok(count)
     }
 
-    pub fn ingest_server_deletion(&mut self, key: &str) -> Result<Option<String>> {
+    pub fn ingest_server_deletion(&mut self, key: &str, held: bool) -> Result<Option<String>> {
         let tx = self.conn.unchecked_transaction()?;
         let mut trashed = None;
         if let Some(id) = key.strip_prefix(NOTE_PREFIX) {
@@ -460,6 +488,9 @@ impl Store {
                         params![key],
                     )?;
                     tx.commit()?;
+                    return Ok(None);
+                }
+                if held {
                     return Ok(None);
                 }
                 let deleted: bool = self.conn.query_row(
@@ -600,7 +631,7 @@ impl Store {
                 let known: bool = self
                     .conn
                     .query_row(
-                        "SELECT 1 FROM sync_objects WHERE key = ?1",
+                        "SELECT 1 FROM sync_objects WHERE key = ?1 AND remote_sha IS NOT NULL",
                         params![key],
                         |_| Ok(()),
                     )

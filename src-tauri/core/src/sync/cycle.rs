@@ -1,9 +1,9 @@
 use super::crypto::{LibraryKey, Lock};
 use super::object::{plain_proof_text, sha_hex, Envelope, MANIFEST_KEY, MODE_KEY, NOTE_PREFIX};
-use super::remote::{Remote, RemoteChange, RemoteError, RemoteKeys, RemoteOp};
-use crate::store::server_sync::{Pending, SyncState};
+use super::remote::{Remote, RemoteChange, RemoteChanges, RemoteError, RemoteKeys, RemoteOp};
+use crate::store::server_sync::{JoinCandidates, Pending, SyncState};
 use crate::vault::StoreLock;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 
 const MASS_REMOVAL_FLOOR: usize = 20;
@@ -97,11 +97,29 @@ impl<R: Remote> ServerSync<R> {
         self.allow_removals = true;
     }
 
+    fn everything(&mut self) -> Result<RemoteChanges, RemoteError> {
+        let mut all = self.remote.changes(0)?;
+        while all.more {
+            let since = all.changes.last().map(|c| c.seq).unwrap_or(0);
+            let page = self.remote.changes(since)?;
+            all.more = page.more;
+            all.head = page.head;
+            all.changes.extend(page.changes);
+        }
+        Ok(all)
+    }
+
     pub fn check_mode(
         &mut self,
         keys: &RemoteKeys,
         key: Option<&LibraryKey>,
+        known_epoch: i64,
     ) -> Result<ModeCheck, RemoteError> {
+        if keys.epoch < known_epoch {
+            return Ok(ModeCheck::Refuse(
+                "the server went back to an older form of this library".into(),
+            ));
+        }
         match (keys.mode.as_deref(), key) {
             (None, _) => Ok(ModeCheck::Unset),
             (Some(ENCRYPTED), None) => Ok(ModeCheck::NeedsKey),
@@ -113,9 +131,9 @@ impl<R: Remote> ServerSync<R> {
             },
             (Some(PLAIN), None) => Ok(ModeCheck::Plain),
             (Some(PLAIN), Some(key)) => {
-                let changes = self.remote.changes(0)?;
+                let all = self.everything()?;
                 let name = Lock::Plain.name(MODE_KEY);
-                let marker = changes
+                let marker = all
                     .changes
                     .iter()
                     .rev()
@@ -130,14 +148,11 @@ impl<R: Remote> ServerSync<R> {
                         .and_then(|(_, bytes)| Envelope::decode(&bytes))
                         .and_then(|e| e.proof)
                         .is_some_and(|proof| {
-                            key.verify(
-                                &plain_proof_text(&changes.library_id, changes.epoch),
-                                &proof,
-                            )
+                            key.verify(&plain_proof_text(&all.library_id, all.epoch), &proof)
                         }),
                     None => false,
                 };
-                Ok(match proven {
+                Ok(match proven && all.epoch >= known_epoch {
                     true => ModeCheck::Plain,
                     false => ModeCheck::Refuse(
                         "the server says encryption was turned off, but no device holding the key turned it off"
@@ -175,30 +190,40 @@ impl<R: Remote> ServerSync<R> {
     fn pull(&mut self, store: &impl StoreLock, report: &mut SyncReport) -> Result<(), RemoteError> {
         let mut state = with(store, |s| s.sync_state())?;
         let mut since = state.cursor;
+        let mut reset = false;
         let mut changes: Vec<RemoteChange> = Vec::new();
         let head = loop {
             let page = match self.remote.changes(since) {
                 Err(RemoteError::Gone) => {
-                    self.reset(store, &mut state, None, None)?;
+                    let id = state.library_id.clone();
+                    self.reset(store, &mut state, id, None)?;
+                    reset = true;
                     changes.clear();
                     since = 0;
                     continue;
                 }
                 other => other?,
             };
+            let known = state.library_id.is_some();
             let same_library = state.library_id.as_deref() == Some(page.library_id.as_str());
-            if state.library_id.is_some() && !same_library {
+            if known && !same_library {
                 self.reset(
                     store,
                     &mut state,
                     Some(page.library_id.clone()),
                     Some(page.epoch),
                 )?;
+                reset = true;
                 changes.clear();
                 since = 0;
                 continue;
             }
-            if state.library_id.is_some() && page.epoch != state.epoch {
+            if known && page.epoch < state.epoch {
+                return Err(RemoteError::Refused(
+                    "the server went back to an older form of this library".into(),
+                ));
+            }
+            if known && page.epoch > state.epoch {
                 self.reset(store, &mut state, Some(page.library_id), Some(page.epoch))?;
                 report.mode_changed = true;
                 return Ok(());
@@ -221,7 +246,7 @@ impl<R: Remote> ServerSync<R> {
             latest.insert(change.name.clone(), change);
         }
         let mut deletions = 0;
-        let mut wanted: Vec<(String, String)> = Vec::new();
+        let mut wanted: Vec<RemoteChange> = Vec::new();
         for change in latest.values() {
             let known = with(store, |s| s.sync_object(&change.name))?;
             match &change.sha {
@@ -232,7 +257,7 @@ impl<R: Remote> ServerSync<R> {
                 }
                 Some(sha) => {
                     if known.as_ref().and_then(|(_, r)| r.as_deref()) != Some(sha.as_str()) {
-                        wanted.push((change.name.clone(), sha.clone()));
+                        wanted.push(change.clone());
                     }
                 }
             }
@@ -251,37 +276,50 @@ impl<R: Remote> ServerSync<R> {
             with(store, |s| s.join_candidates())?
         };
         let mut inserted = Vec::new();
+        let mut failed: Option<i64> = None;
         for batch in wanted.chunks(DOWNLOAD_BATCH) {
-            let shas: Vec<String> = batch.iter().map(|(_, sha)| sha.clone()).collect();
+            let shas: Vec<String> = batch.iter().filter_map(|c| c.sha.clone()).collect();
             let fetched: HashMap<String, Vec<u8>> =
                 self.remote.download(&shas)?.into_iter().collect();
-            for (name, sha) in batch {
-                let Some(sealed) = fetched.get(sha) else {
-                    report
-                        .errors
-                        .push(format!("object {} was not sent", short(name)));
-                    continue;
+            for change in batch {
+                let sha = change.sha.clone().unwrap_or_default();
+                let applied = match fetched.get(&sha) {
+                    Some(sealed) => self.apply(
+                        store,
+                        report,
+                        &change.name,
+                        &sha,
+                        sealed,
+                        &mut candidates,
+                        &mut inserted,
+                    )?,
+                    None => {
+                        report
+                            .errors
+                            .push(format!("object {} was not sent", short(&change.name)));
+                        false
+                    }
                 };
-                self.apply(
-                    store,
-                    report,
-                    name,
-                    sha,
-                    sealed,
-                    &mut candidates,
-                    &mut inserted,
-                )?;
+                if !applied {
+                    failed = Some(failed.map_or(change.seq, |f| f.min(change.seq)));
+                }
+            }
+        }
+        for change in latest.values().filter(|c| c.sha.is_none()) {
+            if let Some((key, _)) = with(store, |s| s.sync_object(&change.name))? {
+                if let Some(id) = with(store, |s| s.ingest_server_deletion(&key, held))? {
+                    report.notes.push(id);
+                }
             }
         }
         if !held {
-            for change in latest.values().filter(|c| c.sha.is_none()) {
-                if let Some((key, _)) = with(store, |s| s.sync_object(&change.name))? {
-                    if let Some(id) = with(store, |s| s.ingest_server_deletion(&key))? {
-                        report.notes.push(id);
-                    }
-                }
-            }
-            state.cursor = head;
+            state.cursor = match failed {
+                Some(seq) => (seq - 1).max(state.cursor),
+                None => head,
+            };
+        }
+        if reset {
+            with(store, |s| s.mark_unsent_dirty())?;
         }
         if !state.joined {
             with(store, |s| s.find_likely_pairs(&inserted))?;
@@ -298,34 +336,24 @@ impl<R: Remote> ServerSync<R> {
         name: &str,
         sha: &str,
         sealed: &[u8],
-        candidates: &mut crate::store::server_sync::JoinCandidates,
+        candidates: &mut JoinCandidates,
         inserted: &mut Vec<String>,
-    ) -> Result<(), RemoteError> {
+    ) -> Result<bool, RemoteError> {
+        let mut fail = |why: &str| -> Result<bool, RemoteError> {
+            report.errors.push(format!("object {} {why}", short(name)));
+            Ok(false)
+        };
         if sha_hex(sealed) != sha {
-            report
-                .errors
-                .push(format!("object {} arrived damaged", short(name)));
-            return Ok(());
+            return fail("arrived damaged");
         }
         let Ok(plain) = self.lock.open(sealed) else {
-            report.errors.push(format!(
-                "object {} cannot be decrypted with this key",
-                short(name)
-            ));
-            return Ok(());
+            return fail("cannot be decrypted with this key");
         };
         let Some(envelope) = Envelope::decode(&plain) else {
-            report
-                .errors
-                .push(format!("object {} is not readable", short(name)));
-            return Ok(());
+            return fail("is not readable by this version");
         };
         if self.lock.name(&envelope.key) != name {
-            report.errors.push(format!(
-                "object {} is stored under the wrong name",
-                short(name)
-            ));
-            return Ok(());
+            return fail("is stored under the wrong name");
         }
         let plain_sha = sha_hex(&plain);
         if envelope.note_id().is_some() {
@@ -338,13 +366,19 @@ impl<R: Remote> ServerSync<R> {
                     report.notes.extend(arrived.changed);
                     inserted.extend(arrived.inserted);
                 }
-                Err(e) => report.errors.push(e.to_string()),
+                Err(e) => {
+                    report.errors.push(e.to_string());
+                    return Ok(false);
+                }
             }
         } else if envelope.key == MANIFEST_KEY {
             let text = envelope.manifest.clone().unwrap_or_default();
             match with(store, |s| s.ingest_server_manifest(name, sha, &text)) {
                 Ok(changed) => report.labels_changed |= changed,
-                Err(e) => report.errors.push(e.to_string()),
+                Err(e) => {
+                    report.errors.push(e.to_string());
+                    return Ok(false);
+                }
             }
         } else if let (Some(file), Some(bytes)) =
             (envelope.attachment_file(), envelope.attachment_bytes())
@@ -354,9 +388,10 @@ impl<R: Remote> ServerSync<R> {
                 s.ingest_server_attachment(name, sha, file, &bytes, dir.as_deref())
             }) {
                 report.errors.push(e.to_string());
+                return Ok(false);
             }
         }
-        Ok(())
+        Ok(true)
     }
 
     fn reset(
@@ -446,7 +481,7 @@ impl<R: Remote> ServerSync<R> {
             }
             self.upload(&sealed)?;
             self.remote
-                .commit(state.epoch, &Self::ops(&sealed, false))?;
+                .commit(state.epoch, &Self::ops(&sealed, false), false)?;
             with(store, |st| {
                 for s in &sealed {
                     st.server_pushed(&s.pending, &s.name, s.sha.as_deref())?;
@@ -460,6 +495,32 @@ impl<R: Remote> ServerSync<R> {
             with(store, |s| s.set_sync_state(&state))?;
         }
         Ok(())
+    }
+
+    fn holds_everything(
+        &mut self,
+        store: &impl StoreLock,
+        staged: &[Pending],
+    ) -> Result<(), RemoteError> {
+        let marker = Lock::Plain.name(MODE_KEY);
+        let all = self.everything()?;
+        let mut live: BTreeMap<String, bool> = BTreeMap::new();
+        for change in all.changes {
+            live.insert(change.name, change.sha.is_some());
+        }
+        let names: Vec<String> = live
+            .into_iter()
+            .filter(|(name, alive)| *alive && *name != marker)
+            .map(|(name, _)| name)
+            .collect();
+        let keys: HashSet<String> = staged.iter().map(|p| p.key.clone()).collect();
+        let missing = with(store, |s| s.staged_keys_cover(&names, &keys))?;
+        match missing.len() {
+            0 => Ok(()),
+            n => Err(RemoteError::Refused(format!(
+                "{n} objects on the server are not on this device; sync them here first"
+            ))),
+        }
     }
 
     pub fn switch_mode(
@@ -477,9 +538,21 @@ impl<R: Remote> ServerSync<R> {
             self.pull(store, &mut report)?;
             self.push(store, &mut report)?;
             self.pull(store, &mut report)?;
+            if !report.errors.is_empty() || !report.too_large.is_empty() || report.held_removals > 0
+            {
+                return Err(RemoteError::Refused(format!(
+                    "this device could not read or send everything, so it cannot switch: {}",
+                    report
+                        .errors
+                        .first()
+                        .cloned()
+                        .unwrap_or_else(|| "removals are waiting for a decision".into())
+                )));
+            }
             let state = with(store, |s| s.sync_state())?;
             let dir = self.attachments.clone();
             let mut everything = with(store, |s| s.all_server_objects(dir.as_deref()))?;
+            self.holds_everything(store, &everything)?;
             if let (Lock::Encrypted(old), Lock::Plain) = (&self.lock, &next) {
                 let text = plain_proof_text(
                     state.library_id.as_deref().unwrap_or_default(),
@@ -494,20 +567,29 @@ impl<R: Remote> ServerSync<R> {
             let previous = std::mem::replace(&mut self.lock, next);
             let mut staged_items = Vec::new();
             let mut staged: Result<(), RemoteError> = Ok(());
+            let mut first = true;
             let mut rest = everything.into_iter().peekable();
             while staged.is_ok() && rest.peek().is_some() {
                 let chunk: Vec<Pending> = rest.by_ref().take(PUSH_BATCH).collect();
                 let sealed = self.seal(chunk, &mut report);
+                if !report.too_large.is_empty() {
+                    staged = Err(RemoteError::Refused(
+                        "a note is too large once encrypted; the switch was not made".into(),
+                    ));
+                    break;
+                }
                 staged = self.upload(&sealed).and_then(|()| {
                     self.remote
-                        .commit(state.epoch + 1, &Self::ops(&sealed, true))
+                        .commit(state.epoch + 1, &Self::ops(&sealed, true), first)
                         .map(|_| ())
                 });
+                first = false;
                 staged_items.extend(sealed);
             }
+            let expected = staged_items.len();
             let switched = staged.and_then(|()| {
                 self.remote
-                    .switch(state.epoch, state.cursor, mode, recipient)
+                    .switch(state.epoch, state.cursor, mode, recipient, expected)
             });
             match switched {
                 Ok(epoch) => {

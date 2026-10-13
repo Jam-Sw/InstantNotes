@@ -60,7 +60,14 @@ pub fn loopback_redirect(uri: &str) -> bool {
     } else {
         return false;
     };
-    port.parse::<u16>().is_ok_and(|p| p > 0)
+    port.bytes().all(|b| b.is_ascii_digit()) && port.parse::<u16>().is_ok_and(|p| p > 0)
+}
+
+fn valid_verifier(verifier: &str) -> bool {
+    (43..=128).contains(&verifier.len())
+        && verifier
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~'))
 }
 
 fn valid_challenge(challenge: &str) -> bool {
@@ -124,7 +131,7 @@ impl Devices {
             .remove(code)?;
         let fresh = issued.created.elapsed() < CODE_TTL;
         let same_redirect = issued.request.redirect_uri == redirect_uri;
-        let proven = s256(verifier) == issued.request.challenge;
+        let proven = valid_verifier(verifier) && s256(verifier) == issued.request.challenge;
         (fresh && same_redirect && proven).then_some((issued.person, issued.request.device_name))
     }
 }
@@ -315,6 +322,8 @@ async fn token(
 mod tests {
     use super::*;
 
+    const VERIFIER: &str = "a-valid-verifier.of~forty_three_characters_x";
+
     #[test]
     fn only_a_loopback_callback_is_accepted() {
         for ok in [
@@ -328,6 +337,7 @@ mod tests {
             "http://localhost:49152/callback",
             "http://127.0.0.1/callback",
             "http://127.0.0.1:0/callback",
+            "http://127.0.0.1:+80/callback",
             "http://127.0.0.1:49152/other",
             "http://127.0.0.1:49152/callback?x=1",
             "http://127.0.0.1.evil.example:80/callback",
@@ -343,7 +353,7 @@ mod tests {
         Request {
             redirect_uri: "http://127.0.0.1:5000/callback".into(),
             state: "s".into(),
-            challenge: s256("verifier"),
+            challenge: s256(VERIFIER),
             device_name: "Laptop".into(),
             csrf: "c".into(),
             created: Instant::now(),
@@ -363,7 +373,7 @@ mod tests {
         let devices = Devices::default();
         let code = devices.issue(request(), person());
         assert!(devices
-            .redeem(&code, "verifier", "http://127.0.0.1:6000/callback")
+            .redeem(&code, VERIFIER, "http://127.0.0.1:6000/callback")
             .is_none());
         let code = devices.issue(request(), person());
         assert!(devices
@@ -372,12 +382,12 @@ mod tests {
         let code = devices.issue(request(), person());
         assert_eq!(
             devices
-                .redeem(&code, "verifier", "http://127.0.0.1:5000/callback")
+                .redeem(&code, VERIFIER, "http://127.0.0.1:5000/callback")
                 .map(|(p, d)| (p.sub, d)),
             Some(("alice".into(), "Laptop".into()))
         );
         assert!(devices
-            .redeem(&code, "verifier", "http://127.0.0.1:5000/callback")
+            .redeem(&code, VERIFIER, "http://127.0.0.1:5000/callback")
             .is_none());
         let stale = devices.issue(request(), person());
         devices
@@ -388,7 +398,7 @@ mod tests {
             .unwrap()
             .created -= CODE_TTL;
         assert!(devices
-            .redeem(&stale, "verifier", "http://127.0.0.1:5000/callback")
+            .redeem(&stale, VERIFIER, "http://127.0.0.1:5000/callback")
             .is_none());
     }
 

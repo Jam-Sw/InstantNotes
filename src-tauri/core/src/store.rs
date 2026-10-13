@@ -532,6 +532,13 @@ impl Store {
         Ok(Store { conn, vault: None })
     }
 
+    pub fn backup_to(&self, path: &Path) -> Result<()> {
+        let escaped = path.to_string_lossy().replace('\'', "''");
+        self.conn
+            .execute_batch(&format!("VACUUM INTO '{escaped}'"))
+            .map_err(|e| AppError::Storage(format!("backup failed: {e}")))
+    }
+
     pub fn open_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()
             .map_err(|e| AppError::Storage(format!("cannot open database: {e}")))?;

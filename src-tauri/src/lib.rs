@@ -86,7 +86,8 @@ use commands::{
 };
 use error::{CmdError, CmdResult};
 use shell::{
-    agents::*, capture::*, files::*, mirror::*, quit::*, stickies::*, update::*, windows::*,
+    agents::*, capture::*, files::*, mirror::*, quit::*, server::*, stickies::*, update::*,
+    windows::*,
 };
 
 pub fn run() {
@@ -177,6 +178,7 @@ pub fn run() {
                 analyst: Mutex::new(analyst),
             });
             app.manage(CaptureMetrics::default());
+            app.manage(ServerLink::default());
             app.manage(start_vault_sync(app.handle()));
             app.manage(start_agent_watcher(app.handle(), db_path.clone()));
             {
@@ -503,6 +505,24 @@ pub fn run() {
             set_vault_folder,
             verify_vault,
             confirm_vault_removals,
+            get_sync_server_status,
+            connect_sync_server,
+            cancel_sync_sign_in,
+            confirm_recovery_saved,
+            show_recovery_key,
+            start_sync_join,
+            enter_recovery_key,
+            accept_plain_server,
+            disconnect_sync_server,
+            list_sync_devices,
+            revoke_sync_device,
+            answer_sync_join,
+            confirm_sync_removals,
+            set_sync_encryption,
+            get_merge_review,
+            settle_merge_pair,
+            undo_merge_combine,
+            clear_merge_review,
             stickies_location,
             scan_stickies,
             import_stickies,

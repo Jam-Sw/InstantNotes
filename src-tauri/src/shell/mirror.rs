@@ -1,7 +1,14 @@
+use crate::shell::server::{
+    build_engine, is_server, record_report, server_settings, watch_server, ServerEngine, ServerLink,
+};
 use crate::*;
 use instantnotes_core::vault::{transport, CycleReport, Syncer};
+use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{channel, RecvTimeoutError, Sender};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+const SERVER_INTERVAL: Duration = Duration::from_secs(60);
 
 const QUIET: Duration = Duration::from_millis(300);
 const MAX_DELAY: Duration = Duration::from_secs(2);
@@ -19,14 +26,28 @@ struct VaultSynced<'a> {
     note_ids: &'a [String],
 }
 
+enum Engine {
+    Folder(Syncer),
+    Server(Box<ServerEngine>, Arc<AtomicBool>),
+}
+
+impl Engine {
+    fn interval(&self) -> Duration {
+        match self {
+            Engine::Folder(s) => s.interval(),
+            Engine::Server(..) => SERVER_INTERVAL,
+        }
+    }
+}
+
 pub(crate) fn start_vault_sync(app: &AppHandle) -> VaultSync {
     let (poke, pokes) = channel::<()>();
     let handle = app.clone();
     std::thread::spawn(move || {
-        let mut syncer: Option<Syncer> = None;
+        let mut engine: Option<Engine> = None;
         loop {
-            let woke = match &syncer {
-                Some(s) => pokes.recv_timeout(s.interval()),
+            let woke = match &engine {
+                Some(e) => pokes.recv_timeout(e.interval()),
                 None => pokes.recv().map_err(|_| RecvTimeoutError::Disconnected),
             };
             match woke {
@@ -37,16 +58,67 @@ pub(crate) fn start_vault_sync(app: &AppHandle) -> VaultSync {
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => return,
             }
-            syncer = current_syncer(&handle, syncer.take());
-            let Some(s) = syncer.as_mut() else {
-                let _ = handle.emit(events::VAULT_STATUS, ());
-                continue;
-            };
-            let report = s.cycle(&handle.state::<AppState>().store);
-            announce(&handle, &report);
+            engine = current_engine(&handle, engine.take());
+            match engine.as_mut() {
+                None => {
+                    let _ = handle.emit(events::VAULT_STATUS, ());
+                }
+                Some(Engine::Folder(s)) => {
+                    let report = s.cycle(&handle.state::<AppState>().store);
+                    announce(&handle, &report.notes, report.labels_changed);
+                }
+                Some(Engine::Server(server, stop)) => {
+                    let link = handle.state::<ServerLink>();
+                    let _guard = link.engine.lock().unwrap_or_else(|e| e.into_inner());
+                    if link.allow_removals.swap(false, Ordering::Relaxed) {
+                        server.sync.confirm_removals();
+                    }
+                    let report = server.sync.cycle(&handle.state::<AppState>().store);
+                    record_report(&handle, &report);
+                    announce(&handle, &report.notes, report.labels_changed);
+                    if report.mode_changed || report.signed_out {
+                        stop.store(true, Ordering::Relaxed);
+                        engine = None;
+                    }
+                    if report.retry || report.mode_changed {
+                        request_vault_sync(&handle);
+                    }
+                }
+            }
         }
     });
     VaultSync { poke }
+}
+
+fn current_engine(app: &AppHandle, previous: Option<Engine>) -> Option<Engine> {
+    let state = app.try_state::<AppState>()?;
+    let wants_server = state.store.lock().ok().is_some_and(|s| is_server(&s));
+    if wants_server {
+        if let Some(Engine::Server(server, stop)) = previous {
+            let still = state
+                .store
+                .lock()
+                .ok()
+                .and_then(|s| server_settings(&s))
+                .is_some_and(|now| now == server.settings);
+            if still {
+                return Some(Engine::Server(server, stop));
+            }
+            stop.store(true, Ordering::Relaxed);
+        }
+        let server = build_engine(app)?;
+        let stop = Arc::new(AtomicBool::new(false));
+        watch_server(app.clone(), server.settings.clone(), Arc::clone(&stop));
+        return Some(Engine::Server(Box::new(server), stop));
+    }
+    if let Some(Engine::Server(_, stop)) = &previous {
+        stop.store(true, Ordering::Relaxed);
+    }
+    let previous = match previous {
+        Some(Engine::Folder(s)) => Some(s),
+        _ => None,
+    };
+    current_syncer(app, previous).map(Engine::Folder)
 }
 
 fn current_syncer(app: &AppHandle, previous: Option<Syncer>) -> Option<Syncer> {
@@ -73,17 +145,12 @@ fn current_syncer(app: &AppHandle, previous: Option<Syncer>) -> Option<Syncer> {
     }
 }
 
-fn announce(app: &AppHandle, report: &CycleReport) {
-    if !report.notes.is_empty() {
+fn announce(app: &AppHandle, notes: &[String], labels_changed: bool) {
+    if !notes.is_empty() {
         let _ = app.emit(events::NOTES_CHANGED, ());
-        let _ = app.emit(
-            events::VAULT_SYNCED,
-            VaultSynced {
-                note_ids: &report.notes,
-            },
-        );
+        let _ = app.emit(events::VAULT_SYNCED, VaultSynced { note_ids: notes });
     }
-    if report.labels_changed {
+    if labels_changed {
         let _ = app.emit(events::TAGS_CHANGED, ());
         let _ = app.emit(events::WORKSPACES_CHANGED, ());
     }

@@ -515,3 +515,115 @@ async fn many_blobs_travel_in_one_request_each_way_and_a_lying_batch_is_refused(
         .unwrap();
     assert_eq!(garbage.status(), 400);
 }
+
+fn person_index(server: &Server) -> std::path::PathBuf {
+    let sync = server._dir.path().join("data").join("sync");
+    let person = std::fs::read_dir(&sync)
+        .unwrap()
+        .flatten()
+        .find(|e| e.path().is_dir())
+        .unwrap();
+    person.path().join("index.db")
+}
+
+#[tokio::test]
+async fn a_join_request_expires_after_ten_minutes() {
+    let server = start().await;
+    let old = server.device("alice", "Old laptop");
+    let new = server.device("alice", "New laptop");
+    let id = new
+        .post(
+            "keys/requests",
+            json!({ "publicKey": "age1temporary", "deviceName": "New laptop" }),
+        )
+        .await
+        .json::<Value>()
+        .await
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    rusqlite::Connection::open(person_index(&server))
+        .unwrap()
+        .execute("UPDATE joins SET created_at = created_at - 601", [])
+        .unwrap();
+    assert_eq!(new.get(&format!("keys/requests/{id}")).await.status(), 404);
+    let approve = old
+        .post(
+            &format!("keys/requests/{id}/approve"),
+            json!({ "key": "age-encrypted-library-key" }),
+        )
+        .await;
+    assert_eq!(approve.status(), 404);
+    let pending: Value = old.get("keys/requests").await.json().await.unwrap();
+    assert_eq!(pending, json!([]));
+}
+
+#[tokio::test]
+async fn a_switch_over_needs_a_complete_staging_and_an_unmoved_library() {
+    let server = start().await;
+    let a = server.device("alice", "Laptop");
+    let b = server.device("alice", "Desktop");
+    let set = a
+        .http
+        .put(a.url("keys"))
+        .bearer_auth(&a.token)
+        .json(&json!({ "mode": "plain" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(set.status(), 200);
+    let plain = a.upload(b"plain note").await;
+    let other = a.upload(b"other note").await;
+    a.commit(json!([
+        { "name": name(1), "base": null, "sha": plain },
+        { "name": name(2), "base": null, "sha": other },
+    ]))
+    .await;
+    let built_at = a.changes(0).await["head"].as_i64().unwrap();
+    let sealed = a.upload(b"sealed note").await;
+    let staged = a
+        .post(
+            "commit",
+            json!({ "epoch": 2, "reset": true, "ops": [
+                { "name": name(8), "base": null, "sha": sealed },
+                { "name": name(9), "base": null, "sha": sealed },
+            ] }),
+        )
+        .await;
+    assert_eq!(staged.status(), 200);
+    let wrong_epoch = a
+        .post("commit", json!({ "epoch": 5, "ops": [] }))
+        .await
+        .json::<Value>()
+        .await
+        .unwrap();
+    assert_eq!(wrong_epoch["code"], "WRONG_EPOCH");
+    let switch = |expected: usize, built: i64| {
+        json!({ "fromEpoch": 1, "builtAt": built, "mode": "encrypted",
+                "recipient": "age1library", "expected": expected })
+    };
+    let short = a.post("switch", switch(1, built_at + 1)).await;
+    assert_eq!(short.status(), 409);
+    assert_eq!(short.json::<Value>().await.unwrap()["code"], "INCOMPLETE");
+    let edit = b.upload(b"edited meanwhile").await;
+    b.commit(json!([{ "name": name(1), "base": plain, "sha": edit }]))
+        .await;
+    let moved = a.post("switch", switch(2, built_at + 1)).await;
+    assert_eq!(moved.status(), 409);
+    assert_eq!(moved.json::<Value>().await.unwrap()["code"], "CONFLICT");
+    let caught_up = a.changes(0).await["head"].as_i64().unwrap();
+    let done = a.post("switch", switch(2, caught_up)).await;
+    assert_eq!(done.status(), 200);
+    assert_eq!(done.json::<Value>().await.unwrap()["epoch"], 2);
+    let keys: Value = b.get("keys").await.json().await.unwrap();
+    assert_eq!(
+        (keys["mode"].clone(), keys["recipient"].clone()),
+        (json!("encrypted"), json!("age1library"))
+    );
+    let now = b.changes(0).await;
+    assert_eq!(now["epoch"], 2);
+    assert_eq!(now["changes"].as_array().unwrap().len(), 2);
+    let gone = b.post("blobs/fetch", json!({ "shas": [edit] })).await;
+    assert!(gone.bytes().await.unwrap().len() < 8);
+}

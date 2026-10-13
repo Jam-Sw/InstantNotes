@@ -90,12 +90,14 @@ pub enum Refused {
     Exists,
     NotFound,
     Busy,
+    Incomplete,
     Storage(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Keys {
+    pub library_id: String,
     pub mode: Option<String>,
     pub recipient: Option<String>,
     pub epoch: i64,
@@ -143,6 +145,10 @@ pub struct Store {
 
 impl Store {
     pub fn open(dir: &Path) -> Result<Store, Refused> {
+        if let Some(parent) = dir.parent() {
+            crate::libraries::create_private_dir(parent).map_err(storage)?;
+        }
+        crate::libraries::create_private_dir(dir).map_err(storage)?;
         crate::libraries::create_private_dir(&dir.join(BLOBS_DIR)).map_err(storage)?;
         let conn = Connection::open(dir.join(INDEX_FILE)).map_err(storage)?;
         conn.busy_timeout(Duration::from_secs(5)).map_err(storage)?;
@@ -196,7 +202,16 @@ impl Store {
         }
         Ok(shas
             .iter()
-            .filter(|s| self.blob(s).is_none())
+            .filter(|s| match self.blob(s) {
+                Some(path) => {
+                    let _ = std::fs::File::options()
+                        .write(true)
+                        .open(path)
+                        .and_then(|f| f.set_modified(SystemTime::now()));
+                    false
+                }
+                None => true,
+            })
             .cloned()
             .collect())
     }
@@ -221,7 +236,7 @@ impl Store {
         }
         let target = self.blob_path(sha);
         let dir = target.parent().map(Path::to_path_buf).unwrap_or_default();
-        std::fs::create_dir_all(&dir).map_err(storage)?;
+        crate::libraries::create_private_dir(&dir).map_err(storage)?;
         let file = tempfile::NamedTempFile::new_in(&dir).map_err(storage)?;
         Ok(BlobWriter {
             file,
@@ -258,8 +273,8 @@ impl Store {
                 })
             })
             .map_err(storage)?
-            .filter_map(Result::ok)
-            .collect();
+            .collect::<Result<_, _>>()
+            .map_err(storage)?;
         let mut more = rows.len() > limit;
         if more {
             rows.truncate(limit);
@@ -279,8 +294,8 @@ impl Store {
                     })
                 })
                 .map_err(storage)?
-                .filter_map(Result::ok)
-                .collect();
+                .collect::<Result<_, _>>()
+                .map_err(storage)?;
             rows.retain(|c| c.seq != last);
             rows.extend(whole);
             more = conn
@@ -300,7 +315,13 @@ impl Store {
         })
     }
 
-    pub fn commit(&self, epoch: i64, ops: &[Op], device: &str) -> Result<i64, Refused> {
+    pub fn commit(
+        &self,
+        epoch: i64,
+        ops: &[Op],
+        device: &str,
+        reset: bool,
+    ) -> Result<i64, Refused> {
         if ops.len() > MAX_OPS {
             return Err(Refused::TooMany);
         }
@@ -314,6 +335,7 @@ impl Store {
                 }
             }
         }
+        let mut conn = self.conn();
         let mut sizes = HashMap::new();
         for sha in ops.iter().filter_map(|op| op.sha.as_ref()) {
             let size = self
@@ -323,7 +345,6 @@ impl Store {
                 .ok_or_else(|| Refused::MissingBlob(sha.clone()))?;
             sizes.insert(sha.clone(), size);
         }
-        let mut conn = self.conn();
         let tx = conn.transaction().map_err(storage)?;
         let current_epoch = meta_i64(&tx, "epoch")?;
         if epoch != current_epoch && epoch != current_epoch + 1 {
@@ -331,6 +352,10 @@ impl Store {
         }
         let mut conflicts = Vec::new();
         let staging = epoch != current_epoch;
+        if staging && reset {
+            tx.execute("DELETE FROM objects WHERE epoch = ?1", params![epoch])
+                .map_err(storage)?;
+        }
         for op in ops.iter().filter(|_| !staging) {
             let current: Option<String> = tx
                 .query_row(
@@ -380,6 +405,7 @@ impl Store {
         built_at: i64,
         mode: &str,
         recipient: Option<&str>,
+        expected: usize,
     ) -> Result<i64, Refused> {
         if mode != PLAIN && mode != ENCRYPTED {
             return Err(Refused::BadName(mode.to_string()));
@@ -392,6 +418,30 @@ impl Store {
         if meta_i64(&tx, "epoch")? != from_epoch {
             return Err(Refused::WrongEpoch);
         }
+        let live = |epoch: i64| -> Result<usize, Refused> {
+            tx.query_row(
+                "SELECT count(*) FROM objects WHERE epoch = ?1 AND sha IS NOT NULL",
+                params![epoch],
+                |r| r.get::<_, i64>(0),
+            )
+            .map(|n| n as usize)
+            .map_err(storage)
+        };
+        let staged = live(from_epoch + 1)?;
+        if staged != expected || staged + 1 < live(from_epoch)? {
+            return Err(Refused::Incomplete);
+        }
+        let old_blobs: Vec<String> = {
+            let mut stmt = tx
+                .prepare("SELECT DISTINCT sha FROM objects WHERE epoch = ?1 AND sha IS NOT NULL")
+                .map_err(storage)?;
+            let rows = stmt
+                .query_map(params![from_epoch], |r| r.get(0))
+                .map_err(storage)?
+                .collect::<Result<_, _>>()
+                .map_err(storage)?;
+            rows
+        };
         let moved: bool = tx
             .query_row(
                 "SELECT EXISTS (SELECT 1 FROM objects WHERE epoch = ?1 AND seq > ?2)",
@@ -418,14 +468,29 @@ impl Store {
         }
         tx.commit().map_err(storage)?;
         drop(conn);
-        self.sweep_unreferenced(Duration::ZERO);
+        for sha in old_blobs {
+            self.remove_if_unreferenced(&sha);
+        }
         self.head.send_replace(seq);
         Ok(next)
+    }
+
+    fn remove_if_unreferenced(&self, sha: &str) -> bool {
+        let conn = self.conn();
+        let referenced = conn
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM objects WHERE sha = ?1)",
+                params![sha],
+                |r| r.get::<_, bool>(0),
+            )
+            .unwrap_or(true);
+        !referenced && std::fs::remove_file(self.blob_path(sha)).is_ok()
     }
 
     pub fn keys(&self) -> Result<Keys, Refused> {
         let conn = self.conn();
         Ok(Keys {
+            library_id: meta(&conn, "library_id")?.unwrap_or_default(),
             mode: meta(&conn, "mode")?,
             recipient: meta(&conn, "recipient")?,
             epoch: meta_i64(&conn, "epoch")?,
@@ -502,8 +567,8 @@ impl Store {
                 })
             })
             .map_err(storage)?
-            .filter_map(Result::ok)
-            .collect();
+            .collect::<Result<_, _>>()
+            .map_err(storage)?;
         Ok(joins)
     }
 
@@ -583,7 +648,7 @@ impl Store {
                     .ok()
                     .and_then(|t| now.duration_since(t).ok())
                     .is_some_and(|age| age >= older_than);
-                if old && std::fs::remove_file(file.path()).is_ok() {
+                if old && self.remove_if_unreferenced(&name) {
                     removed += 1;
                 }
             }
@@ -728,7 +793,8 @@ mod tests {
             s.commit(
                 1,
                 &[op(&name(1), None, Some(&a)), op(&name(2), None, Some(&b))],
-                "d1"
+                "d1",
+                false
             ),
             Ok(1)
         );
@@ -740,6 +806,7 @@ mod tests {
                 op(&name(2), None, Some(&a2)),
             ],
             "d2",
+            false,
         );
         assert_eq!(
             refused,
@@ -761,7 +828,8 @@ mod tests {
                     op(&name(1), Some(&a), Some(&a2)),
                     op(&name(2), Some(&b), None)
                 ],
-                "d2"
+                "d2",
+                false
             ),
             Ok(2)
         );
@@ -778,19 +846,24 @@ mod tests {
         let (_dir, s) = store();
         let a = put(&s, b"a");
         assert!(matches!(
-            s.commit(1, &[op("../escape", None, Some(&a))], "d"),
+            s.commit(1, &[op("../escape", None, Some(&a))], "d", false),
             Err(Refused::BadName(_))
         ));
         assert!(matches!(
-            s.commit(1, &[op(&name(1).to_uppercase(), None, Some(&a))], "d"),
+            s.commit(
+                1,
+                &[op(&name(1).to_uppercase(), None, Some(&a))],
+                "d",
+                false
+            ),
             Err(Refused::BadName(_))
         ));
         assert!(matches!(
-            s.commit(1, &[op(&name(1), None, Some(&sha(b"never")))], "d"),
+            s.commit(1, &[op(&name(1), None, Some(&sha(b"never")))], "d", false),
             Err(Refused::MissingBlob(_))
         ));
         assert_eq!(
-            s.commit(3, &[op(&name(1), None, Some(&a))], "d"),
+            s.commit(3, &[op(&name(1), None, Some(&a))], "d", false),
             Err(Refused::WrongEpoch)
         );
         assert_eq!(s.changes(0, 10).unwrap().head, 0);
@@ -801,9 +874,9 @@ mod tests {
         let (_dir, s) = store();
         let blob = put(&s, b"x");
         let first: Vec<Op> = (0..3).map(|n| op(&name(n), None, Some(&blob))).collect();
-        s.commit(1, &first, "d").unwrap();
+        s.commit(1, &first, "d", false).unwrap();
         for n in 3..10 {
-            s.commit(1, &[op(&name(n), None, Some(&blob))], "d")
+            s.commit(1, &[op(&name(n), None, Some(&blob))], "d", false)
                 .unwrap();
         }
         let page = s.changes(0, 2).unwrap();
@@ -852,7 +925,7 @@ mod tests {
         let (_dir, s) = store();
         let kept = put(&s, b"kept");
         let loose = put(&s, b"loose");
-        s.commit(1, &[op(&name(1), None, Some(&kept))], "d")
+        s.commit(1, &[op(&name(1), None, Some(&kept))], "d", false)
             .unwrap();
         assert_eq!(s.sweep_unreferenced(SWEEP_AFTER), 0);
         assert!(s.blob(&loose).is_some());
@@ -867,22 +940,22 @@ mod tests {
         s.set_keys(PLAIN, None).unwrap();
         let plain = put(&s, b"plain note");
         let head = s
-            .commit(1, &[op(&name(1), None, Some(&plain))], "d1")
+            .commit(1, &[op(&name(1), None, Some(&plain))], "d1", false)
             .unwrap();
         let sealed = put(&s, b"sealed note");
-        s.commit(2, &[op(&name(9), None, Some(&sealed))], "d1")
+        s.commit(2, &[op(&name(9), None, Some(&sealed))], "d1", false)
             .unwrap();
         assert_eq!(s.changes(0, 10).unwrap().changes.len(), 1);
         let edit = put(&s, b"plain edit");
-        s.commit(1, &[op(&name(1), Some(&plain), Some(&edit))], "d2")
+        s.commit(1, &[op(&name(1), Some(&plain), Some(&edit))], "d2", false)
             .unwrap();
         assert_eq!(
-            s.switch(1, head, ENCRYPTED, Some("age1recipient")),
+            s.switch(1, head, ENCRYPTED, Some("age1recipient"), 1),
             Err(Refused::Conflicts(Vec::new()))
         );
         let caught_up = s.changes(0, 10).unwrap().head;
         assert_eq!(
-            s.switch(1, caught_up, ENCRYPTED, Some("age1recipient")),
+            s.switch(1, caught_up, ENCRYPTED, Some("age1recipient"), 1),
             Ok(2)
         );
         let now = s.changes(0, 10).unwrap();
@@ -894,14 +967,106 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![name(9)]
         );
-        assert!(s.blob(&plain).is_none() && s.blob(&edit).is_none());
+        assert!(s.blob(&edit).is_none() && s.blob(&sealed).is_some());
+        assert_eq!(s.sweep_unreferenced(Duration::ZERO), 1);
+        assert!(s.blob(&plain).is_none());
         let keys = s.keys().unwrap();
         assert_eq!(
             (keys.mode.as_deref(), keys.recipient.as_deref()),
             (Some(ENCRYPTED), Some("age1recipient"))
         );
-        assert_eq!(s.switch(2, now.head, PLAIN, None), Ok(3));
+        assert_eq!(s.switch(2, now.head, PLAIN, None, 0), Ok(3));
         assert_eq!(s.keys().unwrap().recipient, None);
+    }
+
+    #[test]
+    fn a_new_staging_attempt_replaces_what_an_abandoned_one_left() {
+        let (_dir, s) = store();
+        s.set_keys(PLAIN, None).unwrap();
+        let x = put(&s, b"x");
+        let head = s
+            .commit(
+                1,
+                &[op(&name(1), None, Some(&x)), op(&name(2), None, Some(&x))],
+                "d",
+                false,
+            )
+            .unwrap();
+        let sealed = put(&s, b"sealed");
+        s.commit(
+            2,
+            &[
+                op(&name(8), None, Some(&sealed)),
+                op(&name(9), None, Some(&sealed)),
+            ],
+            "d",
+            true,
+        )
+        .unwrap();
+        s.commit(
+            2,
+            &[
+                op(&name(8), None, Some(&sealed)),
+                op(&name(7), None, Some(&sealed)),
+            ],
+            "d",
+            true,
+        )
+        .unwrap();
+        let head = s.changes(head, 10).unwrap().head;
+        assert_eq!(s.switch(1, head, ENCRYPTED, Some("age1r"), 2), Ok(2));
+        let mut names: Vec<String> = s
+            .changes(0, 10)
+            .unwrap()
+            .changes
+            .into_iter()
+            .map(|c| c.name)
+            .collect();
+        names.sort();
+        let mut want = vec![name(7), name(8)];
+        want.sort();
+        assert_eq!(names, want);
+    }
+
+    #[test]
+    fn a_switch_is_refused_when_the_staged_set_is_short() {
+        let (_dir, s) = store();
+        s.set_keys(PLAIN, None).unwrap();
+        let x = put(&s, b"x");
+        let ops: Vec<Op> = (0..5).map(|n| op(&name(n), None, Some(&x))).collect();
+        let head = s.commit(1, &ops, "d", false).unwrap();
+        assert_eq!(
+            s.switch(1, head, ENCRYPTED, Some("age1r"), 0),
+            Err(Refused::Incomplete)
+        );
+        s.commit(2, &[op(&name(9), None, Some(&x))], "d", true)
+            .unwrap();
+        assert_eq!(
+            s.switch(1, head, ENCRYPTED, Some("age1r"), 1),
+            Err(Refused::Incomplete)
+        );
+        assert_eq!(
+            s.switch(1, head, ENCRYPTED, Some("age1r"), 5),
+            Err(Refused::Incomplete)
+        );
+        assert_eq!(s.changes(0, 10).unwrap().epoch, 1);
+        assert!(s.blob(&x).is_some());
+    }
+
+    #[test]
+    fn a_blob_reported_present_is_safe_from_the_sweep() {
+        let (_dir, s) = store();
+        let old = put(&s, b"old");
+        let path = s.blob(&old).unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(SystemTime::now() - SWEEP_AFTER * 2)
+            .unwrap();
+        assert!(s.missing(std::slice::from_ref(&old)).unwrap().is_empty());
+        assert_eq!(s.sweep_unreferenced(SWEEP_AFTER), 0);
+        assert!(s.blob(&old).is_some());
     }
 
     #[test]
@@ -950,12 +1115,12 @@ mod tests {
         let a = stores.of("alice").unwrap();
         let b = stores.of("../alice").unwrap();
         let blob = put(&a, b"alice's note");
-        a.commit(1, &[op(&name(1), None, Some(&blob))], "d")
+        a.commit(1, &[op(&name(1), None, Some(&blob))], "d", false)
             .unwrap();
         assert!(b.blob(&blob).is_none());
         assert!(b.changes(0, 10).unwrap().changes.is_empty());
         assert!(matches!(
-            b.commit(1, &[op(&name(1), None, Some(&blob))], "d"),
+            b.commit(1, &[op(&name(1), None, Some(&blob))], "d", false),
             Err(Refused::MissingBlob(_))
         ));
         assert!(Arc::ptr_eq(&a, &stores.of("alice").unwrap()));

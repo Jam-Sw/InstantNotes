@@ -63,6 +63,70 @@ pub enum JoinAnswer {
     Denied,
 }
 
+pub struct Pkce {
+    pub verifier: String,
+    pub challenge: String,
+    pub state: String,
+}
+
+pub fn pkce() -> Pkce {
+    use base64::Engine;
+    use sha2::Digest;
+    let verifier = crate::sessions::random_token();
+    let challenge = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .encode(sha2::Sha256::digest(verifier.as_bytes()));
+    Pkce {
+        verifier,
+        challenge,
+        state: crate::sessions::random_token(),
+    }
+}
+
+pub fn callback_query(
+    request_line: &str,
+) -> Option<(Option<String>, Option<String>, Option<String>)> {
+    let target = request_line.strip_prefix("GET ")?.split(' ').next()?;
+    let query = target.strip_prefix("/callback?")?;
+    let mut code = None;
+    let mut state = None;
+    let mut error = None;
+    for pair in query.split('&') {
+        let (key, value) = pair.split_once('=')?;
+        let value = percent_decode(value)?;
+        match key {
+            "code" => code = Some(value),
+            "state" => state = Some(value),
+            "error" => error = Some(value),
+            _ => {}
+        }
+    }
+    Some((code, state, error))
+}
+
+fn percent_decode(value: &str) -> Option<String> {
+    let bytes = value.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'%' => {
+                let hex = std::str::from_utf8(bytes.get(i + 1..i + 3)?).ok()?;
+                out.push(u8::from_str_radix(hex, 16).ok()?);
+                i += 3;
+            }
+            b'+' => {
+                out.push(b' ');
+                i += 1;
+            }
+            b => {
+                out.push(b);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
 pub fn normalize_address(input: &str) -> Result<String, String> {
     let trimmed = input.trim().trim_end_matches('/');
     if trimmed.is_empty() {
@@ -302,8 +366,13 @@ impl Client {
         Ok(out)
     }
 
-    pub async fn commit(&self, epoch: i64, ops: &[RemoteOp]) -> Result<i64, RemoteError> {
-        let body = json!({ "epoch": epoch, "ops": ops });
+    pub async fn commit(
+        &self,
+        epoch: i64,
+        ops: &[RemoteOp],
+        reset: bool,
+    ) -> Result<i64, RemoteError> {
+        let body = json!({ "epoch": epoch, "ops": ops, "reset": reset });
         let answer: Value = self
             .json(|| self.request(Method::POST, "commit").json(&body))
             .await?;
@@ -327,8 +396,15 @@ impl Client {
         built_at: i64,
         mode: &str,
         recipient: Option<&str>,
+        expected: usize,
     ) -> Result<i64, RemoteError> {
-        let body = json!({ "fromEpoch": from_epoch, "builtAt": built_at, "mode": mode, "recipient": recipient });
+        let body = json!({
+            "fromEpoch": from_epoch,
+            "builtAt": built_at,
+            "mode": mode,
+            "recipient": recipient,
+            "expected": expected,
+        });
         let answer: Value = self
             .json(|| self.request(Method::POST, "switch").json(&body))
             .await?;
@@ -428,8 +504,8 @@ impl Remote for Blocking {
         self.runtime.block_on(self.client.download(shas))
     }
 
-    fn commit(&mut self, epoch: i64, ops: &[RemoteOp]) -> Result<i64, RemoteError> {
-        self.runtime.block_on(self.client.commit(epoch, ops))
+    fn commit(&mut self, epoch: i64, ops: &[RemoteOp], reset: bool) -> Result<i64, RemoteError> {
+        self.runtime.block_on(self.client.commit(epoch, ops, reset))
     }
 
     fn keys(&mut self) -> Result<RemoteKeys, RemoteError> {
@@ -446,15 +522,47 @@ impl Remote for Blocking {
         built_at: i64,
         mode: &str,
         recipient: Option<&str>,
+        expected: usize,
     ) -> Result<i64, RemoteError> {
-        self.runtime
-            .block_on(self.client.switch(from_epoch, built_at, mode, recipient))
+        self.runtime.block_on(
+            self.client
+                .switch(from_epoch, built_at, mode, recipient, expected),
+        )
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pkce_values_are_fresh_and_the_challenge_matches_the_verifier() {
+        use base64::Engine;
+        use sha2::Digest;
+        let a = pkce();
+        let b = pkce();
+        assert_ne!(a.verifier, b.verifier);
+        assert_ne!(a.state, b.state);
+        assert!(a.verifier.len() >= 43);
+        let expected = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(sha2::Sha256::digest(a.verifier.as_bytes()));
+        assert_eq!(a.challenge, expected);
+    }
+
+    #[test]
+    fn the_loopback_callback_is_read_from_the_request_line() {
+        assert_eq!(
+            callback_query("GET /callback?code=c%2Fd&state=s1 HTTP/1.1"),
+            Some((Some("c/d".into()), Some("s1".into()), None))
+        );
+        assert_eq!(
+            callback_query("GET /callback?error=access_denied&state=s1 HTTP/1.1"),
+            Some((None, Some("s1".into()), Some("access_denied".into())))
+        );
+        assert_eq!(callback_query("GET /favicon.ico HTTP/1.1"), None);
+        assert_eq!(callback_query("POST /callback?code=x HTTP/1.1"), None);
+        assert_eq!(callback_query("GET /callback?code=%zz HTTP/1.1"), None);
+    }
 
     #[test]
     fn an_address_gets_https_and_plain_http_only_reaches_this_computer() {

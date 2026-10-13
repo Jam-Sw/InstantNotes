@@ -100,6 +100,11 @@ impl IntoResponse for Refused {
                 StatusCode::TOO_MANY_REQUESTS,
                 "too many waiting requests",
             ),
+            Refused::Incomplete => refusal(
+                "INCOMPLETE",
+                StatusCode::CONFLICT,
+                "the new form of the library is missing objects the old one has",
+            ),
             Refused::Storage(e) => {
                 crate::log("sync.storage", &[("error", &e)]);
                 refusal(
@@ -363,6 +368,8 @@ async fn get_blob(
 struct CommitBody {
     epoch: i64,
     ops: Vec<Op>,
+    #[serde(default)]
+    reset: bool,
 }
 
 async fn commit(
@@ -372,7 +379,10 @@ async fn commit(
     Json(body): Json<CommitBody>,
 ) -> Response {
     let c = signed_in!(state, peer, headers);
-    match c.store.commit(body.epoch, &body.ops, &c.grant.id) {
+    match c
+        .store
+        .commit(body.epoch, &body.ops, &c.grant.id, body.reset)
+    {
         Ok(head) => Json(json!({ "head": head })).into_response(),
         Err(e) => e.into_response(),
     }
@@ -385,6 +395,7 @@ struct SwitchBody {
     built_at: i64,
     mode: String,
     recipient: Option<String>,
+    expected: usize,
 }
 
 async fn switch(
@@ -399,6 +410,7 @@ async fn switch(
         body.built_at,
         &body.mode,
         body.recipient.as_deref(),
+        body.expected,
     ) {
         Ok(epoch) => {
             crate::log(

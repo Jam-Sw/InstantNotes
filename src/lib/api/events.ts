@@ -62,6 +62,7 @@ export const EVENTS = {
   STICKY_CLOSE_REQUESTED: "sticky:close-requested",
   LIBRARY_EXTERNAL_CHANGE: "library:external-change",
   AGENT_SESSIONS: "agents:sessions",
+  SYNC_JOIN_REQUESTS: "sync:join-requests",
 } as const;
 
 export const LIBRARY_CHANGED_EVENTS = [
