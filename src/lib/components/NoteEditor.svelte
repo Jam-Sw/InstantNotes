@@ -156,16 +156,6 @@
       {:else}
         {#if !isSurface}
           <div class="icon-group">
-            {#if !isWeb}
-              <button
-                class="icon-btn"
-                title="Insert image from a file"
-                aria-label="Insert image"
-                onclick={insertImage}
-              >
-                <Icon name="image" />
-              </button>
-            {/if}
             <button
               class="icon-btn"
               title="Formatting tools"
