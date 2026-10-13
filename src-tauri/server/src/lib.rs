@@ -6,6 +6,7 @@ mod fake_idp;
 mod libraries;
 mod limits;
 mod oidc;
+mod recheck;
 mod sessions;
 mod statics;
 mod vaults;
@@ -26,6 +27,7 @@ use instantnotes_core::AppError;
 use libraries::{Libraries, Library};
 use limits::Limits;
 use oidc::Oidc;
+use recheck::Recheck;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sessions::{Logins, Sessions};
@@ -65,7 +67,8 @@ pub struct Inner {
     logins: Logins,
     limits: Limits,
     hub: Hub,
-    oidc: Oidc,
+    oidc: Arc<Oidc>,
+    recheck: Recheck,
 }
 
 #[derive(Clone)]
@@ -99,7 +102,8 @@ impl AppState {
             logins: Logins::default(),
             limits: Limits::new(),
             hub: Hub::default(),
-            oidc,
+            oidc: Arc::new(oidc),
+            recheck: Recheck::new(&config.oidc_client_secret),
             config,
         })))
     }
@@ -109,7 +113,17 @@ impl AppState {
         std::fs::write(&probe, b"ok")
             .and_then(|_| std::fs::remove_file(&probe))
             .map_err(|e| format!("data folder not writable: {e}"))?;
-        self.sessions.healthy()
+        self.sessions.healthy()?;
+        match self.recheck.problem() {
+            Some(problem) => Err(problem),
+            None => Ok(()),
+        }
+    }
+
+    pub async fn recheck_people(&self) {
+        self.recheck
+            .run_due(&self.sessions, &self.oidc, sessions::now_secs())
+            .await;
     }
 
     pub fn sync_vaults(&self) {
@@ -192,6 +206,7 @@ pub fn run(config: Config) -> i32 {
                 loop {
                     tick.tick().await;
                     state.libraries.close_idle();
+                    state.recheck_people().await;
                 }
             })
         };
@@ -400,11 +415,21 @@ async fn callback(
         );
     };
     match state.oidc.finish(&state.logins, &code, &login_state).await {
-        Ok(person) => {
+        Ok(signed_in) => {
+            let person = signed_in.person;
             log(
                 "auth.signed_in",
-                &[("library", &libraries::folder_name(&person.sub))],
+                &[
+                    ("library", &libraries::folder_name(&person.sub)),
+                    ("refresh", &signed_in.refresh_token.is_some().to_string()),
+                ],
             );
+            let sealed = signed_in
+                .refresh_token
+                .map(|token| state.recheck.sealer.seal(&token));
+            state
+                .sessions
+                .set_refresh(&person.sub, sealed.as_deref(), sessions::now_secs());
             let sizes = note_sizes(&state, &person.sub);
             let id = state.sessions.create(person);
             let mut response = statics::html(StatusCode::OK, statics::signed_in(&sizes));

@@ -27,7 +27,10 @@ uuid = { version = "1", features = ["v4"] }
 jsonwebtoken = { version = "11", default-features = false, features = ["aws_lc_rs"] }
 rusqlite = { version = "0.40", features = ["bundled"] }
 governor = "0.10"
+chacha20poly1305 = "0.11"
+hkdf = "0.13"
 
 [dev-dependencies]
 tempfile = "3"
 aws-lc-rs = "1"
+axum = { version = "0.8", default-features = false, features = ["form"] }

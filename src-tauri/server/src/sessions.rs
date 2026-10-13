@@ -29,7 +29,14 @@ CREATE TABLE IF NOT EXISTS grants (
   last_seen    INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS grants_sub ON grants(sub);
+CREATE TABLE IF NOT EXISTS persons (
+  sub        TEXT PRIMARY KEY,
+  refresh    BLOB,
+  last_check INTEGER NOT NULL
+);
 ";
+const WITHOUT_REFRESH: i64 = 24 * 60 * 60;
+const CHECK_EVERY: i64 = 60 * 60;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Person {
@@ -159,7 +166,9 @@ impl Sessions {
         let conn = self.conn();
         let found = conn
             .query_row(
-                "SELECT id, sub, name, email, last_seen FROM grants WHERE token_hash = ?1 AND kind = ?2",
+                "SELECT g.id, g.sub, g.name, g.email, g.last_seen, g.signed_in_at, p.refresh IS NOT NULL
+                 FROM grants g LEFT JOIN persons p ON p.sub = g.sub
+                 WHERE g.token_hash = ?1 AND g.kind = ?2",
                 params![hash(token), kind],
                 |r| {
                     Ok((
@@ -170,14 +179,17 @@ impl Sessions {
                             email: r.get(3)?,
                         },
                         r.get::<_, i64>(4)?,
+                        r.get::<_, i64>(5)?,
+                        r.get::<_, bool>(6)?,
                     ))
                 },
             )
             .optional()
             .ok()
             .flatten()?;
-        let (id, person, last_seen) = found;
-        if now - last_seen >= unused {
+        let (id, person, last_seen, signed_in_at, refreshable) = found;
+        let stale = !refreshable && now - signed_in_at >= WITHOUT_REFRESH;
+        if now - last_seen >= unused || stale {
             let _ = conn.execute("DELETE FROM grants WHERE id = ?1", params![id]);
             return None;
         }
@@ -251,6 +263,36 @@ impl Sessions {
         self.conn()
             .execute("DELETE FROM grants WHERE sub = ?1", params![sub])
             .unwrap_or(0)
+    }
+
+    pub fn set_refresh(&self, sub: &str, sealed: Option<&[u8]>, now: i64) {
+        let _ = self.conn().execute(
+            "INSERT INTO persons (sub, refresh, last_check) VALUES (?1, ?2, ?3)
+             ON CONFLICT(sub) DO UPDATE SET refresh = excluded.refresh, last_check = excluded.last_check",
+            params![sub, sealed, now],
+        );
+    }
+
+    pub fn mark_checked(&self, sub: &str, now: i64) {
+        let _ = self.conn().execute(
+            "UPDATE persons SET last_check = ?2 WHERE sub = ?1",
+            params![sub, now],
+        );
+    }
+
+    pub fn due_checks(&self, now: i64) -> Vec<(String, Vec<u8>)> {
+        let conn = self.conn();
+        let Ok(mut stmt) = conn.prepare(
+            "SELECT p.sub, p.refresh FROM persons p
+             WHERE p.refresh IS NOT NULL AND p.last_check <= ?1
+               AND EXISTS (SELECT 1 FROM grants g WHERE g.sub = p.sub)
+             ORDER BY p.last_check",
+        ) else {
+            return Vec::new();
+        };
+        stmt.query_map(params![now - CHECK_EVERY], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map(|rows| rows.filter_map(Result::ok).collect())
+            .unwrap_or_default()
     }
 }
 
@@ -347,6 +389,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let s = open(&dir);
         let day = 24 * 3600;
+        s.set_refresh("a", Some(b"sealed"), 0);
         let token = s.create_session(&person("a"), None, 0);
         assert!(s.session(&token, 13 * day).is_some());
         assert!(s.session(&token, 26 * day).is_some());
@@ -358,11 +401,46 @@ mod tests {
     fn a_device_token_is_prefixed_and_ends_after_180_days_unused() {
         let dir = tempfile::tempdir().unwrap();
         let s = open(&dir);
+        s.set_refresh("a", Some(b"sealed"), 0);
         let (_, token) = s.create_device(&person("a"), "Laptop", 0);
         assert!(token.starts_with(DEVICE_PREFIX));
         assert!(s.session(&token, 1).is_none());
         assert!(s.device(&token, 179 * 24 * 3600).is_some());
         assert!(s.device(&token, 360 * 24 * 3600).is_none());
+    }
+
+    #[test]
+    fn without_a_refresh_token_a_sign_in_lasts_a_day() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = open(&dir);
+        let day = 24 * 3600;
+        s.set_refresh("a", None, 0);
+        let (_, device) = s.create_device(&person("a"), "Laptop", 0);
+        let session = s.create_session(&person("a"), None, 0);
+        assert!(s.device(&device, day - 60).is_some());
+        assert!(s.session(&session, day - 60).is_some());
+        assert!(s.device(&device, day).is_none());
+        assert!(s.session(&session, day).is_none());
+        let fresh = s.create_session(&person("a"), None, day);
+        assert!(s.session(&fresh, day + 60).is_some());
+    }
+
+    #[test]
+    fn only_people_with_a_refresh_token_and_a_live_grant_are_due() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = open(&dir);
+        s.set_refresh("with-grant", Some(b"r1"), 0);
+        s.set_refresh("no-grant", Some(b"r2"), 0);
+        s.set_refresh("no-refresh", None, 0);
+        s.create_session(&person("with-grant"), None, 0);
+        s.create_session(&person("no-refresh"), None, 0);
+        assert!(s.due_checks(1800).is_empty());
+        assert_eq!(
+            s.due_checks(3600),
+            vec![("with-grant".to_string(), b"r1".to_vec())]
+        );
+        s.mark_checked("with-grant", 3600);
+        assert!(s.due_checks(3600).is_empty());
     }
 
     #[test]

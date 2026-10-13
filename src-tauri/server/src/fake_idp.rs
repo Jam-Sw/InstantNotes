@@ -4,9 +4,10 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
-use axum::{Json, Router};
+use axum::{Form, Json, Router};
 use base64::Engine;
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
@@ -57,21 +58,30 @@ impl Signer {
 struct Inner {
     issuer: String,
     signer: Signer,
+    offline_access: bool,
     key_fetches: usize,
-    token_answers: Vec<(StatusCode, Value)>,
+    answer: (StatusCode, Value),
+    per_refresh: HashMap<String, (StatusCode, Value)>,
+    requests: Vec<HashMap<String, String>>,
 }
 
 #[derive(Clone)]
 pub struct FakeIdp(Arc<Mutex<Inner>>);
 
 async fn discovery(State(idp): State<FakeIdp>) -> Json<Value> {
-    let issuer = idp.issuer();
+    let inner = idp.0.lock().unwrap();
+    let issuer = inner.issuer.clone();
+    let scopes: &[&str] = if inner.offline_access {
+        &["openid", "profile", "email", "offline_access"]
+    } else {
+        &["openid", "profile", "email"]
+    };
     Json(json!({
         "issuer": issuer,
         "authorization_endpoint": format!("{issuer}/authorize"),
         "token_endpoint": format!("{issuer}/token"),
         "jwks_uri": format!("{issuer}/jwks"),
-        "scopes_supported": ["openid", "profile", "email", "offline_access"],
+        "scopes_supported": scopes,
     }))
 }
 
@@ -81,17 +91,16 @@ async fn jwks(State(idp): State<FakeIdp>) -> Json<Value> {
     Json(json!({ "keys": [inner.signer.jwk()] }))
 }
 
-async fn token(State(idp): State<FakeIdp>) -> impl IntoResponse {
+async fn token(
+    State(idp): State<FakeIdp>,
+    Form(form): Form<HashMap<String, String>>,
+) -> impl IntoResponse {
     let mut inner = idp.0.lock().unwrap();
-    let (status, body) = if inner.token_answers.len() > 1 {
-        inner.token_answers.remove(0)
-    } else {
-        inner
-            .token_answers
-            .first()
-            .cloned()
-            .unwrap_or((StatusCode::SERVICE_UNAVAILABLE, json!({})))
-    };
+    let (status, body) = form
+        .get("refresh_token")
+        .and_then(|t| inner.per_refresh.get(t).cloned())
+        .unwrap_or_else(|| inner.answer.clone());
+    inner.requests.push(form);
     (status, Json(body))
 }
 
@@ -101,8 +110,11 @@ impl FakeIdp {
         let idp = FakeIdp(Arc::new(Mutex::new(Inner {
             issuer: format!("http://{}", listener.local_addr().unwrap()),
             signer: Signer::generate("key-1"),
+            offline_access: true,
             key_fetches: 0,
-            token_answers: Vec::new(),
+            answer: (StatusCode::SERVICE_UNAVAILABLE, json!({})),
+            per_refresh: HashMap::new(),
+            requests: Vec::new(),
         })));
         let router = Router::new()
             .route("/.well-known/openid-configuration", get(discovery))
@@ -134,6 +146,37 @@ impl FakeIdp {
     }
 
     pub fn answer_token_with(&self, status: StatusCode, body: Value) {
-        self.0.lock().unwrap().token_answers = vec![(status, body)];
+        self.0.lock().unwrap().answer = (status, body);
+    }
+
+    pub fn answer_refresh(&self, refresh_token: &str, status: StatusCode, body: Value) {
+        self.0
+            .lock()
+            .unwrap()
+            .per_refresh
+            .insert(refresh_token.to_string(), (status, body));
+    }
+
+    pub fn without_offline_access(&self) {
+        self.0.lock().unwrap().offline_access = false;
+    }
+
+    pub fn requests(&self) -> Vec<HashMap<String, String>> {
+        self.0.lock().unwrap().requests.clone()
+    }
+
+    pub fn id_token(&self, sub: &str) -> String {
+        let issuer = self.issuer();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        self.signer().sign(&json!({
+            "iss": issuer,
+            "aud": "client",
+            "sub": sub,
+            "exp": now + 300,
+            "iat": now,
+        }))
     }
 }
