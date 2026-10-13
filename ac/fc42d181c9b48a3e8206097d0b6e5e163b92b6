@@ -1,0 +1,25 @@
+openspec/changes/feat-one-experience/writing/tasks.md
+  s_78f0975e18f204::t_230e3759cd13b2 3-9,12,14
+openspec/changes/feat-one-experience/proposal.md
+  s_78f0975e18f204::t_ed640138ec37d5 162
+openspec/changes/feat-one-experience/server-operators/tasks.md
+  s_78f0975e18f204::t_fb78fcb2704276 3,5
+openspec/changes/feat-one-experience/tasks.md
+  s_78f0975e18f204::t_220af308316fc7 28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "acfc42d181c9b48a3e8206097d0b6e5e163b92b6",
+  "prompts": {},
+  "sessions": {
+    "s_78f0975e18f204": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8588110-69b5-41b5-b1c4-53a3f029dcb4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
