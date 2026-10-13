@@ -1,0 +1,43 @@
+src/lib/graph/projection.ts
+  s_78f0975e18f204::t_cfbea8fa976cf9 61-150
+src/lib/components/GraphView.svelte
+  s_78f0975e18f204::t_ac7e3ca7bcae74 118,121,123-125,127-129,133-154,157,160-164,166,169,177-181
+  s_78f0975e18f204::t_be921470ea8a00 67,70-72,74-81
+  s_78f0975e18f204::t_0fdf3d335cea35 229
+  s_78f0975e18f204::t_5d0fbb829b2f0a 25-45,53-58
+  s_78f0975e18f204::t_40786037b10fb4 365-368,371-382,386-406,408-427,431-435
+  s_78f0975e18f204::t_97e512d942d4b0 248-249,254-283,290-312
+  s_78f0975e18f204::t_12796190a957a0 539-541,550,561,566,572,579-581,583,585-589,592,596-602
+  s_78f0975e18f204::t_d9f40b1320ce8d 715-717,719-720
+  s_78f0975e18f204::t_c74ee0b993ab67 483-484
+  s_78f0975e18f204::t_d02b5be4204c8e 313,751-771,773-777
+  s_78f0975e18f204::t_ed0bc46dbf216b 451-462
+  s_78f0975e18f204::t_bcb8dc33b18663 506-513,520,525
+  s_78f0975e18f204::t_9c4d2cd41e6b7c 230,236
+  s_78f0975e18f204::t_9e44bbcec586f4 772
+  s_78f0975e18f204::t_6a86751e27e008 314
+openspec/specs/instantnotes/spec.md
+  s_78f0975e18f204::t_396847a41b336c 71-80
+CHANGELOG.md
+  s_78f0975e18f204::t_881e038136257c 49-54
+src/lib/components/GraphView.test.ts
+  s_78f0975e18f204::t_25704a1aaf2629 147,149,151-185
+src/lib/graph/projection.test.ts
+  s_78f0975e18f204::t_403d9c00cc491a 2-20,72-166
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7054b25cd00750ecd3a6a048d24f6b215a972c06",
+  "prompts": {},
+  "sessions": {
+    "s_78f0975e18f204": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8588110-69b5-41b5-b1c4-53a3f029dcb4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
