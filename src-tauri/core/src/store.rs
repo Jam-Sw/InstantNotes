@@ -12,6 +12,10 @@ const RECORD_REFRESH_DAYS: i64 = 1;
 const INTEGRITY_CHECKED_KEY: &str = "integrity.checked_at";
 const SUSPECT_SUFFIX: &str = ".verify";
 const SESSION_SUFFIX: &str = ".open";
+#[cfg(not(target_family = "wasm"))]
+const JOURNAL_MODE: &str = "wal";
+#[cfg(target_family = "wasm")]
+const JOURNAL_MODE: &str = "truncate";
 
 fn sibling(path: &Path, suffix: &str) -> PathBuf {
     let mut name = path.as_os_str().to_os_string();
@@ -269,14 +273,11 @@ pub struct Store {
 }
 
 fn now_iso() -> String {
-    iso(std::time::SystemTime::now())
+    Utc::now().to_rfc3339_opts(SecondsFormat::Micros, true)
 }
 
 pub fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or_default()
+    Utc::now().timestamp_millis()
 }
 
 pub fn iso(t: std::time::SystemTime) -> String {
@@ -473,10 +474,14 @@ impl Store {
             .map_err(|e| AppError::Storage(format!("cannot open database: {e}")))?;
         conn.busy_timeout(std::time::Duration::from_secs(5))
             .map_err(|e| AppError::Storage(format!("cannot set busy timeout: {e}")))?;
-        let journal_mode: String = conn.query_row("PRAGMA journal_mode = WAL", [], |r| r.get(0))?;
-        if !journal_mode.eq_ignore_ascii_case("wal") {
+        let journal_mode: String = conn.query_row(
+            &format!("PRAGMA journal_mode = {JOURNAL_MODE}"),
+            [],
+            |r| r.get(0),
+        )?;
+        if !journal_mode.eq_ignore_ascii_case(JOURNAL_MODE) {
             return Err(AppError::Storage(format!(
-                "storage location does not support WAL journaling (got '{journal_mode}')"
+                "storage location does not support {JOURNAL_MODE} journaling (got '{journal_mode}')"
             )));
         }
         conn.pragma_update(None, "synchronous", "NORMAL")
