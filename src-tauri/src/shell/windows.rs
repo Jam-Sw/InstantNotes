@@ -129,9 +129,8 @@ pub(crate) fn show_library_window(app: &AppHandle) {
     }
 }
 
-pub(crate) const REPO_URL: &str = "https://github.com/Jam-Sw/InstantNotes";
-
-pub(crate) fn open_data_folder(app: &AppHandle) {
+#[tauri::command]
+pub fn open_data_folder(app: AppHandle) {
     if let Ok(dir) = app.path().app_data_dir() {
         let _ = app.opener().open_path(dir.to_string_lossy(), None::<&str>);
     }

@@ -18,33 +18,20 @@
   import { parseChangelog } from "$lib/changelog";
   import { theme } from "$lib/stores/theme.svelte";
   import { agents } from "$lib/stores/agents.svelte";
+  import { shell, type SettingsPage as Page } from "$lib/stores/shell.svelte";
   import changelogRaw from "../../../CHANGELOG.md?raw";
 
   let {
     appVersion,
     onBack,
     onShowSpace,
-    initialPage = "home",
   }: {
     appVersion: string;
     onBack: () => void;
     onShowSpace: (workspaceId: string) => void;
-    initialPage?: Page;
   } = $props();
 
-  type Page =
-    | "home"
-    | "appearance"
-    | "about"
-    | "editor"
-    | "images"
-    | "links"
-    | "contexting"
-    | "feedback"
-    | "vault"
-    | "agents"
-    | "import";
-  let page = $state<Page>(initialPage);
+  const page = $derived(shell.settingsPage);
   let filter = $state("");
   let filterInput = $state<HTMLInputElement>();
 
@@ -125,7 +112,7 @@
   );
 
   function openPage(id: Page) {
-    page = id;
+    shell.settingsPage = id;
     filter = "";
   }
 
@@ -149,7 +136,7 @@
           return;
         }
         e.preventDefault();
-        if (page !== "home") page = "home";
+        if (page !== "home") shell.settingsPage = "home";
         else onBack();
       }
     }
@@ -310,7 +297,7 @@
     {:else}
       <header class="pane-header page-head" data-tauri-drag-region>
         <nav class="crumb" aria-label="Breadcrumb">
-          <button class="crumb-link" onclick={() => (page = "home")}>Settings</button>
+          <button class="crumb-link" onclick={() => (shell.settingsPage = "home")}>Settings</button>
           <span class="crumb-sep" aria-hidden="true">&rsaquo;</span>
           <span class="crumb-current">{TITLES[page]}</span>
         </nav>

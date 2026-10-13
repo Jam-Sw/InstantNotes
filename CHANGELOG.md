@@ -8,7 +8,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.10.1]
+### Added
+- Settings > About: the real platform, the last update check (`updates.lastCheckedAt`), Check for updates
+  and Show update; the web app shows its server's version.
+- An update found by an automatic check shows a toast with Show that stays until dismissed, once per
+  version per launch. `toasts.show` takes a duration; `Infinity` keeps the toast.
+- Commands `view.settings`, `view.about`, `view.palette`, `view.zoomIn`, `view.zoomOut`, `view.zoomReset`,
+  `app.checkUpdates`, `app.showUpdate`, `app.sendFeedback`, `app.openRepo`, `app.openChangelog`,
+  `app.openDataFolder`, `app.quit`, `note.export`; the palette offers them on every platform they apply to.
+- Menus File, Edit, View and Help; the tray offers New Capture, Open Library, Check for Updates, Settings
+  and Quit.
 ### Changed
+- Every menu and tray item is a command id, answered with one event, `menu:command { id }`
+  (`src-tauri/src/shell/menu.rs`, `runCommand`); `settings:open`, `menu:new-note`, `menu:new-whiteboard`,
+  `menu:new-sheet`, `menu:export-note`, `menu:toggle-sticky` and `updater:check` are gone.
+- Shell commands `open_data_folder` and `request_quit`.
 - Server image: OCI labels (`title`, `description`, `source`, `url`, `documentation`, `licenses`, `vendor`;
   `version`, `revision`, `created` set by the release job), so the GHCR package page links the repository.
 

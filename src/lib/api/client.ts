@@ -155,6 +155,8 @@ export const deleteSetting = (key: string) =>
 
 export const hideCapture = () => call<void>("hide_capture");
 export const openLibrary = () => call<void>("open_library");
+export const openDataFolder = () => call<void>("open_data_folder");
+export const requestQuit = () => call<void>("request_quit");
 export const openUrl = async (url: string): Promise<void> => {
   if (isWeb) {
     window.open(url, "_blank", "noopener");

@@ -3,8 +3,6 @@ use instantnotes_core::Store;
 use serde::Serialize;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
-use tauri::menu::{Menu, MenuBuilder, MenuItem, PredefinedMenuItem, Submenu, SubmenuBuilder};
-use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_opener::OpenerExt;
@@ -85,6 +83,7 @@ use commands::{
     workspaces::*,
 };
 use error::{CmdError, CmdResult};
+use shell::menu::{install as install_menus, run_command};
 use shell::{
     agents::*, capture::*, files::*, mirror::*, quit::*, server::*, stickies::*, update::*,
     windows::*,
@@ -153,8 +152,7 @@ pub fn run() {
                         ))
                         .show(move |update| {
                             if update {
-                                show_library_window(&handle);
-                                let _ = handle.emit(events::UPDATER_CHECK, ());
+                                run_command(&handle, "app.checkUpdates");
                             } else {
                                 handle.exit(1);
                             }
@@ -198,180 +196,7 @@ pub fn run() {
 
             refresh_icon_cache_if_updated(&dir);
 
-            let settings_item =
-                MenuItem::with_id(app, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?;
-            let quit_item =
-                MenuItem::with_id(app, "quit", "Quit InstantNotes", true, Some("CmdOrCtrl+Q"))?;
-            #[cfg(target_os = "macos")]
-            let app_submenu = SubmenuBuilder::new(app, "InstantNotes")
-                .about(None)
-                .separator()
-                .item(&settings_item)
-                .separator()
-                .services()
-                .separator()
-                .hide()
-                .hide_others()
-                .show_all()
-                .separator()
-                .item(&quit_item)
-                .build()?;
-            let new_note_item =
-                MenuItem::with_id(app, "new_note", "New Note", true, Some("CmdOrCtrl+N"))?;
-            let new_board_item = MenuItem::with_id(
-                app,
-                "new_whiteboard",
-                "New Whiteboard",
-                true,
-                Some("CmdOrCtrl+Shift+N"),
-            )?;
-            let new_sheet_item =
-                MenuItem::with_id(app, "new_sheet", "New Sheet", true, None::<&str>)?;
-            let export_item =
-                MenuItem::with_id(app, "export_note", "Export Note As…", true, None::<&str>)?;
-            let sticky_item = MenuItem::with_id(
-                app,
-                "toggle_sticky",
-                "Pop Out as Sticky",
-                true,
-                Some("CmdOrCtrl+Shift+O"),
-            )?;
-            let file_submenu = {
-                let builder = SubmenuBuilder::new(app, "File")
-                    .item(&new_note_item)
-                    .item(&new_board_item)
-                    .item(&new_sheet_item)
-                    .separator()
-                    .item(&sticky_item)
-                    .item(&export_item);
-                #[cfg(not(target_os = "macos"))]
-                let builder = builder
-                    .separator()
-                    .item(&settings_item)
-                    .separator()
-                    .item(&quit_item);
-                builder.build()?
-            };
-            let edit_submenu = SubmenuBuilder::new(app, "Edit")
-                .undo()
-                .redo()
-                .separator()
-                .cut()
-                .copy()
-                .paste()
-                .select_all()
-                .build()?;
-            #[cfg(target_os = "macos")]
-            let app_menu = MenuBuilder::new(app)
-                .items(&[&app_submenu, &file_submenu, &edit_submenu])
-                .build()?;
-            #[cfg(not(target_os = "macos"))]
-            let app_menu = MenuBuilder::new(app)
-                .items(&[&file_submenu, &edit_submenu])
-                .build()?;
-            #[cfg(target_os = "macos")]
-            app.set_menu(app_menu)?;
-            #[cfg(not(target_os = "macos"))]
-            if let Some(library) = app.get_webview_window("library") {
-                library.set_menu(app_menu)?;
-            }
-            app.on_menu_event(|app, event| match event.id().as_ref() {
-                "settings" => {
-                    show_library_window(app);
-                    let _ = app.emit(events::SETTINGS_OPEN, ());
-                }
-                "new_note" => {
-                    show_library_window(app);
-                    let _ = app.emit(events::MENU_NEW_NOTE, ());
-                }
-                "new_whiteboard" => {
-                    show_library_window(app);
-                    let _ = app.emit(events::MENU_NEW_WHITEBOARD, ());
-                }
-                "new_sheet" => {
-                    show_library_window(app);
-                    let _ = app.emit(events::MENU_NEW_SHEET, ());
-                }
-                "export_note" => {
-                    show_library_window(app);
-                    let _ = app.emit(events::MENU_EXPORT_NOTE, ());
-                }
-                "toggle_sticky" => {
-                    let _ = app.emit_to("library", events::MENU_TOGGLE_STICKY, ());
-                }
-                "quit" => request_quit(app),
-                _ => {}
-            });
-
-            let capture_accel = if !cfg!(target_os = "macos") {
-                "New Capture"
-            } else if cfg!(debug_assertions) {
-                "New Capture\t⌥⇧Space"
-            } else {
-                "New Capture\t⌥Space"
-            };
-            let new_capture =
-                MenuItem::with_id(app, "new_capture", capture_accel, true, None::<&str>)?;
-            let open_library_item =
-                MenuItem::with_id(app, "open_library", "Open Library", true, None::<&str>)?;
-
-            let about = PredefinedMenuItem::about(app, Some("About InstantNotes"), None)?;
-            let check_updates = MenuItem::with_id(
-                app,
-                "check_updates",
-                "Check for Updates…",
-                true,
-                None::<&str>,
-            )?;
-            let repo =
-                MenuItem::with_id(app, "open_repo", "Repository on GitHub", true, None::<&str>)?;
-            let data_folder =
-                MenuItem::with_id(app, "open_data_dir", "Open Data Folder", true, None::<&str>)?;
-            let settings = Submenu::with_items(
-                app,
-                "Settings",
-                true,
-                &[
-                    &about,
-                    &check_updates,
-                    &PredefinedMenuItem::separator(app)?,
-                    &repo,
-                    &data_folder,
-                ],
-            )?;
-
-            let quit = MenuItem::with_id(app, "quit", "Quit InstantNotes", true, None::<&str>)?;
-            let menu = Menu::with_items(
-                app,
-                &[
-                    &new_capture,
-                    &open_library_item,
-                    &PredefinedMenuItem::separator(app)?,
-                    &settings,
-                    &PredefinedMenuItem::separator(app)?,
-                    &quit,
-                ],
-            )?;
-            TrayIconBuilder::with_id("main-tray")
-                .icon(tauri::include_image!("icons/tray.png"))
-                .icon_as_template(true)
-                .menu(&menu)
-                .show_menu_on_left_click(true)
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "new_capture" => show_capture_window(app),
-                    "open_library" => show_library_window(app),
-                    "check_updates" => {
-                        show_library_window(app);
-                        let _ = app.emit(events::UPDATER_CHECK, ());
-                    }
-                    "open_repo" => {
-                        let _ = app.opener().open_url(REPO_URL, None::<&str>);
-                    }
-                    "open_data_dir" => open_data_folder(app),
-                    "quit" => request_quit(app),
-                    _ => {}
-                })
-                .build(app)?;
+            install_menus(app)?;
 
             use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
             let shortcut = if cfg!(target_os = "macos") {
@@ -481,6 +306,8 @@ pub fn run() {
             delete_setting,
             hide_capture,
             open_library,
+            open_data_folder,
+            request_quit,
             set_window_vibrancy,
             set_window_theme,
             export_theme_file,
@@ -560,7 +387,7 @@ pub fn run() {
             tauri::RunEvent::ExitRequested { api, .. } => {
                 if !QUIT_READY.load(Ordering::Acquire) {
                     api.prevent_exit();
-                    request_quit(app);
+                    begin_quit(app);
                 }
             }
             tauri::RunEvent::Exit => close_session(),

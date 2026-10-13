@@ -37,7 +37,12 @@ const QUIT_FLUSH_GRACE_MS: u64 = 800;
 
 const QUIT_VAULT_CHUNKS: usize = 1;
 
-pub(crate) fn request_quit(app: &AppHandle) {
+#[tauri::command]
+pub fn request_quit(app: AppHandle) {
+    begin_quit(&app);
+}
+
+pub(crate) fn begin_quit(app: &AppHandle) {
     if let Ok(mut awaiting) = AWAITING.lock() {
         *awaiting = answering_windows(app);
     }
@@ -74,7 +79,7 @@ pub(crate) fn release_quit() {
 #[tauri::command]
 pub fn restart_app(app: AppHandle) {
     RESTART.store(true, Ordering::Release);
-    request_quit(&app);
+    begin_quit(&app);
 }
 
 #[tauri::command]

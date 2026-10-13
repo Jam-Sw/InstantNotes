@@ -40,6 +40,19 @@ registries equal; both lose six names and gain one.
 | `app.openDataFolder` | desktop | Reveals the app data folder |
 | `app.quit` | desktop | Quit, through the quit handshake |
 | `note.export` | desktop, note selected | Export Note As (was a menu-only action) |
+| `view.about` | all | Settings > About; the Help menu's About on Linux and Windows |
+| `app.openChangelog` | all | The full CHANGELOG on GitHub |
+
+Three ids the shell runs itself, so they work before the page loads:
+`app.quit` (the quit handshake), `app.capture` and `app.library` (tray only).
+`SHELL_ONLY` in `menu.rs` names them. The palette's `app.quit` calls the new
+`request_quit` command, which starts the same handshake.
+
+Keys the page handles (palette, sidebar, agents, zoom) keep their handlers
+and their menu items carry no native accelerator, so a key never fires twice
+and the whiteboard keeps its own zoom; the palette shows the shortcut. Keys
+the menu owned in 0.10.0 (new note, new whiteboard, sticky, Settings, Quit)
+stay native accelerators; on the web, `Mod+,` is handled by the page.
 
 `app.sendDiagnostics`, `data.*` and `note.openElsewhere` arrive with their
 units.

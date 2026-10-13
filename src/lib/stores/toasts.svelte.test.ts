@@ -26,6 +26,20 @@ describe("toasts queue", () => {
     expect(toasts.items).toHaveLength(0);
   });
 
+  it("a toast shown with an Infinity duration stays until dismissed, through pause and resume", async () => {
+    const toasts = await load();
+    const id = toasts.show("InstantNotes v0.10.1 is available", undefined, Infinity);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    toasts.pause(id);
+    toasts.resume(id);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(toasts.items).toHaveLength(1);
+
+    toasts.dismiss(id);
+    expect(toasts.items).toHaveLength(0);
+  });
+
   it("dismiss() removes a toast immediately and cancels its timer", async () => {
     const toasts = await load();
     const id = toasts.show("Moved to Trash");

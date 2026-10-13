@@ -1,15 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { fetchUpdateSizeDelta } from "$lib/update/release-size";
-import { installUpdate, restartApp } from "$lib/api/client";
+import { getSetting, installUpdate, restartApp, setSetting } from "$lib/api/client";
 
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: vi.fn() }));
 vi.mock("$lib/update/release-size", () => ({ fetchUpdateSizeDelta: vi.fn() }));
-vi.mock("$lib/api/client", () => ({ installUpdate: vi.fn(), restartApp: vi.fn() }));
+vi.mock("$lib/api/client", () => ({
+  installUpdate: vi.fn(),
+  restartApp: vi.fn(),
+  getSetting: vi.fn(),
+  setSetting: vi.fn(),
+}));
 
 const mockCheck = vi.mocked(check);
 const mockDelta = vi.mocked(fetchUpdateSizeDelta);
 const mockInstall = vi.mocked(installUpdate);
+const mockGetSetting = vi.mocked(getSetting);
+const mockSetSetting = vi.mocked(setSetting);
 
 function mkUpdate(overrides: Partial<Update> = {}): Update {
   return {
@@ -38,6 +45,8 @@ beforeEach(() => {
   mockCheck.mockReset();
   mockDelta.mockReset().mockResolvedValue(null);
   mockInstall.mockReset().mockResolvedValue(undefined);
+  mockGetSetting.mockReset().mockResolvedValue(undefined);
+  mockSetSetting.mockReset().mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -221,5 +230,74 @@ describe("the automatic schedule", () => {
     await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1000);
 
     expect(mockCheck).not.toHaveBeenCalled();
+  });
+});
+
+describe("the visible prompt", () => {
+  it("announces an automatic find with a toast that stays until dismissed, once per version", async () => {
+    mockCheck.mockResolvedValue(mkUpdate());
+    const updater = await load();
+    const { toasts } = await import("$lib/stores/toasts.svelte");
+
+    await updater.checkNow();
+    await updater.checkNow();
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(toasts.items.map((t) => t.message)).toEqual(["InstantNotes v0.10.0 is available"]);
+    const show = vi.fn();
+    updater.show = show;
+    toasts.activate(toasts.items[0].id);
+    expect(show).toHaveBeenCalledOnce();
+    expect(toasts.items).toHaveLength(0);
+  });
+
+  it("announces a newer version again, and a manual find not at all", async () => {
+    mockCheck.mockResolvedValue(mkUpdate());
+    const updater = await load();
+    await updater.checkNow();
+    mockCheck.mockResolvedValue(mkUpdate({ version: "0.10.1" }));
+    await updater.checkNow();
+    expect((await toastsShown()).filter((m) => m.includes("available"))).toEqual([
+      "InstantNotes v0.10.0 is available",
+      "InstantNotes v0.10.1 is available",
+    ]);
+
+    vi.resetModules();
+    mockCheck.mockResolvedValue(mkUpdate());
+    const fresh = await load();
+    await fresh.checkNow({ manual: true });
+    expect(await toastsShown()).toEqual([]);
+  });
+});
+
+describe("the last check", () => {
+  it("is written whenever a check finishes, found or not", async () => {
+    vi.setSystemTime(new Date("2026-10-13T09:00:00.000Z"));
+    mockCheck.mockResolvedValue(null);
+    const updater = await load();
+
+    await updater.checkNow();
+    expect(updater.lastCheckedAt).toBe("2026-10-13T09:00:00.000Z");
+    expect(mockSetSetting).toHaveBeenCalledWith("updates.lastCheckedAt", "2026-10-13T09:00:00.000Z");
+
+    vi.setSystemTime(new Date("2026-10-13T10:00:00.000Z"));
+    mockCheck.mockResolvedValue(mkUpdate());
+    await updater.checkNow({ manual: true });
+    expect(updater.lastCheckedAt).toBe("2026-10-13T10:00:00.000Z");
+  });
+
+  it("keeps the previous time when a check fails, and loads it at start", async () => {
+    mockGetSetting.mockResolvedValue("2026-10-12T08:00:00.000Z");
+    mockCheck.mockRejectedValue(new Error("offline"));
+    const updater = await load();
+
+    updater.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(updater.lastCheckedAt).toBe("2026-10-12T08:00:00.000Z");
+
+    await updater.checkNow({ manual: true });
+    expect(updater.lastCheckedAt).toBe("2026-10-12T08:00:00.000Z");
+    expect(mockSetSetting).not.toHaveBeenCalled();
+    updater.stop();
   });
 });

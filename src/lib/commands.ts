@@ -6,12 +6,18 @@ import { contexting } from "$lib/stores/contexting.svelte";
 import { confirmConvertToWhiteboard } from "$lib/whiteboard/convert";
 import { exportTheme, importTheme } from "$lib/themes/share";
 import { BODY_FONTS } from "$lib/themes/fonts";
+import { shell } from "$lib/stores/shell.svelte";
+import { editorPrefs } from "$lib/stores/editor.svelte";
+import { updater } from "$lib/stores/updater.svelte";
+import { licenseSpace } from "$lib/stores/license-space.svelte";
+import { exportSelectedNote } from "$lib/note-export";
+import { openDataFolder, openUrl, requestQuit } from "$lib/api/client";
 import { modKey, shiftKey } from "$lib/platform";
 import { isWeb } from "$lib/api/runtime";
-import { EVENTS } from "$lib/api/events";
-import { emit } from "$lib/web/core";
 import { isSyntheticNoteId } from "$lib/synthetic";
-import type { Command } from "$lib/command-filter";
+import { findCommand, type Command } from "$lib/command-filter";
+
+const REPO_URL = "https://github.com/Jam-Sw/InstantNotes";
 
 export type { Command } from "$lib/command-filter";
 export {
@@ -59,25 +65,43 @@ function buildThemeCommands(): Command[] {
 
 export function buildCommands(): Command[] {
   const commands: Command[] = [
-    { id: "note.new", title: "New note", group: "Notes", shortcut: `${modKey}N`, run: () => library.newNote() },
+    {
+      id: "note.new",
+      title: "New note",
+      group: "Notes",
+      shortcut: `${modKey}N`,
+      run: () => {
+        shell.closeSettings();
+        return library.newNote();
+      },
+    },
     {
       id: "note.newWhiteboard",
       title: "New whiteboard",
       group: "Notes",
       shortcut: `${modKey}${shiftKey}N`,
-      run: () => library.newWhiteboard(),
+      run: () => {
+        shell.closeSettings();
+        return library.newWhiteboard();
+      },
     },
     {
       id: "note.newSheet",
       title: "New sheet",
       group: "Notes",
-      run: () => library.newSheet(),
+      run: () => {
+        shell.closeSettings();
+        return library.newSheet();
+      },
     },
     {
       id: "view.graph",
       title: "Show graph",
       group: "View",
-      run: () => library.selectGraph(),
+      run: () => {
+        shell.closeSettings();
+        library.selectGraph();
+      },
     },
     {
       id: "view.sidebar",
@@ -93,16 +117,51 @@ export function buildCommands(): Command[] {
       shortcut: `${modKey}${shiftKey}A`,
       run: () => agents.show(),
     },
-  ];
-
-  if (isWeb) {
-    commands.push({
+    {
       id: "view.settings",
       title: "Open settings",
       group: "View",
-      run: () => emit(EVENTS.SETTINGS_OPEN),
-    });
-  }
+      shortcut: `${modKey},`,
+      run: () => shell.openSettings(),
+    },
+    {
+      id: "view.about",
+      title: "About InstantNotes",
+      group: "View",
+      run: () => shell.openSettings("about"),
+    },
+    {
+      id: "view.palette",
+      title: "Command palette",
+      group: "View",
+      shortcut: `${modKey}K`,
+      hidden: true,
+      run: () => shell.togglePalette(),
+    },
+    {
+      id: "view.zoomIn",
+      title: "Zoom in",
+      group: "View",
+      shortcut: `${modKey}=`,
+      keepOpenAfterRun: true,
+      run: () => editorPrefs.zoomIn(),
+    },
+    {
+      id: "view.zoomOut",
+      title: "Zoom out",
+      group: "View",
+      shortcut: `${modKey}-`,
+      keepOpenAfterRun: true,
+      run: () => editorPrefs.zoomOut(),
+    },
+    {
+      id: "view.zoomReset",
+      title: "Actual size",
+      group: "View",
+      shortcut: `${modKey}0`,
+      run: () => editorPrefs.resetZoom(),
+    },
+  ];
 
   if (library.selected) {
     const n = library.selected;
@@ -162,6 +221,15 @@ export function buildCommands(): Command[] {
         run: () => void confirmConvertToWhiteboard(),
       });
     }
+    if (!isWeb && !isSyntheticNoteId(n.id)) {
+      commands.push({
+        id: "note.export",
+        title: "Export note as…",
+        group: "Notes",
+        prefix: notePrefix,
+        run: () => exportSelectedNote(),
+      });
+    }
   }
 
   commands.push(
@@ -203,5 +271,69 @@ export function buildCommands(): Command[] {
     );
   }
 
+  commands.push(
+    {
+      id: "app.openRepo",
+      title: "Repository on GitHub",
+      group: "Help",
+      run: () => openUrl(REPO_URL),
+    },
+    {
+      id: "app.openChangelog",
+      title: "Full changelog",
+      group: "Help",
+      run: () => openUrl(`${REPO_URL}/blob/main/CHANGELOG.md`),
+    },
+  );
+  if (!isWeb) {
+    commands.push(
+      {
+        id: "app.checkUpdates",
+        title: "Check for updates…",
+        group: "Help",
+        run: async () => {
+          shell.openSettings("about");
+          await updater.checkNow({ manual: true });
+          if (updater.pendingUpdate) updater.show();
+        },
+      },
+      {
+        id: "app.sendFeedback",
+        title: "Send feedback…",
+        group: "Help",
+        run: () => shell.openSettings("feedback"),
+      },
+      {
+        id: "app.openDataFolder",
+        title: "Open data folder",
+        group: "Help",
+        run: () => openDataFolder(),
+      },
+      {
+        id: "app.quit",
+        title: "Quit InstantNotes",
+        group: "Help",
+        shortcut: `${modKey}Q`,
+        run: () => requestQuit(),
+      },
+    );
+    if (updater.pendingUpdate) {
+      commands.push({
+        id: "app.showUpdate",
+        title: `Show update v${updater.version}`,
+        group: "Help",
+        emphasis: true,
+        run: () => updater.show(),
+      });
+    }
+  }
+
   return commands;
+}
+
+export async function runCommand(id: string): Promise<void> {
+  if (licenseSpace.locked) return;
+  const cmd = findCommand(buildCommands(), id);
+  if (!cmd) return;
+  await cmd.run();
 }

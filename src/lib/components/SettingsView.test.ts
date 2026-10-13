@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, fireEvent, cleanup, within } from "@testing-library/svelte";
 import SettingsView from "./SettingsView.svelte";
 import { setSetting } from "$lib/api/client";
+import { shell } from "$lib/stores/shell.svelte";
 
 vi.mock("$lib/api/client", () => ({
   getSetting: vi.fn().mockResolvedValue(undefined),
@@ -36,6 +37,7 @@ vi.mock("$lib/api/client", () => ({
 afterEach(cleanup);
 
 function open() {
+  shell.settingsPage = "home";
   const onBack = vi.fn();
   const view = render(SettingsView, { appVersion: "0.8.0", onBack, onShowSpace: vi.fn() });
   return { onBack, ...view };

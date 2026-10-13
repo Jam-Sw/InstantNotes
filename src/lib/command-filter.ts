@@ -9,6 +9,7 @@ export interface Command {
   icon?: () => string;
   prefix?: string;
   keepOpenAfterRun?: boolean;
+  hidden?: boolean;
   run: () => void | Promise<void>;
 }
 
@@ -43,7 +44,7 @@ export function fuzzyScore(title: string, query: string): number | null {
 }
 
 export function childrenOf(commands: Command[], parent: string | null): Command[] {
-  return commands.filter((c) => (c.parent ?? null) === parent);
+  return commands.filter((c) => (c.parent ?? null) === parent && !c.hidden);
 }
 
 export function hasChildren(commands: Command[], id: string): boolean {
@@ -66,6 +67,7 @@ export function resolveActivation(commands: Command[], cmd: Command): Activation
 export function filterCommands(commands: Command[], query: string): Command[] {
   if (!query.trim()) return commands;
   return commands
+    .filter((cmd) => !cmd.hidden)
     .map((cmd) => ({ cmd, score: fuzzyScore(cmd.title, query) }))
     .filter((x): x is { cmd: Command; score: number } => x.score !== null)
     .sort((a, b) => a.score - b.score)

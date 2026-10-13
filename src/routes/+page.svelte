@@ -1,16 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { save } from "@tauri-apps/plugin-dialog";
-  import {
-    appVersion as fetchAppVersion,
-    exportNoteFile,
-    getSyncServerStatus,
-    quitApp,
-    sheetCsv,
-  } from "$lib/api/client";
+  import { appVersion as fetchAppVersion, getSyncServerStatus, quitApp } from "$lib/api/client";
   import type { SyncStage } from "$lib/api/types";
   import { EVENTS, listen } from "$lib/api/events";
   import { isWeb } from "$lib/api/runtime";
+  import { runCommand } from "$lib/commands";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import NoteList from "$lib/components/NoteList.svelte";
   import UpdateNote from "$lib/components/UpdateNote.svelte";
@@ -35,8 +29,8 @@
   import { contexting } from "$lib/stores/contexting.svelte";
   import { agents } from "$lib/stores/agents.svelte";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
+  import { shell } from "$lib/stores/shell.svelte";
   import { isWhiteboardTarget } from "$lib/whiteboard/keys";
-  import { excalidrawFile, parseBoard } from "$lib/whiteboard/document";
   import { updateSpace } from "$lib/stores/update-space";
   import { licenseSpace } from "$lib/stores/license-space.svelte";
   import { agreements } from "$lib/agreements.svelte";
@@ -50,9 +44,6 @@
   } from "$lib/update/space";
 
   let appVersion = $state("");
-  let paletteOpen = $state(false);
-  let settingsOpen = $state(false);
-  let settingsPage = $state<"home" | "vault">("home");
   const SYNC_NEEDS_YOU = new Set<SyncStage>([
     "off",
     "needsKey",
@@ -74,9 +65,8 @@
   function checkSync() {
     void getSyncServerStatus()
       .then((status) => {
-        if (!SYNC_NEEDS_YOU.has(status.stage) || settingsOpen || licenseSpace.locked) return;
-        settingsPage = "vault";
-        settingsOpen = true;
+        if (!SYNC_NEEDS_YOU.has(status.stage) || shell.settingsOpen || licenseSpace.locked) return;
+        shell.openSettings("vault");
       })
       .catch(() => {});
   }
@@ -94,19 +84,20 @@
 
   agents.show = () => {
     if (licenseSpace.locked) return;
-    settingsOpen = false;
+    shell.closeSettings();
     agentsSpace.open();
   };
   $effect(() => {
-    agents.setWatching(!settingsOpen && isAgentsSpaceId(library.activeWorkspaceId));
+    agents.setWatching(!shell.settingsOpen && isAgentsSpaceId(library.activeWorkspaceId));
   });
 
   function openUpdate() {
-    settingsOpen = false;
+    shell.closeSettings();
     library.selectWorkspace(UPDATE_SPACE_ID);
     const lead = updateSpace.leadNote;
     if (lead) library.selectVirtual(lead);
   }
+  updater.show = openUpdate;
 
   onMount(() => {
     if (isMac) document.documentElement.dataset.chrome = "overlay";
@@ -126,56 +117,15 @@
     void fetchAppVersion().then((v) => (appVersion = v));
     void agreements.init();
     updater.start();
-    let unlistenCheck: (() => void) | undefined;
-    void listen(EVENTS.UPDATER_CHECK, async () => {
-      await updater.checkNow({ manual: true });
-      if (updater.pendingUpdate) openUpdate();
-    }).then((un) => (unlistenCheck = un));
-
-    let unlistenSettings: (() => void) | undefined;
-    void listen(EVENTS.SETTINGS_OPEN, () => {
-      if (licenseSpace.locked) return;
-      settingsPage = "home";
-      settingsOpen = true;
-    }).then((un) => (unlistenSettings = un));
+    let unlistenCommand: (() => void) | undefined;
+    void listen<{ id: string }>(EVENTS.MENU_COMMAND, (e) => void runCommand(e.payload.id)).then(
+      (un) => (unlistenCommand = un),
+    );
 
     let unlistenSyncNeeds: (() => void) | undefined;
     if (isWeb) {
       void listen(EVENTS.VAULT_STATUS, checkSync).then((un) => (unlistenSyncNeeds = un));
     }
-
-    let unlistenNewNote: (() => void) | undefined;
-    void listen(EVENTS.MENU_NEW_NOTE, () => {
-      if (licenseSpace.locked) return;
-      settingsOpen = false;
-      void library.newNote();
-    }).then((un) => (unlistenNewNote = un));
-
-    let unlistenNewBoard: (() => void) | undefined;
-    void listen(EVENTS.MENU_NEW_WHITEBOARD, () => {
-      if (licenseSpace.locked) return;
-      settingsOpen = false;
-      void library.newWhiteboard();
-    }).then((un) => (unlistenNewBoard = un));
-
-    let unlistenNewSheet: (() => void) | undefined;
-    void listen(EVENTS.MENU_NEW_SHEET, () => {
-      if (licenseSpace.locked) return;
-      settingsOpen = false;
-      void library.newSheet();
-    }).then((un) => (unlistenNewSheet = un));
-
-    let unlistenExport: (() => void) | undefined;
-    void listen(EVENTS.MENU_EXPORT_NOTE, () => {
-      if (licenseSpace.locked) return;
-      void exportSelectedNote();
-    }).then((un) => (unlistenExport = un));
-
-    let unlistenSticky: (() => void) | undefined;
-    void listen(EVENTS.MENU_TOGGLE_STICKY, () => {
-      if (licenseSpace.locked) return;
-      void library.toggleSticky();
-    }).then((un) => (unlistenSticky = un));
 
     let unlistenQuit: (() => void) | undefined;
     void listen(EVENTS.APP_QUIT_REQUESTED, async () => {
@@ -196,14 +146,8 @@
       clearTimeout(warmEditor);
       clearTimeout(warmViews);
       updater.stop();
-      unlistenCheck?.();
-      unlistenSettings?.();
+      unlistenCommand?.();
       unlistenSyncNeeds?.();
-      unlistenNewNote?.();
-      unlistenNewBoard?.();
-      unlistenNewSheet?.();
-      unlistenExport?.();
-      unlistenSticky?.();
       unlistenQuit?.();
       window.removeEventListener("blur", flush);
       window.removeEventListener("keydown", onKeydown);
@@ -226,7 +170,7 @@
     if ((e.metaKey || e.ctrlKey) && e.key === "k" && isWhiteboardTarget(e.target)) {
       e.preventDefault();
       e.stopPropagation();
-      paletteOpen = !paletteOpen;
+      shell.togglePalette();
     }
   }
 
@@ -236,7 +180,12 @@
     const mod = e.metaKey || e.ctrlKey;
     if (mod && e.key === "k") {
       e.preventDefault();
-      paletteOpen = !paletteOpen;
+      shell.togglePalette();
+      return;
+    }
+    if (isWeb && mod && e.key === ",") {
+      e.preventDefault();
+      shell.openSettings();
       return;
     }
     if (!isWeb && mod && e.shiftKey && (e.key === "a" || e.key === "A")) {
@@ -300,7 +249,7 @@
         }
         break;
       case "Escape":
-        if (!settingsOpen) library.clearMultiSelect();
+        if (!shell.settingsOpen) library.clearMultiSelect();
         break;
     }
   }
@@ -319,28 +268,6 @@
     } else {
       await library.bulkDelete();
     }
-  }
-
-  async function exportSelectedNote() {
-    const note = library.selected;
-    if (!note) return;
-    await library.flushPendingEdits();
-    const filename = (note.title || "Untitled").replace(/[/\\?%*:|"<>]/g, "-");
-    const board = note.contentKind === "whiteboard";
-    const sheet = note.contentKind === "sheet";
-    const [ext, filter] = board
-      ? ["excalidraw", { name: "Excalidraw", extensions: ["excalidraw"] }]
-      : sheet
-        ? ["csv", { name: "CSV", extensions: ["csv"] }]
-        : ["md", { name: "Markdown", extensions: ["md"] }];
-    const path = await save({ defaultPath: `${filename}.${ext}`, filters: [filter] });
-    if (!path) return;
-    const contents = board
-      ? excalidrawFile(parseBoard(note.surfaceData))
-      : sheet
-        ? await sheetCsv(note.id)
-        : note.body;
-    await exportNoteFile(path, contents);
   }
 
   let draggingSidebar = $state(false);
@@ -386,16 +313,15 @@
   }
 </script>
 
-{#if settingsOpen && !licenseSpace.locked}
+{#if shell.settingsOpen && !licenseSpace.locked}
   {#await import("$lib/components/SettingsView.svelte") then { default: SettingsView }}
     <SettingsView
       {appVersion}
-      initialPage={settingsPage}
-      onBack={() => (settingsOpen = false)}
+      onBack={() => shell.closeSettings()}
       onShowSpace={(id) => {
         if (isAgentsSpaceId(id)) agentsSpace.open();
         else library.selectWorkspace(id);
-        settingsOpen = false;
+        shell.closeSettings();
       }}
     />
   {/await}
@@ -458,7 +384,7 @@
   </div>
 {/if}
 
-<CommandPalette bind:open={paletteOpen} />
+<CommandPalette bind:open={shell.paletteOpen} />
 <ConfirmDialog />
 <SyncJoinDialog />
 <Toast />

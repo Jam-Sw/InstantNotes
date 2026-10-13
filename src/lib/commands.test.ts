@@ -36,6 +36,22 @@ const stores = vi.hoisted(() => ({
   confirmConvertToWhiteboard: vi.fn(),
   exportTheme: vi.fn(),
   importTheme: vi.fn(),
+  shell: {
+    settingsOpen: false,
+    openSettings: vi.fn(),
+    closeSettings: vi.fn(),
+    togglePalette: vi.fn(),
+  },
+  editorPrefs: { zoomIn: vi.fn(), zoomOut: vi.fn(), resetZoom: vi.fn() },
+  updater: {
+    pendingUpdate: false,
+    version: null as string | null,
+    checkNow: vi.fn(async () => {}),
+    show: vi.fn(),
+  },
+  licenseSpace: { locked: false },
+  exportSelectedNote: vi.fn(async () => {}),
+  client: { openDataFolder: vi.fn(), openUrl: vi.fn(), requestQuit: vi.fn() },
 }));
 
 vi.mock("$lib/stores/library.svelte", () => ({ library: stores.library }));
@@ -50,8 +66,15 @@ vi.mock("$lib/themes/share", () => ({
   exportTheme: stores.exportTheme,
   importTheme: stores.importTheme,
 }));
+vi.mock("$lib/stores/shell.svelte", () => ({ shell: stores.shell }));
+vi.mock("$lib/stores/editor.svelte", () => ({ editorPrefs: stores.editorPrefs }));
+vi.mock("$lib/stores/updater.svelte", () => ({ updater: stores.updater }));
+vi.mock("$lib/stores/license-space.svelte", () => ({ licenseSpace: stores.licenseSpace }));
+vi.mock("$lib/note-export", () => ({ exportSelectedNote: stores.exportSelectedNote }));
+vi.mock("$lib/api/client", () => stores.client);
 
-import { buildCommands, type Command } from "./commands";
+import { readFileSync } from "node:fs";
+import { buildCommands, runCommand, type Command } from "./commands";
 import { BODY_FONTS } from "$lib/themes/fonts";
 import { UPDATE_NOTE_ID } from "$lib/update/space";
 
@@ -99,6 +122,9 @@ beforeEach(() => {
   stores.theme.activeId = "manuscript";
   stores.theme.bodyFontId = null;
   stores.theme.resolvedVariant = "dark";
+  stores.updater.pendingUpdate = false;
+  stores.updater.version = null;
+  stores.licenseSpace.locked = false;
 });
 
 describe("buildCommands with no note open", () => {
@@ -270,5 +296,116 @@ describe("buildCommands with other kinds of note open", () => {
     expect(ids(commands)).toContain("note.pin");
     expect(ids(commands)).not.toContain("note.sticky");
     expect(ids(commands)).toContain("note.toWhiteboard");
+  });
+});
+
+describe("the commands every surface shares", () => {
+  it("offers settings, the palette, zoom and the app commands", () => {
+    const commands = buildCommands();
+    const got = ids(commands);
+    for (const id of [
+      "view.settings",
+      "view.about",
+      "view.palette",
+      "view.zoomIn",
+      "view.zoomOut",
+      "view.zoomReset",
+      "app.checkUpdates",
+      "app.sendFeedback",
+      "app.openRepo",
+      "app.openChangelog",
+      "app.openDataFolder",
+      "app.quit",
+    ]) {
+      expect(got).toContain(id);
+    }
+    expect(got).not.toContain("app.showUpdate");
+    expect(find(commands, "view.palette").hidden).toBe(true);
+  });
+
+  it("runs them against their stores", async () => {
+    const commands = buildCommands();
+    void find(commands, "view.settings").run();
+    expect(stores.shell.openSettings).toHaveBeenCalledWith();
+    void find(commands, "view.about").run();
+    expect(stores.shell.openSettings).toHaveBeenCalledWith("about");
+    void find(commands, "app.sendFeedback").run();
+    expect(stores.shell.openSettings).toHaveBeenCalledWith("feedback");
+    void find(commands, "view.palette").run();
+    expect(stores.shell.togglePalette).toHaveBeenCalledOnce();
+    void find(commands, "view.zoomIn").run();
+    void find(commands, "view.zoomOut").run();
+    void find(commands, "view.zoomReset").run();
+    expect(stores.editorPrefs.zoomIn).toHaveBeenCalledOnce();
+    expect(stores.editorPrefs.zoomOut).toHaveBeenCalledOnce();
+    expect(stores.editorPrefs.resetZoom).toHaveBeenCalledOnce();
+    void find(commands, "app.openRepo").run();
+    expect(stores.client.openUrl).toHaveBeenCalledWith("https://github.com/Jam-Sw/InstantNotes");
+    void find(commands, "app.openDataFolder").run();
+    expect(stores.client.openDataFolder).toHaveBeenCalledOnce();
+    void find(commands, "app.quit").run();
+    expect(stores.client.requestQuit).toHaveBeenCalledOnce();
+  });
+
+  it("closes Settings before showing a new note or the graph", () => {
+    const commands = buildCommands();
+    void find(commands, "note.new").run();
+    void find(commands, "view.graph").run();
+    expect(stores.shell.closeSettings).toHaveBeenCalledTimes(2);
+  });
+
+  it("checks for updates from Settings > About and shows a found update", async () => {
+    stores.updater.checkNow.mockImplementation(async () => {
+      stores.updater.pendingUpdate = true;
+      stores.updater.version = "0.10.1";
+    });
+    await find(buildCommands(), "app.checkUpdates").run();
+    expect(stores.shell.openSettings).toHaveBeenCalledWith("about");
+    expect(stores.updater.checkNow).toHaveBeenCalledWith({ manual: true });
+    expect(stores.updater.show).toHaveBeenCalledOnce();
+    const show = find(buildCommands(), "app.showUpdate");
+    expect(show.title).toBe("Show update v0.10.1");
+    void show.run();
+    expect(stores.updater.show).toHaveBeenCalledTimes(2);
+  });
+
+  it("exports the open note", () => {
+    stores.library.selected = note();
+    void find(buildCommands(), "note.export").run();
+    expect(stores.exportSelectedNote).toHaveBeenCalledOnce();
+  });
+});
+
+describe("runCommand", () => {
+  it("runs a known id and ignores an unknown one", async () => {
+    await runCommand("note.new");
+    await runCommand("no.such");
+    expect(stores.library.newNote).toHaveBeenCalledOnce();
+  });
+
+  it("does nothing while the licence lock is on", async () => {
+    stores.licenseSpace.locked = true;
+    await runCommand("note.new");
+    expect(stores.library.newNote).not.toHaveBeenCalled();
+  });
+});
+
+describe("the menus and the tray", () => {
+  const source = readFileSync(`${process.cwd()}/src-tauri/src/shell/menu.rs`, "utf8");
+  const menuIds = [...source.matchAll(/Item::new\("([^"]+)"/g)].map((m) => m[1]);
+  const shellOnly = [...source.match(/SHELL_ONLY: &\[&str\] = &\[([^\]]+)\]/)![1].matchAll(/"([^"]+)"/g)].map(
+    (m) => m[1],
+  );
+
+  it("run commands the registry knows", () => {
+    stores.library.selected = note();
+    stores.updater.pendingUpdate = true;
+    stores.updater.version = "0.10.1";
+    const known = new Set(ids(buildCommands()));
+    expect(menuIds.length).toBeGreaterThan(10);
+    for (const id of menuIds) {
+      if (shellOnly.includes(id)) continue;
+      expect(known.has(id), id).toBe(true);
+    }
   });
 });

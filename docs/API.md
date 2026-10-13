@@ -138,7 +138,8 @@ them "Spaces"; the command and storage names keep `workspace`.
 
 A simple key/value store for UI preferences. `get_setting`, `set_setting`,
 `delete_setting`. Values are JSON-encoded; reads are best-effort and fall back
-to defaults when a key is absent or malformed.
+to defaults when a key is absent or malformed. `updates.lastCheckedAt` holds the
+ISO time of the last finished update check, shown in Settings > About.
 
 ## 8. Attachments
 
@@ -189,9 +190,9 @@ a copy at export time regardless of storage mode; see
 
 ## 9. Windows and shell
 
-`hide_capture`, `open_library`, `set_window_vibrancy`, `set_window_theme`,
-`export_theme_file`, `import_theme_file`, `export_note_file`, `open_url`,
-`quit_app`, `restart_app`. These drive native windows, theme file I/O, and external links; they
+`hide_capture`, `open_library`, `open_data_folder`, `set_window_vibrancy`,
+`set_window_theme`, `export_theme_file`, `import_theme_file`,
+`export_note_file`, `open_url`, `request_quit`, `quit_app`, `restart_app`. These drive native windows, theme file I/O, and external links; they
 carry no note data beyond what the user explicitly exports. `export_note_file`
 writes `.md`, `.txt`, `.excalidraw` (a whiteboard's canvas), or `.csv` (a
 sheet's grid, from `sheet_csv`).
@@ -203,10 +204,16 @@ when registration succeeded but the session cannot deliver the key (the
 `instantnotes capture` starts the app with the capture panel open, or opens
 it in the running app, so a desktop shortcut can be bound to it.
 
-The File menu announces itself to the library window with `menu:new-note`,
-`menu:new-whiteboard`, `menu:new-sheet`, `menu:export-note`, and
-`menu:toggle-sticky` (no payload). Every event name the
-shell emits is declared in `src-tauri/src/events.rs`.
+Every action has two homes: Settings (set or check) and the command palette
+(do). The menus and the tray are shortcuts to the same registry
+(`src/lib/commands.ts`): each menu and tray item carries a command id, and the
+shell answers it with `menu:command { id }` to the library window after showing
+it (`src-tauri/src/shell/menu.rs`, `run_command`), where `runCommand(id)` runs
+the command or ignores an id that is not available right now. Three ids the
+shell handles itself, so they work with no page loaded: `app.quit` (the quit
+handshake), `app.capture` (the capture panel) and `app.library` (the library
+window). `request_quit` lets the palette start the same handshake. Every event
+name the shell emits is declared in `src-tauri/src/events.rs`.
 
 ### 9.1 Stickies
 
