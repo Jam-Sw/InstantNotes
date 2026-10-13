@@ -123,7 +123,7 @@ describe("SettingsVault live mirror", () => {
 
   it("explains an empty mount point as an unmounted drive", async () => {
     vi.mocked(getVaultStatus).mockResolvedValue(
-      on({ reachable: false, unreachable: "vault folder has no instantnotes.yaml: /mnt/kel" }),
+      on({ reachable: false, unreachable: "vault folder has no instantnotes.yaml: /mnt/share" }),
     );
     const { findByText } = render(SettingsVault);
     expect(await findByText(/check that it's mounted/)).toBeTruthy();

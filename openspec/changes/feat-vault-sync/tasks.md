@@ -53,8 +53,7 @@
 
 ## In-app checks (open)
 
-- [ ] Two devices (Linux and the Mac) on the server-kel share: a note made on one appears on the other within a few seconds
+- [ ] Two devices (Linux and the Mac) on one network share: a note made on one appears on the other within a few seconds
 - [ ] Unmount the share on one device: Settings says Offline, typing continues, and the edits arrive after remounting
 - [ ] Edit the same note on both while one is offline: both versions survive, one tagged `conflict`
 - [ ] Check vault comes back clean on both devices after a day of ordinary use
-- [ ] server-kel: the desktop app and notes.tail7e3880.ts.net on one person folder; a note made in either appears in the other

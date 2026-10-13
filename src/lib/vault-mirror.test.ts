@@ -98,7 +98,7 @@ describe("parseVaultSynced", () => {
 
 describe("describeVaultStatus", () => {
   const status = (over: Partial<VaultStatus>): VaultStatus => ({
-    path: "/mnt/kel/notes",
+    path: "/mnt/share/notes",
     transport: "folder",
     reachable: true,
     unreachable: null,

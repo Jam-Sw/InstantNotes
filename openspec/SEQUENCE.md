@@ -352,7 +352,7 @@ with no loss in filing. It stays open until the in-app check in
 ## 13j. `feat-vault-sync` (BUILT, open until checked in the app)
 
 The vault folder is read back, so devices sharing one folder keep one
-library: the maintainer's network drive on server-kel first, Syncthing,
+library: a network drive first, Syncthing,
 Dropbox, and git later through the same `Transport` seam. Each device keeps
 its own database; the folder is the only thing shared. It covers the ingest
 half of unit 9 (stage 3 of `feat-portable-vault-sync`) and the conflict rules
