@@ -1,0 +1,46 @@
+src/lib/api/client.ts
+  s_d65fa7209241f3::t_97c6d9a5ddf73b 32-33
+  s_d65fa7209241f3::t_02ea20a22e99d4 34
+  s_d65fa7209241f3::t_2670bbfc57904f 272-298
+src/lib/api/types.ts
+  s_d65fa7209241f3::t_e303cab6d432f9 146-147
+  s_d65fa7209241f3::t_66ebad50fcdb04 136-145,148-185
+src-tauri/src/lib.rs
+  s_d65fa7209241f3::t_23fd973eaa6315 517
+src-tauri/src/shell/server.rs
+  s_d65fa7209241f3::t_23fd973eaa6315 68-73,334-365,368-414,441
+  s_d65fa7209241f3::t_0c08f54c586a5d 366-367
+  s_d65fa7209241f3::t_6fc5aee806de3d 67
+  s_d65fa7209241f3::t_8c50ec3c471996 415-417
+  s_d65fa7209241f3::t_8ac3fa0b4aba96 48-49,422,451,460,464,466
+README.md
+  s_d65fa7209241f3::t_0e7d40d6a17bc9 49-91
+  s_d65fa7209241f3::t_26639064ca8069 24
+  s_d65fa7209241f3::t_84ab718d997248 25
+openspec/changes/feat-sync-server/tasks.md
+  s_ecb25a8230b32d::t_a5801e1fde08a0 3-5,10-12,17-18,22-26,30-38,43-49,53-54,58-63,65,69-71,76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "53e0dd2ca7755491b88798cfbc90449057f695f3",
+  "prompts": {},
+  "sessions": {
+    "s_d65fa7209241f3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7cb25860-ff50-4096-a250-5cb972fdc7dd",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    },
+    "s_ecb25a8230b32d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "622b9b0c-62ee-4be3-ba16-e74511885d16",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
