@@ -1,0 +1,21 @@
+src-tauri/core/src/backup.rs
+  s_78f0975e18f204::t_056afc6260d1df 145-147,280-284,377-378,443-446,455-460
+src-tauri/core/src/vault/export.rs
+  s_78f0975e18f204::t_67c42b4eb7c828 86-89,93-96,257-260,262-264
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7581db15b88ce18083af6f49f966e2c9adf4b8c3",
+  "prompts": {},
+  "sessions": {
+    "s_78f0975e18f204": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8588110-69b5-41b5-b1c4-53a3f029dcb4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
