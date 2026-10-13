@@ -71,6 +71,20 @@
     }
   });
 
+  function checkSync() {
+    void getSyncServerStatus()
+      .then((status) => {
+        if (!SYNC_NEEDS_YOU.has(status.stage) || settingsOpen || licenseSpace.locked) return;
+        settingsPage = "vault";
+        settingsOpen = true;
+      })
+      .catch(() => {});
+  }
+
+  $effect(() => {
+    if (isWeb && !licenseSpace.locked) checkSync();
+  });
+
   $effect(() => {
     if (mergeSpace.visible) return;
     if (isMergeSpaceId(library.activeWorkspaceId) || isMergeNoteId(library.selected?.id)) {
@@ -127,15 +141,6 @@
 
     let unlistenSyncNeeds: (() => void) | undefined;
     if (isWeb) {
-      const checkSync = () =>
-        void getSyncServerStatus()
-          .then((status) => {
-            if (!SYNC_NEEDS_YOU.has(status.stage) || settingsOpen || licenseSpace.locked) return;
-            settingsPage = "vault";
-            settingsOpen = true;
-          })
-          .catch(() => {});
-      checkSync();
       void listen(EVENTS.VAULT_STATUS, checkSync).then((un) => (unlistenSyncNeeds = un));
     }
 
