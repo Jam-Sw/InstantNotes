@@ -1,0 +1,28 @@
+openspec/changes/feat-sync-server/tasks.md
+  s_d65fa7209241f3::t_1f2d0fd9ddcefe 135-146
+  s_ecb25a8230b32d::t_10641da850d938 64,105,122-124,130-131,133
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c5435741ea8229315cd9db962a49ec62e4ca6f81",
+  "prompts": {},
+  "sessions": {
+    "s_d65fa7209241f3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7cb25860-ff50-4096-a250-5cb972fdc7dd",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    },
+    "s_ecb25a8230b32d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "622b9b0c-62ee-4be3-ba16-e74511885d16",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
