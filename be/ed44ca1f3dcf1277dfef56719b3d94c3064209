@@ -1,0 +1,33 @@
+openspec/changes/feat-vault-sync/tasks.md
+  s_d65fa7209241f3::t_2fb5b538978389 56
+src/lib/components/settings/SettingsVault.test.ts
+  s_d65fa7209241f3::t_4401b99df41fc3 126
+src/lib/vault-mirror.test.ts
+  s_d65fa7209241f3::t_2c6dd7209440f6 101
+openspec/SEQUENCE.md
+  s_ecb25a8230b32d::t_abe2b94171cd4b 355
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "beed44ca1f3dcf1277dfef56719b3d94c3064209",
+  "prompts": {},
+  "sessions": {
+    "s_d65fa7209241f3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7cb25860-ff50-4096-a250-5cb972fdc7dd",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    },
+    "s_ecb25a8230b32d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "622b9b0c-62ee-4be3-ba16-e74511885d16",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
