@@ -141,7 +141,10 @@ accepts plain user input without exposing FTS syntax errors.
 
 `settings` is a `key`/`value`/`updated_at` table holding JSON-encoded UI
 preferences. Reads are best-effort: a missing or malformed value falls back to
-the code default.
+the code default. The editor keeps `editor.zoom`, `editor.showExactTime`,
+`editor.toolbarOpen` (the formatting toolbar's visibility, default true; a
+stored false is kept) and `editor.sourceMode` (the Markdown marks shown,
+default false); the two are independent since 0.10.1.
 
 `stickies` holds which notes are popped out as sticky windows on this device,
 as a map from note id to `{ x, y, width, height, level, collapsed }` in

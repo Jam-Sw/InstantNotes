@@ -139,6 +139,18 @@ export function buildCommands(): Command[] {
       run: () => shell.togglePalette(),
     },
     {
+      id: "view.toolbar",
+      title: editorPrefs.toolbarOpen ? "Hide formatting toolbar" : "Show formatting toolbar",
+      group: "View",
+      run: () => editorPrefs.toggleToolbar(),
+    },
+    {
+      id: "view.markdownSource",
+      title: editorPrefs.sourceMode ? "Hide Markdown source" : "Show Markdown source",
+      group: "View",
+      run: () => editorPrefs.toggleSourceMode(),
+    },
+    {
       id: "view.zoomIn",
       title: "Zoom in",
       group: "View",

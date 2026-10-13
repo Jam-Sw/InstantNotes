@@ -45,10 +45,16 @@
 
   <span class="group-label">Formatting</span>
   <ToggleRow
-    label="Open the formatting toolbar by default"
-    sub="Start new notes with the Aa toolbar open (raw markdown editing) rather than the reading view."
+    label="Show the formatting toolbar"
+    sub="The row of undo, heading, bold and the other tools above every note. The note header's Formatting tools button hides and shows it too."
     checked={editorPrefs.toolbarOpen}
     onchange={() => editorPrefs.toggleToolbar()}
+  />
+  <ToggleRow
+    label="Show Markdown source"
+    sub="Show the Markdown marks (**bold**, # headings) instead of the rendered text. The toolbar's Markdown button switches this too."
+    checked={editorPrefs.sourceMode}
+    onchange={() => editorPrefs.toggleSourceMode()}
   />
 
   <span class="group-label">Tag suggestions</span>

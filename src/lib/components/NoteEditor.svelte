@@ -32,8 +32,11 @@
     applyFormat: (k: FormatKind) => void;
     focus: () => void;
     insertText: (t: string) => void;
+    undo: () => void;
+    redo: () => void;
   }>();
   let active = $state<ActiveMarks>({ ...NO_MARKS });
+  let history = $state({ undo: false, redo: false });
 
   const isBoard = $derived(library.selected?.contentKind === "whiteboard");
   const isSheet = $derived(library.selected?.contentKind === "sheet");
@@ -215,8 +218,17 @@
       {/if}
     {/if}
   </header>
-  {#if !isSurface && editorPrefs.toolbarOpen}
-    <FormatToolbar {active} onFormat={(k) => editorRef?.applyFormat(k)} />
+  {#if !isSurface && editorPrefs.toolbarOpen && !library.selected.isDeleted}
+    <FormatToolbar
+      {active}
+      {history}
+      sourceMode={editorPrefs.sourceMode}
+      onFormat={(k) => editorRef?.applyFormat(k)}
+      onUndo={() => editorRef?.undo()}
+      onRedo={() => editorRef?.redo()}
+      onImage={isWeb || isVirtual ? undefined : insertImage}
+      onToggleSource={() => editorPrefs.toggleSourceMode()}
+    />
   {/if}
   <div
     class="doc"
@@ -343,9 +355,10 @@
         value={library.selected.body}
         docKey={library.selected.id}
         placeholder="Start writing… use #tags to organize"
-        previewMode={!editorPrefs.toolbarOpen}
+        previewMode={!editorPrefs.sourceMode}
         onchange={(v) => library.editBody(v)}
         onactive={(a) => (active = a)}
+        onhistory={(h) => (history = h)}
       />
     </div>
   {/if}
@@ -510,7 +523,7 @@
     gap: 6px;
     align-items: center;
     margin-top: 6px;
-    padding-bottom: 10px;
+    padding: 2px 0 8px;
     border-bottom: 1px solid var(--border);
     font-family: var(--font-ui);
   }

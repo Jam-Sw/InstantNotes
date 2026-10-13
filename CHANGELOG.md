@@ -18,7 +18,14 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `app.openDataFolder`, `app.quit`, `note.export`; the palette offers them on every platform they apply to.
 - Menus File, Edit, View and Help; the tray offers New Capture, Open Library, Check for Updates, Settings
   and Quit.
+- The formatting toolbar: undo and redo, a heading cycle (`heading` in `markdown-format.ts`), icons for
+  every tool, an image button on the desktop, a Markdown source toggle and zoom, in one row above the note.
+- `editor.sourceMode` (the Markdown marks shown) is its own setting; commands `view.toolbar` and
+  `view.markdownSource`; Settings > Editor switches both.
 ### Changed
+- The toolbar shows by default (`editor.toolbarOpen` default true, a stored false kept) and no longer
+  decides the editor's mode; `Editor.svelte` exposes `undo`, `redo`, `canUndo`, `canRedo` and reports
+  history through `onhistory`; `ActiveMarks` gains `heading`.
 - Every menu and tray item is a command id, answered with one event, `menu:command { id }`
   (`src-tauri/src/shell/menu.rs`, `runCommand`); `settings:open`, `menu:new-note`, `menu:new-whiteboard`,
   `menu:new-sheet`, `menu:export-note`, `menu:toggle-sticky` and `updater:check` are gone.

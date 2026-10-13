@@ -22,7 +22,14 @@ vi.mock("$lib/stores/agents.svelte", () => ({
   agents: { lastWriter: () => null, noteMark: () => null },
 }));
 vi.mock("$lib/stores/editor.svelte", () => ({
-  editorPrefs: { toolbarOpen: false, zoom: 1, showExactTime: false, toggleToolbar: vi.fn() },
+  editorPrefs: {
+    toolbarOpen: false,
+    sourceMode: false,
+    zoom: 1,
+    showExactTime: false,
+    toggleToolbar: vi.fn(),
+    toggleSourceMode: vi.fn(),
+  },
 }));
 vi.mock("$lib/stores/images.svelte", () => ({
   imagePrefs: { storage: "copy", maxPreviewHeight: 400 },

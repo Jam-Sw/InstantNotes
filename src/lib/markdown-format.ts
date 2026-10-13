@@ -15,7 +15,8 @@ export type FormatKind =
   | "quote"
   | "list"
   | "task"
-  | "link";
+  | "link"
+  | "heading";
 
 export function formatEdit(doc: string, sel: Sel, kind: FormatKind): Edit {
   switch (kind) {
@@ -35,7 +36,31 @@ export function formatEdit(doc: string, sel: Sel, kind: FormatKind): Edit {
       return toggleLinePrefix(doc, sel, "- [ ] ");
     case "link":
       return insertLink(doc, sel);
+    case "heading":
+      return cycleHeading(doc, sel);
   }
+}
+
+const LINE_PREFIX = /^(?:\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?|\s*>\s*)*/;
+const HEADING_MARK = /^(#{1,6})\s+/;
+
+export function cycleHeading(doc: string, sel: Sel): Edit {
+  const lineStart = doc.lastIndexOf("\n", sel.from - 1) + 1;
+  const nextNl = doc.indexOf("\n", lineStart);
+  const lineEnd = nextNl === -1 ? doc.length : nextNl;
+  const line = doc.slice(lineStart, lineEnd);
+  const prefix = LINE_PREFIX.exec(line)?.[0] ?? "";
+  const rest = line.slice(prefix.length);
+  const mark = HEADING_MARK.exec(rest);
+  const level = mark ? mark[1].length : 0;
+  const body = mark ? rest.slice(mark[0].length) : rest;
+  const next = level >= 3 ? "" : "#".repeat(level + 1) + " ";
+  const newLine = prefix + next + body;
+  const delta = newLine.length - line.length;
+  const shift = (pos: number) =>
+    pos < lineStart + prefix.length ? pos : Math.max(lineStart + prefix.length, pos + delta);
+  const text = doc.slice(0, lineStart) + newLine + doc.slice(lineEnd);
+  return { text, selection: { from: shift(sel.from), to: shift(sel.to) } };
 }
 
 export function toggleWrap(doc: string, sel: Sel, marker: string): Edit {

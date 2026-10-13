@@ -42,7 +42,15 @@ const stores = vi.hoisted(() => ({
     closeSettings: vi.fn(),
     togglePalette: vi.fn(),
   },
-  editorPrefs: { zoomIn: vi.fn(), zoomOut: vi.fn(), resetZoom: vi.fn() },
+  editorPrefs: {
+    toolbarOpen: true,
+    sourceMode: false,
+    zoomIn: vi.fn(),
+    zoomOut: vi.fn(),
+    resetZoom: vi.fn(),
+    toggleToolbar: vi.fn(),
+    toggleSourceMode: vi.fn(),
+  },
   updater: {
     pendingUpdate: false,
     version: null as string | null,
@@ -310,6 +318,8 @@ describe("the commands every surface shares", () => {
       "view.zoomIn",
       "view.zoomOut",
       "view.zoomReset",
+      "view.toolbar",
+      "view.markdownSource",
       "app.checkUpdates",
       "app.sendFeedback",
       "app.openRepo",
@@ -345,6 +355,23 @@ describe("the commands every surface shares", () => {
     expect(stores.client.openDataFolder).toHaveBeenCalledOnce();
     void find(commands, "app.quit").run();
     expect(stores.client.requestQuit).toHaveBeenCalledOnce();
+  });
+
+  it("names the toolbar and source commands for what they will do", () => {
+    let commands = buildCommands();
+    expect(find(commands, "view.toolbar").title).toBe("Hide formatting toolbar");
+    expect(find(commands, "view.markdownSource").title).toBe("Show Markdown source");
+    void find(commands, "view.toolbar").run();
+    void find(commands, "view.markdownSource").run();
+    expect(stores.editorPrefs.toggleToolbar).toHaveBeenCalledOnce();
+    expect(stores.editorPrefs.toggleSourceMode).toHaveBeenCalledOnce();
+    stores.editorPrefs.toolbarOpen = false;
+    stores.editorPrefs.sourceMode = true;
+    commands = buildCommands();
+    expect(find(commands, "view.toolbar").title).toBe("Show formatting toolbar");
+    expect(find(commands, "view.markdownSource").title).toBe("Hide Markdown source");
+    stores.editorPrefs.toolbarOpen = true;
+    stores.editorPrefs.sourceMode = false;
   });
 
   it("closes Settings before showing a new note or the graph", () => {
