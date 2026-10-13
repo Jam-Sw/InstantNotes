@@ -60,7 +60,7 @@ docker run -d --name instantnotes \
   -e INSTANTNOTES_OIDC_ISSUER=https://id.example.org \
   -e INSTANTNOTES_OIDC_CLIENT_ID=instantnotes \
   -e INSTANTNOTES_OIDC_CLIENT_SECRET=change-me \
-  ghcr.io/jam-sw/instantnotes-server:0.10.0
+  ghcr.io/jam-sw/instantnotes-server:0.10.1
 ```
 
 | Setting | Required | Meaning |
