@@ -53,6 +53,8 @@ const SYNC_TICK: Duration = Duration::from_secs(1);
 const SIGN_IN_NOTES: usize = 400;
 const SERVER_DB: &str = "server.db";
 const HSTS: &str = "max-age=31536000";
+const LOGIN_COOKIE: &str = "in_login";
+const LOGIN_TTL: Duration = Duration::from_secs(10 * 60);
 
 pub(crate) fn log(event: &str, fields: &[(&str, &str)]) {
     let mut line = String::from(event);
@@ -60,7 +62,7 @@ pub(crate) fn log(event: &str, fields: &[(&str, &str)]) {
         line.push(' ');
         line.push_str(key);
         line.push('=');
-        line.push_str(value);
+        line.extend(value.chars().map(|c| if c.is_control() { ' ' } else { c }));
     }
     println!("{line}");
 }
@@ -118,9 +120,10 @@ impl AppState {
     }
 
     fn health(&self) -> Result<(), String> {
-        let probe = self.config.data_dir.join(".healthz");
-        std::fs::write(&probe, b"ok")
-            .and_then(|_| std::fs::remove_file(&probe))
+        tempfile::Builder::new()
+            .prefix(".healthz")
+            .tempfile_in(&self.config.data_dir)
+            .and_then(|mut probe| std::io::Write::write_all(&mut probe, b"ok"))
             .map_err(|e| format!("data folder not writable: {e}"))?;
         self.sessions.healthy()?;
         match self.recheck.problem() {
@@ -130,9 +133,15 @@ impl AppState {
     }
 
     pub async fn recheck_people(&self) {
-        self.recheck
+        let ran = self
+            .recheck
             .run_due(&self.sessions, &self.oidc, sessions::now_secs())
             .await;
+        for sub in ran.refused_people {
+            if let Ok(store) = self.stores.of(&sub) {
+                store.cancel_joins();
+            }
+        }
     }
 
     pub fn sync_vaults(&self) {
@@ -216,12 +225,22 @@ pub fn run(config: Config) -> i32 {
                 loop {
                     tick.tick().await;
                     state.libraries.close_idle();
-                    state.recheck_people().await;
+                    state.limits.forget_idle();
                     ticks += 1;
                     if ticks.is_multiple_of(BLOB_SWEEP_TICKS) {
                         let swept = state.clone();
                         let _ = tokio::task::spawn_blocking(move || swept.stores.sweep()).await;
                     }
+                }
+            })
+        };
+        let rechecker = {
+            let state = state.clone();
+            tokio::spawn(async move {
+                let mut tick = tokio::time::interval(IDLE_SWEEP);
+                loop {
+                    tick.tick().await;
+                    state.recheck_people().await;
                 }
             })
         };
@@ -244,6 +263,7 @@ pub fn run(config: Config) -> i32 {
             .with_graceful_shutdown(shutdown_signal())
             .await;
         sweeper.abort();
+        rechecker.abort();
         if let Some(syncer) = syncer {
             syncer.abort();
         }
@@ -386,6 +406,31 @@ fn cookie(state: &AppState, value: &str, max_age: Option<Duration>) -> HeaderVal
     HeaderValue::from_str(&cookie).expect("cookie header")
 }
 
+fn login_cookie(state: &AppState, value: &str, max_age: Duration) -> HeaderValue {
+    let mut cookie = format!(
+        "{LOGIN_COOKIE}={value}; HttpOnly; SameSite=Lax; Path=/auth; Max-Age={}",
+        max_age.as_secs()
+    );
+    if state.config.secure_cookies() {
+        cookie.push_str("; Secure");
+    }
+    HeaderValue::from_str(&cookie).expect("cookie header")
+}
+
+fn login_cookie_value(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get_all(header::COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .flat_map(|line| line.split(';'))
+        .map(str::trim)
+        .find_map(|pair| {
+            pair.strip_prefix(LOGIN_COOKIE)
+                .and_then(|rest| rest.strip_prefix('='))
+        })
+        .map(str::to_string)
+}
+
 #[derive(Deserialize)]
 struct LoginQuery {
     device: Option<String>,
@@ -401,7 +446,14 @@ async fn login(
         return limited;
     }
     match state.oidc.begin(&state.logins, q.device).await {
-        Ok(url) => Redirect::to(&url).into_response(),
+        Ok((url, login_state)) => {
+            let mut response = Redirect::to(&url).into_response();
+            response.headers_mut().insert(
+                header::SET_COOKIE,
+                login_cookie(&state, &login_state, LOGIN_TTL),
+            );
+            response
+        }
         Err(e) => {
             log("auth.login.failed", &[("reason", &e)]);
             statics::html(StatusCode::BAD_GATEWAY, statics::error_page(&e))
@@ -427,8 +479,8 @@ async fn callback(
         return limited;
     }
     if let Some(error) = q.error {
+        log("auth.callback.refused", &[("error", &error)]);
         let reason = q.error_description.unwrap_or(error);
-        log("auth.callback.refused", &[("reason", &reason)]);
         return statics::html(StatusCode::BAD_REQUEST, statics::error_page(&reason));
     }
     let (Some(code), Some(login_state)) = (q.code, q.state) else {
@@ -437,6 +489,13 @@ async fn callback(
             statics::error_page("the sign-in server sent no code"),
         );
     };
+    if login_cookie_value(&headers).as_deref() != Some(login_state.as_str()) {
+        log("auth.callback.foreign", &[]);
+        return statics::html(
+            StatusCode::BAD_REQUEST,
+            statics::error_page("This sign-in was not started in this browser. Start again."),
+        );
+    }
     match state.oidc.finish(&state.logins, &code, &login_state).await {
         Ok(signed_in) => {
             let person = signed_in.person;
@@ -452,7 +511,7 @@ async fn callback(
                 .map(|token| state.recheck.sealer.seal(&token));
             state
                 .sessions
-                .set_refresh(&person.sub, sealed.as_deref(), sessions::now_secs());
+                .signed_in(&person.sub, sealed.as_deref(), sessions::now_secs());
             if let Some(device) = signed_in.after {
                 let id = state.sessions.create(person);
                 let mut response = Redirect::to(&format!(

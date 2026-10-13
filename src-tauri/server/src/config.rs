@@ -53,12 +53,12 @@ pub fn is_local_http(url: &str) -> bool {
     matches!(host, "localhost" | "127.0.0.1" | "::1")
 }
 
-fn check_public_url(url: &str) -> Result<(), String> {
+fn check_https(setting: &str, url: &str) -> Result<(), String> {
     if url.starts_with("https://") || is_local_http(url) {
         Ok(())
     } else {
         Err(format!(
-            "{PUBLIC_URL} must start with https:// (plain http is allowed only for localhost): {url}"
+            "{setting} must start with https:// (plain http is allowed only for localhost): {url}"
         ))
     }
 }
@@ -69,8 +69,9 @@ impl Config {
             .parse()
             .map_err(|e| format!("{LISTEN}: {e}"))?;
         let public_url = required(PUBLIC_URL)?.trim_end_matches('/').to_string();
-        check_public_url(&public_url)?;
+        check_https(PUBLIC_URL, &public_url)?;
         let oidc_issuer = required(OIDC_ISSUER)?.trim_end_matches('/').to_string();
+        check_https(OIDC_ISSUER, &oidc_issuer)?;
         let vault_root = std::env::var(VAULT_ROOT)
             .ok()
             .filter(|v| !v.trim().is_empty())
@@ -123,14 +124,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_public_address_must_be_https_unless_it_is_this_computer() {
+    fn the_public_address_and_issuer_must_be_https_unless_on_this_computer() {
         for ok in [
             "https://notes.example.org",
             "http://localhost:8080",
             "http://127.0.0.1",
             "http://[::1]:8080/",
         ] {
-            assert!(check_public_url(ok).is_ok(), "{ok}");
+            assert!(check_https(PUBLIC_URL, ok).is_ok(), "{ok}");
         }
         for refused in [
             "http://notes.example.org",
@@ -138,7 +139,8 @@ mod tests {
             "http://localhost.example.org",
             "ftp://localhost",
         ] {
-            assert!(check_public_url(refused).is_err(), "{refused}");
+            let error = check_https(OIDC_ISSUER, refused).unwrap_err();
+            assert!(error.starts_with(OIDC_ISSUER), "{refused}");
         }
     }
 }

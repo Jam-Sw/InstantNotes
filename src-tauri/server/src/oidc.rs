@@ -41,8 +41,44 @@ pub struct SignedIn {
 pub enum Refresh {
     Accepted(Option<String>),
     Refused(String),
-    Misconfigured(String),
+    Misconfigured {
+        reason: String,
+        rotated: Option<String>,
+    },
+    Unreachable {
+        reason: String,
+        rotated: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Fault {
     Unreachable(String),
+    Invalid(String),
+}
+
+impl From<Fault> for String {
+    fn from(fault: Fault) -> String {
+        match fault {
+            Fault::Unreachable(why) | Fault::Invalid(why) => why,
+        }
+    }
+}
+
+fn http_fault(what: &str, e: reqwest::Error) -> Fault {
+    match e.status() {
+        Some(status) if status.is_client_error() => Fault::Invalid(format!("{what} refused: {e}")),
+        _ => Fault::Unreachable(format!("{what} unreachable: {e}")),
+    }
+}
+
+impl Fault {
+    fn into_refresh(self, rotated: Option<String>) -> Refresh {
+        match self {
+            Fault::Unreachable(reason) => Refresh::Unreachable { reason, rotated },
+            Fault::Invalid(reason) => Refresh::Misconfigured { reason, rotated },
+        }
+    }
 }
 
 const REFUSALS: &[&str] = &["invalid_grant", "access_denied", "invalid_request"];
@@ -156,6 +192,7 @@ impl Oidc {
             redirect_uri: redirect_uri.to_string(),
             public_url: public_url.to_string(),
             http: reqwest::Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(5))
                 .timeout(std::time::Duration::from_secs(15))
                 .build()
                 .expect("http client"),
@@ -164,7 +201,7 @@ impl Oidc {
         }
     }
 
-    async fn discover(&self) -> Result<&Discovery, String> {
+    async fn discover(&self) -> Result<&Discovery, Fault> {
         self.discovery
             .get_or_try_init(|| async {
                 let url = format!("{}/.well-known/openid-configuration", self.issuer);
@@ -173,64 +210,87 @@ impl Oidc {
                     .get(&url)
                     .send()
                     .await
-                    .map_err(|e| format!("sign-in server unreachable: {e}"))?
-                    .error_for_status()
-                    .map_err(|e| format!("sign-in server discovery failed: {e}"))?
+                    .and_then(reqwest::Response::error_for_status)
+                    .map_err(|e| http_fault("sign-in server discovery", e))?
                     .json()
                     .await
-                    .map_err(|e| format!("sign-in server discovery unreadable: {e}"))?;
+                    .map_err(|e| {
+                        Fault::Invalid(format!("sign-in server discovery unreadable: {e}"))
+                    })?;
                 Ok(found)
             })
             .await
     }
 
-    async fn fetch_keys(&self) -> Result<JwkSet, String> {
+    pub async fn reachable(&self) -> Result<(), String> {
+        match self.discover().await {
+            Ok(_) => Ok(()),
+            Err(Fault::Unreachable(why)) => Err(why),
+            Err(Fault::Invalid(_)) => Ok(()),
+        }
+    }
+
+    async fn fetch_keys(&self) -> Result<JwkSet, Fault> {
         let discovery = self.discover().await?;
         self.http
             .get(&discovery.jwks_uri)
             .send()
             .await
-            .map_err(|e| format!("sign-in server keys unreachable: {e}"))?
-            .error_for_status()
-            .map_err(|e| format!("sign-in server keys refused: {e}"))?
+            .and_then(reqwest::Response::error_for_status)
+            .map_err(|e| http_fault("sign-in server keys", e))?
             .json()
             .await
-            .map_err(|e| format!("sign-in server keys unreadable: {e}"))
+            .map_err(|e| Fault::Invalid(format!("sign-in server keys unreadable: {e}")))
     }
 
-    async fn key_for(&self, header: &Header) -> Result<Jwk, String> {
+    async fn key_for(&self, header: &Header) -> Result<Jwk, Fault> {
+        let unpublished = || {
+            Fault::Invalid(
+                "id_token is signed with a key the sign-in server does not publish".into(),
+            )
+        };
         let mut keys = self.keys.lock().await;
         if let Some(found) = keys.set.as_ref().and_then(|set| pick(set, header)) {
             return Ok(found.clone());
         }
         if keys.fetched.is_some_and(|at| at.elapsed() < REFETCH_EVERY) {
-            return Err("id_token is signed with a key the sign-in server does not publish".into());
+            return Err(unpublished());
         }
         let set = self.fetch_keys().await?;
         keys.fetched = Some(Instant::now());
         let found = pick(&set, header).cloned();
         keys.set = Some(set);
-        found.ok_or_else(|| {
-            "id_token is signed with a key the sign-in server does not publish".into()
-        })
+        found.ok_or_else(unpublished)
     }
 
-    async fn verify(&self, id_token: &str, nonce: Option<&str>) -> Result<Claims, String> {
-        let header = decode_header(id_token).map_err(|_| "id_token is not a JWT".to_string())?;
+    async fn verify(&self, id_token: &str, nonce: Option<&str>) -> Result<Claims, Fault> {
+        let invalid = |why: String| Fault::Invalid(why);
+        let header =
+            decode_header(id_token).map_err(|_| invalid("id_token is not a JWT".into()))?;
         if !ALGORITHMS.contains(&header.alg) {
-            return Err(format!(
+            return Err(invalid(format!(
                 "id_token algorithm {:?} is not allowed",
                 header.alg
-            ));
+            )));
         }
         let jwk = self.key_for(&header).await?;
+        self.check(id_token, &header, &jwk, nonce).map_err(invalid)
+    }
+
+    fn check(
+        &self,
+        id_token: &str,
+        header: &Header,
+        jwk: &Jwk,
+        nonce: Option<&str>,
+    ) -> Result<Claims, String> {
         if let Some(declared) = &jwk.common.key_algorithm {
             if format!("{declared:?}") != format!("{:?}", header.alg) {
                 return Err("id_token algorithm does not match its key".into());
             }
         }
         let key =
-            DecodingKey::from_jwk(&jwk).map_err(|e| format!("sign-in server key unusable: {e}"))?;
+            DecodingKey::from_jwk(jwk).map_err(|e| format!("sign-in server key unusable: {e}"))?;
         let mut validation = Validation::new(header.alg);
         validation.leeway = LEEWAY;
         validation.validate_nbf = true;
@@ -263,8 +323,12 @@ impl Oidc {
         Ok(claims)
     }
 
-    pub async fn begin(&self, logins: &Logins, after: Option<String>) -> Result<String, String> {
-        let discovery = self.discover().await?;
+    pub async fn begin(
+        &self,
+        logins: &Logins,
+        after: Option<String>,
+    ) -> Result<(String, String), String> {
+        let discovery = self.discover().await.map_err(String::from)?;
         let (state, verifier, nonce) = logins.begin(after);
         let challenge = b64url(&Sha256::digest(verifier.as_bytes()));
         let scope = if discovery
@@ -276,7 +340,7 @@ impl Oidc {
         } else {
             "openid profile email".to_string()
         };
-        Ok(format!(
+        let url = format!(
             "{}?response_type=code&client_id={}&redirect_uri={}&scope={}&state={}&nonce={}&code_challenge={}&code_challenge_method=S256",
             discovery.authorization_endpoint,
             encode(&self.client_id),
@@ -285,7 +349,8 @@ impl Oidc {
             encode(&state),
             encode(&nonce),
             encode(&challenge),
-        ))
+        );
+        Ok((url, state))
     }
 
     pub async fn finish(
@@ -297,7 +362,7 @@ impl Oidc {
         let pending = logins
             .take(state)
             .ok_or_else(|| "sign-in expired or unknown; start again".to_string())?;
-        let discovery = self.discover().await?;
+        let discovery = self.discover().await.map_err(String::from)?;
         let response = self
             .http
             .post(&discovery.token_endpoint)
@@ -322,7 +387,10 @@ impl Oidc {
         let id_token = token
             .id_token
             .ok_or_else(|| "token response has no id_token".to_string())?;
-        let claims = self.verify(&id_token, Some(&pending.nonce)).await?;
+        let claims = self
+            .verify(&id_token, Some(&pending.nonce))
+            .await
+            .map_err(String::from)?;
         Ok(SignedIn {
             person: Person {
                 sub: claims.sub,
@@ -337,7 +405,7 @@ impl Oidc {
     pub async fn refresh(&self, refresh_token: &str, sub: &str) -> Refresh {
         let discovery = match self.discover().await {
             Ok(d) => d,
-            Err(e) => return Refresh::Unreachable(e),
+            Err(fault) => return fault.into_refresh(None),
         };
         let sent = self
             .http
@@ -352,11 +420,19 @@ impl Oidc {
             .await;
         let response = match sent {
             Ok(r) => r,
-            Err(e) => return Refresh::Unreachable(format!("token endpoint unreachable: {e}")),
+            Err(e) => {
+                return Refresh::Unreachable {
+                    reason: format!("token endpoint unreachable: {e}"),
+                    rotated: None,
+                }
+            }
         };
         let status = response.status();
         if status.is_server_error() {
-            return Refresh::Unreachable(format!("token endpoint answered {status}"));
+            return Refresh::Unreachable {
+                reason: format!("token endpoint answered {status}"),
+                rotated: None,
+            };
         }
         if !status.is_success() {
             let error = response
@@ -366,26 +442,38 @@ impl Oidc {
                 .and_then(|v| v.get("error")?.as_str().map(str::to_string));
             return match (status.as_u16(), error) {
                 (400 | 401, Some(e)) if REFUSALS.contains(&e.as_str()) => Refresh::Refused(e),
-                (_, e) => Refresh::Misconfigured(format!(
-                    "token endpoint answered {status} {}",
-                    e.unwrap_or_else(|| "with no OAuth error".into())
-                )),
+                (_, e) => Refresh::Misconfigured {
+                    reason: format!(
+                        "token endpoint answered {status} {}",
+                        e.unwrap_or_else(|| "with no OAuth error".into())
+                    ),
+                    rotated: None,
+                },
             };
         }
         let token: TokenResponse = match response.json().await {
             Ok(t) => t,
-            Err(_) => return Refresh::Misconfigured("refresh response unreadable".into()),
+            Err(_) => {
+                return Refresh::Misconfigured {
+                    reason: "refresh response unreadable".into(),
+                    rotated: None,
+                }
+            }
         };
+        let rotated = token.refresh_token;
         if let Some(id_token) = token.id_token {
             match self.verify(&id_token, None).await {
                 Ok(claims) if claims.sub == sub => {}
                 Ok(_) => {
-                    return Refresh::Misconfigured("refreshed id_token names another person".into())
+                    return Refresh::Misconfigured {
+                        reason: "refreshed id_token names another person".into(),
+                        rotated,
+                    }
                 }
-                Err(e) => return Refresh::Misconfigured(e),
+                Err(fault) => return fault.into_refresh(rotated),
             }
         }
-        Refresh::Accepted(token.refresh_token)
+        Refresh::Accepted(rotated)
     }
 
     pub async fn logout_url(&self) -> String {
@@ -435,7 +523,7 @@ mod tests {
 
     impl Run {
         async fn nonce_and_state(&self) -> (String, String) {
-            let url = self.oidc.begin(&self.logins, None).await.unwrap();
+            let (url, _) = self.oidc.begin(&self.logins, None).await.unwrap();
             let param = |name: &str| {
                 url.split(['?', '&'])
                     .find_map(|p| p.strip_prefix(&format!("{name}=")))
@@ -620,6 +708,7 @@ mod tests {
             .begin(&r.logins, None)
             .await
             .unwrap()
+            .0
             .contains("offline_access"));
         let idp = FakeIdp::start().await;
         idp.without_offline_access();
@@ -634,6 +723,7 @@ mod tests {
             .begin(&r.logins, None)
             .await
             .unwrap()
+            .0
             .contains("offline_access"));
     }
 
@@ -652,7 +742,7 @@ mod tests {
     #[tokio::test]
     async fn a_device_sign_in_comes_back_to_its_request() {
         let r = run().await;
-        let url = r
+        let (url, _) = r
             .oidc
             .begin(&r.logins, Some("device-request".into()))
             .await
@@ -697,7 +787,7 @@ mod tests {
         );
         assert!(matches!(
             r.oidc.refresh("other", "person-1").await,
-            Refresh::Misconfigured(_)
+            Refresh::Misconfigured { .. }
         ));
         for code in ["invalid_grant", "access_denied", "invalid_request"] {
             r.idp
@@ -716,7 +806,7 @@ mod tests {
             assert!(
                 matches!(
                     r.oidc.refresh(token, "person-1").await,
-                    Refresh::Misconfigured(_)
+                    Refresh::Misconfigured { rotated: None, .. }
                 ),
                 "{token}"
             );
@@ -725,7 +815,7 @@ mod tests {
             .answer_refresh("down", StatusCode::INTERNAL_SERVER_ERROR, json!({}));
         assert!(matches!(
             r.oidc.refresh("down", "person-1").await,
-            Refresh::Unreachable(_)
+            Refresh::Unreachable { .. }
         ));
         let gone = Oidc::new(
             "http://127.0.0.1:9",
@@ -736,7 +826,37 @@ mod tests {
         );
         assert!(matches!(
             gone.refresh("any", "person-1").await,
-            Refresh::Unreachable(_)
+            Refresh::Unreachable { .. }
         ));
+    }
+
+    #[tokio::test]
+    async fn a_rotated_token_survives_when_the_new_id_token_cannot_be_checked() {
+        use axum::http::StatusCode;
+        let r = run().await;
+        r.idp.rotate("key-2");
+        r.idp.keys_down(true);
+        r.idp.answer_refresh(
+            "r-1",
+            StatusCode::OK,
+            json!({ "id_token": r.idp.id_token("person-1"), "refresh_token": "r-2" }),
+        );
+        let outcome = r.oidc.refresh("r-1", "person-1").await;
+        assert!(
+            matches!(&outcome, Refresh::Unreachable { rotated: Some(t), .. } if t == "r-2"),
+            "{outcome:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_es256_key_from_the_provider_is_accepted_and_others_refused() {
+        let r = run().await;
+        let ec = crate::fake_idp::EcSigner::generate("ec-1");
+        r.idp.publish_extra(ec.jwk());
+        let accepted = r.sign_in_with(|claims, _| ec.sign(claims)).await;
+        assert_eq!(accepted.unwrap().sub, "person-1");
+        let stranger = crate::fake_idp::EcSigner::generate("ec-1");
+        let refused = r.sign_in_with(|claims, _| stranger.sign(claims)).await;
+        assert!(refused.unwrap_err().contains("InvalidSignature"));
     }
 }

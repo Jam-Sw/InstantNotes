@@ -71,6 +71,7 @@ pub struct Ran {
     pub revoked: usize,
     pub unreachable: usize,
     pub misconfigured: usize,
+    pub refused_people: Vec<String>,
 }
 
 impl Recheck {
@@ -107,10 +108,40 @@ impl Recheck {
         window.refused > BREAKER_MIN && window.refused * 2 > window.checked
     }
 
+    fn unreachable(&self, reason: &str) {
+        if !self.outage.swap(true, Ordering::Relaxed) {
+            crate::log("auth.recheck.unreachable", &[("reason", reason)]);
+        }
+    }
+
+    fn keep_rotated(
+        &self,
+        sessions: &Sessions,
+        sub: &str,
+        old: &[u8],
+        rotated: Option<String>,
+        now: i64,
+    ) {
+        match rotated {
+            Some(token) => {
+                sessions.replace_refresh(sub, old, Some(&self.sealer.seal(&token)), now);
+            }
+            None => sessions.mark_checked(sub, now),
+        }
+    }
+
     pub async fn run_due(&self, sessions: &Sessions, oidc: &Arc<Oidc>, now: i64) -> Ran {
         let mut ran = Ran::default();
         let due = sessions.due_checks(now);
         if due.is_empty() {
+            return ran;
+        }
+        if let Err(reason) = oidc.reachable().await {
+            self.unreachable(&reason);
+            ran.unreachable = due.len();
+            for (sub, _) in &due {
+                sessions.mark_checked(sub, now);
+            }
             return ran;
         }
         let permits = Arc::new(Semaphore::new(AT_ONCE));
@@ -121,7 +152,7 @@ impl Recheck {
                     "auth.recheck.unsealable",
                     &[("library", &folder_name(&sub))],
                 );
-                sessions.set_refresh(&sub, None, now);
+                sessions.replace_refresh(&sub, &sealed, None, now);
                 continue;
             };
             let permits = Arc::clone(&permits);
@@ -129,7 +160,7 @@ impl Recheck {
             checks.spawn(async move {
                 let _permit = permits.acquire_owned().await;
                 let outcome = oidc.refresh(&token, &sub).await;
-                (sub, token, outcome)
+                (sub, sealed, token, outcome)
             });
         }
         let mut outcomes = Vec::new();
@@ -140,53 +171,55 @@ impl Recheck {
         }
         let refused = outcomes
             .iter()
-            .filter(|(_, _, o)| matches!(o, Refresh::Refused(_)))
+            .filter(|(_, _, _, o)| matches!(o, Refresh::Refused(_)))
             .count();
         let tripped = self.breaker(outcomes.len(), refused, now);
         if tripped {
             crate::log("auth.recheck.breaker", &[("refused", &refused.to_string())]);
-            self.set_problem(Some(format!(
-                "identity re-check paused: {refused} people refused at once; nothing was revoked"
-            )));
         }
-        for (sub, token, outcome) in outcomes {
+        let mut problem = tripped.then(|| {
+            format!(
+                "identity re-check paused: {refused} people refused at once; nothing was revoked"
+            )
+        });
+        for (sub, sealed, token, outcome) in outcomes {
             let library = folder_name(&sub);
             match outcome {
                 Refresh::Accepted(rotated) => {
                     ran.accepted += 1;
                     let kept = rotated.unwrap_or(token);
-                    sessions.set_refresh(&sub, Some(&self.sealer.seal(&kept)), now);
+                    sessions.replace_refresh(&sub, &sealed, Some(&self.sealer.seal(&kept)), now);
                     if self.outage.swap(false, Ordering::Relaxed) {
                         crate::log("auth.recheck.reachable", &[]);
-                    }
-                    if !tripped {
-                        self.set_problem(None);
                     }
                 }
                 Refresh::Refused(error) if !tripped => {
                     ran.refused += 1;
-                    ran.revoked += sessions.revoke_person(&sub);
-                    sessions.set_refresh(&sub, None, now);
-                    crate::log("auth.refused", &[("library", &library), ("error", &error)]);
+                    if let Some(revoked) = sessions.refuse(&sub, &sealed, now, now) {
+                        ran.revoked += revoked;
+                        ran.refused_people.push(sub.clone());
+                        crate::log("auth.refused", &[("library", &library), ("error", &error)]);
+                    }
                 }
                 Refresh::Refused(_) => {
                     ran.refused += 1;
                     sessions.mark_checked(&sub, now);
                 }
-                Refresh::Misconfigured(reason) => {
+                Refresh::Misconfigured { reason, rotated } => {
                     ran.misconfigured += 1;
                     crate::log("auth.recheck.misconfigured", &[("reason", &reason)]);
-                    self.set_problem(Some(format!("identity re-check failed: {reason}")));
-                    sessions.mark_checked(&sub, now);
+                    problem.get_or_insert_with(|| format!("identity re-check failed: {reason}"));
+                    self.keep_rotated(sessions, &sub, &sealed, rotated, now);
                 }
-                Refresh::Unreachable(reason) => {
+                Refresh::Unreachable { reason, rotated } => {
                     ran.unreachable += 1;
-                    if !self.outage.swap(true, Ordering::Relaxed) {
-                        crate::log("auth.recheck.unreachable", &[("reason", &reason)]);
-                    }
-                    sessions.mark_checked(&sub, now);
+                    self.unreachable(&reason);
+                    self.keep_rotated(sessions, &sub, &sealed, rotated, now);
                 }
             }
+        }
+        if problem.is_some() || ran.accepted > 0 {
+            self.set_problem(problem);
         }
         ran
     }
@@ -397,5 +430,80 @@ mod tests {
         assert!(r.alive(&grants, HOUR));
         assert!(r.sessions.due_checks(3 * HOUR).is_empty());
         assert!(!r.alive(&grants, 24 * HOUR));
+    }
+
+    #[tokio::test]
+    async fn a_token_rotated_before_the_keys_went_down_is_kept_for_next_hour() {
+        let r = run().await;
+        let grants = r.signed_in("alice", "a-1");
+        r.idp.rotate("key-2");
+        r.idp.keys_down(true);
+        r.accept("a-1", "alice", "a-2");
+        let ran = r.recheck.run_due(&r.sessions, &r.oidc, HOUR).await;
+        assert_eq!((ran.unreachable, ran.revoked), (1, 0));
+        assert!(r.alive(&grants, HOUR));
+        let (_, sealed) = r.sessions.due_checks(2 * HOUR).pop().unwrap();
+        assert_eq!(r.recheck.sealer.open(&sealed).as_deref(), Some("a-2"));
+        assert_eq!(r.recheck.problem(), None);
+    }
+
+    #[tokio::test]
+    async fn a_problem_stays_reported_while_any_check_in_the_run_failed() {
+        let r = run().await;
+        r.signed_in("alice", "a-1");
+        r.signed_in("bob", "b-1");
+        r.accept("a-1", "alice", "a-2");
+        r.idp.answer_refresh(
+            "b-1",
+            StatusCode::UNAUTHORIZED,
+            json!({ "error": "invalid_client" }),
+        );
+        let ran = r.recheck.run_due(&r.sessions, &r.oidc, HOUR).await;
+        assert_eq!((ran.accepted, ran.misconfigured), (1, 1));
+        assert!(r.recheck.problem().is_some());
+    }
+
+    #[tokio::test]
+    async fn the_breaker_counts_across_runs_in_the_same_hour() {
+        let r = run().await;
+        let first: Vec<_> = (0..2)
+            .map(|n| {
+                r.refuse(&format!("a-{n}"), "invalid_grant");
+                r.signed_in(&format!("a{n}"), &format!("a-{n}"))
+            })
+            .collect();
+        let ran = r.recheck.run_due(&r.sessions, &r.oidc, HOUR).await;
+        assert_eq!(ran.revoked, 4);
+        assert!(first.iter().all(|g| !r.alive(g, HOUR)));
+        let later: Vec<_> = (0..2)
+            .map(|n| {
+                r.refuse(&format!("b-{n}"), "invalid_grant");
+                r.signed_in(&format!("b{n}"), &format!("b-{n}"))
+            })
+            .collect();
+        let ran = r.recheck.run_due(&r.sessions, &r.oidc, HOUR + 60).await;
+        assert_eq!((ran.refused, ran.revoked), (2, 0));
+        assert!(later.iter().all(|g| r.alive(g, HOUR + 60)));
+        assert!(r.recheck.problem().unwrap().contains("paused"));
+    }
+
+    #[tokio::test]
+    async fn an_unreachable_provider_skips_the_whole_batch_without_waiting_on_each() {
+        let r = run().await;
+        let gone = Arc::new(Oidc::new(
+            "http://127.0.0.1:9",
+            "client",
+            "secret",
+            "http://app",
+            "http://app/cb",
+        ));
+        for n in 0..10 {
+            r.signed_in(&format!("p{n}"), &format!("r-{n}"));
+        }
+        let started = std::time::Instant::now();
+        let ran = r.recheck.run_due(&r.sessions, &gone, HOUR).await;
+        assert_eq!(ran.unreachable, 10);
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert!(r.sessions.due_checks(HOUR + 60).is_empty());
     }
 }

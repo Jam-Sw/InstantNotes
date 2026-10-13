@@ -39,7 +39,7 @@ pub fn client_ip(trust_proxy: bool, peer: SocketAddr, headers: &HeaderMap) -> Ip
         let forwarded = headers
             .get("x-forwarded-for")
             .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.split(',').next())
+            .and_then(|v| v.rsplit(',').next())
             .and_then(|v| v.trim().parse().ok());
         if let Some(ip) = forwarded {
             return ip;
@@ -61,6 +61,14 @@ impl Limits {
 
     pub fn sign_in(&self, ip: IpAddr) -> Result<(), u64> {
         check(&self.sign_in, &ip)
+    }
+
+    pub fn forget_idle(&self) {
+        self.sign_in.retain_recent();
+        self.device_token.retain_recent();
+        self.sync.retain_recent();
+        self.joins.retain_recent();
+        self.refused.retain_recent();
     }
 
     pub fn device_token(&self, ip: IpAddr) -> Result<(), u64> {
@@ -97,10 +105,10 @@ mod tests {
     }
 
     #[test]
-    fn the_forwarded_address_counts_only_behind_a_trusted_proxy() {
+    fn the_address_the_trusted_proxy_appended_counts_not_one_the_client_wrote() {
         let peer: SocketAddr = "192.168.1.5:4000".parse().unwrap();
         let mut headers = HeaderMap::new();
-        headers.insert("x-forwarded-for", "203.0.113.9, 10.0.0.1".parse().unwrap());
+        headers.insert("x-forwarded-for", "1.2.3.4, 203.0.113.9".parse().unwrap());
         assert_eq!(client_ip(false, peer, &headers), peer.ip());
         assert_eq!(
             client_ip(true, peer, &headers),

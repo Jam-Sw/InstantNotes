@@ -106,16 +106,19 @@ async fn sign_in_pages_are_rate_limited_per_address() {
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .unwrap();
-    let mut last = None;
-    for _ in 0..31 {
-        last = Some(
-            http.get(format!("{}/auth/callback?error=access_denied", server.base))
-                .send()
-                .await
-                .unwrap(),
-        );
+    for n in 0..30 {
+        let r = http
+            .get(format!("{}/auth/callback?error=access_denied", server.base))
+            .send()
+            .await
+            .unwrap();
+        assert_ne!(r.status(), 429, "request {n} was limited");
     }
-    let limited = last.unwrap();
+    let limited = http
+        .get(format!("{}/auth/callback?error=access_denied", server.base))
+        .send()
+        .await
+        .unwrap();
     assert_eq!(limited.status(), 429);
     let retry: u64 = limited.headers()["retry-after"]
         .to_str()
@@ -123,4 +126,34 @@ async fn sign_in_pages_are_rate_limited_per_address() {
         .parse()
         .unwrap();
     assert!(retry >= 1);
+}
+
+#[tokio::test]
+async fn a_callback_this_browser_did_not_start_is_refused() {
+    let server = start("http://localhost:8080").await;
+    let http = reqwest::Client::new();
+    let foreign = http
+        .get(format!(
+            "{}/auth/callback?code=attackers-code&state=attackers-state",
+            server.base
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(foreign.status(), 400);
+    let mismatched = http
+        .get(format!(
+            "{}/auth/callback?code=c&state=attackers-state",
+            server.base
+        ))
+        .header("cookie", "in_login=this-browsers-state")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(mismatched.status(), 400);
+    assert!(mismatched
+        .text()
+        .await
+        .unwrap()
+        .contains("not started in this browser"));
 }

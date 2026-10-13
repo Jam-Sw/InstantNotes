@@ -55,10 +55,61 @@ impl Signer {
     }
 }
 
+pub struct EcSigner {
+    kid: String,
+    pkcs8: Vec<u8>,
+    public: Vec<u8>,
+}
+
+impl EcSigner {
+    pub fn generate(kid: &str) -> EcSigner {
+        use aws_lc_rs::signature::{EcdsaKeyPair, ECDSA_P256_SHA256_FIXED_SIGNING};
+        let pkcs8 =
+            EcdsaKeyPair::generate_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, &SystemRandom::new())
+                .unwrap();
+        let public = EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, pkcs8.as_ref())
+            .unwrap()
+            .public_key()
+            .as_ref()
+            .to_vec();
+        EcSigner {
+            kid: kid.to_string(),
+            pkcs8: pkcs8.as_ref().to_vec(),
+            public,
+        }
+    }
+
+    pub fn sign(&self, claims: &Value) -> String {
+        let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256);
+        header.kid = Some(self.kid.clone());
+        jsonwebtoken::encode(
+            &header,
+            claims,
+            &jsonwebtoken::EncodingKey::from_ec_der(&self.pkcs8),
+        )
+        .unwrap()
+    }
+
+    pub fn jwk(&self) -> Value {
+        let b64 = |b: &[u8]| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(b);
+        json!({
+            "kty": "EC",
+            "crv": "P-256",
+            "alg": "ES256",
+            "use": "sig",
+            "kid": self.kid,
+            "x": b64(&self.public[1..33]),
+            "y": b64(&self.public[33..65]),
+        })
+    }
+}
+
 struct Inner {
     issuer: String,
     signer: Signer,
+    extra_keys: Vec<Value>,
     offline_access: bool,
+    keys_down: bool,
     key_fetches: usize,
     answer: (StatusCode, Value),
     per_refresh: HashMap<String, (StatusCode, Value)>,
@@ -85,10 +136,15 @@ async fn discovery(State(idp): State<FakeIdp>) -> Json<Value> {
     }))
 }
 
-async fn jwks(State(idp): State<FakeIdp>) -> Json<Value> {
+async fn jwks(State(idp): State<FakeIdp>) -> impl IntoResponse {
     let mut inner = idp.0.lock().unwrap();
     inner.key_fetches += 1;
-    Json(json!({ "keys": [inner.signer.jwk()] }))
+    if inner.keys_down {
+        return (StatusCode::SERVICE_UNAVAILABLE, Json(json!({})));
+    }
+    let mut keys = vec![inner.signer.jwk()];
+    keys.extend(inner.extra_keys.iter().cloned());
+    (StatusCode::OK, Json(json!({ "keys": keys })))
 }
 
 async fn token(
@@ -110,7 +166,9 @@ impl FakeIdp {
         let idp = FakeIdp(Arc::new(Mutex::new(Inner {
             issuer: format!("http://{}", listener.local_addr().unwrap()),
             signer: Signer::generate("key-1"),
+            extra_keys: Vec::new(),
             offline_access: true,
+            keys_down: false,
             key_fetches: 0,
             answer: (StatusCode::SERVICE_UNAVAILABLE, json!({})),
             per_refresh: HashMap::new(),
@@ -159,6 +217,14 @@ impl FakeIdp {
 
     pub fn without_offline_access(&self) {
         self.0.lock().unwrap().offline_access = false;
+    }
+
+    pub fn keys_down(&self, down: bool) {
+        self.0.lock().unwrap().keys_down = down;
+    }
+
+    pub fn publish_extra(&self, jwk: Value) {
+        self.0.lock().unwrap().extra_keys.push(jwk);
     }
 
     pub fn requests(&self) -> Vec<HashMap<String, String>> {

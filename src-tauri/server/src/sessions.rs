@@ -152,7 +152,8 @@ impl Sessions {
         let id = self.insert(&token, DEVICE, person, Some(name), now);
         let _ = self.conn().execute(
             "DELETE FROM grants WHERE kind = ?1 AND sub = ?2 AND id NOT IN (
-               SELECT id FROM grants WHERE kind = ?1 AND sub = ?2 ORDER BY last_seen DESC, signed_in_at DESC LIMIT ?3)",
+               SELECT id FROM grants WHERE kind = ?1 AND sub = ?2
+               ORDER BY last_seen DESC, signed_in_at DESC, rowid DESC LIMIT ?3)",
             params![DEVICE, person.sub, DEVICES_PER_PERSON],
         );
         (id, token)
@@ -271,6 +272,62 @@ impl Sessions {
              ON CONFLICT(sub) DO UPDATE SET refresh = excluded.refresh, last_check = excluded.last_check",
             params![sub, sealed, now],
         );
+    }
+
+    pub fn signed_in(&self, sub: &str, sealed: Option<&[u8]>, now: i64) {
+        match sealed {
+            Some(_) => self.set_refresh(sub, sealed, now),
+            None => {
+                let _ = self.conn().execute(
+                    "INSERT OR IGNORE INTO persons (sub, refresh, last_check) VALUES (?1, NULL, ?2)",
+                    params![sub, now],
+                );
+            }
+        }
+    }
+
+    pub fn replace_refresh(
+        &self,
+        sub: &str,
+        expected: &[u8],
+        sealed: Option<&[u8]>,
+        now: i64,
+    ) -> bool {
+        self.conn()
+            .execute(
+                "UPDATE persons SET refresh = ?3, last_check = ?4 WHERE sub = ?1 AND refresh = ?2",
+                params![sub, expected, sealed, now],
+            )
+            .map(|n| n > 0)
+            .unwrap_or(false)
+    }
+
+    pub fn refuse(
+        &self,
+        sub: &str,
+        expected: &[u8],
+        signed_in_before: i64,
+        now: i64,
+    ) -> Option<usize> {
+        let mut conn = self.conn();
+        let tx = conn.transaction().ok()?;
+        let cleared = tx
+            .execute(
+                "UPDATE persons SET refresh = NULL, last_check = ?3 WHERE sub = ?1 AND refresh = ?2",
+                params![sub, expected, now],
+            )
+            .ok()?;
+        if cleared == 0 {
+            return None;
+        }
+        let revoked = tx
+            .execute(
+                "DELETE FROM grants WHERE sub = ?1 AND signed_in_at < ?2",
+                params![sub, signed_in_before],
+            )
+            .ok()?;
+        tx.commit().ok()?;
+        Some(revoked)
     }
 
     pub fn mark_checked(&self, sub: &str, now: i64) {
@@ -396,7 +453,52 @@ mod tests {
         assert!(s.session(&token, 13 * day).is_some());
         assert!(s.session(&token, 26 * day).is_some());
         assert!(s.session(&token, 41 * day).is_none());
-        assert!(s.session(&token, 27 * day).is_none());
+        let unused = s.create_session(&person("a"), None, 0);
+        assert!(s.session(&unused, 14 * day - 1).is_some());
+        let idle = s.create_session(&person("a"), None, 0);
+        assert!(s.session(&idle, 14 * day).is_none());
+    }
+
+    #[test]
+    fn a_new_device_survives_the_trim_even_when_every_timestamp_ties() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = open(&dir);
+        s.set_refresh("a", Some(b"sealed"), 0);
+        for n in 0..100 {
+            s.create_device(&person("a"), &format!("d{n}"), 5);
+        }
+        let (_, newest) = s.create_device(&person("a"), "newest", 5);
+        assert!(s.device(&newest, 6).is_some());
+        assert_eq!(s.list("a").len(), 100);
+    }
+
+    #[test]
+    fn a_sign_in_without_a_refresh_token_keeps_the_one_already_stored() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = open(&dir);
+        s.signed_in("a", Some(b"first"), 0);
+        s.create_session(&person("a"), None, 0);
+        s.signed_in("a", None, 10);
+        let (_, sealed) = s.due_checks(4000).pop().unwrap();
+        assert_eq!(sealed, b"first");
+        s.signed_in("b", None, 0);
+        assert!(s.due_checks(4000).iter().all(|(sub, _)| sub != "b"));
+    }
+
+    #[test]
+    fn a_refusal_read_before_a_fresh_sign_in_changes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = open(&dir);
+        s.signed_in("a", Some(b"old"), 0);
+        let (_, old_device) = s.create_device(&person("a"), "Old", 0);
+        s.signed_in("a", Some(b"new"), 100);
+        let (_, new_device) = s.create_device(&person("a"), "New", 100);
+        assert_eq!(s.refuse("a", b"old", 50, 200), None);
+        assert!(s.device(&old_device, 201).is_some());
+        assert_eq!(s.refuse("a", b"new", 50, 200), Some(1));
+        assert!(s.device(&old_device, 201).is_none());
+        assert!(s.device(&new_device, 201).is_some());
+        assert!(!s.replace_refresh("a", b"new", Some(b"newer"), 300));
     }
 
     #[test]
