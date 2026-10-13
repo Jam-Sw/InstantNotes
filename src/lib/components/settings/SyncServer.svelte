@@ -97,6 +97,13 @@
     if (reachable) void loadDevices();
   });
 
+  let asked = false;
+  $effect(() => {
+    if (stage !== "needsKey" || status?.message || asked) return;
+    asked = true;
+    void act(startSyncJoin, "Couldn't ask for approval");
+  });
+
   async function signIn(to: string, withEncryption: boolean) {
     failure = "";
     cancelling = false;
@@ -300,6 +307,33 @@
   });
 </script>
 
+{#snippet recoveryForm()}
+  <form
+    class="key-form"
+    onsubmit={(e) => {
+      e.preventDefault();
+      void useRecoveryKey();
+    }}
+  >
+    <label class="field-label" for="sync-recovery-key">Recovery key</label>
+    <div class="key-row">
+      <input
+        id="sync-recovery-key"
+        class="text-field key-field"
+        type="text"
+        spellcheck="false"
+        autocomplete="off"
+        placeholder="AGE-SECRET-KEY-1…"
+        bind:value={recoveryText}
+      />
+      <button class="card-btn" type="submit" disabled={busy || !recoveryText.trim()}>Use recovery key</button>
+    </div>
+  </form>
+  {#if failure}
+    <p class="failure" role="alert">{failure}</p>
+  {/if}
+{/snippet}
+
 {#if status && stage === "off" && isWeb}
   <div class="vault-card step">
     <p class="lead">This server has no library yet.</p>
@@ -393,30 +427,7 @@
         Approve on another device
       </button>
     </div>
-    <form
-      class="key-form"
-      onsubmit={(e) => {
-        e.preventDefault();
-        void useRecoveryKey();
-      }}
-    >
-      <label class="field-label" for="sync-recovery-key">Recovery key</label>
-      <div class="key-row">
-        <input
-          id="sync-recovery-key"
-          class="text-field key-field"
-          type="text"
-          spellcheck="false"
-          autocomplete="off"
-          placeholder="AGE-SECRET-KEY-1…"
-          bind:value={recoveryText}
-        />
-        <button class="card-btn" type="submit" disabled={busy || !recoveryText.trim()}>Use recovery key</button>
-      </div>
-    </form>
-    {#if failure}
-      <p class="failure" role="alert">{failure}</p>
-    {/if}
+    {@render recoveryForm()}
   </div>
 {:else if stage === "joining" && status?.joinWords}
   <div class="vault-card step">
@@ -427,6 +438,7 @@
     </ol>
     <p class="lead">Check that the same six words show on the device you approve from.</p>
     <p class="detail"><span class="pulse" aria-hidden="true"></span>Waiting for approval</p>
+    {@render recoveryForm()}
   </div>
 {:else if stage === "confirmPlain"}
   <div class="vault-card step">

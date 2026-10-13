@@ -76,6 +76,7 @@ pub(crate) struct ServerLink {
     pub(crate) allow_removals: std::sync::atomic::AtomicBool,
     cancel: Mutex<Option<tokio::sync::watch::Sender<bool>>>,
     pending: Mutex<Option<PendingJoin>>,
+    join: Mutex<Option<String>>,
 }
 
 struct PendingJoin {
@@ -95,6 +96,21 @@ impl ServerLink {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone()
+    }
+
+    fn wait_for(&self, id: Option<String>) -> Option<String> {
+        std::mem::replace(
+            &mut *self.join.lock().unwrap_or_else(|e| e.into_inner()),
+            id,
+        )
+    }
+
+    fn waiting_for(&self, id: &str) -> bool {
+        self.join
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_deref()
+            == Some(id)
     }
 }
 
@@ -535,6 +551,7 @@ pub(crate) async fn start_sync_join(app: AppHandle) -> CmdResult<ServerStatus> {
         .request_join(&public, &device_name())
         .await
         .map_err(remote_error)?;
+    link(&app).wait_for(Some(id.clone()));
     link(&app).set(|s| {
         s.stage = "joining".into();
         s.join_words = Some(
@@ -550,7 +567,11 @@ pub(crate) async fn start_sync_join(app: AppHandle) -> CmdResult<ServerStatus> {
     let handle = app.clone();
     tauri::async_runtime::spawn(async move {
         for _ in 0..JOIN_ROUNDS {
-            match client.join_answer(&id, LONG_POLL).await {
+            let answer = client.join_answer(&id, LONG_POLL).await;
+            if !link(&handle).waiting_for(&id) {
+                return;
+            }
+            match answer {
                 Ok(JoinAnswer::Pending) => continue,
                 Ok(JoinAnswer::Approved { key }) => {
                     let outcome = join
@@ -583,6 +604,9 @@ pub(crate) async fn start_sync_join(app: AppHandle) -> CmdResult<ServerStatus> {
                 }
             }
         }
+        if link(&handle).waiting_for(&id) {
+            link(&handle).wait_for(None);
+        }
         let _ = handle.emit(events::VAULT_STATUS, ());
         request_vault_sync(&handle);
     });
@@ -593,7 +617,8 @@ pub(crate) async fn start_sync_join(app: AppHandle) -> CmdResult<ServerStatus> {
 pub(crate) async fn enter_recovery_key(app: AppHandle, text: String) -> CmdResult<ServerStatus> {
     let settings = connected(&app)?;
     let key = LibraryKey::from_recovery(&text).map_err(|e| CmdError::validation(e.to_string()))?;
-    let keys = client_for(&settings)?.keys().await.map_err(remote_error)?;
+    let client = client_for(&settings)?;
+    let keys = client.keys().await.map_err(remote_error)?;
     if keys.recipient.as_deref() != Some(key.recipient().as_str()) {
         return Err(CmdError::validation(
             "this recovery key belongs to another library",
@@ -601,9 +626,14 @@ pub(crate) async fn enter_recovery_key(app: AppHandle, text: String) -> CmdResul
     }
     keychain_set(&settings, "key", &key.recovery()).map_err(CmdError::storage)?;
     set_mode(&app, ENCRYPTED)?;
+    if let Some(id) = link(&app).wait_for(None) {
+        let _ = client.answer_join(&id, None).await;
+    }
     link(&app).set(|s| {
         s.stage = "syncing".into();
         s.message = None;
+        s.join_words = None;
+        s.join_key = None;
     });
     let _ = app.emit(events::VAULT_STATUS, ());
     request_vault_sync(&app);
@@ -817,6 +847,18 @@ pub(crate) struct ServerEngine {
     pub settings: ServerSettings,
 }
 
+fn unkeyed_stage(server_mode: Option<&str>) -> Option<&'static str> {
+    match server_mode {
+        Some(ENCRYPTED) => Some("needsKey"),
+        Some(_) => Some("confirmPlain"),
+        None => None,
+    }
+}
+
+fn has_new(ids: &[String], shown: &[String]) -> bool {
+    ids.iter().any(|id| !shown.contains(id))
+}
+
 pub(crate) fn build_engine(app: &AppHandle) -> Option<ServerEngine> {
     let state = app.try_state::<AppState>()?;
     let settings = {
@@ -833,7 +875,19 @@ pub(crate) fn build_engine(app: &AppHandle) -> Option<ServerEngine> {
     ) {
         return None;
     }
-    let mode = settings.mode.clone()?;
+    let Some(mode) = settings.mode.clone() else {
+        let server_mode = connection(&settings)
+            .ok()
+            .and_then(|r| tauri::async_runtime::block_on(r.client.keys()).ok())
+            .and_then(|keys| keys.mode);
+        if let Some(stage) = unkeyed_stage(server_mode.as_deref()) {
+            link(app).set(|s| {
+                s.stage = stage.into();
+                s.encrypted = stage == "needsKey";
+            });
+        }
+        return None;
+    };
     let remote = match connection(&settings) {
         Ok(r) => r,
         Err(e) => {
@@ -1094,6 +1148,9 @@ pub(crate) fn watch_server(
                 Ok(joins) => {
                     let ids: Vec<String> = joins.iter().map(|j| j.id.clone()).collect();
                     if ids != shown {
+                        if has_new(&ids, &shown) {
+                            crate::shell::windows::show_library_window(&app);
+                        }
                         let _ =
                             app.emit(events::SYNC_JOIN_REQUESTS, join_requests(joins, &recipient));
                         shown = ids;
@@ -1148,4 +1205,36 @@ pub(crate) fn undo_merge_combine(
 #[tauri::command]
 pub(crate) fn clear_merge_review(state: State<'_, AppState>) -> CmdResult<()> {
     Ok(locked(&state)?.clear_review()?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_device_with_no_key_after_a_restart_waits_for_approval_or_asks_about_a_plain_server() {
+        assert_eq!(unkeyed_stage(Some(ENCRYPTED)), Some("needsKey"));
+        assert_eq!(unkeyed_stage(Some(PLAIN)), Some("confirmPlain"));
+        assert_eq!(unkeyed_stage(None), None);
+    }
+
+    #[test]
+    fn a_recovery_key_entered_while_waiting_ends_the_wait_for_approval() {
+        let link = ServerLink::default();
+        assert_eq!(link.wait_for(Some("r1".into())), None);
+        assert!(link.waiting_for("r1"));
+        assert_eq!(link.wait_for(None).as_deref(), Some("r1"));
+        assert!(!link.waiting_for("r1"));
+        link.wait_for(Some("r2".into()));
+        assert!(!link.waiting_for("r1"));
+    }
+
+    #[test]
+    fn only_a_request_not_shown_before_brings_the_window_forward() {
+        let ids = |list: &[&str]| list.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(has_new(&ids(&["a"]), &ids(&[])));
+        assert!(has_new(&ids(&["a", "b"]), &ids(&["a"])));
+        assert!(!has_new(&ids(&["a"]), &ids(&["a", "b"])));
+        assert!(!has_new(&ids(&[]), &ids(&["a"])));
+    }
 }

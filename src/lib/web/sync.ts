@@ -61,6 +61,7 @@ let again = false;
 let allowRemovals = false;
 let starting: Promise<void> | null = null;
 let legacyWaitUntil = 0;
+let joining: string | null = null;
 
 function changed(): void {
   emit("vault:status");
@@ -355,6 +356,7 @@ async function waitForApproval(id: string, recipient: string): Promise<void> {
     try {
       answer = await api<JoinWait>(`keys/requests/${id}?wait=${WAIT_SECONDS}`, {}, WAIT_SECONDS);
     } catch (e) {
+      if (joining !== id) return;
       if ((e as Failure).status !== 404) {
         await pause(RETRY_MS);
         continue;
@@ -365,7 +367,9 @@ async function waitForApproval(id: string, recipient: string): Promise<void> {
       changed();
       return;
     }
+    if (joining !== id) return;
     if (answer.state === "pending") continue;
+    joining = null;
     status.joinWords = null;
     status.joinKey = null;
     if (answer.state === "approved" && answer.key) {
@@ -471,6 +475,7 @@ export const syncCommands: Record<string, (args: Record<string, unknown>) => Pro
       method: "POST",
       body: JSON.stringify({ publicKey, deviceName: browserName() }),
     });
+    joining = id;
     status.stage = "joining";
     status.joinWords = await run<string[]>("words", publicKey, recipient);
     status.joinKey = publicKey;
@@ -486,8 +491,13 @@ export const syncCommands: Record<string, (args: Record<string, unknown>) => Pro
       throw { code: "VALIDATION_ERROR", message: "this recovery key belongs to another library" };
     }
     await setKey(recovery);
+    const waiting = joining;
+    joining = null;
+    if (waiting) await api(`keys/requests/${waiting}/deny`, { method: "POST", body: "{}" }).catch(() => null);
     status.stage = "syncing";
     status.message = null;
+    status.joinWords = null;
+    status.joinKey = null;
     changed();
     void syncNow();
     return { ...status };

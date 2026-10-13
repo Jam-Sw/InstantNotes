@@ -406,8 +406,8 @@ reserved and refused.
 | `connect_sync_server` | `{ address, encrypt }`: signs in through the system browser (loopback, PKCE), keeps the device token in the keychain; the first device makes the library key. |
 | `confirm_sync_join` | `{ combine }`: answers the "combine with the server's library?" stage. |
 | `cancel_sync_sign_in`, `disconnect_sync_server` | Stop a sign-in; leave Sync server (revokes this device, deletes its token and key). |
-| `confirm_recovery_saved`, `show_recovery_key`, `enter_recovery_key` | The recovery key: after saving it, shown again, or typed in (checked against the library's recipient). |
-| `start_sync_join`, `list_sync_join_requests`, `answer_sync_join` | Joining: request the key with six words; list and answer other devices' requests (`{ id, publicKey, approve }`). |
+| `confirm_recovery_saved`, `show_recovery_key`, `enter_recovery_key` | The recovery key: after saving it, shown again, or typed in (checked against the library's recipient; while this device waits for approval, it withdraws the request). |
+| `start_sync_join`, `list_sync_join_requests`, `answer_sync_join` | Joining: request the key with six words; list and answer other devices' requests (`{ id, publicKey, approve }`). The Sync page calls `start_sync_join` by itself when the stage is `needsKey`; a desktop that has the key brings its library window forward when a request it has not shown arrives. |
 | `accept_plain_server` | Sync with a server whose library is unencrypted. |
 | `list_sync_devices`, `revoke_sync_device` | `{ id }`, or `null` to sign out everywhere. |
 | `set_sync_encryption` | `{ on }`: switches the library over on the server. |

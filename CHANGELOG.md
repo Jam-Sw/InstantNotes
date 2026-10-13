@@ -42,6 +42,13 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `attachments/`; the worker's `export_archive()`; the page downloads `InstantNotes-<date>.zip`.
 - Server image: OCI labels (`title`, `description`, `source`, `url`, `documentation`, `licenses`, `vendor`;
   `version`, `revision`, `created` set by the release job), so the GHCR package page links the repository.
+### Fixed
+- Sync: a device that needs the library key asks for approval as soon as the Sync page shows, with the six
+  words on screen, instead of waiting for "Approve on another device" (desktop and web).
+- Sync: an approval request brings the library window forward on a device that has the key, so it no
+  longer waits unseen in a window closed to the tray.
+- Sync: after a restart while waiting for approval, the Sync page asks again instead of staying blank.
+- Sync: the recovery key can be typed while waiting for approval; it withdraws the request.
 
 ## [0.10.0] - 2026-10-12
 ### Added

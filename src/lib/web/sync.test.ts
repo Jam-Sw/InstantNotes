@@ -165,6 +165,32 @@ describe("sync in the browser", () => {
     expect(keys.setKey).toHaveBeenCalledWith("AGE-SECRET-KEY-1", undefined);
   });
 
+  it("takes a recovery key while waiting, withdraws its request and ignores the late answer", async () => {
+    let recovered = false;
+    routes = (url, init) => {
+      if (url.endsWith("/sync/v1/keys")) return { recipient: "age1library" };
+      if (url.endsWith("/sync/v1/keys/requests") && init?.method === "POST") return { id: "join-1" };
+      if (url.includes("/keys/requests/join-1?")) return { state: recovered ? "denied" : "pending" };
+      if (url.endsWith("/legacy")) return new Response("", { status: 404 });
+      return undefined;
+    };
+    worker.join_start = () => "age1temporary";
+    worker.words = () => ["a", "b", "c", "d", "e", "f"];
+    worker.normalize_recovery = () => "AGE-SECRET-KEY-1";
+    worker.recipient_of = () => "age1library";
+    await sync.syncCommands.start_sync_join({});
+
+    await sync.syncCommands.enter_recovery_key({ text: "age-secret-key-1" });
+    recovered = true;
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(fetched).toContainEqual({ url: "/sync/v1/keys/requests/join-1/deny", method: "POST" });
+    const now = await status();
+    expect(now.stage).not.toBe("needsKey");
+    expect(now.message).toBeNull();
+    expect(now.joinWords).toBeNull();
+  });
+
   it("approves another device by sealing the key to its temporary key", async () => {
     keys.getKey.mockResolvedValue("AGE-SECRET-KEY-1");
     const posted: { url: string; body: unknown }[] = [];

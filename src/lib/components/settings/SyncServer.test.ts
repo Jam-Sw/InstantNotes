@@ -240,26 +240,40 @@ describe("SyncServer setting up", () => {
     expect(confirmRecoverySaved).toHaveBeenCalled();
   });
 
-  it("asks another device to approve this one", async () => {
+  it("asks another device to approve this one as soon as it needs the key", async () => {
     vi.mocked(startSyncJoin).mockResolvedValue(
       at("joining", { joinWords: ["apple", "river", "seven", "lamp", "north", "cedar"] }),
     );
-    const { findByText, getByRole, findAllByRole } = showing(at("needsKey"));
+    const { findByRole } = showing(at("needsKey"));
 
-    expect(await findByText("Approve this device on one you already use, or enter your recovery key.")).toBeTruthy();
-    await fireEvent.click(getByRole("button", { name: "Approve on another device" }));
-
-    expect(startSyncJoin).toHaveBeenCalled();
-    const words = (await findAllByRole("listitem")).map((li) => li.textContent);
+    const words = [...(await findByRole("list", { name: "Six words" })).querySelectorAll("li")].map(
+      (li) => li.textContent,
+    );
+    expect(startSyncJoin).toHaveBeenCalledTimes(1);
     expect(words).toEqual(["1apple", "2river", "3seven", "4lamp", "5north", "6cedar"]);
   });
 
-  it("takes the recovery key instead and shows a refusal", async () => {
+  it("asks again only when told to after a refusal", async () => {
+    vi.mocked(startSyncJoin).mockResolvedValue(
+      at("joining", { joinWords: ["apple", "river", "seven", "lamp", "north", "cedar"] }),
+    );
+    const { findByRole } = showing(at("needsKey", { message: "The request was not approved." }));
+
+    const again = await findByRole("button", { name: "Approve on another device" });
+    expect(startSyncJoin).not.toHaveBeenCalled();
+    await fireEvent.click(again);
+
+    expect(startSyncJoin).toHaveBeenCalledTimes(1);
+  });
+
+  it("takes the recovery key while waiting and shows a refusal", async () => {
     vi.mocked(enterRecoveryKey).mockRejectedValue({
       code: "VALIDATION_ERROR",
       message: "this recovery key belongs to another library",
     });
-    const { findByRole, getByRole, findByText } = showing(at("needsKey"));
+    const { findByRole, getByRole, findByText } = showing(
+      at("joining", { joinWords: ["apple", "river", "seven", "lamp", "north", "cedar"] }),
+    );
 
     await fireEvent.input(await findByRole("textbox", { name: "Recovery key" }), {
       target: { value: ` ${KEY} ` },
