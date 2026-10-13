@@ -299,6 +299,7 @@ impl Sessions {
 pub struct PendingLogin {
     pub verifier: String,
     pub nonce: String,
+    pub after: Option<String>,
     started: Instant,
 }
 
@@ -308,7 +309,7 @@ pub struct Logins {
 }
 
 impl Logins {
-    pub fn begin(&self) -> (String, String, String) {
+    pub fn begin(&self, after: Option<String>) -> (String, String, String) {
         let state = random_token();
         let verifier = random_token();
         let nonce = random_token();
@@ -320,6 +321,7 @@ impl Logins {
             PendingLogin {
                 verifier: verifier.clone(),
                 nonce: nonce.clone(),
+                after,
                 started: now,
             },
         );

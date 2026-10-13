@@ -198,16 +198,39 @@ pub fn signed_in(sizes: &[usize]) -> String {
         .replacen("</body>", SIGNED_IN_SCRIPT, 1)
 }
 
-pub fn error_page(message: &str) -> String {
-    let safe: String = message
-        .chars()
+pub fn escape(text: &str) -> String {
+    text.chars()
         .map(|c| match c {
             '<' => "&lt;".to_string(),
             '>' => "&gt;".to_string(),
             '&' => "&amp;".to_string(),
+            '"' => "&quot;".to_string(),
+            '\'' => "&#39;".to_string(),
             c => c.to_string(),
         })
-        .collect();
+        .collect()
+}
+
+const PAGE_STYLE: &str = ":root{color-scheme:light dark;font-family:system-ui,sans-serif}body{margin:0;min-height:100vh;display:grid;place-items:center}main{text-align:center;padding:2rem;max-width:28rem}button{font:inherit;padding:.6rem 1.4rem;margin:.3rem;border-radius:.5rem;border:1px solid currentColor;background:none;color:inherit;cursor:pointer}button.primary{background:#2f6fde;border-color:#2f6fde;color:#fff}";
+
+pub fn device_confirm(device: &str, person: &str, request: &str, csrf: &str) -> String {
+    let (device, person, request, csrf) = (
+        escape(device),
+        escape(person),
+        escape(request),
+        escape(csrf),
+    );
+    format!(
+        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>InstantNotes</title>
+<style>{PAGE_STYLE}</style></head>
+<body><main><h1>Allow this device?</h1><p>Allow <strong>{device}</strong> to sync your library as <strong>{person}</strong>?</p>
+<form method="post" action="/sync/v1/device/allow"><input type="hidden" name="request" value="{request}"><input type="hidden" name="csrf" value="{csrf}">
+<button class="primary" name="decision" value="allow">Allow</button><button name="decision" value="deny">Cancel</button></form></main></body></html>"#
+    )
+}
+
+pub fn error_page(message: &str) -> String {
+    let safe = escape(message);
     format!(
         r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>InstantNotes</title>
 <style>:root{{color-scheme:light dark;font-family:system-ui,sans-serif}}body{{margin:0;min-height:100vh;display:grid;place-items:center}}main{{text-align:center;padding:2rem}}</style></head>

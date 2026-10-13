@@ -1,5 +1,6 @@
 mod api;
 mod config;
+mod device;
 mod events;
 #[cfg(test)]
 mod fake_idp;
@@ -74,6 +75,7 @@ pub struct Inner {
     oidc: Arc<Oidc>,
     recheck: Recheck,
     stores: Stores,
+    devices: device::Devices,
 }
 
 #[derive(Clone)]
@@ -110,6 +112,7 @@ impl AppState {
             oidc: Arc::new(oidc),
             recheck: Recheck::new(&config.oidc_client_secret),
             stores: Stores::new(&config.data_dir),
+            devices: device::Devices::default(),
             config,
         })))
     }
@@ -288,6 +291,7 @@ pub fn app(state: AppState) -> IntoMakeServiceWithConnectInfo<Router, SocketAddr
 pub fn router(state: AppState) -> Router {
     Router::new()
         .merge(sync_api::routes())
+        .merge(device::routes())
         .route("/healthz", get(healthz))
         .route("/auth/login", get(login))
         .route("/auth/callback", get(callback))
@@ -382,15 +386,21 @@ fn cookie(state: &AppState, value: &str, max_age: Option<Duration>) -> HeaderVal
     HeaderValue::from_str(&cookie).expect("cookie header")
 }
 
+#[derive(Deserialize)]
+struct LoginQuery {
+    device: Option<String>,
+}
+
 async fn login(
     State(state): State<AppState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
+    Query(q): Query<LoginQuery>,
 ) -> Response {
     if let Some(limited) = sign_in_limited(&state, peer, &headers) {
         return limited;
     }
-    match state.oidc.begin(&state.logins).await {
+    match state.oidc.begin(&state.logins, q.device).await {
         Ok(url) => Redirect::to(&url).into_response(),
         Err(e) => {
             log("auth.login.failed", &[("reason", &e)]);
@@ -443,6 +453,19 @@ async fn callback(
             state
                 .sessions
                 .set_refresh(&person.sub, sealed.as_deref(), sessions::now_secs());
+            if let Some(device) = signed_in.after {
+                let id = state.sessions.create(person);
+                let mut response = Redirect::to(&format!(
+                    "/sync/v1/device/confirm?request={}",
+                    oidc::encode(&device)
+                ))
+                .into_response();
+                response.headers_mut().insert(
+                    header::SET_COOKIE,
+                    cookie(&state, &id, Some(state.sessions.ttl())),
+                );
+                return response;
+            }
             let sizes = note_sizes(&state, &person.sub);
             let id = state.sessions.create(person);
             let mut response = statics::html(StatusCode::OK, statics::signed_in(&sizes));

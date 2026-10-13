@@ -34,6 +34,7 @@ pub struct Discovery {
 pub struct SignedIn {
     pub person: Person,
     pub refresh_token: Option<String>,
+    pub after: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -105,7 +106,7 @@ fn b64url(bytes: &[u8]) -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
 }
 
-fn encode(value: &str) -> String {
+pub(crate) fn encode(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for b in value.bytes() {
         match b {
@@ -262,9 +263,9 @@ impl Oidc {
         Ok(claims)
     }
 
-    pub async fn begin(&self, logins: &Logins) -> Result<String, String> {
+    pub async fn begin(&self, logins: &Logins, after: Option<String>) -> Result<String, String> {
         let discovery = self.discover().await?;
-        let (state, verifier, nonce) = logins.begin();
+        let (state, verifier, nonce) = logins.begin(after);
         let challenge = b64url(&Sha256::digest(verifier.as_bytes()));
         let scope = if discovery
             .scopes_supported
@@ -329,6 +330,7 @@ impl Oidc {
                 email: claims.email,
             },
             refresh_token: token.refresh_token,
+            after: pending.after,
         })
     }
 
@@ -433,7 +435,7 @@ mod tests {
 
     impl Run {
         async fn nonce_and_state(&self) -> (String, String) {
-            let url = self.oidc.begin(&self.logins).await.unwrap();
+            let url = self.oidc.begin(&self.logins, None).await.unwrap();
             let param = |name: &str| {
                 url.split(['?', '&'])
                     .find_map(|p| p.strip_prefix(&format!("{name}=")))
@@ -615,7 +617,7 @@ mod tests {
         let r = run().await;
         assert!(r
             .oidc
-            .begin(&r.logins)
+            .begin(&r.logins, None)
             .await
             .unwrap()
             .contains("offline_access"));
@@ -629,7 +631,7 @@ mod tests {
             "http://app/cb",
         );
         assert!(!oidc
-            .begin(&r.logins)
+            .begin(&r.logins, None)
             .await
             .unwrap()
             .contains("offline_access"));
@@ -644,6 +646,31 @@ mod tests {
             .answer_token(json!({ "id_token": id_token, "refresh_token": "r-1" }));
         let signed_in = r.oidc.finish(&r.logins, "code", &state).await.unwrap();
         assert_eq!(signed_in.refresh_token.as_deref(), Some("r-1"));
+        assert_eq!(signed_in.after, None);
+    }
+
+    #[tokio::test]
+    async fn a_device_sign_in_comes_back_to_its_request() {
+        let r = run().await;
+        let url = r
+            .oidc
+            .begin(&r.logins, Some("device-request".into()))
+            .await
+            .unwrap();
+        let param = |name: &str| {
+            url.split(['?', '&'])
+                .find_map(|p| p.strip_prefix(&format!("{name}=")))
+                .unwrap()
+                .to_string()
+        };
+        let id_token = r.idp.signer().sign(&r.claims(&param("nonce")));
+        r.idp.answer_token(json!({ "id_token": id_token }));
+        let signed_in = r
+            .oidc
+            .finish(&r.logins, "code", &param("state"))
+            .await
+            .unwrap();
+        assert_eq!(signed_in.after.as_deref(), Some("device-request"));
     }
 
     #[tokio::test]

@@ -14,7 +14,7 @@ path = "src/main.rs"
 
 [dependencies]
 instantnotes-core = { path = "../core" }
-axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "query"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "query", "form"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "fs", "signal"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "form"] }
@@ -34,4 +34,3 @@ tempfile = "3"
 [dev-dependencies]
 tempfile = "3"
 aws-lc-rs = "1"
-axum = { version = "0.8", default-features = false, features = ["form"] }
