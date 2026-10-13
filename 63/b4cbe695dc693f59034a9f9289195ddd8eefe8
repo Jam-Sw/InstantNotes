@@ -1,0 +1,23 @@
+src-tauri/core/src/store.rs
+  s_d65fa7209241f3::t_cf92c4d4b83c1a 15-18
+  s_d65fa7209241f3::t_e29544c044381d 477-479
+  s_d65fa7209241f3::t_6d827582c28658 276,280
+  s_d65fa7209241f3::t_8a3969298845fd 480-482
+  s_d65fa7209241f3::t_90a858fbade2b5 484
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "63b4cbe695dc693f59034a9f9289195ddd8eefe8",
+  "prompts": {},
+  "sessions": {
+    "s_d65fa7209241f3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7cb25860-ff50-4096-a250-5cb972fdc7dd",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
