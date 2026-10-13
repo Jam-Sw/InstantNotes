@@ -61,7 +61,7 @@ full paths in reports). Ships in 0.10.0: built on `feat/sync-server`, merged loc
 - [x] 5.4 `ServerSync::cycle` against `StoreLock` and a `Remote` trait: pull, decide, push, 409, rollback recovery (design §3)
 - [x] 5.5 Join (design §8.1): the sorting table; exact copies combined with the local copy to the Trash and an undo; likely-same detection (prefix, `similar` ratio at 0.9 over 200 characters, never title alone); `sync.mergeReview`; the legacy move (§8.2)
 - [x] 5.5a Encryption switch (design §4.10): plain objects when off; epochs; the switch-over in both directions, retried when the old epoch moved; other devices pausing for approval when turned on
-- [ ] 5.6 Target-only `uuid/js` and `chrono/wasmbind`; `cargo check --target wasm32-unknown-unknown` in `check.sh`
+- [x] 5.6 Target-only `uuid/js` and `chrono/wasmbind`; `cargo check --target wasm32-unknown-unknown` in `check.sh`
 - [x] 5.7 `core/tests/server_sync_test.rs` with an in-memory `Remote`: every case in design §13
 
 ## 6. Desktop (`src-tauri`)
@@ -102,7 +102,7 @@ full paths in reports). Ships in 0.10.0: built on `feat/sync-server`, merged loc
 - [x] `legacy` export and delete for 0.9.5 web libraries; the first device to sync moves them in (desktop and web)
 - [x] Sign-in page: the server's page hands off without reading notes (`note_sizes` removed; its decorative placeholder shapes stay)
 - [ ] The app drawing the sign-in background from the local copy: not built
-- [ ] Release image without the core's store at runtime; size checked
+- [ ] Release image without the core's store at runtime: the store stays while 0.9.5 libraries are moved out (§8.2); the image is 66.3 MB
 
 ## 9. Settings (`src/`)
 
@@ -119,22 +119,28 @@ full paths in reports). Ships in 0.10.0: built on `feat/sync-server`, merged loc
 
 ## 11. Docs
 
-- [ ] `README.md` "Self-hosted sync" (design §12), including the web-code line (§4.8) (written); the published hashes and how to compare them (open, with the release work)
-- [ ] `docs/API.md`, `docs/DATA_MODEL.md`
+- [x] `README.md` "Self-hosted sync" (design §12), including the web-code line (§4.8)
+- [ ] The published hashes of the web code and how to compare them: open, with the release work
+- [x] `docs/API.md`, `docs/DATA_MODEL.md`
 - [x] `CHANGELOG.md` `[0.10.0]`: Sync server entries beside folder sync; the `INSTANTNOTES_VAULT_ROOT` entry removed; the sign-in page entry corrected; a line that the web app is served to phones but not laid out for them yet (D8)
 - [x] `SEQUENCE.md`: this unit and its placement exception; unit 9 no longer "cuts 0.10.0" and unit 10 (git) no longer "cuts 0.11.0"; git's slot kept
 
 ## 12. Checks
 
-- [ ] `.claude/scripts/check.sh` green; `cargo xwin check --workspace --all-targets`; the WebAssembly check
-- [ ] Image builds; actionlint if a workflow changed
+- [x] `.claude/scripts/check.sh` green (945 vitest, 632 Rust tests, svelte-check, clippy, rustfmt, knip); `cargo xwin check --workspace --all-targets`; the WebAssembly check
+- [x] Image builds (no workflow changed)
 
-## In-app checks (open)
+## In-app checks
 
-- [ ] Two desktop builds and a computer browser on one throwaway server: a note made in each appears in the others (phones: no layout check, design D8)
-- [ ] One desktop offline: typing continues, edits arrive after reconnecting
-- [ ] One note edited on two devices while one is offline: both versions survive, one tagged `conflict`
-- [ ] A new device approved by six words; a new browser approved the same way; a device restored by recovery key
-- [ ] Encryption turned off and on again with a second device open: it carries on after off, asks for approval after on, and nothing is lost
-- [ ] Join: a desktop with an existing library joins a server holding another; asked first, exact copies once, likely pairs in Review merge, each choice checked, nothing lost
-- [ ] The computer browser offline after a first visit: opens, edits, syncs on reconnecting
+Run by `.claude/scripts/inapp-proof.sh`: two desktop test builds driven through their windows and commands, and the web app in Chrome, on a throwaway server image with Dex.
+
+- [x] Two desktop builds and a computer browser on one throwaway server: a note made in each appears in the others (phones: no layout check, design D8)
+- [x] One desktop offline: edits made while the server is stopped arrive after it is back
+- [x] One note edited on two devices while the server is stopped: both versions survive, one tagged `conflict`
+- [x] A new device approved by six words; a new browser approved the same way
+- [ ] A device restored by recovery key: covered by tests only
+- [ ] Encryption turned off and on again with a second device open: covered by `server_sync_test.rs` only
+- [x] Join: a desktop with notes joins a server holding another library; asked first (Combine), the exact copy kept once on both, its own notes reach the other device
+- [ ] Join: likely pairs in Review merge and each choice: covered by tests only
+- [x] The computer browser offline after a first visit: the app and its engine open with the server unreachable (`.claude/scripts/web-offline-check.mjs`)
+- [ ] The computer browser editing offline and syncing on reconnecting: not checked in the app
