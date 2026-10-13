@@ -1,0 +1,49 @@
+src-tauri/server/src/fake_idp.rs
+  s_d65fa7209241f3::t_d6e2e88025dbdf 86
+  s_d65fa7209241f3::t_36910cd2a1f09a 1-6,8-36,43-60,64-69,77-81,83-85,87-134,137
+  s_d65fa7209241f3::t_f878536b5a0364 37-42
+  s_d65fa7209241f3::t_8b101ac4b7578e 7
+  s_d65fa7209241f3::t_4fb761c09fde45 61-63,70-76,82
+  s_d65fa7209241f3::t_11302215461799 135-136
+  s_d65fa7209241f3::t_b7e66c036eb9dc 138-139
+src-tauri/server/src/oidc.rs
+  s_d65fa7209241f3::t_299524c9598927 241
+  s_d65fa7209241f3::t_bb6ab3f4d75bfb 240
+  s_d65fa7209241f3::t_e8cd62a6e9e8c6 243-245
+  s_d65fa7209241f3::t_3442c009bb91dc 70
+  s_d65fa7209241f3::t_76020a8509ef66 235-239
+  s_d65fa7209241f3::t_e90a88eccc0f0f 458-459
+  s_d65fa7209241f3::t_f878536b5a0364 193-194,202,212-215,324,345-351,382-385,388-389,392-395,426-430,444-449,460-463,465-471,478-480,497-512
+  s_d65fa7209241f3::t_0e3af635792249 3-4,7-22,28,32-37,46,56,59-60,76,78-80,102-106,109-121,143,167-192,195-201,203-211,216-232,242,314,318-319,322,327-344,352-381,386-387,390-391,396-425,431-443,450-457,464,472-477,481-496,513-516
+  s_d65fa7209241f3::t_0ffb3dab02594e 233-234,288,312-313,315-317,320-321,323,325-326
+src-tauri/Cargo.lock
+  s_ecb25a8230b32d::t_5316309d15d368 232,2081,2085,2322-2337,3322-3330,3504,3634,4009-4017,5105-5110,6104-6117
+src-tauri/server/Cargo.toml
+  s_ecb25a8230b32d::t_e033c33b2dd427 27,31
+src-tauri/server/src/lib.rs
+  s_d65fa7209241f3::t_012f821754ac35 4-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fa3b0255c1d2445d0dbacaf94af5f6fb15f52d04",
+  "prompts": {},
+  "sessions": {
+    "s_d65fa7209241f3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7cb25860-ff50-4096-a250-5cb972fdc7dd",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    },
+    "s_ecb25a8230b32d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "622b9b0c-62ee-4be3-ba16-e74511885d16",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
