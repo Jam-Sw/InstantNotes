@@ -379,6 +379,22 @@ shape. It removes the server's readable web library and
 checks in `changes/feat-sync-server/tasks.md` pass. A phone layout and native
 iOS and iPadOS apps are the next pre branch (design D8).
 
+## 13l. `feat-one-experience` (0.10.1, in flight)
+
+One cohesive experience across devices, on foundations built once: the rule
+that every action lives in Settings and the command palette (menus and the
+tray are shortcuts), the writing surface redrawn from the owner's reference,
+daily backups with restore and a Markdown export on every platform, local
+crash reports and Send diagnostics that leave the machine only by the
+person's hand, the server for operators (per-person folders, `usage`,
+`check`, arm64), signed installs from a release chain on hosted runners, the
+phone and tablet layouts, and the whiteboard with pen and touch and "open on
+another device". Adds settings keys and files beside the library and changes
+no note shape; placed here by the owner's instruction of 2026-10-13 to build
+it on `0.10.1-pre`, as 13c to 13k were. Native iOS, signing accounts and a
+hosted sync service wait for the owner (design D1 to D4). See
+`changes/feat-one-experience/`.
+
 ## 14. Local AI
 
 Needs embedding storage, so it cannot precede unit 10. Embeddings are a
