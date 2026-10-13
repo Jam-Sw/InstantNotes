@@ -1,0 +1,42 @@
+src-tauri/server/src/recheck.rs
+  s_d65fa7209241f3::t_f6eced058d2a11 360
+  s_d65fa7209241f3::t_689f6b9ee478c4 16
+  s_d65fa7209241f3::t_cd24b90f926e6a 72
+  s_d65fa7209241f3::t_fbf6b88041264b 361-386
+  s_d65fa7209241f3::t_9e3cb1f27f86b5 198-208,387
+openspec/changes/feat-sync-server/design.md
+  s_d65fa7209241f3::t_20737ea43a8181 490-496,523-526,532-538
+  s_ecb25a8230b32d::t_86a9d25d5b5f8a 539,760-762
+src-tauri/server/src/oidc.rs
+  s_d65fa7209241f3::t_ebb23e0be44fb5 800-805
+  s_d65fa7209241f3::t_241e3f52433e8a 444
+src-tauri/server/src/sessions.rs
+  s_d65fa7209241f3::t_689f6b9ee478c4 272-274,300-302,337-352
+  s_d65fa7209241f3::t_d3972b813c8435 34-36,353-357
+openspec/changes/feat-sync-server/tasks.md
+  s_ecb25a8230b32d::t_0d44dd376575dc 38,80,83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4b26124e90749218c29a1ac2120573c04b95be07",
+  "prompts": {},
+  "sessions": {
+    "s_d65fa7209241f3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7cb25860-ff50-4096-a250-5cb972fdc7dd",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    },
+    "s_ecb25a8230b32d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "622b9b0c-62ee-4be3-ba16-e74511885d16",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
