@@ -13,6 +13,7 @@ use std::collections::{HashMap, HashSet};
 pub type LegacyNotes = Vec<(String, Option<String>)>;
 
 pub const SYNC_STATE_SETTING: &str = "sync.state";
+pub const SERVER_SETTING: &str = "vault.server";
 pub const MERGE_REVIEW_SETTING: &str = "sync.mergeReview";
 const LIKELY_MIN_CHARS: usize = 200;
 const PREFIX_MIN_CHARS: usize = 20;
@@ -191,6 +192,14 @@ impl Store {
             params![SYNC_STATE_SETTING, MANIFEST_BASE_SETTING],
         )?;
         tx.commit()?;
+        Ok(())
+    }
+
+    pub fn detach_sync(&mut self) -> Result<()> {
+        self.configure_vault(None)?;
+        self.end_server_sync()?;
+        self.delete_setting(SERVER_SETTING)?;
+        self.delete_setting(super::vault::TRANSPORT_SETTING)?;
         Ok(())
     }
 

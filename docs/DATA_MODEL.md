@@ -144,7 +144,8 @@ preferences. Reads are best-effort: a missing or malformed value falls back to
 the code default. The editor keeps `editor.zoom`, `editor.showExactTime`,
 `editor.toolbarOpen` (the formatting toolbar's visibility, default true; a
 stored false is kept) and `editor.sourceMode` (the Markdown marks shown,
-default false); the two are independent since 0.10.1.
+default false); the two are independent since 0.10.1. `backups.automatic`
+(default true) is whether the daily backup runs (§12).
 
 `stickies` holds which notes are popped out as sticky windows on this device,
 as a map from note id to `{ x, y, width, height, level, collapsed }` in
@@ -337,3 +338,31 @@ Space that has since gone), or trashes the created note; it sets
 `reverted_at` on the row and inserts a `revert` row of its own carrying the
 state it replaced. Reads carry no snapshot. The table keeps the newest 2000
 rows; older ones are pruned on insert. Clearing it never touches a note.
+
+## 12. Files beside the library
+
+The library is `instantnotes.db` in the app data folder, with its `-wal` and
+`-shm` companions while open. Beside it:
+
+- `attachments/`: image files on the desktop (API.md §8).
+- `backups/instantnotes-<YYYYMMDD>-<HHMMSS>.db`: consistent snapshots made
+  with `VACUUM INTO`, daily by default and on request, pruned by the keep
+  rule in API.md §12.5. A snapshot holds everything in the database: notes,
+  tags, Spaces, settings and the sync bases; desktop images are not in it.
+- `backups/instantnotes-<stamp>-before-restore.db`: the library as it was
+  just before a restore, a normal backup under the same rule.
+- `backups/pending-restore.db` and `instantnotes.db.restore`: a restore in
+  flight. The marker holds the pending file's path. At launch, before the
+  store opens, `core::backup::apply_pending_restore` verifies the pending
+  file (read-only open, `quick_check`, `user_version` at most this build's,
+  a `notes` table), snapshots the current library, removes `-wal` and
+  `-shm`, moves the pending file into place and deletes the marker. On any
+  failure the current library is untouched and the marker is still deleted,
+  so the app cannot loop. After a restore `Store::detach_sync` runs: the
+  vault folder and server settings (`vault.transport`, `vault.server`,
+  `sync.state`) are cleared and the keychain entries deleted, so the next
+  sync set-up is a fresh join.
+- `instantnotes.db.backup-v<n>`: the pre-migration copies of 0.9.x (§9),
+  outside `backups/` and never pruned.
+- `instantnotes.db.corrupt`, `.session`, `.last_version`: recovery and
+  housekeeping markers (§9, API.md §9).

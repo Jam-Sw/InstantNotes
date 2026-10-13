@@ -1,4 +1,5 @@
 pub(crate) mod agents;
+pub(crate) mod backups;
 pub(crate) mod capture;
 pub(crate) mod files;
 pub(crate) mod menu;

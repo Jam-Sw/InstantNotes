@@ -59,7 +59,12 @@ const stores = vi.hoisted(() => ({
   },
   licenseSpace: { locked: false },
   exportSelectedNote: vi.fn(async () => {}),
-  client: { openDataFolder: vi.fn(), openUrl: vi.fn(), requestQuit: vi.fn() },
+  client: { backupNow: vi.fn(async () => ({})), openDataFolder: vi.fn(), openUrl: vi.fn(), requestQuit: vi.fn() },
+  vaultExport: {
+    exportArchiveDownload: vi.fn(async () => ({ ok: true as const })),
+    exportVaultToFolder: vi.fn(async () => ({ ok: true as const })),
+  },
+  toasts: { show: vi.fn() },
 }));
 
 vi.mock("$lib/stores/library.svelte", () => ({ library: stores.library }));
@@ -80,6 +85,8 @@ vi.mock("$lib/stores/updater.svelte", () => ({ updater: stores.updater }));
 vi.mock("$lib/stores/license-space.svelte", () => ({ licenseSpace: stores.licenseSpace }));
 vi.mock("$lib/note-export", () => ({ exportSelectedNote: stores.exportSelectedNote }));
 vi.mock("$lib/api/client", () => stores.client);
+vi.mock("$lib/vault-export", () => stores.vaultExport);
+vi.mock("$lib/stores/toasts.svelte", () => ({ toasts: stores.toasts }));
 
 import { readFileSync } from "node:fs";
 import { buildCommands, runCommand, type Command } from "./commands";
@@ -326,6 +333,9 @@ describe("the commands every surface shares", () => {
       "app.openChangelog",
       "app.openDataFolder",
       "app.quit",
+      "data.backups",
+      "data.export",
+      "data.backupNow",
     ]) {
       expect(got).toContain(id);
     }
@@ -355,6 +365,24 @@ describe("the commands every surface shares", () => {
     expect(stores.client.openDataFolder).toHaveBeenCalledOnce();
     void find(commands, "app.quit").run();
     expect(stores.client.requestQuit).toHaveBeenCalledOnce();
+    void find(commands, "data.backups").run();
+    expect(stores.shell.openSettings).toHaveBeenCalledWith("backups");
+    await find(commands, "data.export").run();
+    expect(stores.vaultExport.exportVaultToFolder).toHaveBeenCalledOnce();
+    expect(stores.toasts.show).toHaveBeenLastCalledWith(expect.stringContaining("Exported."));
+    await find(commands, "data.backupNow").run();
+    expect(stores.client.backupNow).toHaveBeenCalledOnce();
+    expect(stores.toasts.show).toHaveBeenLastCalledWith(expect.stringContaining("Backed up."));
+  });
+
+  it("reports an export that was refused and says nothing about one that was cancelled", async () => {
+    const commands = buildCommands();
+    stores.vaultExport.exportVaultToFolder.mockResolvedValueOnce({ cancelled: true } as never);
+    await find(commands, "data.export").run();
+    expect(stores.toasts.show).not.toHaveBeenCalled();
+    stores.vaultExport.exportVaultToFolder.mockResolvedValueOnce({ ok: false, error: "disk full" } as never);
+    await find(commands, "data.export").run();
+    expect(stores.toasts.show).toHaveBeenCalledWith(expect.stringContaining("disk full"));
   });
 
   it("names the toolbar and source commands for what they will do", () => {

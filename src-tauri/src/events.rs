@@ -12,3 +12,4 @@ pub const STICKY_CLOSE_REQUESTED: &str = "sticky:close-requested";
 pub const LIBRARY_EXTERNAL_CHANGE: &str = "library:external-change";
 pub const AGENT_SESSIONS: &str = "agents:sessions";
 pub const SYNC_JOIN_REQUESTS: &str = "sync:join-requests";
+pub const BACKUPS_CHANGED: &str = "backups:changed";

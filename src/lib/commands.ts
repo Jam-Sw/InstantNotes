@@ -11,13 +11,21 @@ import { editorPrefs } from "$lib/stores/editor.svelte";
 import { updater } from "$lib/stores/updater.svelte";
 import { licenseSpace } from "$lib/stores/license-space.svelte";
 import { exportSelectedNote } from "$lib/note-export";
-import { openDataFolder, openUrl, requestQuit } from "$lib/api/client";
+import { backupNow, openDataFolder, openUrl, requestQuit } from "$lib/api/client";
+import { exportArchiveDownload, exportVaultToFolder } from "$lib/vault-export";
+import { toasts } from "$lib/stores/toasts.svelte";
 import { modKey, shiftKey } from "$lib/platform";
 import { isWeb } from "$lib/api/runtime";
 import { isSyntheticNoteId } from "$lib/synthetic";
 import { findCommand, type Command } from "$lib/command-filter";
 
 const REPO_URL = "https://github.com/Jam-Sw/InstantNotes";
+
+async function runExport(): Promise<void> {
+  const result = isWeb ? await exportArchiveDownload() : await exportVaultToFolder();
+  if ("error" in result) toasts.show(`Couldn't export. ${result.error}`);
+  else if ("ok" in result) toasts.show("Exported. Every note is a plain Markdown file in the copy.");
+}
 
 export type { Command } from "$lib/command-filter";
 export {
@@ -296,8 +304,34 @@ export function buildCommands(): Command[] {
       group: "Help",
       run: () => openUrl(`${REPO_URL}/blob/main/CHANGELOG.md`),
     },
+    {
+      id: "data.backups",
+      title: isWeb ? "Export" : "Backups",
+      group: "Data",
+      run: () => shell.openSettings("backups"),
+    },
+    {
+      id: "data.export",
+      title: isWeb ? "Download everything as Markdown" : "Export everything as Markdown…",
+      group: "Data",
+      run: () => runExport(),
+    },
   );
   if (!isWeb) {
+    commands.push({
+      id: "data.backupNow",
+      title: "Back up now",
+      group: "Data",
+      run: () =>
+        backupNow().then(
+          () => {
+            toasts.show("Backed up. The copy is in the backups folder.");
+          },
+          (e: unknown) => {
+            toasts.show(`Couldn't back up. ${e instanceof Error ? e.message : e}`);
+          },
+        ),
+    });
     commands.push(
       {
         id: "app.checkUpdates",

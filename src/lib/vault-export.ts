@@ -1,5 +1,5 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { exportVault } from "$lib/api/client";
+import { exportArchive, exportVault } from "$lib/api/client";
 
 export type ExportResult =
   | { ok: true }
@@ -20,5 +20,26 @@ export async function exportVaultToFolder(): Promise<ExportResult> {
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Could not export the vault." };
+  }
+}
+
+function archiveName(now = new Date()): string {
+  return `InstantNotes-${now.toISOString().slice(0, 10)}.zip`;
+}
+
+export async function exportArchiveDownload(): Promise<ExportResult> {
+  try {
+    const bytes = await exportArchive();
+    const copy = new Uint8Array(bytes.byteLength);
+    copy.set(bytes);
+    const url = URL.createObjectURL(new Blob([copy], { type: "application/zip" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = archiveName();
+    link.click();
+    URL.revokeObjectURL(url);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Could not export the notes." };
   }
 }

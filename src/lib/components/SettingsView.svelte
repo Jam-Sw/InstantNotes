@@ -8,6 +8,7 @@
   import SettingsLinks from "$lib/components/settings/SettingsLinks.svelte";
   import SettingsFeedback from "$lib/components/settings/SettingsFeedback.svelte";
   import SettingsSync from "$lib/components/settings/SettingsSync.svelte";
+  import SettingsBackups from "$lib/components/settings/SettingsBackups.svelte";
   import SettingsAgents from "$lib/components/settings/SettingsAgents.svelte";
   import SettingsImport from "$lib/components/settings/SettingsImport.svelte";
   import { getLibraryStats, getCaptureLatency, openUrl } from "$lib/api/client";
@@ -63,7 +64,10 @@
     {
       label: "Your data",
       entries: [
-        { id: "vault", title: "Sync", desc: isWeb ? "Keep your notes the same on every device signed in to this server." : "Keep your notes the same on every device, through a folder or your own server.", keywords: "vault folder server sign in encryption recovery key devices export backup markdown files" },
+        { id: "vault", title: "Sync", desc: isWeb ? "Keep your notes the same on every device signed in to this server." : "Keep your notes the same on every device, through a folder or your own server.", keywords: "vault folder server sign in encryption recovery key devices" },
+        isWeb
+          ? { id: "backups" as const, title: "Export", desc: "Every note as plain Markdown, in one download.", keywords: "export backup markdown zip files download" }
+          : { id: "backups" as const, title: "Backups", desc: "Daily copies of your library, restore, and export as Markdown.", keywords: "backup restore export markdown files copy snapshot" },
         { id: "contexting", title: "Contexting", desc: "Shape what copying a note hands to other tools and AI.", keywords: "copy context clipboard ai" },
         ...(isMac
           ? [{ id: "import" as const, title: "Import", desc: "Bring in your Apple Stickies as notes.", keywords: "stickies apple migrate" }]
@@ -317,6 +321,8 @@
           <SettingsLinks />
         {:else if page === "vault"}
           <SettingsSync />
+        {:else if page === "backups"}
+          <SettingsBackups />
         {:else if page === "agents"}
           <SettingsAgents />
         {:else if page === "import"}

@@ -85,8 +85,8 @@ use commands::{
 use error::{CmdError, CmdResult};
 use shell::menu::{install as install_menus, run_command};
 use shell::{
-    agents::*, capture::*, files::*, mirror::*, quit::*, server::*, stickies::*, update::*,
-    windows::*,
+    agents::*, backups::*, capture::*, files::*, mirror::*, quit::*, server::*, stickies::*,
+    update::*, windows::*,
 };
 
 pub fn run() {
@@ -127,6 +127,7 @@ pub fn run() {
             if let Some(parent) = db_path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
+            let restored = apply_restore_at_launch(&db_path);
             let (mut store, recovered) = match Store::open_or_recover(&db_path) {
                 Ok(ok) => ok,
                 Err(e) if e.is_schema_too_new() => {
@@ -161,6 +162,9 @@ pub fn run() {
                 }
                 Err(e) => return Err(format!("cannot open store: {e}").into()),
             };
+            if matches!(restored, Some(Restored::Done(_))) {
+                finish_restore(&mut store);
+            }
             if store.attach_saved_vault().is_err() {
                 eprintln!("vault mirror setting unreadable; mirroring stays off");
             }
@@ -179,6 +183,7 @@ pub fn run() {
             app.manage(ServerLink::default());
             app.manage(start_vault_sync(app.handle()));
             app.manage(start_agent_watcher(app.handle(), db_path.clone()));
+            start_backups(app.handle());
             {
                 request_vault_sync(app.handle());
             }
@@ -192,6 +197,10 @@ pub fn run() {
                     .title("Library recovered")
                     .kind(MessageDialogKind::Warning)
                     .show(|_| {});
+            }
+
+            if let Some(restored) = restored {
+                announce_restore(app.handle(), restored);
             }
 
             refresh_icon_cache_if_updated(&dir);
@@ -328,6 +337,12 @@ pub fn run() {
             remove_unused_attachments,
             library_stats,
             export_vault,
+            list_backups,
+            backup_now,
+            set_backups_automatic,
+            inspect_backup,
+            restore_backup,
+            open_backups_folder,
             get_vault_status,
             set_vault_folder,
             verify_vault,

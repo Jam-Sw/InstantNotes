@@ -426,6 +426,33 @@ reserved and refused.
   `src/lib/web/sync.ts` with the same shapes. A 0.9.5 web library moves into
   the first device that syncs (`GET /sync/v1/legacy`, then `DELETE`).
 
+### 12.5 Backups and the Markdown export (0.10.1)
+
+| Command | Purpose |
+| --- | --- |
+| `list_backups` | `{ backups: [{ path, madeAt, bytes }], automatic, lastAt, folder }`, newest first. The folder is `backups/` beside the library. |
+| `backup_now` | One backup through `VACUUM INTO` on the reader connection, then the prune; returns the list. |
+| `set_backups_automatic` | Writes `backups.automatic` (`on: bool`). |
+| `inspect_backup` | `{ madeAt, notes, schemaVersion }` for `path`, or `VALIDATION_ERROR` naming why it is not a library this build can open. |
+| `restore_backup` | Verifies `path`, copies it to `backups/pending-restore.db`, writes the `instantnotes.db.restore` marker beside the library and restarts the app. The next launch applies it before the store opens (DATA_MODEL.md §12). |
+| `open_backups_folder` | Reveal the folder. |
+
+| Event | Payload | When |
+| --- | --- | --- |
+| `backups:changed` | none | A backup was made, pruned, or the setting changed; re-read `list_backups`. |
+
+A background thread wakes 30 seconds after launch and then hourly; with
+`backups.automatic` on it backs up when the newest backup is older than
+24 hours. The keep rule (`core::backup::keep`): every backup of the last
+7 days, the newest per ISO week for the 5 weeks before, the newest per
+calendar month for the 6 months before, nothing older; file names that do
+not parse are never touched.
+
+The browser makes no backups (its library is a replica of the server's);
+the worker's `export_archive()` returns a stored `.zip` of the same files
+`export_vault` writes plus `attachments/<name>` from the database, which
+the page downloads as `InstantNotes-<YYYY-MM-DD>.zip`.
+
 ## 13. Feedback
 
 | Command | Purpose |

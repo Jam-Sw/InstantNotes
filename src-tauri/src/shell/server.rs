@@ -120,7 +120,7 @@ fn keychain_set(settings: &ServerSettings, what: &str, secret: &str) -> Result<(
         .map_err(|e| format!("the system keychain refused to store a secret: {e}"))
 }
 
-fn keychain_delete(settings: &ServerSettings, what: &str) {
+pub(crate) fn keychain_delete(settings: &ServerSettings, what: &str) {
     if let Ok(e) = entry(settings, what) {
         let _ = e.delete_credential();
     }

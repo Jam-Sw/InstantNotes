@@ -2786,6 +2786,7 @@ dependencies = [
 name = "instantnotes"
 version = "0.10.1"
 dependencies = [
+ "chrono",
  "instantnotes-agents",
  "instantnotes-core",
  "instantnotes-server",

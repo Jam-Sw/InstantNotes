@@ -539,9 +539,21 @@ impl Store {
 
     pub fn backup_to(&self, path: &Path) -> Result<()> {
         let escaped = path.to_string_lossy().replace('\'', "''");
-        self.conn
+        let query_only: bool = self
+            .conn
+            .query_row("PRAGMA query_only", [], |r| r.get(0))
+            .map_err(|e| AppError::Storage(format!("backup failed: {e}")))?;
+        if query_only {
+            self.conn.pragma_update(None, "query_only", "OFF")?;
+        }
+        let copied = self
+            .conn
             .execute_batch(&format!("VACUUM INTO '{escaped}'"))
-            .map_err(|e| AppError::Storage(format!("backup failed: {e}")))
+            .map_err(|e| AppError::Storage(format!("backup failed: {e}")));
+        if query_only {
+            self.conn.pragma_update(None, "query_only", "ON")?;
+        }
+        copied
     }
 
     pub fn open_in_memory() -> Result<Self> {

@@ -61,6 +61,11 @@ export async function saveLibraryAttachment(bytes: Uint8Array, ext: string): Pro
   return name;
 }
 
+export async function exportLibraryArchive(): Promise<Uint8Array> {
+  await startSync();
+  return run<Uint8Array>("export_archive");
+}
+
 export async function libraryAttachment(name: string): Promise<Uint8Array | null> {
   await startSync();
   return (await run<Uint8Array | undefined>("attachment", name)) ?? null;

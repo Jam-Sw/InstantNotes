@@ -25,6 +25,7 @@ export const EVENTS = {
   LIBRARY_EXTERNAL_CHANGE: "library:external-change",
   AGENT_SESSIONS: "agents:sessions",
   SYNC_JOIN_REQUESTS: "sync:join-requests",
+  BACKUPS_CHANGED: "backups:changed",
 } as const;
 
 export const LIBRARY_CHANGED_EVENTS = [

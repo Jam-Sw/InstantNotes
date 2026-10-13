@@ -125,6 +125,11 @@ pub fn import_attachment(name: &str, bytes: &[u8]) -> Result<bool, JsValue> {
 }
 
 #[wasm_bindgen]
+pub fn export_archive() -> Result<Vec<u8>, JsValue> {
+    with(|store| instantnotes_core::vault::export_archive(store))
+}
+
+#[wasm_bindgen]
 pub fn attachment(name: &str) -> Result<Option<Vec<u8>>, JsValue> {
     if !commands::valid_attachment_name(name) {
         return Ok(None);

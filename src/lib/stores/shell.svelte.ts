@@ -8,6 +8,7 @@ export type SettingsPage =
   | "contexting"
   | "feedback"
   | "vault"
+  | "backups"
   | "agents"
   | "import";
 

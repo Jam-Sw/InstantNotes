@@ -30,6 +30,16 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`src-tauri/src/shell/menu.rs`, `runCommand`); `settings:open`, `menu:new-note`, `menu:new-whiteboard`,
   `menu:new-sheet`, `menu:export-note`, `menu:toggle-sticky` and `updater:check` are gone.
 - Shell commands `open_data_folder` and `request_quit`.
+- Daily backups: `backups/instantnotes-<stamp>.db` beside the library through `VACUUM INTO` on the reader
+  connection, 30 s after launch and then hourly when the newest is older than a day; kept 7 days, then one
+  per ISO week for 5 weeks, then one per month for 6 months (`core::backup::keep`); `backups.automatic`.
+- Settings > Backups (web: Export): Automatic backups, Back up now, the list with Restore, Restore from a
+  file, Open backups folder, and the Markdown export moved here from Sync. Restore verifies the file,
+  asks, restarts, keeps the old library as `-before-restore.db`, turns sync off (`Store::detach_sync`).
+- Commands `list_backups`, `backup_now`, `set_backups_automatic`, `inspect_backup`, `restore_backup`,
+  `open_backups_folder`; event `backups:changed`; palette `data.backups`, `data.export`, `data.backupNow`.
+- Web export: `vault::archive` writes a stored `.zip` (no dependency) of the vault files plus
+  `attachments/`; the worker's `export_archive()`; the page downloads `InstantNotes-<date>.zip`.
 - Server image: OCI labels (`title`, `description`, `source`, `url`, `documentation`, `licenses`, `vendor`;
   `version`, `revision`, `created` set by the release job), so the GHCR package page links the repository.
 
