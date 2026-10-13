@@ -1,0 +1,59 @@
+src/lib/components/FormatToolbar.test.ts
+  s_3fe90b0d1ae177::t_ae0feb0e95defe 1-109
+src/lib/commands.ts
+  s_3fe90b0d1ae177::t_6f1d7c817c71a5 141-152
+src/lib/markdown-format.ts
+  s_3fe90b0d1ae177::t_6f1d7c817c71a5 18-19,39-40,44-63
+  s_3fe90b0d1ae177::t_2e96a93eb1f050 64-65
+src/lib/components/Editor.svelte
+  s_3fe90b0d1ae177::t_6f1d7c817c71a5 5-13,46,54,57-58,101,110,146,184-187,192-210
+  s_3fe90b0d1ae177::t_b9f0217e0ab993 211
+src/lib/markdown-active.test.ts
+  s_3fe90b0d1ae177::t_ae0feb0e95defe 55-60
+src/lib/components/NoteEditor.test.ts
+  s_3fe90b0d1ae177::t_ae0feb0e95defe 25-32
+src/lib/components/Icon.svelte
+  s_3fe90b0d1ae177::t_6f1d7c817c71a5 30-51
+src/lib/markdown-active.ts
+  s_3fe90b0d1ae177::t_6f1d7c817c71a5 12,23,51-54
+src/lib/stores/editor.svelte.ts
+  s_3fe90b0d1ae177::t_6f1d7c817c71a5 5,13-14,24,27,36-38,79-83
+  s_3fe90b0d1ae177::t_dc3f91934ba2a5 84
+src/lib/components/FormatToolbar.svelte
+  s_3fe90b0d1ae177::t_6f1d7c817c71a5 2,8-34,37,39-67,74-76,83-85,92-94,102,104-105,113,122,131,139,141-145,147-159,161-162,165,174-176,178,199-201,205,209-211,213-215,218,222-223
+src/lib/stores/editor.svelte.test.ts
+  s_3fe90b0d1ae177::t_ae0feb0e95defe 46-75
+src/lib/markdown-format.test.ts
+  s_3fe90b0d1ae177::t_ae0feb0e95defe 2,92-127
+  s_3fe90b0d1ae177::t_745cba610919a7 128
+src/lib/components/NoteEditor.svelte
+  s_3fe90b0d1ae177::t_6f1d7c817c71a5 35-36,39,221-231,358,361,526
+src/lib/commands.test.ts
+  s_3fe90b0d1ae177::t_ae0feb0e95defe 45-53,321-322,360-374
+  s_3fe90b0d1ae177::t_eb53c6d28ea0ab 375-376
+src/lib/components/settings/SettingsEditor.test.ts
+  s_3fe90b0d1ae177::t_ae0feb0e95defe 17,45,48-51
+src/lib/components/settings/SettingsEditor.svelte
+  s_3fe90b0d1ae177::t_6f1d7c817c71a5 48-49,53-57
+  s_3fe90b0d1ae177::t_29d94ca73b2c03 58
+CHANGELOG.md
+  s_3fe90b0d1ae177::t_220c0ff3de901d 21-24,26-28
+docs/DATA_MODEL.md
+  s_3fe90b0d1ae177::t_73c8f19e923537 144-147
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "331d69ef5c340432574e6391d87e8082f6a7f959",
+  "prompts": {},
+  "sessions": {
+    "s_3fe90b0d1ae177": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cc4e75df-98d1-43eb-a307-3a9f4f80c286",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
