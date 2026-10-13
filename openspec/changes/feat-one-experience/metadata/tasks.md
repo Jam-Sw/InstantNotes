@@ -4,7 +4,8 @@
 - [x] `release.yml` image job: `--label` version, revision and created
 - [x] `scripts/release.test.ts`: the Dockerfile names `source`,
       `description` and `licenses` (ran `npx vitest run scripts/release.test.ts`: 5 passed)
-- [ ] `docker build` and `docker inspect` show the labels
+- [x] `docker build` and `docker inspect` show the labels (built locally as
+      `instantnotes-server:labels-proof`; `docker inspect` listed all ten labels; image removed)
 - [x] CHANGELOG line
 
 ## Owner steps (GitHub)
