@@ -1,4 +1,5 @@
 mod api;
+pub mod client;
 mod config;
 mod device;
 mod events;
