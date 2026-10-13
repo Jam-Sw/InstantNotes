@@ -36,7 +36,7 @@ full paths in reports). Ships in 0.10.0: built on `feat/sync-server`, merged loc
 - [x] Unreachable (network error, timeout, 5xx): nothing revoked, logged once per outage, retried next hour
 - [x] No refresh token: device tokens and sessions of that person need a fresh sign-in 24 hours after the last one; status says why
 - [x] Tests against a fake provider: refused (each of `invalid_grant`, `invalid_request`, `access_denied`), accepted (rotation saved, data untouched), unreachable (connection refused, timeout, 500), misconfigured (`invalid_client`, `429`), the breaker, no refresh token (24-hour limit), a changed client secret
-- [ ] README line (design §12) replaces the old 180-day line
+- [x] README line (design §12) replaces the old 180-day line
 
 ## 3. Encrypted object store and API (`instantnotes-server`)
 
@@ -107,12 +107,12 @@ full paths in reports). Ships in 0.10.0: built on `feat/sync-server`, merged loc
 
 ## 10. End to end
 
-- [ ] `scripts/sync-e2e.sh`: image plus a throwaway Dex with Docker, then `server/tests/sync_e2e_test.rs` (`#[ignore]`)
-- [ ] Two desktop clients through real sign-in and join approval, and the web app in headless Chromium, on one library: each one's note appears in the others; an offline edit arrives after reconnecting; a conflict leaves both; the data folder holds no note text
+- [x] `.claude/scripts/sync-e2e.sh` (local tooling, git-excluded): image plus a throwaway Dex with Docker, then `server/tests/sync_e2e_test.rs` (`#[ignore]`)
+- [ ] Two desktop clients through real sign-in and join approval (done, passing), and the web app in headless Chromium (waits for section 7), on one library: each one's note appears in the others; an offline edit arrives after reconnecting; a conflict leaves both; the data folder holds no note text
 
 ## 11. Docs
 
-- [ ] `README.md` "Self-hosted sync" (design §12), including the web-code line (§4.8) and published hashes
+- [ ] `README.md` "Self-hosted sync" (design §12), including the web-code line (§4.8) (written); the published hashes and how to compare them (open, with the release work)
 - [ ] `docs/API.md`, `docs/DATA_MODEL.md`
 - [ ] `CHANGELOG.md` `[0.10.0]`: Sync server entries beside folder sync; the `INSTANTNOTES_VAULT_ROOT` entry removed; the sign-in page entry corrected
 - [ ] `SEQUENCE.md`: this unit and its placement exception; unit 9 no longer "cuts 0.10.0" and unit 10 (git) no longer "cuts 0.11.0"; git's slot kept
