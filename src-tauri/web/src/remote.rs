@@ -5,9 +5,11 @@ use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{Request, RequestInit, Response, WorkerGlobalScope};
+use web_sys::{AbortSignal, Request, RequestInit, Response, WorkerGlobalScope};
 
 const BASE: &str = "/sync/v1/";
+const API: u64 = 1;
+const REQUEST_TIMEOUT_MS: u32 = 60_000;
 const TRIES: usize = 4;
 const MAX_WAIT_MS: i32 = 60_000;
 const BATCH_BYTES: usize = 16 * 1024 * 1024;
@@ -47,6 +49,7 @@ pub async fn send(method: &str, path: &str, body: &Body) -> Result<Response, Rem
     for attempt in 1..=TRIES {
         let init = RequestInit::new();
         init.set_method(method);
+        init.set_signal(Some(&AbortSignal::timeout_with_u32(REQUEST_TIMEOUT_MS)));
         let request_body: Option<JsValue> = match body {
             Body::None => None,
             Body::Json(value) => Some(JsValue::from_str(&value.to_string())),
@@ -116,7 +119,7 @@ pub struct Fetch {
 impl Fetch {
     pub async fn connect() -> Result<Fetch, RemoteError> {
         let info: Value = json("GET", "info", &Body::None).await?;
-        if info["app"] != "instantnotes" {
+        if info["app"] != "instantnotes" || info["api"].as_u64() != Some(API) {
             return Err(RemoteError::Refused(
                 "this address does not answer as an InstantNotes server".into(),
             ));
@@ -196,8 +199,11 @@ impl Remote for Fetch {
         while !left.is_empty() {
             let response =
                 send("POST", "blobs/fetch", &Body::Json(json!({ "shas": left }))).await?;
-            let got = frames::decode(&bytes(response).await?)
-                .ok_or_else(|| RemoteError::Refused("the server sent a damaged batch".into()))?;
+            let got: Vec<(String, Vec<u8>)> = frames::decode(&bytes(response).await?)
+                .ok_or_else(|| RemoteError::Refused("the server sent a damaged batch".into()))?
+                .into_iter()
+                .filter(|(sha, _)| left.contains(sha))
+                .collect();
             if got.is_empty() {
                 break;
             }

@@ -3,6 +3,7 @@
   import {
     acceptPlainServer,
     cancelSyncSignIn,
+    clearBrowserLibrary,
     confirmRecoverySaved,
     confirmSyncJoin,
     confirmSyncRemovals,
@@ -159,7 +160,9 @@
   async function signOut() {
     const ok = await confirmDialog.ask({
       title: isWeb ? "Sign out of this browser?" : `Stop syncing with ${host}?`,
-      body: isWeb ? "Its copy of your notes stays here until you sign in again." : "Your notes stay on this device.",
+      body: isWeb
+        ? "This browser's copy of your notes is removed. They stay on your server and your other devices."
+        : "Your notes stay on this device.",
       confirmLabel: "Sign out",
     });
     if (ok) await act(disconnectSyncServer, "Couldn't sign out");
@@ -434,6 +437,16 @@
       </button>
       <button class="card-btn" disabled={busy} onclick={() => act(disconnectSyncServer, "Couldn't cancel")}>
         Cancel
+      </button>
+    </div>
+  </div>
+{:else if stage === "otherLibrary"}
+  <div class="vault-card step">
+    <p class="lead">This browser holds notes from another library, so it won't sync them into yours.</p>
+    <p class="detail">Clear this browser's copy to use your own library here. Those notes stay on their own server.</p>
+    <div class="card-actions">
+      <button class="primary-btn" disabled={busy} onclick={() => act(clearBrowserLibrary, "Couldn't clear this browser")}>
+        Clear this browser
       </button>
     </div>
   </div>

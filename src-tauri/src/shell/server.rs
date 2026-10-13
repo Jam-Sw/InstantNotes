@@ -25,6 +25,10 @@ const BACKUPS_KEPT: usize = 3;
 const LEGACY_SETTING: &str = "sync.legacy";
 const LEGACY_IMPORTED: &str = "imported";
 const LEGACY_DONE: &str = "done";
+const LEGACY_RETRY: Duration = Duration::from_secs(60 * 60);
+const JOIN_REPEAT: Duration = Duration::from_secs(3);
+
+static LEGACY_WAIT: Mutex<Option<std::time::Instant>> = Mutex::new(None);
 const SIGNED_IN_PAGE: &str = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n<!doctype html><meta charset=utf-8><title>InstantNotes</title><body style=\"font-family:system-ui;display:grid;place-items:center;min-height:90vh\"><p>Signed in. You can close this tab and return to InstantNotes.</p>";
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -375,10 +379,11 @@ async fn live_items(client: &Client) -> Result<usize, RemoteError> {
     loop {
         let page = client.changes(since, 0).await?;
         live += page.changes.iter().filter(|c| c.sha.is_some()).count();
-        since = page.changes.last().map_or(since, |c| c.seq);
-        if !page.more {
+        let next = page.changes.last().map_or(since, |c| c.seq);
+        if !page.more || next <= since {
             return Ok(live);
         }
+        since = next;
     }
 }
 
@@ -921,33 +926,37 @@ fn set_legacy_step(app: &AppHandle, step: &str) {
     }
 }
 
-pub(crate) fn take_legacy(app: &AppHandle, client: &Client) -> bool {
-    if legacy_step(app).is_some() {
-        return false;
-    }
+fn not_found(e: &RemoteError) -> bool {
+    matches!(e, RemoteError::Refused(why) if why.contains("404"))
+}
+
+fn copy_legacy(app: &AppHandle, client: &Client) -> Result<bool, String> {
     let legacy = match tauri::async_runtime::block_on(client.legacy()) {
         Ok(Some(found)) => found,
         Ok(None) => {
             set_legacy_step(app, LEGACY_DONE);
-            return false;
+            return Ok(false);
         }
-        Err(_) => return false,
+        Err(e) => return Err(e.to_string()),
     };
-    if let Ok(dir) = attachments_dir(app) {
-        for name in legacy
-            .attachments
-            .iter()
-            .filter(|n| commands::valid_attachment_name(n))
-        {
-            let path = dir.join(name);
-            if path.exists() {
-                continue;
-            }
-            if let Ok(bytes) = tauri::async_runtime::block_on(client.legacy_attachment(name)) {
-                let _ = std::fs::create_dir_all(&dir);
-                let _ = std::fs::write(&path, bytes);
-            }
+    let dir = attachments_dir(app).map_err(|e| e.message().to_string())?;
+    for name in legacy
+        .attachments
+        .iter()
+        .filter(|n| commands::valid_attachment_name(n))
+    {
+        let path = dir.join(name);
+        if path.exists() {
+            continue;
         }
+        let bytes = match tauri::async_runtime::block_on(client.legacy_attachment(name)) {
+            Ok(bytes) => bytes,
+            Err(e) if not_found(&e) => continue,
+            Err(e) => return Err(format!("image {name}: {e}")),
+        };
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        instantnotes_core::vault::atomic_write(&path, &bytes)
+            .map_err(|e| format!("image {name}: {e}"))?;
     }
     let notes: Vec<(String, Option<String>)> = legacy
         .notes
@@ -955,23 +964,51 @@ pub(crate) fn take_legacy(app: &AppHandle, client: &Client) -> bool {
         .map(|n| (n.md, n.surface))
         .collect();
     let state = app.state::<AppState>();
-    let imported = match state.store.lock() {
-        Ok(mut store) => store.import_legacy(&notes, Some(&legacy.manifest)).is_ok(),
-        Err(_) => false,
-    };
-    if imported {
-        set_legacy_step(app, LEGACY_IMPORTED);
+    let mut store = locked(&state).map_err(|e| e.message().to_string())?;
+    store
+        .import_legacy(&notes, Some(&legacy.manifest))
+        .map_err(|e| e.to_string())?;
+    drop(store);
+    set_legacy_step(app, LEGACY_IMPORTED);
+    Ok(true)
+}
+
+pub(crate) fn take_legacy(app: &AppHandle, client: &Client) -> Result<bool, String> {
+    if legacy_step(app).is_some() {
+        return Ok(false);
     }
-    imported
+    let mut wait = LEGACY_WAIT.lock().unwrap_or_else(|e| e.into_inner());
+    if wait.is_some_and(|until| std::time::Instant::now() < until) {
+        return Ok(false);
+    }
+    copy_legacy(app, client).map_err(|why| {
+        *wait = Some(std::time::Instant::now() + LEGACY_RETRY);
+        format!("Your notes from the earlier web version could not be moved yet: {why}")
+    })
+}
+
+pub(crate) fn report_legacy(app: &AppHandle, failed: Option<String>) {
+    if let Some(why) = failed {
+        link(app).set(|s| {
+            s.message.get_or_insert(why);
+        });
+    }
 }
 
 pub(crate) fn finish_legacy(app: &AppHandle, client: &Client, report: &SyncReport) {
-    let pushed = report.reached() && report.errors.is_empty() && !report.retry;
+    let pushed = report.reached()
+        && report.errors.is_empty()
+        && !report.retry
+        && !report.mode_changed
+        && report.too_large.is_empty()
+        && report.held_removals == 0;
     if !pushed || legacy_step(app).as_deref() != Some(LEGACY_IMPORTED) {
         return;
     }
-    if tauri::async_runtime::block_on(client.drop_legacy()).is_ok() {
-        set_legacy_step(app, LEGACY_DONE);
+    match tauri::async_runtime::block_on(client.drop_legacy()) {
+        Ok(()) => set_legacy_step(app, LEGACY_DONE),
+        Err(e) if not_found(&e) => set_legacy_step(app, LEGACY_DONE),
+        Err(_) => {}
     }
 }
 
@@ -981,6 +1018,9 @@ pub(crate) fn record_report(app: &AppHandle, report: &SyncReport) {
         s.held_removals = report.held_removals;
         s.too_large = report.too_large.clone();
         s.message = report.errors.first().cloned();
+        if s.stage == "recoveryKey" && report.reached() {
+            return;
+        }
         s.stage = if report.signed_out {
             "signedOut"
         } else if report.unreachable.is_some() {
@@ -1057,6 +1097,8 @@ pub(crate) fn watch_server(
                         let _ =
                             app.emit(events::SYNC_JOIN_REQUESTS, join_requests(joins, &recipient));
                         shown = ids;
+                    } else if !ids.is_empty() {
+                        std::thread::sleep(JOIN_REPEAT);
                     }
                 }
                 Err(_) => std::thread::sleep(Duration::from_secs(30)),

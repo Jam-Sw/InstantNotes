@@ -182,7 +182,14 @@ pub async fn sync(
         Err(e) => return Ok(stopped(&e).to_string()),
     };
     let state = with(|s| s.sync_state())?;
-    let known = if state.library_id.as_deref() == Some(keys.library_id.as_str()) {
+    if state
+        .library_id
+        .as_deref()
+        .is_some_and(|id| id != keys.library_id)
+    {
+        return Ok(json!({ "stage": "otherLibrary" }).to_string());
+    }
+    let known = if state.library_id.is_some() {
         state.epoch
     } else {
         0
@@ -216,18 +223,19 @@ pub async fn sync(
 }
 
 #[wasm_bindgen]
-pub async fn set_up(encrypt: bool) -> Result<Option<String>, JsValue> {
+pub fn new_recovery() -> String {
+    LibraryKey::generate().recovery()
+}
+
+#[wasm_bindgen]
+pub async fn set_up(recovery: Option<String>) -> Result<(), JsValue> {
     let mut remote = Fetch::connect().await.map_err(fail)?;
-    if encrypt {
-        let key = LibraryKey::generate();
-        remote
+    match library_key(recovery.as_deref())? {
+        Some(key) => remote
             .set_keys(ENCRYPTED, Some(&key.recipient()))
             .await
-            .map_err(fail)?;
-        Ok(Some(key.recovery()))
-    } else {
-        remote.set_keys(PLAIN, None).await.map_err(fail)?;
-        Ok(None)
+            .map_err(fail),
+        None => remote.set_keys(PLAIN, None).await.map_err(fail),
     }
 }
 
@@ -285,29 +293,29 @@ pub fn wrap_for(recovery: &str, public: &str) -> Result<String, JsValue> {
 
 #[wasm_bindgen]
 pub async fn switch_encryption(
-    on: bool,
     recovery: Option<String>,
-) -> Result<Option<String>, JsValue> {
+    next: Option<String>,
+) -> Result<(), JsValue> {
     let current = match library_key(recovery.as_deref())? {
         Some(k) => Lock::Encrypted(k),
         None => Lock::Plain,
     };
     let remote = Fetch::connect().await.map_err(fail)?;
     let mut engine = ServerSync::new(remote, current, Some(Attachments::Database));
-    if on {
-        let key = LibraryKey::generate();
-        let recipient = key.recipient();
-        let recovery = key.recovery();
-        engine
-            .switch_mode(store()?, Lock::Encrypted(key), ENCRYPTED, Some(&recipient))
-            .await
-            .map_err(fail)?;
-        Ok(Some(recovery))
-    } else {
-        engine
-            .switch_mode(store()?, Lock::Plain, PLAIN, None)
-            .await
-            .map_err(fail)?;
-        Ok(None)
+    match library_key(next.as_deref())? {
+        Some(key) => {
+            let recipient = key.recipient();
+            engine
+                .switch_mode(store()?, Lock::Encrypted(key), ENCRYPTED, Some(&recipient))
+                .await
+                .map_err(fail)?;
+        }
+        None => {
+            engine
+                .switch_mode(store()?, Lock::Plain, PLAIN, None)
+                .await
+                .map_err(fail)?;
+        }
     }
+    Ok(())
 }

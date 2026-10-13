@@ -147,7 +147,8 @@ export type SyncStage =
   | "problem"
   | "refused"
   | "offline"
-  | "signedOut";
+  | "signedOut"
+  | "otherLibrary";
 
 export interface SyncServerStatus {
   stage: SyncStage;

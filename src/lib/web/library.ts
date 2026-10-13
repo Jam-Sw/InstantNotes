@@ -19,7 +19,17 @@ function serveAttachments(): void {
       () => port.postMessage(null),
     );
   });
-  void navigator.serviceWorker.register("/sw.js").catch(() => {});
+  void navigator.serviceWorker
+    .register("/sw.js")
+    .then(() => navigator.serviceWorker.ready)
+    .then((registration) => {
+      const loaded = performance
+        .getEntriesByType("resource")
+        .map((entry) => entry.name)
+        .filter((url) => url.startsWith(location.origin));
+      registration.active?.postMessage({ cache: loaded });
+    })
+    .catch(() => {});
 }
 
 async function appVersion(): Promise<string> {

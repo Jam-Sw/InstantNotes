@@ -8,8 +8,10 @@ class Tab {
   claim(): Promise<boolean> {
     if (!("locks" in navigator)) return Promise.resolve(true);
     return new Promise<boolean>((resolve) => {
+      let settled = false;
       navigator.locks
         .request(LOCK, { ifAvailable: true }, (lock) => {
+          settled = true;
           if (!lock) {
             this.elsewhere = true;
             resolve(false);
@@ -21,6 +23,7 @@ class Tab {
         .catch(() => {
           stopWorker();
           this.elsewhere = true;
+          if (!settled) resolve(false);
         });
     });
   }

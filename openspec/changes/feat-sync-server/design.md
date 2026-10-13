@@ -253,7 +253,7 @@ length.
 | Place | Where |
 | --- | --- |
 | Desktop | System keychain (`keyring`: macOS Keychain, Windows Credential Manager, Secret Service on Linux), beside the device token. No keychain answering: Sync server cannot start, and Settings says why. |
-| Browser | IndexedDB, wrapped by a non-extractable WebCrypto AES-GCM key kept beside it, when "Remember this browser" is on (default). Off: memory only, asked again in each new tab session. |
+| Browser | IndexedDB, wrapped by a non-extractable WebCrypto AES-GCM key kept beside it. "Sign out of this browser" removes it with the browser's copy of the notes (§9), which serves a shared computer; there is no separate "remember" switch. A new key is written there (in a second slot) before the server is told about it, so an interrupted switch never leaves the only copy in memory. |
 | iOS (later) | iOS Keychain through a small Swift plugin. |
 | Server | Never. It stores the library's public recipient only, so a typed recovery key can be checked. |
 
@@ -681,7 +681,10 @@ recoverable trash, and offer "merge all" only for exact copies.
    They'll be combined into one library. Exact copies are combined; anything
    that might be the same note is kept twice and shown to you to decide. This
    device's library is backed up first." **Combine** or **Cancel**. Nothing
-   offers to replace one side with the other: that loses notes.
+   offers to replace one side with the other: that loses notes. A browser
+   does not ask: it joins as a new device, and anything it already holds (the
+   notes moved from a 0.9.5 web library, §8.2, or typed before its first
+   sync) is merged by the same rules below.
 2. **Backup.** `VACUUM INTO <app data>/backups/library-before-sync-<date>.db`,
    keeping the newest three; Settings names the file.
 3. **Everything pending.** Every local note is marked dirty with no bases.
@@ -803,7 +806,18 @@ was read back after it, from OPFS.
   them; the bundle is about 2.5 MB before compression.
 - **One tab at a time.** The browser storage allows one open database per
   site. A second tab shows "InstantNotes is open in another tab" with **Use
-  here**, which moves the library to that tab (Web Locks).
+  here**, which moves the library to that tab (Web Locks). A tab that loses
+  the library stops its worker for good until it reloads.
+- **One library per browser.** The browser's copy belongs to the site, not to
+  a person. "Sign out of this browser" removes the copy and the key. A
+  browser whose copy belongs to another library (another person signed in,
+  or the server was rebuilt) does not sync it: Settings > Sync says so and
+  offers **Clear this browser**. Nothing from one library is ever pushed
+  into another. Sync and its screens open on their own on the web when they
+  need the person (`off`, `needsKey`, `recoveryKey`, `confirmPlain`,
+  `otherLibrary`); the command palette also has "Open settings".
+- **Timeouts.** Every request has a timeout (60 s, plus the wait for a
+  long-poll), so a stalled connection cannot freeze sync until a reload.
 - **Offline.** A service worker keeps the app's files, so a browser or phone
   that has opened the app once opens it and edits offline; changes sync when
   it reconnects.
@@ -974,7 +988,7 @@ Folder sync and Sync server ship together as 0.10.0, image
 Not in this change. Unlocking the key with a passkey (WebAuthn PRF) works in
 recent Chrome and Firefox, but Safari has shipped bugs, synced passkeys have
 returned different values across devices, and the Linux desktop's web view has
-no WebAuthn at all. "Remember this browser" covers the same everyday need. The
+no WebAuthn at all. A browser keeps its key until it signs out, which covers the same everyday need. The
 key design leaves room to add it as one more way in.
 
 ### D8. Phone layout: not yet (decided 2026-10-12)

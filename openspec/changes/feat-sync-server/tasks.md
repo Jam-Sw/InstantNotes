@@ -87,7 +87,7 @@ full paths in reports). Ships in 0.10.0: built on `feat/sync-server`, merged loc
 - [x] `src-tauri/web`: wasm-bindgen worker running the core, `ServerSync`, `age`; SQLite through `sqlite-wasm-rs` with OPFS (`sahpool`); fetch-based `Remote` with the session cookie
 - [x] `client.ts` and `events.ts` talk to the worker on the web; the 40 web commands keep their names and arguments; the sync commands answer from `src/lib/web/sync.ts`
 - [x] Key storage in IndexedDB wrapped by a non-extractable WebCrypto key
-- [ ] "Remember this browser" off (memory only): not built
+- [x] "Sign out of this browser" removes its copy and key (replaces the "Remember this browser" switch); a browser holding another library refuses to sync it and offers to clear it
 - [x] One-tab lock logic (Web Locks, "Use here" steals and reloads); service worker for offline files and images; persistent storage request
 - [x] The "open in another tab" notice
 - [x] Settings > Sync on the web (no provider choice; first-device "Set up"; "Sign out of this browser"), join and recovery screens

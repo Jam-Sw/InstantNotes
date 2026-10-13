@@ -629,8 +629,8 @@ impl Store {
 
     pub fn save_attachment_file(&mut self, file: &str, bytes: &[u8]) -> Result<bool> {
         let added = self.conn.execute(
-            "INSERT OR IGNORE INTO attachment_files (name, bytes) VALUES (?1, ?2)",
-            params![file, bytes],
+            "INSERT OR IGNORE INTO attachment_files (name, bytes, created_at) VALUES (?1, ?2, ?3)",
+            params![file, bytes, now_ms()],
         )?;
         Ok(added > 0)
     }
@@ -646,11 +646,13 @@ impl Store {
             .optional()?)
     }
 
-    pub fn attachment_file_sizes(&self) -> Result<Vec<(String, u64)>> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT name, length(bytes) FROM attachment_files ORDER BY name")?;
-        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get::<_, i64>(1)? as u64)))?;
+    pub fn attachment_file_sizes(&self, made_before_ms: Option<i64>) -> Result<Vec<(String, u64)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT name, length(bytes) FROM attachment_files WHERE created_at < ?1 ORDER BY name",
+        )?;
+        let rows = stmt.query_map(params![made_before_ms.unwrap_or(i64::MAX)], |r| {
+            Ok((r.get(0)?, r.get::<_, i64>(1)? as u64))
+        })?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 

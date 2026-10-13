@@ -349,8 +349,11 @@ impl Client {
                 .bytes()
                 .await
                 .map_err(|e| RemoteError::Unreachable(e.to_string()))?;
-            let got = frames::decode(&bytes)
-                .ok_or_else(|| RemoteError::Refused("the server sent a damaged batch".into()))?;
+            let got: Vec<(String, Vec<u8>)> = frames::decode(&bytes)
+                .ok_or_else(|| RemoteError::Refused("the server sent a damaged batch".into()))?
+                .into_iter()
+                .filter(|(sha, _)| left.contains(sha))
+                .collect();
             if got.is_empty() {
                 break;
             }
@@ -593,5 +596,27 @@ mod tests {
         );
         assert!(normalize_address("http://notes.example.org").is_err());
         assert!(normalize_address("   ").is_err());
+    }
+
+    #[tokio::test]
+    async fn a_server_sending_blobs_nobody_asked_for_cannot_stall_a_download() {
+        let stranger = "a".repeat(64);
+        let body = frames::encode([(stranger.as_str(), b"not asked for".as_slice())]).unwrap();
+        let app = axum::Router::new().route(
+            "/sync/v1/blobs/fetch",
+            axum::routing::post(move || {
+                let body = body.clone();
+                async move { body }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let client = Client::new(&address).unwrap();
+        let got = tokio::time::timeout(Duration::from_secs(5), client.download(&["b".repeat(64)]))
+            .await
+            .expect("the download finished")
+            .unwrap();
+        assert!(got.is_empty());
     }
 }

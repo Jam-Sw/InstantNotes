@@ -8,6 +8,8 @@ import { exportTheme, importTheme } from "$lib/themes/share";
 import { BODY_FONTS } from "$lib/themes/fonts";
 import { modKey, shiftKey } from "$lib/platform";
 import { isWeb } from "$lib/api/runtime";
+import { EVENTS } from "$lib/api/events";
+import { emit } from "$lib/web/core";
 import { isSyntheticNoteId } from "$lib/synthetic";
 import type { Command } from "$lib/command-filter";
 
@@ -92,6 +94,15 @@ export function buildCommands(): Command[] {
       run: () => agents.show(),
     },
   ];
+
+  if (isWeb) {
+    commands.push({
+      id: "view.settings",
+      title: "Open settings",
+      group: "View",
+      run: () => emit(EVENTS.SETTINGS_OPEN),
+    });
+  }
 
   if (library.selected) {
     const n = library.selected;

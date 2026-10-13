@@ -1,11 +1,12 @@
 const DB = "instantnotes-keys";
 const STORE = "keys";
 const WRAP = "wrap";
-const LIBRARY = "library";
+
+export type Slot = "library" | "next";
 
 type Sealed = { iv: Uint8Array; data: ArrayBuffer };
 
-let memory: string | null = null;
+const memory = new Map<Slot, string>();
 
 function database(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -43,35 +44,41 @@ async function wrapKey(): Promise<CryptoKey> {
   return made;
 }
 
-export async function getKey(): Promise<string | null> {
-  if (memory) return memory;
-  try {
-    const sealed = await request<Sealed | undefined>("readonly", (s) => s.get(LIBRARY));
-    if (!sealed) return null;
-    const plain = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: sealed.iv as BufferSource },
-      await wrapKey(),
-      sealed.data,
-    );
-    memory = new TextDecoder().decode(plain);
-    return memory;
-  } catch {
-    return null;
-  }
+export async function getKey(slot: Slot = "library"): Promise<string | null> {
+  const known = memory.get(slot);
+  if (known) return known;
+  const sealed = await request<Sealed | undefined>("readonly", (s) => s.get(slot));
+  if (!sealed) return null;
+  const plain = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: sealed.iv as BufferSource },
+    await wrapKey(),
+    sealed.data,
+  );
+  const recovery = new TextDecoder().decode(plain);
+  memory.set(slot, recovery);
+  return recovery;
 }
 
-export async function setKey(recovery: string): Promise<void> {
-  memory = recovery;
+export async function setKey(recovery: string, slot: Slot = "library"): Promise<void> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const data = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv },
     await wrapKey(),
     new TextEncoder().encode(recovery),
   );
-  await request("readwrite", (s) => s.put({ iv, data } satisfies Sealed, LIBRARY));
+  await request("readwrite", (s) => s.put({ iv, data } satisfies Sealed, slot));
+  memory.set(slot, recovery);
 }
 
-export async function clearKey(): Promise<void> {
-  memory = null;
-  await request("readwrite", (s) => s.delete(LIBRARY));
+export async function clearKey(slot: Slot = "library"): Promise<void> {
+  memory.delete(slot);
+  await request("readwrite", (s) => s.delete(slot));
+}
+
+export async function forgetAll(): Promise<void> {
+  memory.clear();
+  await new Promise<void>((resolve) => {
+    const gone = indexedDB.deleteDatabase(DB);
+    gone.onsuccess = gone.onerror = gone.onblocked = () => resolve();
+  });
 }

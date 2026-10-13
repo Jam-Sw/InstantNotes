@@ -3,8 +3,33 @@ const ATTACHMENTS = "/api/attachments/";
 const TYPES = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp" };
 const PASS = ["/sync/", "/auth/", "/healthz", "/api/"];
 
+const ENGINE = ["/web/worker.js", "/web/pkg/instantnotes_web.js", "/web/pkg/instantnotes_web_bg.wasm"];
+
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+
+self.addEventListener("message", (event) => {
+  const urls = event.data?.cache;
+  if (!Array.isArray(urls)) return;
+  event.waitUntil(keep(["/", ...ENGINE, ...urls]));
+});
+
+async function keep(urls) {
+  const cache = await caches.open(SHELL);
+  for (const url of new Set(urls)) {
+    const path = new URL(url, self.location.origin);
+    if (path.origin !== self.location.origin || PASS.some((p) => path.pathname.startsWith(p))) continue;
+    try {
+      const response = await fetch(path, { credentials: "same-origin" });
+      const page = path.pathname === "/";
+      if (await cacheable({ mode: page ? "navigate" : "same-origin" }, response)) {
+        await cache.put(page ? "/" : path.href, response);
+      }
+    } catch (e) {
+      continue;
+    }
+  }
+}
 
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
@@ -49,16 +74,21 @@ async function cacheable(request, response) {
 }
 
 async function shell(request) {
+  let response;
   try {
-    const response = await fetch(request);
-    if (await cacheable(request, response)) {
-      const cache = await caches.open(SHELL);
-      await cache.put(request.mode === "navigate" ? "/" : request, response.clone());
-    }
-    return response;
+    response = await fetch(request);
   } catch (e) {
     const hit = await caches.match(request.mode === "navigate" ? "/" : request);
     if (hit) return hit;
     throw e;
   }
+  try {
+    if (await cacheable(request, response)) {
+      const cache = await caches.open(SHELL);
+      await cache.put(request.mode === "navigate" ? "/" : request, response.clone());
+    }
+  } catch (e) {
+    return response;
+  }
+  return response;
 }

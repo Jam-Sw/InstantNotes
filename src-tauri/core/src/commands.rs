@@ -13,49 +13,6 @@ pub const ATTACHMENTS_URL: &str = "/api/attachments";
 pub const ATTACHMENT_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp"];
 const CLEANUP_GRACE_SECS: u64 = 3600;
 
-pub const WEB_COMMANDS: &[&str] = &[
-    "create_note",
-    "get_note",
-    "update_note",
-    "soft_delete_note",
-    "restore_note",
-    "list_notes",
-    "count_notes",
-    "search_notes",
-    "set_notes_flags",
-    "soft_delete_notes",
-    "restore_notes",
-    "destroy_notes",
-    "sheet_csv",
-    "list_tags",
-    "update_tag",
-    "delete_tag",
-    "add_tag_to_note",
-    "remove_tag_from_note",
-    "tags_for_note",
-    "list_workspaces",
-    "get_or_create_workspace",
-    "rename_workspace",
-    "delete_workspace",
-    "list_workspace_tags",
-    "add_note_to_workspace",
-    "remove_note_from_workspace",
-    "workspaces_for_note",
-    "get_setting",
-    "set_setting",
-    "delete_setting",
-    "library_graph",
-    "space_suggestions",
-    "tag_suggestion",
-    "dismiss_space_suggestion",
-    "restore_space_suggestion",
-    "library_stats",
-    "get_attachments_dir",
-    "unused_attachments",
-    "remove_unused_attachments",
-    "app_version",
-];
-
 #[derive(Clone, Debug)]
 pub struct Change {
     pub event: &'static str,
@@ -136,7 +93,9 @@ fn attachment_sizes(
             crate::attachments::list_attachments(dir, cutoff)
                 .map_err(|e| AppError::Storage(format!("could not list attachments: {e}")))
         }
-        Attachments::Database => store.attachment_file_sizes(),
+        Attachments::Database => store.attachment_file_sizes(
+            grace.then(|| crate::store::now_ms() - (CLEANUP_GRACE_SECS * 1000) as i64),
+        ),
     }
 }
 

@@ -1,5 +1,5 @@
-import { emit, run } from "./core";
-import { clearKey, getKey, setKey } from "./keys";
+import { emit, isStopped, run, wipeLibrary } from "./core";
+import { clearKey, forgetAll, getKey, setKey } from "./keys";
 import { tab } from "./tab.svelte";
 import type { SyncDevice, SyncJoinRequest, SyncServerStatus, SyncStage } from "$lib/api/types";
 
@@ -10,10 +10,15 @@ const RETRY_MS = 30_000;
 const OPEN_TRIES = 10;
 const OPEN_RETRY_MS = 300;
 const WAIT_SECONDS = 25;
+const REQUEST_TIMEOUT_MS = 60_000;
+const JOIN_REPEAT_MS = 3_000;
+const MAX_ROUNDS = 5;
+const LEGACY_RETRY_MS = 60 * 60 * 1000;
 const PLAIN_OK = "instantnotes.plainOk";
 const LEGACY = "sync.legacy";
 const LEGACY_IMPORTED = "imported";
 const LEGACY_DONE = "done";
+const PAUSED = new Set<SyncStage>(["joining", "confirmPlain", "otherLibrary"]);
 
 type SyncAnswer = {
   stage: SyncStage | "unset";
@@ -31,6 +36,7 @@ type SyncAnswer = {
 
 type JoinWait = { state: "pending" | "approved" | "denied"; key?: string };
 type Pending = { id: string; publicKey: string; deviceName: string };
+type Failure = { code: string; message: string; status?: number };
 
 const status: SyncServerStatus = {
   stage: "syncing",
@@ -54,18 +60,29 @@ let running: Promise<void> | null = null;
 let again = false;
 let allowRemovals = false;
 let starting: Promise<void> | null = null;
+let legacyWaitUntil = 0;
 
 function changed(): void {
   emit("vault:status");
 }
 
-async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+const messageOf = (e: unknown): string =>
+  e && typeof e === "object" && "message" in e ? String(e.message) : String(e);
+
+async function api<T>(path: string, init: RequestInit = {}, waitSeconds = 0): Promise<T> {
   const res = await fetch(API + path, {
     ...init,
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS + waitSeconds * 1000),
     headers: { ...HEADERS, ...(init.body ? { "Content-Type": "application/json" } : {}) },
   });
   if (res.status === 401) location.assign("/auth/login");
-  if (!res.ok) throw { code: "STORAGE_ERROR", message: `server answered ${res.status}` };
+  if (!res.ok) {
+    throw {
+      code: "STORAGE_ERROR",
+      message: `server answered ${res.status}`,
+      status: res.status,
+    } satisfies Failure;
+  }
   const text = await res.text();
   return (text ? JSON.parse(text) : null) as T;
 }
@@ -75,6 +92,15 @@ function plainOk(): boolean {
     return localStorage.getItem(PLAIN_OK) === "1";
   } catch {
     return false;
+  }
+}
+
+function setPlainOk(ok: boolean): void {
+  try {
+    if (ok) localStorage.setItem(PLAIN_OK, "1");
+    else localStorage.removeItem(PLAIN_OK);
+  } catch {
+    return;
   }
 }
 
@@ -88,19 +114,26 @@ async function setSetting(key: string, value: unknown): Promise<void> {
 }
 
 async function takeLegacy(): Promise<boolean> {
+  if (Date.now() < legacyWaitUntil) return false;
   if ((await setting(LEGACY)) !== null) return false;
-  const res = await fetch(API + "legacy", { headers: HEADERS });
+  const res = await fetch(API + "legacy", {
+    headers: HEADERS,
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
   if (res.status === 404) {
     await setSetting(LEGACY, LEGACY_DONE);
     return false;
   }
-  if (!res.ok) return false;
+  if (!res.ok) throw new Error(`server answered ${res.status}`);
   const legacy = (await res.json()) as { attachments: string[] };
   for (const name of legacy.attachments) {
     const file = await fetch(`${API}legacy/attachments/${encodeURIComponent(name)}`, {
       headers: HEADERS,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
-    if (file.ok) await run("import_attachment", name, new Uint8Array(await file.arrayBuffer()));
+    if (file.status === 404) continue;
+    if (!file.ok) throw new Error(`image ${name}: server answered ${file.status}`);
+    await run("import_attachment", name, new Uint8Array(await file.arrayBuffer()));
   }
   await run("import_legacy", JSON.stringify(legacy));
   await setSetting(LEGACY, LEGACY_IMPORTED);
@@ -108,31 +141,49 @@ async function takeLegacy(): Promise<boolean> {
 }
 
 async function finishLegacy(answer: SyncAnswer): Promise<void> {
-  if (answer.stage !== "upToDate" || answer.retry) return;
-  if ((await setting(LEGACY)) !== LEGACY_IMPORTED) return;
-  const res = await fetch(API + "legacy", { method: "DELETE", headers: HEADERS });
+  const pushed =
+    answer.stage === "upToDate" &&
+    !answer.retry &&
+    !answer.modeChanged &&
+    !answer.tooLarge?.length &&
+    !answer.heldRemovals;
+  if (!pushed || (await setting(LEGACY)) !== LEGACY_IMPORTED) return;
+  const res = await fetch(API + "legacy", {
+    method: "DELETE",
+    headers: HEADERS,
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
   if (res.ok || res.status === 404) await setSetting(LEGACY, LEGACY_DONE);
 }
 
 async function once(): Promise<void> {
+  if (PAUSED.has(status.stage)) return;
   const key = await getKey();
-  const imported = await takeLegacy().catch(() => false);
+  let legacyFailure: string | null = null;
+  const imported = await takeLegacy().catch((e) => {
+    legacyWaitUntil = Date.now() + LEGACY_RETRY_MS;
+    legacyFailure = `Your notes from the earlier web version could not be moved yet: ${messageOf(e)}`;
+    return false;
+  });
   if (imported) emit("notes:changed", { origin: null });
   const answer = JSON.parse(
     await run<string>("sync", key, allowRemovals, plainOk()),
   ) as SyncAnswer;
-  await finishLegacy(answer).catch(() => {});
   allowRemovals = false;
   if (answer.stage === "signedOut") location.assign("/auth/login");
-  if (answer.dropKey) await clearKey();
+  if (answer.dropKey) {
+    await clearKey();
+    setPlainOk(true);
+  }
+  await finishLegacy(answer).catch(() => {});
   if (answer.stage === "unset") {
     status.stage = "off";
     status.message = null;
     changed();
     return;
   }
-  status.stage = answer.stage;
-  status.message = answer.message ?? null;
+  if (status.stage !== "recoveryKey" || answer.stage !== "upToDate") status.stage = answer.stage;
+  status.message = answer.message ?? legacyFailure;
   status.encrypted = answer.encrypted ?? status.encrypted;
   status.conflicts += answer.conflicts ?? 0;
   status.heldRemovals = answer.heldRemovals ?? 0;
@@ -156,20 +207,34 @@ export function syncNow(): Promise<void> {
     return running;
   }
   running = (async () => {
+    let rounds = 0;
     do {
       again = false;
+      rounds += 1;
       try {
         await once();
       } catch (e) {
         status.stage = "problem";
-        status.message = e && typeof e === "object" && "message" in e ? String(e.message) : String(e);
+        status.message = messageOf(e);
         changed();
       }
-    } while (again);
+    } while (again && rounds < MAX_ROUNDS && !isStopped());
   })().finally(() => {
     running = null;
   });
   return running;
+}
+
+async function exclusive<T>(work: () => Promise<T>): Promise<T> {
+  while (running) await running.catch(() => {});
+  let result!: T;
+  running = (async () => {
+    result = await work();
+  })().finally(() => {
+    running = null;
+  });
+  await running;
+  return result;
 }
 
 export function syncSoon(): void {
@@ -184,25 +249,25 @@ const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function watchChanges(): Promise<void> {
   let since = 0;
-  for (;;) {
+  while (!isStopped()) {
     try {
-      const page = await api<{ head: number }>(`changes?since=${since}&limit=1&wait=${WAIT_SECONDS}`);
+      const page = await api<{ head: number }>(
+        `changes?since=${since}&limit=1&wait=${WAIT_SECONDS}`,
+        {},
+        WAIT_SECONDS,
+      );
       if (page.head !== since) {
         since = page.head;
         syncSoon();
       }
-    } catch {
+    } catch (e) {
       since = 0;
-      await pause(RETRY_MS);
+      if ((e as Failure).status !== 410) await pause(RETRY_MS);
     }
   }
 }
 
-async function joinRequests(): Promise<SyncJoinRequest[]> {
-  const key = await getKey();
-  if (!key) return [];
-  const recipient = await run<string>("recipient_of", key);
-  const pending = await api<Pending[]>("keys/requests");
+async function withWords(pending: Pending[], recipient: string): Promise<SyncJoinRequest[]> {
   return Promise.all(
     pending.map(async (j) => ({
       id: j.id,
@@ -213,20 +278,29 @@ async function joinRequests(): Promise<SyncJoinRequest[]> {
   );
 }
 
+async function joinRequests(): Promise<SyncJoinRequest[]> {
+  const key = await getKey();
+  if (!key) return [];
+  const recipient = await run<string>("recipient_of", key);
+  return withWords(await api<Pending[]>("keys/requests"), recipient);
+}
+
 async function watchJoins(): Promise<void> {
   let shown = "";
-  for (;;) {
+  while (!isStopped()) {
     try {
-      if (!(await getKey())) {
+      const key = await getKey();
+      if (!key) {
         await pause(RETRY_MS);
         continue;
       }
-      await api(`keys/requests?wait=${WAIT_SECONDS}`);
-      const requests = await joinRequests();
-      const ids = requests.map((r) => r.id).join(",");
+      const pending = await api<Pending[]>(`keys/requests?wait=${WAIT_SECONDS}`, {}, WAIT_SECONDS);
+      const ids = pending.map((r) => r.id).join(",");
       if (ids !== shown) {
         shown = ids;
-        emit("sync:join-requests", requests);
+        emit("sync:join-requests", await withWords(pending, await run<string>("recipient_of", key)));
+      } else if (pending.length) {
+        await pause(JOIN_REPEAT_MS);
       }
     } catch {
       await pause(RETRY_MS);
@@ -240,7 +314,7 @@ async function openLibrary(): Promise<void> {
       await run("open");
       return;
     } catch (e) {
-      if (attempt >= OPEN_TRIES) throw e;
+      if (attempt >= OPEN_TRIES || isStopped()) throw e;
       await pause(OPEN_RETRY_MS);
     }
   }
@@ -276,11 +350,15 @@ async function serverRecipient(): Promise<string | null> {
 }
 
 async function waitForApproval(id: string, recipient: string): Promise<void> {
-  for (;;) {
+  while (!isStopped()) {
     let answer: JoinWait;
     try {
-      answer = await api<JoinWait>(`keys/requests/${id}?wait=${WAIT_SECONDS}`);
-    } catch {
+      answer = await api<JoinWait>(`keys/requests/${id}?wait=${WAIT_SECONDS}`, {}, WAIT_SECONDS);
+    } catch (e) {
+      if ((e as Failure).status !== 404) {
+        await pause(RETRY_MS);
+        continue;
+      }
       status.stage = "needsKey";
       status.joinWords = null;
       status.message = "The request expired. Start it again.";
@@ -299,7 +377,7 @@ async function waitForApproval(id: string, recipient: string): Promise<void> {
         void syncNow();
       } catch (e) {
         status.stage = "needsKey";
-        status.message = String((e as { message?: string }).message ?? e);
+        status.message = messageOf(e);
         changed();
       }
       return;
@@ -336,6 +414,12 @@ function browserName(): string {
   return system ? `${browser} on ${system}` : browser;
 }
 
+async function clearBrowser(): Promise<void> {
+  await wipeLibrary();
+  await forgetAll();
+  setPlainOk(false);
+}
+
 export const syncCommands: Record<string, (args: Record<string, unknown>) => Promise<unknown>> = {
   async get_sync_server_status() {
     return { ...status };
@@ -345,16 +429,22 @@ export const syncCommands: Record<string, (args: Record<string, unknown>) => Pro
       location.assign("/auth/login");
       return { ...status };
     }
-    const recovery = await run<string | null>("set_up", Boolean(args.encrypt));
-    if (recovery) {
-      await setKey(recovery);
-      status.stage = "recoveryKey";
-      status.recoveryKey = recovery;
-      status.encrypted = true;
-    } else {
-      status.stage = "syncing";
-    }
-    changed();
+    await exclusive(async () => {
+      if (args.encrypt) {
+        const recovery = await run<string>("new_recovery");
+        await setKey(recovery);
+        setPlainOk(false);
+        await run("set_up", recovery);
+        status.stage = "recoveryKey";
+        status.recoveryKey = recovery;
+        status.encrypted = true;
+      } else {
+        await run("set_up", null);
+        setPlainOk(true);
+        status.stage = "syncing";
+      }
+      changed();
+    });
     void syncNow();
     return { ...status };
   },
@@ -403,16 +493,18 @@ export const syncCommands: Record<string, (args: Record<string, unknown>) => Pro
     return { ...status };
   },
   async accept_plain_server() {
-    try {
-      localStorage.setItem(PLAIN_OK, "1");
-    } catch {
-      return;
-    }
+    setPlainOk(true);
+    status.stage = "syncing";
+    changed();
     void syncNow();
   },
   async disconnect_sync_server() {
-    await clearKey();
+    await clearBrowser();
     location.assign("/auth/logout");
+  },
+  async clear_browser_library() {
+    await clearBrowser();
+    location.reload();
   },
   async list_sync_devices() {
     return api<SyncDevice[]>("devices");
@@ -443,16 +535,24 @@ export const syncCommands: Record<string, (args: Record<string, unknown>) => Pro
   },
   async set_sync_encryption(args) {
     const on = Boolean(args.on);
-    const recovery = await run<string | null>("switch_encryption", on, await getKey());
-    if (recovery) {
-      await setKey(recovery);
-      status.stage = "recoveryKey";
-      status.recoveryKey = recovery;
-    } else {
-      await clearKey();
-    }
-    status.encrypted = on;
-    changed();
+    await exclusive(async () => {
+      const current = await getKey();
+      const next = on ? await run<string>("new_recovery") : null;
+      if (next) await setKey(next, "next");
+      await run("switch_encryption", current, next);
+      if (next) {
+        await setKey(next);
+        await clearKey("next");
+        setPlainOk(false);
+        status.stage = "recoveryKey";
+        status.recoveryKey = next;
+      } else {
+        await clearKey();
+        setPlainOk(true);
+      }
+      status.encrypted = on;
+      changed();
+    });
     void syncNow();
     return { ...status };
   },

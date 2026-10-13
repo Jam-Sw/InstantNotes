@@ -1,7 +1,14 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { save } from "@tauri-apps/plugin-dialog";
-  import { appVersion as fetchAppVersion, exportNoteFile, quitApp, sheetCsv } from "$lib/api/client";
+  import {
+    appVersion as fetchAppVersion,
+    exportNoteFile,
+    getSyncServerStatus,
+    quitApp,
+    sheetCsv,
+  } from "$lib/api/client";
+  import type { SyncStage } from "$lib/api/types";
   import { EVENTS, listen } from "$lib/api/events";
   import { isWeb } from "$lib/api/runtime";
   import Sidebar from "$lib/components/Sidebar.svelte";
@@ -45,6 +52,14 @@
   let appVersion = $state("");
   let paletteOpen = $state(false);
   let settingsOpen = $state(false);
+  let settingsPage = $state<"home" | "vault">("home");
+  const SYNC_NEEDS_YOU = new Set<SyncStage>([
+    "off",
+    "needsKey",
+    "recoveryKey",
+    "confirmPlain",
+    "otherLibrary",
+  ]);
 
   $effect(() => {
     if (updateSpace.visible) return;
@@ -106,8 +121,23 @@
     let unlistenSettings: (() => void) | undefined;
     void listen(EVENTS.SETTINGS_OPEN, () => {
       if (licenseSpace.locked) return;
+      settingsPage = "home";
       settingsOpen = true;
     }).then((un) => (unlistenSettings = un));
+
+    let unlistenSyncNeeds: (() => void) | undefined;
+    if (isWeb) {
+      const checkSync = () =>
+        void getSyncServerStatus()
+          .then((status) => {
+            if (!SYNC_NEEDS_YOU.has(status.stage) || settingsOpen || licenseSpace.locked) return;
+            settingsPage = "vault";
+            settingsOpen = true;
+          })
+          .catch(() => {});
+      checkSync();
+      void listen(EVENTS.VAULT_STATUS, checkSync).then((un) => (unlistenSyncNeeds = un));
+    }
 
     let unlistenNewNote: (() => void) | undefined;
     void listen(EVENTS.MENU_NEW_NOTE, () => {
@@ -163,6 +193,7 @@
       updater.stop();
       unlistenCheck?.();
       unlistenSettings?.();
+      unlistenSyncNeeds?.();
       unlistenNewNote?.();
       unlistenNewBoard?.();
       unlistenNewSheet?.();
@@ -354,6 +385,7 @@
   {#await import("$lib/components/SettingsView.svelte") then { default: SettingsView }}
     <SettingsView
       {appVersion}
+      initialPage={settingsPage}
       onBack={() => (settingsOpen = false)}
       onShowSpace={(id) => {
         if (isAgentsSpaceId(id)) agentsSpace.open();

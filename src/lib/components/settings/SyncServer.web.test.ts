@@ -126,7 +126,7 @@ describe("SyncServer on the web, signing out", () => {
       expect(ask).toHaveBeenCalledWith(
         expect.objectContaining({
           title: "Sign out of this browser?",
-          body: "Its copy of your notes stays here until you sign in again.",
+          body: "This browser's copy of your notes is removed. They stay on your server and your other devices.",
         }),
       ),
     );
