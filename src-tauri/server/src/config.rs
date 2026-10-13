@@ -27,7 +27,6 @@ pub struct Config {
     pub oidc_client_id: String,
     pub oidc_client_secret: String,
     pub ui_dir: PathBuf,
-    pub vault_root: Option<PathBuf>,
     pub idle_close: Duration,
     pub session_ttl: Duration,
     pub trust_proxy: bool,
@@ -72,12 +71,8 @@ impl Config {
         check_https(PUBLIC_URL, &public_url)?;
         let oidc_issuer = required(OIDC_ISSUER)?.trim_end_matches('/').to_string();
         check_https(OIDC_ISSUER, &oidc_issuer)?;
-        let vault_root = std::env::var(VAULT_ROOT)
-            .ok()
-            .filter(|v| !v.trim().is_empty())
-            .map(|v| PathBuf::from(v.trim()));
-        if vault_root.as_ref().is_some_and(|root| !root.is_absolute()) {
-            return Err(format!("{VAULT_ROOT} must be an absolute path"));
+        if std::env::var(VAULT_ROOT).is_ok_and(|v| !v.trim().is_empty()) {
+            crate::log("config.ignored", &[("setting", VAULT_ROOT)]);
         }
         Ok(Config {
             listen,
@@ -91,7 +86,6 @@ impl Config {
                 .filter(|v| !v.trim().is_empty())
                 .map(PathBuf::from)
                 .unwrap_or_else(|| PathBuf::from(DEFAULT_UI_DIR)),
-            vault_root,
             idle_close: IDLE_CLOSE,
             session_ttl: SESSION_TTL,
             trust_proxy: std::env::var(TRUST_PROXY).is_ok_and(|v| v.trim() == "true"),

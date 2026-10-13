@@ -1,8 +1,6 @@
-mod api;
 pub mod client;
 mod config;
 mod device;
-mod events;
 #[cfg(test)]
 mod fake_idp;
 mod libraries;
@@ -13,45 +11,33 @@ mod recheck;
 mod sessions;
 mod statics;
 mod sync_api;
-mod vaults;
 
 pub use config::Config;
 pub use sessions::Person;
 
-use axum::body::Bytes;
 use axum::extract::connect_info::IntoMakeServiceWithConnectInfo;
-use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, Query, State};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Query, State};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode, Uri};
-use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Redirect, Response};
-use axum::routing::{get, post};
+use axum::routing::get;
 use axum::{Json, Router};
-use events::Hub;
-use instantnotes_core::AppError;
-use libraries::{Libraries, Library};
+use libraries::Libraries;
 use limits::Limits;
 use objects::Stores;
 use oidc::Oidc;
 use recheck::Recheck;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::json;
 use sessions::{Logins, Sessions};
 use std::ffi::OsString;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio_stream::wrappers::BroadcastStream;
-use tokio_stream::StreamExt;
 
 pub const SUBCOMMAND: &str = "serve";
-const MUTATION_HEADER: &str = "x-instantnotes";
-const CLIENT_HEADER: &str = "x-instantnotes-client";
 const BODY_LIMIT: usize = 32 * 1024 * 1024;
-const KEEPALIVE: Duration = Duration::from_secs(15);
 const IDLE_SWEEP: Duration = Duration::from_secs(60);
 const BLOB_SWEEP_TICKS: u64 = 60;
-const SYNC_TICK: Duration = Duration::from_secs(1);
-const SIGN_IN_NOTES: usize = 400;
 const SERVER_DB: &str = "server.db";
 const HSTS: &str = "max-age=31536000";
 const LOGIN_COOKIE: &str = "in_login";
@@ -74,7 +60,6 @@ pub struct Inner {
     pub libraries: Libraries,
     logins: Logins,
     limits: Limits,
-    hub: Hub,
     oidc: Arc<Oidc>,
     recheck: Recheck,
     stores: Stores,
@@ -104,14 +89,9 @@ impl AppState {
         let sessions = Sessions::open(&config.data_dir.join(SERVER_DB), config.session_ttl)?;
         Ok(AppState(Arc::new(Inner {
             sessions,
-            libraries: Libraries::new(
-                &config.data_dir,
-                config.idle_close,
-                config.vault_root.clone(),
-            ),
+            libraries: Libraries::new(&config.data_dir, config.idle_close),
             logins: Logins::default(),
             limits: Limits::new(),
-            hub: Hub::default(),
             oidc: Arc::new(oidc),
             recheck: Recheck::new(&config.oidc_client_secret),
             stores: Stores::new(&config.data_dir),
@@ -143,21 +123,6 @@ impl AppState {
                 store.cancel_joins();
             }
         }
-    }
-
-    pub fn sync_vaults(&self) {
-        vaults::sync_due(&self.libraries, &self.hub);
-    }
-
-    fn library<T>(
-        &self,
-        sub: &str,
-        f: impl FnOnce(&mut Library) -> Result<T, AppError>,
-    ) -> Result<T, AppError> {
-        if self.config.vault_root.is_some() {
-            vaults::first_sync(&self.libraries, &self.hub, sub);
-        }
-        self.libraries.with(sub, f)
     }
 }
 
@@ -245,29 +210,11 @@ pub fn run(config: Config) -> i32 {
                 }
             })
         };
-        let syncer = state.config.vault_root.as_ref().map(|root| {
-            log(
-                "serve.vault",
-                &[("vault_root", &root.display().to_string())],
-            );
-            let state = state.clone();
-            tokio::spawn(async move {
-                let mut tick = tokio::time::interval(SYNC_TICK);
-                loop {
-                    tick.tick().await;
-                    let state = state.clone();
-                    let _ = tokio::task::spawn_blocking(move || state.sync_vaults()).await;
-                }
-            })
-        });
         let served = axum::serve(listener, app(state.clone()))
             .with_graceful_shutdown(shutdown_signal())
             .await;
         sweeper.abort();
         rechecker.abort();
-        if let Some(syncer) = syncer {
-            syncer.abort();
-        }
         state.libraries.close_all();
         match served {
             Ok(()) => {
@@ -317,10 +264,6 @@ pub fn router(state: AppState) -> Router {
         .route("/auth/login", get(login))
         .route("/auth/callback", get(callback))
         .route("/auth/logout", get(logout))
-        .route("/api/events", get(events_stream))
-        .route("/api/save_attachment", post(save_attachment))
-        .route("/api/attachments/{name}", get(attachment))
-        .route("/api/{command}", post(command))
         .fallback(get(ui))
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .layer(axum::middleware::map_response_with_state(
@@ -364,28 +307,6 @@ pub(crate) fn too_many(retry_after: u64) -> Response {
 fn sign_in_limited(state: &AppState, peer: SocketAddr, headers: &HeaderMap) -> Option<Response> {
     let ip = limits::client_ip(state.config.trust_proxy, peer, headers);
     state.limits.sign_in(ip).err().map(too_many)
-}
-
-fn error_response(e: &AppError) -> Response {
-    let status = match e {
-        AppError::NotFound(_) => StatusCode::NOT_FOUND,
-        AppError::Validation(_) => StatusCode::BAD_REQUEST,
-        AppError::Conflict(_) => StatusCode::CONFLICT,
-        _ => StatusCode::INTERNAL_SERVER_ERROR,
-    };
-    (
-        status,
-        Json(json!({ "code": e.code(), "message": e.to_string() })),
-    )
-        .into_response()
-}
-
-fn unauthorized() -> Response {
-    (
-        StatusCode::UNAUTHORIZED,
-        Json(json!({ "code": "UNAUTHORIZED", "message": "sign in to continue" })),
-    )
-        .into_response()
 }
 
 fn person_of(state: &AppState, headers: &HeaderMap) -> Option<Person> {
@@ -526,9 +447,8 @@ async fn callback(
                 );
                 return response;
             }
-            let sizes = note_sizes(&state, &person.sub);
             let id = state.sessions.create(person);
-            let mut response = statics::html(StatusCode::OK, statics::signed_in(&sizes));
+            let mut response = statics::html(StatusCode::OK, statics::signed_in());
             response.headers_mut().insert(
                 header::SET_COOKIE,
                 cookie(&state, &id, Some(state.sessions.ttl())),
@@ -540,21 +460,6 @@ async fn callback(
             statics::html(StatusCode::BAD_REQUEST, statics::error_page(&e))
         }
     }
-}
-
-fn note_sizes(state: &AppState, sub: &str) -> Vec<usize> {
-    state
-        .libraries
-        .with(sub, |lib| {
-            Ok(lib
-                .store
-                .list_notes(instantnotes_core::types::NoteFilter::default())?
-                .iter()
-                .take(SIGN_IN_NOTES)
-                .map(|n| n.title.chars().count() + n.body.chars().count())
-                .collect())
-        })
-        .unwrap_or_default()
 }
 
 async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Response {
@@ -574,150 +479,4 @@ async fn ui(State(state): State<AppState>, headers: HeaderMap, uri: Uri) -> Resp
         return statics::html(StatusCode::OK, statics::SIGN_IN.to_string());
     }
     statics::serve_ui(&state.config.ui_dir, uri.path()).await
-}
-
-async fn events_stream(State(state): State<AppState>, headers: HeaderMap) -> Response {
-    let Some(person) = person_of(&state, &headers) else {
-        return unauthorized();
-    };
-    let receiver = state.hub.subscribe(&person.sub);
-    let stream = BroadcastStream::new(receiver).filter_map(|item| {
-        item.ok().map(|change| {
-            Ok::<Event, std::convert::Infallible>(
-                Event::default()
-                    .event(change.event)
-                    .data(change.payload.to_string()),
-            )
-        })
-    });
-    Sse::new(stream)
-        .keep_alive(KeepAlive::new().interval(KEEPALIVE).text("keepalive"))
-        .into_response()
-}
-
-fn client_origin(headers: &HeaderMap) -> Option<String> {
-    headers
-        .get(CLIENT_HEADER)
-        .and_then(|v| v.to_str().ok())
-        .filter(|v| !v.is_empty() && v.len() <= 64)
-        .map(str::to_string)
-}
-
-fn forbidden_without_header(headers: &HeaderMap) -> Option<Response> {
-    if headers.contains_key(MUTATION_HEADER) {
-        return None;
-    }
-    Some(
-        (
-            StatusCode::FORBIDDEN,
-            Json(json!({ "code": "FORBIDDEN", "message": "missing X-InstantNotes header" })),
-        )
-            .into_response(),
-    )
-}
-
-async fn command(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path(command): Path<String>,
-    body: Bytes,
-) -> Response {
-    let Some(person) = person_of(&state, &headers) else {
-        return unauthorized();
-    };
-    if let Some(refused) = forbidden_without_header(&headers) {
-        return refused;
-    }
-    if !api::WEB_COMMANDS.contains(&command.as_str()) {
-        return error_response(&AppError::NotFound(format!("command {command}")));
-    }
-    let args: Value = if body.is_empty() {
-        Value::Null
-    } else {
-        match serde_json::from_slice(&body) {
-            Ok(v) => v,
-            Err(e) => return error_response(&AppError::Validation(format!("arguments: {e}"))),
-        }
-    };
-    let origin = client_origin(&headers);
-    let sub = person.sub.clone();
-    let libraries_state = state.clone();
-    let name = command.clone();
-    let outcome = tokio::task::spawn_blocking(move || {
-        libraries_state.library(&sub, |lib| {
-            let outcome = api::dispatch(lib, &name, &args, origin.as_deref())?;
-            if let Some(vault) = lib.vault.as_ref().filter(|_| !outcome.changes.is_empty()) {
-                vault.poke();
-            }
-            Ok(outcome)
-        })
-    })
-    .await;
-    match outcome {
-        Ok(Ok(outcome)) => {
-            state.hub.publish(&person.sub, outcome.changes);
-            Json(outcome.value).into_response()
-        }
-        Ok(Err(e)) => {
-            log("api.error", &[("command", &command), ("code", e.code())]);
-            error_response(&e)
-        }
-        Err(_) => error_response(&AppError::Storage("command panicked".into())),
-    }
-}
-
-async fn save_attachment(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Response {
-    let Some(person) = person_of(&state, &headers) else {
-        return unauthorized();
-    };
-    if let Some(refused) = forbidden_without_header(&headers) {
-        return refused;
-    }
-    let ext = headers
-        .get("x-attachment-ext")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or_default()
-        .to_string();
-    let sub = person.sub;
-    let libraries_state = state.clone();
-    let saved = tokio::task::spawn_blocking(move || {
-        libraries_state.library(&sub, |lib| api::save_attachment(lib, &body, &ext))
-    })
-    .await;
-    match saved {
-        Ok(Ok(name)) => Json(json!(name)).into_response(),
-        Ok(Err(e)) => error_response(&e),
-        Err(_) => error_response(&AppError::Storage("attachment write panicked".into())),
-    }
-}
-
-async fn attachment(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path(name): Path<String>,
-) -> Response {
-    let Some(person) = person_of(&state, &headers) else {
-        return unauthorized();
-    };
-    let sub = person.sub;
-    let libraries_state = state.clone();
-    let path = tokio::task::spawn_blocking(move || {
-        libraries_state.library(&sub, |lib| {
-            api::attachment_path(lib, &name)
-                .ok_or_else(|| AppError::NotFound(format!("attachment {name}")))
-        })
-    })
-    .await;
-    match path {
-        Ok(Ok(path)) => match statics::serve_file(&path, "private, max-age=86400").await {
-            Some(found) => found,
-            None => error_response(&AppError::NotFound("attachment".into())),
-        },
-        Ok(Err(e)) => error_response(&e),
-        Err(_) => error_response(&AppError::Storage("attachment read panicked".into())),
-    }
 }

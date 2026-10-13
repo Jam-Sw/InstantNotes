@@ -17,7 +17,6 @@ async fn start(public_url: &str) -> Server {
         oidc_client_id: "client".into(),
         oidc_client_secret: "secret".into(),
         ui_dir: dir.path().join("ui"),
-        vault_root: None,
         idle_close: Duration::from_secs(600),
         session_ttl: Duration::from_secs(3600),
         trust_proxy: false,

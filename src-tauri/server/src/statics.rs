@@ -189,21 +189,11 @@ dark.addEventListener("change",()=>{pal=pick();all()});still.addEventListener("c
 </script>
 </body></html>"##;
 
-const SIGN_IN_DATA: &str =
-    r#"<script type="application/json" id="signin-data">{"notes":48}</script>"#;
-
-const SIGNED_IN_SCRIPT: &str = r#"<script>document.dispatchEvent(new Event("signin:start"));fetch("/api/count_notes",{method:"POST",headers:{"Content-Type":"application/json","X-InstantNotes":"1"},body:"{}"}).catch(()=>{}).finally(()=>document.dispatchEvent(new CustomEvent("signin:done",{detail:{href:"/"}})))</script>
+const SIGNED_IN_SCRIPT: &str = r#"<script>document.dispatchEvent(new Event("signin:start"));document.dispatchEvent(new CustomEvent("signin:done",{detail:{href:"/"}}))</script>
 </body>"#;
 
-pub fn signed_in(sizes: &[usize]) -> String {
-    let notes: Vec<String> = sizes.iter().map(|s| format!(r#"{{"size":{s}}}"#)).collect();
-    let data = format!(
-        r#"<script type="application/json" id="signin-data">{{"notes":[{}]}}</script>"#,
-        notes.join(",")
-    );
-    SIGN_IN
-        .replacen(SIGN_IN_DATA, &data, 1)
-        .replacen("</body>", SIGNED_IN_SCRIPT, 1)
+pub fn signed_in() -> String {
+    SIGN_IN.replacen("</body>", SIGNED_IN_SCRIPT, 1)
 }
 
 pub fn escape(text: &str) -> String {
@@ -251,14 +241,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn signed_in_carries_the_sizes_and_hands_off_once() {
-        let page = signed_in(&[12, 0, 900]);
-        assert!(page.contains(
-            r#"id="signin-data">{"notes":[{"size":12},{"size":0},{"size":900}]}</script>"#
-        ));
-        assert!(!page.contains(SIGN_IN_DATA));
+    fn signed_in_hands_off_once_without_reading_any_notes() {
+        let page = signed_in();
         assert_eq!(page.matches("signin:done\",{detail").count(), 1);
+        assert!(!page.contains("/api/"));
         assert!(page.trim_end().ends_with("</html>"));
-        assert!(signed_in(&[]).contains(r#"{"notes":[]}"#));
     }
 }

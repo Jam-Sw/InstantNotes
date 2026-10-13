@@ -59,7 +59,7 @@ full paths in reports). Ships in 0.10.0: built on `feat/sync-server`, merged loc
 - [x] 5.2 `sync_objects` table (migration); settings keys
 - [x] 5.3 `crypto.rs`: age encrypt and decrypt to the library recipient, padding (design §4.3), name key and names, join words from both public keys; age test vectors
 - [x] 5.4 `ServerSync::cycle` against `StoreLock` and a `Remote` trait: pull, decide, push, 409, rollback recovery (design §3)
-- [ ] 5.5 Join (design §8.1) (done except the legacy move, which waits for section 8): the sorting table; exact copies combined with the local copy to the Trash and an undo; likely-same detection (prefix, `similar` ratio at 0.9 over 200 characters, never title alone); `sync.mergeReview`; the legacy move (§8.2)
+- [x] 5.5 Join (design §8.1): the sorting table; exact copies combined with the local copy to the Trash and an undo; likely-same detection (prefix, `similar` ratio at 0.9 over 200 characters, never title alone); `sync.mergeReview`; the legacy move (§8.2)
 - [x] 5.5a Encryption switch (design §4.10): plain objects when off; epochs; the switch-over in both directions, retried when the old epoch moved; other devices pausing for approval when turned on
 - [ ] 5.6 Target-only `uuid/js` and `chrono/wasmbind`; `cargo check --target wasm32-unknown-unknown` in `check.sh`
 - [x] 5.7 `core/tests/server_sync_test.rs` with an in-memory `Remote`: every case in design §13
@@ -90,16 +90,16 @@ full paths in reports). Ships in 0.10.0: built on `feat/sync-server`, merged loc
 - [ ] "Remember this browser" off (memory only): not built
 - [x] One-tab lock logic (Web Locks, "Use here" steals and reloads); service worker for offline files and images; persistent storage request
 - [x] The "open in another tab" notice
-- [ ] Settings > Sync on the web, join and recovery screens (design worker)
+- [x] Settings > Sync on the web (no provider choice; first-device "Set up"; "Sign out of this browser"), join and recovery screens
 - [ ] Scanning the recovery key's QR code with a phone camera: not built
 - [x] Web manifest and icons (phone layout: not this release, design D8)
 - [x] The worker and its `.wasm` built by `scripts/build-web-core.sh` outside Vite; the Dockerfile's `web` stage builds them
-- [ ] Headless Chrome against the real image: the worker reads the desktops' notes, writes one, and a desktop receives it (`.claude/scripts/sync-e2e.sh`)
+- [x] Headless Chrome against the real image: the worker reads the desktops' notes, writes one, and a desktop receives it (`.claude/scripts/sync-e2e.sh`, passing)
 
 ## 8. Server cleanup (`instantnotes-server`)
 
 - [ ] `/api/<command>`, `api.rs`, the per-person `Store`, SSE events and `vaults.rs` removed; `INSTANTNOTES_VAULT_ROOT` removed and logged as ignored when set
-- [ ] `legacy` export and delete for 0.9.5 web libraries
+- [x] `legacy` export and delete for 0.9.5 web libraries; the first device to sync moves them in (desktop and web)
 - [ ] Sign-in page: the server's page hands off without reading notes (`note_sizes` removed); the app draws the background from the local copy (design §9)
 - [ ] Release image without the core's store at runtime; size checked
 
@@ -114,7 +114,7 @@ full paths in reports). Ships in 0.10.0: built on `feat/sync-server`, merged loc
 ## 10. End to end
 
 - [x] `.claude/scripts/sync-e2e.sh` (local tooling, git-excluded): image plus a throwaway Dex with Docker, then `server/tests/sync_e2e_test.rs` (`#[ignore]`)
-- [ ] Two desktop clients through real sign-in and join approval (done, passing), and the web app in headless Chromium (waits for section 7), on one library: each one's note appears in the others; an offline edit arrives after reconnecting; a conflict leaves both; the data folder holds no note text
+- [x] Two desktop clients through real sign-in and join approval, and the web engine in headless Chrome, on one library: each one's note appears in the others; an offline edit arrives after reconnecting; a conflict leaves both; the data folder holds no note text
 
 ## 11. Docs
 
