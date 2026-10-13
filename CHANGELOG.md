@@ -14,19 +14,37 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `Transport` trait, `Folder` the first.
 - Sync conflicts keep both versions: the other becomes `<title> (conflict <date time>)` tagged `conflict`;
   `instantnotes.yaml` merges per key against `vault.manifestBase`.
-- Web mode: with `INSTANTNOTES_VAULT_ROOT` set, each person's library syncs with
-  `<INSTANTNOTES_VAULT_ROOT>/<sub>` like any other device (first cycle before the first request, then every 5 s
-  while open), and changes reach open pages as `notes:changed` and `vault:synced`. Unset, nothing changes.
-- Web mode: new sign-in page (`statics::SIGN_IN`); after sign-in `statics::signed_in` shows the person's notes (up to
-  `SIGN_IN_NOTES` = 400, sized by title and body length) as the field and hands off once the library is open.
+- Web mode: new sign-in page (`statics::SIGN_IN`); after sign-in `statics::signed_in` hands off to the app.
 - `confirm_vault_removals`, `vault:synced { noteIds }`; `get_vault_status` adds `transport`, `reachable`,
   `unreachable`, `lastSyncedAt`, `heldRemovals`, `conflicts`.
+- Sync server: `vault.transport = "server"` syncs the library through `instantnotes-server` (`/sync/v1`): each
+  note, the manifest and each attachment is one object, committed against its base; `409` pulls and keeps both.
+- End-to-end encryption, on by default: objects are age-encrypted to the library key, padded, under HMAC names;
+  the server holds no key. `set_sync_encryption` switches a library over (`POST switch`), proven by a marker.
+- Desktop sign-in through the server (loopback redirect, PKCE, `device/token`); device tokens and the library key
+  in the system keychain; new devices approved by six words over both keys (`keys/requests`).
+- Joining a library that has notes asks first (`confirm_sync_join`); exact copies combine undoably, likely pairs
+  go to the "Review merge" Space (`get_merge_review`, `settle_merge_pair`, `undo_merge_combine`).
+- Web app: the core runs in a browser worker (`src-tauri/web`, SQLite in OPFS) with its own encrypted copy, images
+  in the database, a service worker for offline use, one tab at a time. Not laid out for phones yet.
+- Server: `GET /healthz` checks `server.db`; HSTS; rate limits on sign-in and sync; `INSTANTNOTES_TRUST_PROXY`,
+  `INSTANTNOTES_MAX_OBJECT_MB`.
 
 ### Changed
 - Vault flush defers instead of overwriting a note file changed since its `file_sha`; the vault needs
   `instantnotes.yaml` present (`set_vault_folder` creates it), so an empty mount point pauses sync.
 - A file deleted from the folder trashes its note here; more than half the library (over 20) at once is held
   for `confirm_vault_removals`.
+- Web mode: the server no longer holds a readable library; a 0.9.5 web library moves into the first device that
+  syncs (`GET legacy`, imported, pushed, then `DELETE legacy`).
+
+### Fixed
+- Server: the OIDC `id_token` signature is verified against the provider's `jwks_uri` (issuer, audience, `azp`,
+  nonce, expiry); before, its claims were decoded unchecked.
+
+### Security
+- Server: every signed-in person is re-checked hourly with a stored refresh token; `invalid_grant`,
+  `access_denied` or `invalid_request` (400/401/403) revokes their devices and sessions, data kept.
 
 ## [0.9.5] - 2026-10-10
 ### Added

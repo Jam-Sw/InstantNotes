@@ -9,6 +9,7 @@
     setVaultFolder,
   } from "$lib/api/client";
   import { EVENTS, listen } from "$lib/api/events";
+  import { isWeb } from "$lib/api/runtime";
   import type { SyncServerStatus, VaultStatus } from "$lib/api/types";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
@@ -53,6 +54,7 @@
   }
 
   onMount(() => {
+    if (isWeb) return;
     void refresh();
     const unlisten = listen(EVENTS.VAULT_STATUS, () => void refresh());
     return () => void unlisten.then((off) => off());
@@ -107,41 +109,46 @@
 
 <div class="sync-pane">
   <h2>Sync</h2>
-  <p class="section-hint">
-    Keep the same notes on every device you use, through a folder you already sync or through your
-    own InstantNotes server.
-  </p>
-
-  <SegmentedRow
-    label="Sync with"
-    options={PROVIDERS}
-    value={shown}
-    disabled={switching || (!vault && !server)}
-    onchange={choose}
-  />
-
-  {#if shown === "folder"}
-    <SettingsVault />
-  {:else if shown === "server"}
-    <p class="provider-hint">
-      Every device signed in to your InstantNotes server keeps the same library.
-    </p>
+  {#if isWeb}
+    <p class="section-hint">Every device signed in to this server keeps the same library.</p>
     <SyncServer />
-  {:else if vault || server}
-    <p class="fine-print">Your notes are on this device only.</p>
-  {/if}
+  {:else}
+    <p class="section-hint">
+      Keep the same notes on every device you use, through a folder you already sync or through your
+      own InstantNotes server.
+    </p>
 
-  <span class="group-label">One-time copy</span>
-  <PrefRow
-    label="Export a copy"
-    sub="A snapshot of every note, tag, Space, and attachment, written once to a folder you choose."
-  >
-    {#snippet control()}
-      <button class="primary-btn" disabled={exporting} onclick={runExport}>
-        {exporting ? "Exporting…" : "Export a copy…"}
-      </button>
-    {/snippet}
-  </PrefRow>
+    <SegmentedRow
+      label="Sync with"
+      options={PROVIDERS}
+      value={shown}
+      disabled={switching || (!vault && !server)}
+      onchange={choose}
+    />
+
+    {#if shown === "folder"}
+      <SettingsVault />
+    {:else if shown === "server"}
+      <p class="provider-hint">
+        Every device signed in to your InstantNotes server keeps the same library.
+      </p>
+      <SyncServer />
+    {:else if vault || server}
+      <p class="fine-print">Your notes are on this device only.</p>
+    {/if}
+
+    <span class="group-label">One-time copy</span>
+    <PrefRow
+      label="Export a copy"
+      sub="A snapshot of every note, tag, Space, and attachment, written once to a folder you choose."
+    >
+      {#snippet control()}
+        <button class="primary-btn" disabled={exporting} onclick={runExport}>
+          {exporting ? "Exporting…" : "Export a copy…"}
+        </button>
+      {/snippet}
+    </PrefRow>
+  {/if}
 </div>
 
 <style>

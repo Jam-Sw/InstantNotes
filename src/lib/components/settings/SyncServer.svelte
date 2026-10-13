@@ -17,6 +17,7 @@
     startSyncJoin,
   } from "$lib/api/client";
   import { EVENTS, listen } from "$lib/api/events";
+  import { isWeb } from "$lib/api/runtime";
   import type { SyncDevice, SyncServerStatus, SyncStage } from "$lib/api/types";
   import { timeAgo } from "$lib/agent-activity";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
@@ -145,10 +146,20 @@
     }
   }
 
+  async function setUp() {
+    if (busy) return;
+    busy = true;
+    try {
+      await signIn(location.host, encrypt);
+    } finally {
+      busy = false;
+    }
+  }
+
   async function signOut() {
     const ok = await confirmDialog.ask({
-      title: `Stop syncing with ${host}?`,
-      body: "Your notes stay on this device.",
+      title: isWeb ? "Sign out of this browser?" : `Stop syncing with ${host}?`,
+      body: isWeb ? "Its copy of your notes stays here until you sign in again." : "Your notes stay on this device.",
       confirmLabel: "Sign out",
     });
     if (ok) await act(disconnectSyncServer, "Couldn't sign out");
@@ -286,7 +297,20 @@
   });
 </script>
 
-{#if status && stage === "off"}
+{#if status && stage === "off" && isWeb}
+  <div class="vault-card step">
+    <p class="lead">This server has no library yet.</p>
+    <p class="detail">Set it up from this browser.</p>
+    <div class="card-actions">
+      <button class="primary-btn" disabled={busy} onclick={setUp}>
+        {busy ? "Setting up…" : "Set up"}
+      </button>
+    </div>
+  </div>
+  {#if failure || status.message}
+    <p class="failure" role="alert">Couldn't set up: {failure || status.message}</p>
+  {/if}
+{:else if status && stage === "off"}
   <PrefRow label="Server address" sub="The address of your InstantNotes server.">
     {#snippet control()}
       <form
@@ -464,7 +488,9 @@
           Sign in again
         </button>
       {/if}
-      <button class="card-btn quiet" disabled={busy} onclick={signOut}>Sign out</button>
+      <button class="card-btn quiet" disabled={busy} onclick={signOut}>
+        {isWeb ? "Sign out of this browser" : "Sign out"}
+      </button>
     </div>
   </div>
   {#if failure}

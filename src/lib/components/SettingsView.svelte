@@ -59,7 +59,7 @@
     entries: Entry[];
   }
 
-  const DESKTOP_ONLY: ReadonlySet<Page> = new Set<Page>(["vault", "import", "agents", "feedback"]);
+  const DESKTOP_ONLY: ReadonlySet<Page> = new Set<Page>(["import", "agents", "feedback"]);
 
   const GROUPS: Group[] = (
     [
@@ -76,7 +76,7 @@
     {
       label: "Your data",
       entries: [
-        { id: "vault", title: "Sync", desc: "Keep your notes the same on every device, through a folder or your own server.", keywords: "vault folder server sign in encryption recovery key devices export backup markdown files" },
+        { id: "vault", title: "Sync", desc: isWeb ? "Keep your notes the same on every device signed in to this server." : "Keep your notes the same on every device, through a folder or your own server.", keywords: "vault folder server sign in encryption recovery key devices export backup markdown files" },
         { id: "contexting", title: "Contexting", desc: "Shape what copying a note hands to other tools and AI.", keywords: "copy context clipboard ai" },
         ...(isMac
           ? [{ id: "import" as const, title: "Import", desc: "Bring in your Apple Stickies as notes.", keywords: "stickies apple migrate" }]

@@ -69,10 +69,10 @@ full paths in reports). Ships in 0.10.0: built on `feat/sync-server`, merged loc
 - [x] HTTP `Remote` (reqwest `blocking`, rustls): bearer token, `401` to signed out, `429`, backoff
 - [x] `keyring` for token and key; no keychain: Sync server refuses with a reason
 - [x] Loopback sign-in through the opener plugin; cancel
-- [ ] First device: key creation and the recovery key screen (text, QR, Copy, Download, Print, "I saved it")
-- [ ] Further device: join request, six words, waiting; recovery key entry checked against the recipient
-- [ ] Approving: `sync:join-request` shows the request with words; Approve and Deny
-- [ ] Commands and events (proposal Impact); backup before the first cycle; switching providers
+- [x] First device: key creation and the recovery key screen (text, QR, Copy, Download, Print, "I saved it")
+- [x] Further device: join request, six words, waiting; recovery key entry checked against the recipient
+- [x] Approving: `sync:join-requests` shows the request with words; Approve and Deny; current requests read on open (`list_sync_join_requests`)
+- [x] Commands and events (proposal Impact); backup before the first cycle; switching providers; "Combine or Cancel" before a library with notes joins one that has notes
 - [x] The sync thread runs `ServerSync` for `server`; long-poll wakes it
 
 ## 7. Browser (`src-tauri/web`, `src/`)
@@ -82,14 +82,19 @@ full paths in reports). Ships in 0.10.0: built on `feat/sync-server`, merged loc
   - [x] Headless Chrome: write, reload, read back, full-text search
   - [x] iPhone Safari: passed on the owner's iPhone, 2026-10-12
 
-- [ ] `src-tauri/web`: wasm-bindgen worker running the core, `ServerSync`, `age`; SQLite through `sqlite-wasm-rs` with OPFS (`sahpool`); fetch-based `Remote` with the session cookie
-- [ ] `client.ts` and `events.ts` talk to the worker on the web; the 40 web commands keep their names and arguments
-- [ ] Key storage in IndexedDB wrapped by a non-extractable WebCrypto key; "Remember this browser"
-- [ ] One-tab lock with "Use here"; service worker for offline; persistent storage request
-- [ ] Join and recovery screens shared with the desktop; scanning the recovery key's QR code with the camera on phones
-- [ ] Web manifest and icons; checked and fixed at 390 x 844
-- [ ] Vite build of the worker and the `.wasm`; the Dockerfile builds them
-- [ ] `wasm-pack test` in headless Chromium: core tests, OPFS storage, the one-tab lock
+- [x] Sync engine made async (`Remote` an async trait), so the worker never blocks on the network; the desktop runs it with `block_on`
+- [x] Web command dispatch moved into the core (`instantnotes_core::commands`); attachments in the database on the web (`Attachments::Database`)
+- [x] `src-tauri/web`: wasm-bindgen worker running the core, `ServerSync`, `age`; SQLite through `sqlite-wasm-rs` with OPFS (`sahpool`); fetch-based `Remote` with the session cookie
+- [x] `client.ts` and `events.ts` talk to the worker on the web; the 40 web commands keep their names and arguments; the sync commands answer from `src/lib/web/sync.ts`
+- [x] Key storage in IndexedDB wrapped by a non-extractable WebCrypto key
+- [ ] "Remember this browser" off (memory only): not built
+- [x] One-tab lock logic (Web Locks, "Use here" steals and reloads); service worker for offline files and images; persistent storage request
+- [x] The "open in another tab" notice
+- [ ] Settings > Sync on the web, join and recovery screens (design worker)
+- [ ] Scanning the recovery key's QR code with a phone camera: not built
+- [x] Web manifest and icons (phone layout: not this release, design D8)
+- [x] The worker and its `.wasm` built by `scripts/build-web-core.sh` outside Vite; the Dockerfile's `web` stage builds them
+- [ ] Headless Chrome against the real image: the worker reads the desktops' notes, writes one, and a desktop receives it (`.claude/scripts/sync-e2e.sh`)
 
 ## 8. Server cleanup (`instantnotes-server`)
 
@@ -100,10 +105,11 @@ full paths in reports). Ships in 0.10.0: built on `feat/sync-server`, merged loc
 
 ## 9. Settings (`src/`)
 
-- [ ] Settings > Sync: provider choice, Folder card, Sync server card, Security group (encryption switch with its on and off wording and confirmations, recovery key, devices, sign out everywhere)
-- [ ] Join prompt with both counts, Combine and Cancel; the finished-join summary
-- [ ] "Review merge" synthetic Space: pairs side by side (`@codemirror/merge`), Keep both, Keep this one, Keep that one, Leave all as they are, Undo for exact copies; gone when empty; same on the web
-- [ ] Tests: each state renders; switching asks first; signed out offers Sign in again; join request; devices list and revoke; join prompt; each review choice moves only to the Trash
+- [x] Settings > Sync: provider choice, Folder card, Sync server card, Security group (encryption switch with its on and off wording and confirmations, recovery key, devices, sign out everywhere)
+- [x] Join prompt with both counts, Combine and Cancel
+- [ ] The finished-join summary ("Your libraries are one: ..."): not built
+- [x] "Review merge" synthetic Space: pairs side by side (`@codemirror/merge`), Keep both, Keep this one, Keep that one, Leave all as they are, Undo for exact copies; gone when empty; same on the web (the merge commands are in the core dispatch)
+- [x] Tests: each state renders; switching asks first; signed out offers Sign in again; join request; devices list and revoke; join prompt; each review choice moves only to the Trash
 
 ## 10. End to end
 

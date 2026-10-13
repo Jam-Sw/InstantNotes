@@ -264,6 +264,7 @@ export function startSync(): Promise<void> {
 }
 
 function watch(): void {
+  void navigator.storage?.persist?.().catch(() => false);
   void syncNow();
   void watchChanges();
   void watchJoins();
@@ -340,6 +341,10 @@ export const syncCommands: Record<string, (args: Record<string, unknown>) => Pro
     return { ...status };
   },
   async connect_sync_server(args) {
+    if (status.stage === "signedOut") {
+      location.assign("/auth/login");
+      return { ...status };
+    }
     const recovery = await run<string | null>("set_up", Boolean(args.encrypt));
     if (recovery) {
       await setKey(recovery);

@@ -13,6 +13,7 @@ pub fn mime_for(path: &Path) -> &'static str {
         Some("js" | "mjs") => "text/javascript; charset=utf-8",
         Some("css") => "text/css; charset=utf-8",
         Some("json") => "application/json",
+        Some("webmanifest") => "application/manifest+json",
         Some("svg") => "image/svg+xml",
         Some("png") => "image/png",
         Some("jpg" | "jpeg") => "image/jpeg",
@@ -55,14 +56,21 @@ pub async fn serve_file(path: &Path, cache: &'static str) -> Option<Response> {
 }
 
 pub const RUNTIME_META: &str = r#"<meta name="instantnotes-runtime" content="web">"#;
+const MANIFEST_LINK: &str = r#"<link rel="manifest" href="/manifest.webmanifest">"#;
 
 pub fn mark_web(index: &str) -> String {
     match index.find("<head>") {
         Some(at) => {
             let split = at + "<head>".len();
-            format!("{}{}{}", &index[..split], RUNTIME_META, &index[split..])
+            format!(
+                "{}{}{}{}",
+                &index[..split],
+                RUNTIME_META,
+                MANIFEST_LINK,
+                &index[split..]
+            )
         }
-        None => format!("{RUNTIME_META}{index}"),
+        None => format!("{RUNTIME_META}{MANIFEST_LINK}{index}"),
     }
 }
 
