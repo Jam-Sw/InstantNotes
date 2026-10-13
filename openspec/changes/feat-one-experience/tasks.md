@@ -25,7 +25,7 @@ holds the order, the cross-cutting checks and the hand-back.
       settings keys and files this change adds
 - [ ] `README.md`: self-hosting (people dir, usage, check, read-only root,
       arm64), installing (signed builds once D1 lands), the web-code hashes
-- [ ] The server-kel session told what lands and in which release
+- [ ] The operator's server session told what lands and in which release
       (`server-operators/tasks.md` §0)
 - [ ] `.claude/scripts/check.sh` green at the final commit, with counts;
       `cargo xwin check --workspace --all-targets`; the WebAssembly check

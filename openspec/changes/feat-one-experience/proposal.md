@@ -159,7 +159,7 @@ Recorded here with where each goes; the owner decides at review.
 - Not built: the recovery key's QR scan (waits; no camera API in Safari),
   the finished-join summary (waits), the sign-in background (waits), the
   published web-code hashes (built here, `release-chain`).
-- The operator requirements relayed by the server-kel session (13 Oct):
+- The operator requirements relayed by the operator's server session (13 Oct):
   `server-operators`, in 0.10.1.
 
 Design: `design.md` and each unit's `<unit>/design.md`. Tasks: `tasks.md`.

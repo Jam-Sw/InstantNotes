@@ -1,8 +1,8 @@
 # Tasks: The server for operators
 
-## 0. The server-kel session
+## 0. The operator's server session
 
-- [ ] Told (SendMessage to `server-kel continued work 1 [5a1e3b]`): the five
+- [ ] Told (SendMessage to `the operator's server continued work 1 [5a1e3b]`): the five
       points, what lands, in 0.10.1, the variable and subcommand names
 
 ## 1. Code
