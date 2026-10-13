@@ -1,0 +1,73 @@
+src-tauri/core/src/commands.rs
+  s_d65fa7209241f3::t_e98d869fa4ce88 1-95,99-129,131,133-337,339-369,376,378,383,389
+  s_d65fa7209241f3::t_5151df8aa7d62c 338
+  s_d65fa7209241f3::t_b712a36cf7b67f 96-98
+  s_d65fa7209241f3::t_78276fa92e3e67 130,132
+  s_d65fa7209241f3::t_444c9eb5939069 370-375
+  s_d65fa7209241f3::t_292c0fac0c4daa 377
+  s_d65fa7209241f3::t_e248d404cf37a4 379-382
+  s_d65fa7209241f3::t_f058e0431977cf 384-388
+  s_d65fa7209241f3::t_580a48e23f5578 390-392
+  s_d65fa7209241f3::t_e6510dcc4edd34 393-410
+src-tauri/core/src/store.rs
+  s_d65fa7209241f3::t_6c2576b4d29573 270-272
+  s_d65fa7209241f3::t_3d2d1ad3f20300 269
+src-tauri/server/src/api.rs
+  s_d65fa7209241f3::t_e8de31571718c5 2-3,5-6,14-21,25,35
+  s_d65fa7209241f3::t_1ba5c90cf5bae0 4
+src-tauri/server/src/events.rs
+  s_d65fa7209241f3::t_ed00b02db954af 1
+src-tauri/core/tests/server_sync_test.rs
+  s_d65fa7209241f3::t_7cb08f99ded631 2
+  s_d65fa7209241f3::t_a0f66d82e821f6 1006,1212-1222,1228-1233,1239-1244
+  s_d65fa7209241f3::t_1cff5e0858e32a 1026,1223-1227,1234-1238
+  s_ecb25a8230b32d::t_f197ab65d656bc 314,850,868,1245
+src-tauri/core/src/attachments.rs
+  s_d65fa7209241f3::t_a53aa03d9dbd8f 4,9-13
+  s_ecb25a8230b32d::t_846c6da46d30d1 14
+src-tauri/src/shell/server.rs
+  s_d65fa7209241f3::t_58c2f0311808d5 2
+  s_d65fa7209241f3::t_6cef2e4d763925 758-762,854
+src-tauri/core/src/sync/cycle.rs
+  s_d65fa7209241f3::t_0466a8a02b3383 391,480,562
+  s_d65fa7209241f3::t_155c277facfc8b 4,56,83
+src-tauri/core/src/store/server_sync.rs
+  s_d65fa7209241f3::t_94aa62866defe7 3
+  s_d65fa7209241f3::t_50c169650a465b 561,589-601,605,701
+  s_d65fa7209241f3::t_4d7b5d4f27b243 573-586,620,625-626
+  s_d65fa7209241f3::t_e9e4152c6891f5 558-560
+  s_d65fa7209241f3::t_00df1fceb4db23 562-564
+  s_d65fa7209241f3::t_fb3b102cf2074b 587-588
+  s_d65fa7209241f3::t_f30560829b8264 602-604
+  s_d65fa7209241f3::t_7940ded8ebe29d 606-608,617-619
+  s_d65fa7209241f3::t_2bb35346a3674d 621-624
+  s_d65fa7209241f3::t_3702bd0a31888c 627-629
+  s_d65fa7209241f3::t_c2bd9f9e66f62f 702
+  s_d65fa7209241f3::t_3054336fe8bd1f 551,553-557,566-568,609-616,630-642,716,772,793-795
+src-tauri/core/src/lib.rs
+  s_d65fa7209241f3::t_97c240862409a9 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e179c0e3c29d69256b710597ae3d87c8e1c59cbb",
+  "prompts": {},
+  "sessions": {
+    "s_d65fa7209241f3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7cb25860-ff50-4096-a250-5cb972fdc7dd",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    },
+    "s_ecb25a8230b32d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "622b9b0c-62ee-4be3-ba16-e74511885d16",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
