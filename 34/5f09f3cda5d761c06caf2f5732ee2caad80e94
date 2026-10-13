@@ -1,0 +1,28 @@
+Dockerfile
+  s_3fe90b0d1ae177::t_653a680f835624 41-47
+openspec/changes/feat-one-experience/metadata/tasks.md
+  s_3fe90b0d1ae177::t_32f0da3de389ff 3-6,8
+.github/workflows/release.yml
+  s_3fe90b0d1ae177::t_653a680f835624 138-142
+scripts/release.test.ts
+  s_3fe90b0d1ae177::t_653a680f835624 4,81-87
+  s_3fe90b0d1ae177::t_d954bc8489e5b5 88-89
+CHANGELOG.md
+  s_3fe90b0d1ae177::t_32f0da3de389ff 11-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "345f09f3cda5d761c06caf2f5732ee2caad80e94",
+  "prompts": {},
+  "sessions": {
+    "s_3fe90b0d1ae177": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cc4e75df-98d1-43eb-a307-3a9f4f80c286",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
