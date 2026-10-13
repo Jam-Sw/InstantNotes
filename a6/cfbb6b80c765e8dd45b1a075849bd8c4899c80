@@ -1,0 +1,58 @@
+src/lib/components/settings/SyncServer.web.test.ts
+  s_d65fa7209241f3::t_9de00c573cabcb 1-128,130-144
+  s_d65fa7209241f3::t_c0fa452e6f0bfa 129
+src/lib/components/OtherTabScreen.test.ts
+  s_d65fa7209241f3::t_4f437e41f34ef0 1-35
+src-tauri/server/src/statics.rs
+  s_d65fa7209241f3::t_18d2dba34302a5 16
+  s_d65fa7209241f3::t_7dc220e8201732 59,65-71,73
+CHANGELOG.md
+  s_d65fa7209241f3::t_adf9ec2e68d80a 17,20-31,41-47
+  s_d65fa7209241f3::t_fe4d61807e7788 38-40
+src/lib/components/SettingsView.svelte
+  s_d65fa7209241f3::t_9de00c573cabcb 62
+  s_d65fa7209241f3::t_54103605b171e8 79
+src/routes/+page.svelte
+  s_d65fa7209241f3::t_4f437e41f34ef0 428-429
+  s_ecb25a8230b32d::t_992eca6f6b2b8f 15,430
+src/lib/components/settings/SyncServer.svelte
+  s_d65fa7209241f3::t_9de00c573cabcb 20,149-158
+  s_d65fa7209241f3::t_a9afd0fc7b47fb 161-162,300-313,491-493
+src/lib/components/settings/SettingsSync.svelte
+  s_d65fa7209241f3::t_9de00c573cabcb 12,57
+  s_d65fa7209241f3::t_f38d695de29718 112-113,115-119,121-151
+static/manifest.webmanifest
+  s_d65fa7209241f3::t_33c7e3e442cfcf 1-13
+src/lib/components/OtherTabScreen.svelte
+  s_d65fa7209241f3::t_4f437e41f34ef0 1-123
+src/lib/components/settings/SettingsSync.web.test.ts
+  s_d65fa7209241f3::t_9de00c573cabcb 1-95
+openspec/changes/feat-sync-server/tasks.md
+  s_ecb25a8230b32d::t_b0938b264a26aa 72-75,85-97,108-112
+src/lib/web/sync.ts
+  s_d65fa7209241f3::t_7fd5907f2a6649 267,344-347
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a6cfbb6b80c765e8dd45b1a075849bd8c4899c80",
+  "prompts": {},
+  "sessions": {
+    "s_d65fa7209241f3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7cb25860-ff50-4096-a250-5cb972fdc7dd",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    },
+    "s_ecb25a8230b32d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "622b9b0c-62ee-4be3-ba16-e74511885d16",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
