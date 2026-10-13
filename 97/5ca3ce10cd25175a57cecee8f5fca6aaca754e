@@ -1,0 +1,29 @@
+CHANGELOG.md
+  s_d65fa7209241f3::t_0f5dd15ea1d8c0 10-12
+package-lock.json
+  s_d65fa7209241f3::t_1f9430d54eccc6 3,9
+package.json
+  s_d65fa7209241f3::t_6103c3c67563d8 3
+src-tauri/Cargo.lock
+  s_d65fa7209241f3::t_b7db0a362aff1d 2787
+src-tauri/Cargo.toml
+  s_d65fa7209241f3::t_52e499a869a5ad 8
+src-tauri/tauri.conf.json
+  s_d65fa7209241f3::t_e45c6b9e0dc106 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "975ca3ce10cd25175a57cecee8f5fca6aaca754e",
+  "prompts": {},
+  "sessions": {
+    "s_d65fa7209241f3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7cb25860-ff50-4096-a250-5cb972fdc7dd",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
