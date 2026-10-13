@@ -61,6 +61,36 @@ impl std::fmt::Display for RemoteError {
     }
 }
 
+impl RemoteError {
+    pub fn from_answer(status: u16, body: &serde_json::Value) -> RemoteError {
+        let code = body.get("code").and_then(serde_json::Value::as_str);
+        match (status, code) {
+            (401, _) => RemoteError::SignedOut,
+            (410, _) => RemoteError::Gone,
+            (409, Some("WRONG_EPOCH")) => RemoteError::WrongEpoch,
+            (409, Some("CONFLICT")) => RemoteError::Conflict(
+                body.get("conflicts")
+                    .and_then(serde_json::Value::as_array)
+                    .map(|all| {
+                        all.iter()
+                            .filter_map(|c| {
+                                c.get("name")
+                                    .and_then(serde_json::Value::as_str)
+                                    .map(str::to_string)
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            ),
+            (s, _) if s >= 500 => RemoteError::Unreachable(format!("server answered {s}")),
+            (s, code) => RemoteError::Refused(format!(
+                "server answered {s}{}",
+                code.map(|c| format!(" {c}")).unwrap_or_default()
+            )),
+        }
+    }
+}
+
 #[allow(async_fn_in_trait)]
 pub trait Remote {
     async fn changes(&mut self, since: i64) -> Result<RemoteChanges, RemoteError>;

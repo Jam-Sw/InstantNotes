@@ -332,4 +332,34 @@ fn two_desktops_share_one_encrypted_library_through_the_real_server() {
         titles.is_empty(),
         "a title on the server's disk: {titles:?}"
     );
+    if let Ok(path) = std::env::var("INSTANTNOTES_E2E_KEYFILE") {
+        std::fs::write(path, key.recovery()).unwrap();
+    }
+}
+
+#[test]
+#[ignore = "runs after the browser step of the e2e script"]
+fn a_note_written_in_the_browser_reaches_a_desktop() {
+    let s = setup();
+    let recovery =
+        std::fs::read_to_string(std::env::var("INSTANTNOTES_E2E_KEYFILE").unwrap()).unwrap();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let token = runtime.block_on(sign_in(&s, "Third desktop"));
+    let mut c = device(
+        &s,
+        &runtime,
+        &token,
+        Lock::Encrypted(LibraryKey::from_recovery(&recovery).unwrap()),
+    );
+    c.sync();
+    let bodies = c.bodies();
+    assert!(
+        bodies.contains(&"e2e-marker written in the browser".to_string()),
+        "{bodies:?}"
+    );
+    let leaked = files_holding(std::path::Path::new(&s.data), b"e2e-marker");
+    assert!(
+        leaked.is_empty(),
+        "note text on the server's disk: {leaked:?}"
+    );
 }

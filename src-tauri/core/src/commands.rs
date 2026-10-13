@@ -377,6 +377,26 @@ pub fn dispatch(
             }
             stats
         }
+        "get_merge_review" => out(store.merge_review()?)?,
+        "settle_merge_pair" => {
+            let keep: Option<String> = opt(args, "keep")?;
+            store.settle_pair(
+                &arg::<String>(args, "a")?,
+                &arg::<String>(args, "b")?,
+                keep.as_deref(),
+            )?;
+            changes.push(notes_changed(origin));
+            out(store.merge_review()?)?
+        }
+        "undo_merge_combine" => {
+            store.undo_combine(&arg::<String>(args, "trashed")?)?;
+            changes.push(notes_changed(origin));
+            out(store.merge_review()?)?
+        }
+        "clear_merge_review" => {
+            store.clear_review()?;
+            Value::Null
+        }
         "get_attachments_dir" => json!(ATTACHMENTS_URL),
         "unused_attachments" => out(unused_attachment_files(store, place)?.1)?,
         "remove_unused_attachments" => {

@@ -155,28 +155,9 @@ pub struct Client {
 }
 
 async fn refusal(response: Response) -> RemoteError {
-    let status = response.status();
+    let status = response.status().as_u16();
     let body: Value = response.json().await.unwrap_or(Value::Null);
-    match (status, body.get("code").and_then(Value::as_str)) {
-        (StatusCode::UNAUTHORIZED, _) => RemoteError::SignedOut,
-        (StatusCode::GONE, _) => RemoteError::Gone,
-        (StatusCode::CONFLICT, Some("WRONG_EPOCH")) => RemoteError::WrongEpoch,
-        (StatusCode::CONFLICT, Some("CONFLICT")) => RemoteError::Conflict(
-            body.get("conflicts")
-                .and_then(Value::as_array)
-                .map(|all| {
-                    all.iter()
-                        .filter_map(|c| c.get("name").and_then(Value::as_str).map(str::to_string))
-                        .collect()
-                })
-                .unwrap_or_default(),
-        ),
-        (s, _) if s.is_server_error() => RemoteError::Unreachable(format!("server answered {s}")),
-        (s, code) => RemoteError::Refused(format!(
-            "server answered {s}{}",
-            code.map(|c| format!(" {c}")).unwrap_or_default()
-        )),
-    }
+    RemoteError::from_answer(status, &body)
 }
 
 impl Client {
