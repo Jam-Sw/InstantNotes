@@ -10,11 +10,16 @@ pub fn get_setting(
 
 #[tauri::command(async)]
 pub fn set_setting(
+    app: AppHandle,
     state: State<'_, AppState>,
     key: String,
     value: serde_json::Value,
 ) -> CmdResult<()> {
-    Ok(locked(&state)?.set_setting(&key, value)?)
+    locked(&state)?.set_setting(&key, value)?;
+    if instantnotes_core::store::is_shared_setting(&key) {
+        request_vault_sync(&app);
+    }
+    Ok(())
 }
 
 #[tauri::command(async)]

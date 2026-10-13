@@ -26,6 +26,7 @@
   import { imagePrefs } from "$lib/stores/images.svelte";
   import { sidebar } from "$lib/stores/sidebar.svelte";
   import { linkPrefs as linkPrefsStore } from "$lib/stores/links.svelte";
+  import { theme } from "$lib/stores/theme.svelte";
   import { contexting } from "$lib/stores/contexting.svelte";
   import { agents } from "$lib/stores/agents.svelte";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
@@ -122,6 +123,14 @@
       (un) => (unlistenCommand = un),
     );
 
+    let unlistenSettings: (() => void) | undefined;
+    void listen(EVENTS.SETTINGS_CHANGED, () => {
+      void theme.init();
+      void editorPrefs.reload();
+      void imagePrefs.reload();
+      void linkPrefsStore.reload();
+    }).then((un) => (unlistenSettings = un));
+
     let unlistenSyncNeeds: (() => void) | undefined;
     if (isWeb) {
       void listen(EVENTS.VAULT_STATUS, checkSync).then((un) => (unlistenSyncNeeds = un));
@@ -147,6 +156,7 @@
       clearTimeout(warmViews);
       updater.stop();
       unlistenCommand?.();
+      unlistenSettings?.();
       unlistenSyncNeeds?.();
       unlistenQuit?.();
       window.removeEventListener("blur", flush);

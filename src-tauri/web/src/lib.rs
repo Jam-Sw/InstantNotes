@@ -163,6 +163,7 @@ fn reported(report: &SyncReport) -> Value {
         "message": report.unreachable.clone().or_else(|| report.errors.first().cloned()),
         "notes": report.notes,
         "labelsChanged": report.labels_changed,
+        "settingsChanged": report.settings_changed,
         "conflicts": report.conflicts,
         "heldRemovals": report.held_removals,
         "tooLarge": report.too_large,

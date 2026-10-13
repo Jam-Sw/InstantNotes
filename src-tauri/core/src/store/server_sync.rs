@@ -1,8 +1,11 @@
+use super::settings::SETTINGS_BASE_SETTING;
 use super::vault::MANIFEST_BASE_SETTING;
 use super::vault_sync::CONFLICT_TAG;
 use super::*;
 use crate::attachments::Attachments;
-use crate::sync::object::{attachment_key, note_key, sha_hex, Envelope, MANIFEST_KEY, NOTE_PREFIX};
+use crate::sync::object::{
+    attachment_key, note_key, sha_hex, Envelope, MANIFEST_KEY, NOTE_PREFIX, SETTINGS_KEY,
+};
 use crate::vault::reconcile::{decide, derived_id, equivalent, Decision, Remote, Side, Synced};
 use crate::vault::{
     merge_manifest, parse_manifest, parse_note, serialize_manifest, serialize_note, VaultNote,
@@ -168,8 +171,12 @@ impl Store {
             [],
         )?;
         tx.execute(
-            "DELETE FROM settings WHERE key IN (?1, ?2)",
-            params![SYNC_STATE_SETTING, MANIFEST_BASE_SETTING],
+            "DELETE FROM settings WHERE key IN (?1, ?2, ?3)",
+            params![
+                SYNC_STATE_SETTING,
+                MANIFEST_BASE_SETTING,
+                SETTINGS_BASE_SETTING
+            ],
         )?;
         tx.commit()?;
         Ok(())
@@ -188,8 +195,12 @@ impl Store {
             [],
         )?;
         tx.execute(
-            "DELETE FROM settings WHERE key IN (?1, ?2)",
-            params![SYNC_STATE_SETTING, MANIFEST_BASE_SETTING],
+            "DELETE FROM settings WHERE key IN (?1, ?2, ?3)",
+            params![
+                SYNC_STATE_SETTING,
+                MANIFEST_BASE_SETTING,
+                SETTINGS_BASE_SETTING
+            ],
         )?;
         tx.commit()?;
         Ok(())
@@ -207,8 +218,8 @@ impl Store {
         self.conn
             .execute("UPDATE sync_objects SET remote_sha = NULL", [])?;
         self.conn.execute(
-            "DELETE FROM settings WHERE key = ?1",
-            params![MANIFEST_BASE_SETTING],
+            "DELETE FROM settings WHERE key IN (?1, ?2)",
+            params![MANIFEST_BASE_SETTING, SETTINGS_BASE_SETTING],
         )?;
         Ok(())
     }
@@ -554,6 +565,29 @@ impl Store {
         Ok(changed)
     }
 
+    pub fn ingest_server_settings(
+        &mut self,
+        name: &str,
+        remote_sha: &str,
+        theirs_text: &str,
+    ) -> Result<bool> {
+        let theirs: SharedSettings = serde_json::from_str(theirs_text)
+            .map_err(|e| AppError::Validation(format!("settings cannot be read: {e}")))?;
+        let base: Option<SharedSettings> = self
+            .get_setting(SETTINGS_BASE_SETTING)?
+            .and_then(|v| v.as_str().map(str::to_string))
+            .and_then(|t| serde_json::from_str(&t).ok());
+        let ours = self.shared_settings()?;
+        let merged = merge_shared_settings(base.as_ref(), &ours, &theirs);
+        let changed = self.apply_shared_settings(&ours, &merged)?;
+        self.set_setting(
+            SETTINGS_BASE_SETTING,
+            serde_json::Value::String(theirs_text.to_string()),
+        )?;
+        self.record_remote(SETTINGS_KEY, name, Some(remote_sha))?;
+        Ok(changed)
+    }
+
     pub fn ingest_server_attachment(
         &mut self,
         name: &str,
@@ -766,6 +800,18 @@ impl Store {
                 plain: Some(Envelope::manifest(manifest).encode()),
             });
         }
+        let shared = self.shared_settings()?;
+        let settings = serialize_shared_settings(&shared);
+        let base = self
+            .get_setting(SETTINGS_BASE_SETTING)?
+            .and_then(|v| v.as_str().map(str::to_string));
+        if base.as_deref() != Some(settings.as_str()) && (base.is_some() || !shared.is_empty()) {
+            out.push(Pending {
+                key: SETTINGS_KEY.to_string(),
+                base: self.remote_sha(SETTINGS_KEY)?,
+                plain: Some(Envelope::settings(settings).encode()),
+            });
+        }
         if let Some(place) = attachments {
             for file in self.attachment_names(place)? {
                 let key = attachment_key(&file);
@@ -830,6 +876,15 @@ impl Store {
                         )?;
                     }
                 }
+                if pending.key == SETTINGS_KEY {
+                    if let Some(text) = Envelope::decode(plain).and_then(|e| e.settings) {
+                        super::settings::setting_put(
+                            &self.conn,
+                            SETTINGS_BASE_SETTING,
+                            &serde_json::Value::String(text),
+                        )?;
+                    }
+                }
                 self.record_remote(&pending.key, name, remote_sha)?;
             }
         }
@@ -857,6 +912,13 @@ impl Store {
             key: MANIFEST_KEY.to_string(),
             base: None,
             plain: Some(Envelope::manifest(serialize_manifest(&self.vault_manifest()?)).encode()),
+        });
+        out.push(Pending {
+            key: SETTINGS_KEY.to_string(),
+            base: None,
+            plain: Some(
+                Envelope::settings(serialize_shared_settings(&self.shared_settings()?)).encode(),
+            ),
         });
         if let Some(place) = attachments {
             for file in self.attachment_names(place)? {

@@ -418,6 +418,7 @@ reserved and refused.
 | --- | --- | --- |
 | `vault:status` | none | Sync status changed; re-read `get_sync_server_status`. |
 | `sync:join-requests` | `SyncJoinRequest[]` | The pending requests changed. |
+| `settings:changed` | none | A sync cycle changed the shared settings; re-read the theme and the editor, link and image settings. |
 
 - **Web mode.** The server keeps no readable library and has no `/api`
   routes. The web app runs the core in a browser worker (`static/web/`,

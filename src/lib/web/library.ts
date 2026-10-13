@@ -50,7 +50,7 @@ export async function callLibrary<T>(cmd: string, args?: Record<string, unknown>
     await run<string>("call", cmd, JSON.stringify(args ?? null), clientId),
   ) as Answer;
   for (const change of answer.changes) emit(change.event, change.payload);
-  if (answer.changes.length) syncSoon();
+  if (answer.changes.length || cmd === "set_setting" || cmd === "delete_setting") syncSoon();
   return answer.value as T;
 }
 

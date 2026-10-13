@@ -4,6 +4,7 @@ use sha2::{Digest, Sha256};
 pub const NOTE_PREFIX: &str = "note:";
 pub const ATTACHMENT_PREFIX: &str = "attachment:";
 pub const MANIFEST_KEY: &str = "manifest";
+pub const SETTINGS_KEY: &str = "settings";
 const VERSION: u32 = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -16,6 +17,8 @@ pub struct Envelope {
     pub surface: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub manifest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settings: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bytes: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -51,6 +54,7 @@ impl Envelope {
             md: None,
             surface: None,
             manifest: None,
+            settings: None,
             bytes: None,
             proof: None,
         }
@@ -75,6 +79,13 @@ impl Envelope {
         Envelope {
             manifest: Some(text),
             ..Envelope::empty(MANIFEST_KEY.to_string())
+        }
+    }
+
+    pub fn settings(text: String) -> Envelope {
+        Envelope {
+            settings: Some(text),
+            ..Envelope::empty(SETTINGS_KEY.to_string())
         }
     }
 

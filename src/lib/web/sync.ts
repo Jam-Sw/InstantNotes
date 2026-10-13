@@ -25,6 +25,7 @@ type SyncAnswer = {
   message?: string | null;
   notes?: string[];
   labelsChanged?: boolean;
+  settingsChanged?: boolean;
   conflicts?: number;
   heldRemovals?: number;
   tooLarge?: string[];
@@ -198,6 +199,7 @@ async function once(): Promise<void> {
     emit("tags:changed");
     emit("workspaces:changed");
   }
+  if (answer.settingsChanged) emit("settings:changed");
   changed();
   if (answer.retry || answer.modeChanged) again = true;
 }

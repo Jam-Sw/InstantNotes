@@ -22,6 +22,10 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   every tool, an image button on the desktop, a Markdown source toggle and zoom, in one row above the note.
 - `editor.sourceMode` (the Markdown marks shown) is its own setting; commands `view.toolbar` and
   `view.markdownSource`; Settings > Editor switches both.
+- Sync: the look and editor settings (theme, light or dark, custom theme, body font, toolbar, Markdown
+  source, exact times, link underline, link previews, the outside-link mark, image preview height and tag
+  suggestions) follow the library to every device and the web, as one encrypted `settings` object merged
+  against `sync.settingsBase`; device settings stay on the device. Event `settings:changed`.
 ### Changed
 - The toolbar shows by default (`editor.toolbarOpen` default true, a stored false kept) and no longer
   decides the editor's mode; `Editor.svelte` exposes `undo`, `redo`, `canUndo`, `canRedo` and reports

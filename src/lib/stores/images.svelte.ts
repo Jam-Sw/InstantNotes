@@ -29,6 +29,11 @@ class ImagePrefs {
     }
   }
 
+  async reload(): Promise<void> {
+    this.#loaded = false;
+    await this.init();
+  }
+
   #clampHeight(h: number): number {
     return Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, Math.round(h)));
   }

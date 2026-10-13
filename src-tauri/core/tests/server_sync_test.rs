@@ -628,6 +628,55 @@ fn tags_and_spaces_made_on_either_side_reach_both() {
 }
 
 #[test]
+fn the_look_and_editor_settings_follow_the_library_and_device_settings_stay() {
+    let (server, mut a, mut b, _) = encrypted_pair();
+    a.s()
+        .set_setting("theme.active", serde_json::json!("graphite"))
+        .unwrap();
+    a.s()
+        .set_setting("editor.sourceMode", serde_json::json!(true))
+        .unwrap();
+    a.s()
+        .set_setting("sidebar.width", serde_json::json!(320))
+        .unwrap();
+    b.s()
+        .set_setting("theme.active", serde_json::json!("paper"))
+        .unwrap();
+    let first = a.sync();
+    assert!(!first.settings_changed);
+    let arrived = b.sync();
+    assert!(arrived.settings_changed);
+    assert_eq!(
+        b.s().get_setting("theme.active").unwrap(),
+        Some(serde_json::json!("graphite"))
+    );
+    assert_eq!(
+        b.s().get_setting("editor.sourceMode").unwrap(),
+        Some(serde_json::json!(true))
+    );
+    assert_eq!(b.s().get_setting("sidebar.width").unwrap(), None);
+    for blob in server.borrow().live_blobs() {
+        assert!(!blob.windows(8).any(|w| w == b"graphite"));
+    }
+
+    b.s()
+        .set_setting("theme.mode", serde_json::json!("dark"))
+        .unwrap();
+    settle(&mut [&mut a, &mut b]);
+    assert_eq!(
+        a.s().get_setting("theme.mode").unwrap(),
+        Some(serde_json::json!("dark"))
+    );
+    assert_eq!(
+        a.s().get_setting("theme.active").unwrap(),
+        Some(serde_json::json!("graphite"))
+    );
+    let quiet = a.sync();
+    assert!(!quiet.settings_changed);
+    assert_eq!(quiet.pushed, 0);
+}
+
+#[test]
 fn a_tag_on_one_side_and_a_space_on_the_other_for_one_note_keeps_both_versions() {
     let (_server, mut a, mut b, _) = encrypted_pair();
     let n = a.create("Note", "text");

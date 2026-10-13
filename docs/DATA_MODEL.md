@@ -271,9 +271,16 @@ user chooses the folder. Without it nothing is read or written.
 The sync server reuses section 10.1's decisions; it adds no note column.
 
 - `sync_objects(key, name, remote_sha)`: per synced object (`note:<id>`,
-  `manifest`, `attachment:<file>`), its name on the server and the ciphertext
-  SHA this device last agreed with. A note's plain base is its `file_sha`, the
-  manifest's is `vault.manifestBase`.
+  `manifest`, `settings`, `attachment:<file>`), its name on the server and the
+  ciphertext SHA this device last agreed with. A note's plain base is its
+  `file_sha`, the manifest's is `vault.manifestBase`, the settings object's is
+  `sync.settingsBase`.
+- The `settings` object is a JSON map of the shared settings
+  (`SHARED_SETTINGS` in `core/src/store/settings.rs`: the look and the editor,
+  never device, sync, agent or backup settings). It travels in its own
+  envelope field, so a 0.10.0 device ignores it. Each key merges three ways
+  against the base: a side that changed wins, both changed keeps this
+  device's, with no base the server's wins, and a key one side removed goes.
 - `attachment_files(name, bytes)`: attachments, in a browser only (it has no
   folder). The desktop keeps them in its attachments folder as before.
 
@@ -285,6 +292,8 @@ Settings, all device-local:
   server's change feed.
 - `sync.mergeReview`: the "Review merge" list left by a join.
 - `sync.legacy`: `imported` or `done`, the move of a 0.9.5 web library.
+- `sync.settingsBase`: the shared settings as this device last agreed them
+  with the server, the base of the next merge. Cleared with the other bases.
 
 ## 11. Agent activity
 

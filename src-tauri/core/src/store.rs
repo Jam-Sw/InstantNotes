@@ -696,6 +696,10 @@ mod vault_sync;
 mod workspaces;
 
 pub use notes::REVISIT_AFTER_MS;
+pub use settings::{
+    is_shared_setting, merge_shared_settings, serialize_shared_settings, SharedSettings,
+    SHARED_SETTINGS,
+};
 
 #[cfg(test)]
 mod pragma_tests {

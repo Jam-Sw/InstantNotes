@@ -26,6 +26,7 @@ export const EVENTS = {
   AGENT_SESSIONS: "agents:sessions",
   SYNC_JOIN_REQUESTS: "sync:join-requests",
   BACKUPS_CHANGED: "backups:changed",
+  SETTINGS_CHANGED: "settings:changed",
 } as const;
 
 export const LIBRARY_CHANGED_EVENTS = [

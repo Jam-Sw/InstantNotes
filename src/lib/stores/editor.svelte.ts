@@ -43,6 +43,12 @@ class EditorPrefs {
     }
   }
 
+  async reload(): Promise<void> {
+    this.#loaded = false;
+    this.#touched.clear();
+    await this.init();
+  }
+
   setShowExactTime(v: boolean): void {
     this.#touched.add(KEY_EXACT_TIME);
     this.showExactTime = v;
