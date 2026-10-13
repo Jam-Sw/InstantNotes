@@ -7,7 +7,9 @@ in-app updater, written for users. Newest first.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.10.0]
+## [0.10.1]
+
+## [0.10.0] - 2026-10-12
 ### Added
 - Vault sync: the vault folder is read back (`Syncer::cycle`: pull, scan, ingest, removals, manifest merge,
   flush, attachments, push; 5 s poll), so devices sharing one folder (network drive, Syncthing) stay in step;
