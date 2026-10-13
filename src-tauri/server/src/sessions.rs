@@ -31,8 +31,9 @@ CREATE TABLE IF NOT EXISTS grants (
 CREATE INDEX IF NOT EXISTS grants_sub ON grants(sub);
 CREATE TABLE IF NOT EXISTS persons (
   sub        TEXT PRIMARY KEY,
-  refresh    BLOB,
-  last_check INTEGER NOT NULL
+  refresh      BLOB,
+  last_check   INTEGER NOT NULL,
+  refreshed_at INTEGER
 );
 ";
 const WITHOUT_REFRESH: i64 = 24 * 60 * 60;
@@ -268,8 +269,9 @@ impl Sessions {
 
     pub fn set_refresh(&self, sub: &str, sealed: Option<&[u8]>, now: i64) {
         let _ = self.conn().execute(
-            "INSERT INTO persons (sub, refresh, last_check) VALUES (?1, ?2, ?3)
-             ON CONFLICT(sub) DO UPDATE SET refresh = excluded.refresh, last_check = excluded.last_check",
+            "INSERT INTO persons (sub, refresh, last_check, refreshed_at) VALUES (?1, ?2, ?3, ?3)
+             ON CONFLICT(sub) DO UPDATE SET refresh = excluded.refresh, last_check = excluded.last_check,
+               refreshed_at = excluded.refreshed_at",
             params![sub, sealed, now],
         );
     }
@@ -295,7 +297,9 @@ impl Sessions {
     ) -> bool {
         self.conn()
             .execute(
-                "UPDATE persons SET refresh = ?3, last_check = ?4 WHERE sub = ?1 AND refresh = ?2",
+                "UPDATE persons SET refresh = ?3, last_check = ?4,
+                   refreshed_at = CASE WHEN ?3 IS NULL THEN refreshed_at ELSE ?4 END
+                 WHERE sub = ?1 AND refresh = ?2",
                 params![sub, expected, sealed, now],
             )
             .map(|n| n > 0)
@@ -328,6 +332,27 @@ impl Sessions {
             .ok()?;
         tx.commit().ok()?;
         Some(revoked)
+    }
+
+    pub fn refreshed_at(&self, sub: &str) -> Option<i64> {
+        self.conn()
+            .query_row(
+                "SELECT refreshed_at FROM persons WHERE sub = ?1",
+                params![sub],
+                |r| r.get(0),
+            )
+            .ok()
+            .flatten()
+    }
+
+    pub fn lapse(&self, sub: &str, expected: &[u8], now: i64) -> bool {
+        self.conn()
+            .execute(
+                "UPDATE persons SET refresh = NULL, last_check = ?3 WHERE sub = ?1 AND refresh = ?2",
+                params![sub, expected, now],
+            )
+            .map(|n| n > 0)
+            .unwrap_or(false)
     }
 
     pub fn mark_checked(&self, sub: &str, now: i64) {

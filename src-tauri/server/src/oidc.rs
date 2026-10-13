@@ -441,7 +441,7 @@ impl Oidc {
                 .ok()
                 .and_then(|v| v.get("error")?.as_str().map(str::to_string));
             return match (status.as_u16(), error) {
-                (400 | 401, Some(e)) if REFUSALS.contains(&e.as_str()) => Refresh::Refused(e),
+                (400 | 401 | 403, Some(e)) if REFUSALS.contains(&e.as_str()) => Refresh::Refused(e),
                 (_, e) => Refresh::Misconfigured {
                     reason: format!(
                         "token endpoint answered {status} {}",
@@ -797,6 +797,12 @@ mod tests {
                 Refresh::Refused(code.into())
             );
         }
+        r.idp
+            .answer_refresh("group", StatusCode::FORBIDDEN, error("access_denied"));
+        assert_eq!(
+            r.oidc.refresh("group", "person-1").await,
+            Refresh::Refused("access_denied".into())
+        );
         for (token, status, body) in [
             ("client", StatusCode::UNAUTHORIZED, error("invalid_client")),
             ("scope", StatusCode::BAD_REQUEST, error("invalid_scope")),

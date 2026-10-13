@@ -35,7 +35,7 @@ full paths in reports). Ships in 0.10.0: built on `feat/sync-server`, merged loc
 - [x] Breaker: more than half and more than three refused in one hour stops revoking for that hour, logged, on `/healthz`
 - [x] Unreachable (network error, timeout, 5xx): nothing revoked, logged once per outage, retried next hour
 - [x] No refresh token: device tokens and sessions of that person need a fresh sign-in 24 hours after the last one; status says why
-- [x] Tests against a fake provider: refused (each of `invalid_grant`, `invalid_request`, `access_denied`), accepted (rotation saved, data untouched), unreachable (connection refused, timeout, 500), misconfigured (`invalid_client`, `429`), the breaker, no refresh token (24-hour limit), a changed client secret
+- [x] Tests against a fake provider (plus a `403 access_denied` and a lapsed token): refused (each of `invalid_grant`, `invalid_request`, `access_denied`), accepted (rotation saved, data untouched), unreachable (connection refused, timeout, 500), misconfigured (`invalid_client`, `429`), the breaker, no refresh token (24-hour limit), a changed client secret
 - [x] README line (design §12) replaces the old 180-day line
 
 ## 3. Encrypted object store and API (`instantnotes-server`)
@@ -77,10 +77,10 @@ full paths in reports). Ships in 0.10.0: built on `feat/sync-server`, merged loc
 
 ## 7. Browser (`src-tauri/web`, `src/`)
 
-- [ ] 7.0 Spike, before anything else in this section: the core in WebAssembly, rusqlite on `sqlite-wasm-rs` with OPFS (`sahpool`), in a Web Worker, in iPhone Safari (a real device, or the iOS Simulator's Safari), writing a note and reading it back across a reload. Result reported to the owner; on failure, stop and bring the options
+- [x] 7.0 Spike, before anything else in this section: the core in WebAssembly, rusqlite on `sqlite-wasm-rs` with OPFS (`sahpool`), in a Web Worker, in iPhone Safari (a real device, or the iOS Simulator's Safari), writing a note and reading it back across a reload. Result reported to the owner; on failure, stop and bring the options
   - [x] Core changes it needed: `truncate` journal mode on WebAssembly; time through `chrono`
   - [x] Headless Chrome: write, reload, read back, full-text search
-  - [ ] iPhone Safari
+  - [x] iPhone Safari: passed on the owner's iPhone, 2026-10-12
 
 - [ ] `src-tauri/web`: wasm-bindgen worker running the core, `ServerSync`, `age`; SQLite through `sqlite-wasm-rs` with OPFS (`sahpool`); fetch-based `Remote` with the session cookie
 - [ ] `client.ts` and `events.ts` talk to the worker on the web; the 40 web commands keep their names and arguments

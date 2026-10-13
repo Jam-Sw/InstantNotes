@@ -13,6 +13,7 @@ const NONCE_LEN: usize = 24;
 const AT_ONCE: usize = 4;
 const WINDOW: i64 = 60 * 60;
 const BREAKER_MIN: usize = 3;
+const LAPSE: i64 = 7 * 24 * 60 * 60;
 const KEY_INFO: &[u8] = b"instantnotes refresh tokens v1";
 
 pub struct Sealer {
@@ -68,6 +69,7 @@ pub struct Recheck {
 pub struct Ran {
     pub accepted: usize,
     pub refused: usize,
+    pub lapsed: usize,
     pub revoked: usize,
     pub unreachable: usize,
     pub misconfigured: usize,
@@ -191,6 +193,17 @@ impl Recheck {
                     sessions.replace_refresh(&sub, &sealed, Some(&self.sealer.seal(&kept)), now);
                     if self.outage.swap(false, Ordering::Relaxed) {
                         crate::log("auth.recheck.reachable", &[]);
+                    }
+                }
+                Refresh::Refused(error)
+                    if error == "invalid_grant"
+                        && sessions
+                            .refreshed_at(&sub)
+                            .is_some_and(|at| now - at > LAPSE) =>
+                {
+                    ran.lapsed += 1;
+                    if sessions.lapse(&sub, &sealed, now) {
+                        crate::log("auth.lapsed", &[("library", &library)]);
                     }
                 }
                 Refresh::Refused(error) if !tripped => {
@@ -342,6 +355,34 @@ mod tests {
                 .iter()
                 .all(|(s, _)| s != "alice"));
         }
+    }
+
+    #[tokio::test]
+    async fn a_person_removed_from_the_apps_group_is_refused_with_a_403() {
+        let r = run().await;
+        let grants = r.signed_in("alice", "a-1");
+        r.idp.answer_refresh(
+            "a-1",
+            StatusCode::FORBIDDEN,
+            json!({ "error": "access_denied" }),
+        );
+        let ran = r.recheck.run_due(&r.sessions, &r.oidc, HOUR).await;
+        assert_eq!((ran.refused, ran.revoked), (1, 2));
+        assert!(!r.alive(&grants, HOUR));
+    }
+
+    #[tokio::test]
+    async fn a_token_that_lapsed_while_nothing_refreshed_it_needs_a_new_sign_in_not_a_refusal() {
+        let r = run().await;
+        let grants = r.signed_in("alice", "a-1");
+        r.refuse("a-1", "invalid_grant");
+        let later = 8 * 24 * HOUR;
+        let ran = r.recheck.run_due(&r.sessions, &r.oidc, later).await;
+        assert_eq!((ran.lapsed, ran.refused, ran.revoked), (1, 0, 0));
+        assert!(!r.alive(&grants, later));
+        assert!(r.sessions.due_checks(later + 2 * HOUR).is_empty());
+        let again = r.signed_in("alice", "a-2");
+        assert!(r.alive(&again, 0));
     }
 
     #[tokio::test]

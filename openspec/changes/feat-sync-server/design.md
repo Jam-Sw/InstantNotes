@@ -487,6 +487,13 @@ disable in Pocket ID and Authentik but needs the provider to reach the server;
 UserInfo cannot tell an expired token from a refused person; Shared Signals and
 SCIM are rare or enterprise-only.
 
+Confirmed live on a throwaway Pocket ID v2.16.0 (confidential client, PKCE,
+scopes `openid profile email`, no `offline_access`): a refresh token is
+issued; a refresh while the person is enabled answers `200` with a rotated
+token; after the person is disabled, `400 invalid_grant` ("The user account is
+disabled."); after the person is removed from the client's allowed group,
+`403 access_denied`. The client's refresh token lifetime reads 30 days.
+
 1. **Sign-in asks for a refresh token.** The authorization request adds
    `offline_access` when the provider's discovery lists it in
    `scopes_supported` (Keycloak, Authentik, Zitadel, Authelia and Dex need it;
@@ -513,14 +520,23 @@ SCIM are rare or enterprise-only.
    write is compare-and-set against the token the check read, so a sign-in
    made while a check was in flight is never undone; a refusal revokes only
    sign-ins older than the check.
-5. **Refused**: a `400` or `401` from the token endpoint whose `error` is
-   `invalid_grant`, `access_denied` or `invalid_request` (Zitadel answers a
-   disabled person with `invalid_request`). The server revokes all of that
+5. **Refused**: a `400`, `401` or `403` from the token endpoint whose `error`
+   is `invalid_grant`, `access_denied` or `invalid_request` (Zitadel answers a
+   disabled person with `invalid_request`, Pocket ID a person removed from the
+   app's group with `403 access_denied`). The server revokes all of that
    person's device tokens, browser sessions and pending join requests, deletes
    the refresh token, and logs `auth.refused` with the person folder. Stored
    notes, keys and objects are untouched. Each device shows "Signed out: sign
    in again", keeping its local notes and pending edits; signing in again
    works the moment the provider accepts the person again.
+5b. **Lapsed, not refused**: an expired refresh token also answers
+   `invalid_grant`, and a provider cannot say which. When the stored token was
+   last refreshed more than 7 days ago (the server was down, or the provider
+   unreachable for that long), the server deletes the token and logs
+   `auth.lapsed` instead: nothing is revoked, and the person falls under the
+   24-hour rule (step 7), so devices signed in more than a day ago sign in
+   again. For the person the result is the same as a refusal; the log and the
+   breaker are not misled by a fine person.
 5a. **The server's own setup is wrong**: any other `4xx` (`invalid_client`
    after the client secret was changed at the provider but not in the
    environment, `unauthorized_client`, `unsupported_grant_type`,
@@ -741,6 +757,9 @@ changes the core needs on WebAssembly: the `truncate` journal mode instead of
 WAL (the browser storage does not support WAL), and reading the time through
 `chrono` instead of `std::time::SystemTime` (which panics there). In headless
 Chrome it wrote, reloaded and read back a note, and full-text search found it.
+**Result, 2026-10-12: passed in Safari on the owner's iPhone** (a tailnet-only
+HTTPS test page, removed after the test): the note written before the reload
+was read back after it, from OPFS.
 
 - **The core in a worker.** A new crate, `src-tauri/web`, compiles
   `instantnotes-core`, the sync engine and `age` to WebAssembly and runs them in
