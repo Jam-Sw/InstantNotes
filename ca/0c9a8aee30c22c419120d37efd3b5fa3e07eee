@@ -1,0 +1,19 @@
+openspec/changes/feat-one-experience/metadata/tasks.md
+  s_3fe90b0d1ae177::t_05fd5a1ee93935 7-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ca0c9a8aee30c22c419120d37efd3b5fa3e07eee",
+  "prompts": {},
+  "sessions": {
+    "s_3fe90b0d1ae177": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cc4e75df-98d1-43eb-a307-3a9f4f80c286",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
