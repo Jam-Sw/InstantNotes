@@ -1,0 +1,109 @@
+src-tauri/src/shell/server.rs
+  s_3fe90b0d1ae177::t_20ca029ca56373 123
+src-tauri/Cargo.toml
+  s_3fe90b0d1ae177::t_56b5f11cb6e8c9 33
+src-tauri/core/src/store/vault.rs
+  s_3fe90b0d1ae177::t_acc467695d0f62 14
+src/lib/commands.ts
+  s_3fe90b0d1ae177::t_30063e094efcfd 327-332
+  s_3fe90b0d1ae177::t_f93886c1068b5d 14-16,24-29,307-318,321-326,333-334
+docs/DATA_MODEL.md
+  s_3fe90b0d1ae177::t_2ad1458fa44014 147-148,341-368
+src/lib/components/settings/SettingsBackups.web.test.ts
+  s_3fe90b0d1ae177::t_50b5715901898c 1-63
+src-tauri/core/src/backup.rs
+  s_3fe90b0d1ae177::t_1502751084effc 292-293
+  s_3fe90b0d1ae177::t_acc467695d0f62 1-272,278,280-291,294-305,307-318,320-335,337-348,350-450
+  s_3fe90b0d1ae177::t_7fde0012690465 279
+  s_3fe90b0d1ae177::t_0dbf8ee404f3eb 273-277
+  s_3fe90b0d1ae177::t_dbe31227044479 319,336,349
+  s_3fe90b0d1ae177::t_7f2df893df8095 306
+src-tauri/src/shell/mod.rs
+  s_3fe90b0d1ae177::t_20ca029ca56373 2
+src-tauri/core/src/store.rs
+  s_3fe90b0d1ae177::t_0dbf8ee404f3eb 542-550,552-556
+src/lib/stores/shell.svelte.ts
+  s_3fe90b0d1ae177::t_1c6bccb66c8220 11
+src/lib/web/library.ts
+  s_3fe90b0d1ae177::t_1c6bccb66c8220 64-68
+src/lib/api/events.ts
+  s_3fe90b0d1ae177::t_20ca029ca56373 28
+src-tauri/core/src/vault/archive.rs
+  s_3fe90b0d1ae177::t_74024114fbf4d4 1-190
+openspec/changes/feat-one-experience/data-safety/tasks.md
+  s_3fe90b0d1ae177::t_2ad1458fa44014 3,5-11,13-16,18-21
+src/lib/vault-export.ts
+  s_3fe90b0d1ae177::t_384ee20bf4384e 26
+  s_3fe90b0d1ae177::t_1c6bccb66c8220 2,25,27-32,36-43,45
+  s_3fe90b0d1ae177::t_30063e094efcfd 33-35
+  s_3fe90b0d1ae177::t_3f9a590ca5bded 44
+src/lib/components/settings/SettingsBackups.svelte
+  s_3fe90b0d1ae177::t_7d1921c6d24817 156
+  s_3fe90b0d1ae177::t_50b5715901898c 1-155,157-294
+src/lib/commands.test.ts
+  s_3fe90b0d1ae177::t_061eab271400c8 62-67,88-89,336-338,368-385
+docs/API.md
+  s_3fe90b0d1ae177::t_2ad1458fa44014 429-455
+src/lib/components/settings/SettingsSync.web.test.ts
+  s_3fe90b0d1ae177::t_e0d7244c3e0698 74
+src/lib/components/settings/SettingsBackups.test.ts
+  s_3fe90b0d1ae177::t_50b5715901898c 1-83,85-88,91,93-181
+  s_3fe90b0d1ae177::t_7d1921c6d24817 90
+  s_3fe90b0d1ae177::t_e0d7244c3e0698 84
+  s_3fe90b0d1ae177::t_c05ae95c8553f7 89,92
+src-tauri/src/lib.rs
+  s_3fe90b0d1ae177::t_20ca029ca56373 88-89,130,165-167,186,202-205,340-345
+src-tauri/core/src/store/server_sync.rs
+  s_3fe90b0d1ae177::t_acc467695d0f62 16,198-202
+  s_3fe90b0d1ae177::t_97b927e7c097cd 203-205
+src-tauri/src/events.rs
+  s_3fe90b0d1ae177::t_20ca029ca56373 15
+src-tauri/src/shell/backups.rs
+  s_3fe90b0d1ae177::t_20ca029ca56373 1-88,90-100,106-133,135-173,179-204,210-236,242-309,315-317
+  s_3fe90b0d1ae177::t_7f2df893df8095 134
+  s_3fe90b0d1ae177::t_56b5f11cb6e8c9 89
+  s_3fe90b0d1ae177::t_384ee20bf4384e 101-105,174-178,205-209,237-241,310-314
+src/lib/api/client.ts
+  s_3fe90b0d1ae177::t_1c6bccb66c8220 4,16-17,229-237
+src-tauri/core/src/vault/mod.rs
+  s_3fe90b0d1ae177::t_74024114fbf4d4 1,15
+src-tauri/core/src/lib.rs
+  s_3fe90b0d1ae177::t_acc467695d0f62 2
+src-tauri/web/src/lib.rs
+  s_3fe90b0d1ae177::t_2ac13ddef475eb 128,130-131
+  s_3fe90b0d1ae177::t_384ee20bf4384e 129
+  s_3fe90b0d1ae177::t_18bcbb6432e341 127
+src/lib/api/types.ts
+  s_3fe90b0d1ae177::t_1c6bccb66c8220 124-141
+  s_3fe90b0d1ae177::t_384ee20bf4384e 123
+src/lib/components/SettingsView.svelte
+  s_3fe90b0d1ae177::t_1c6bccb66c8220 11,67-70,324-325
+src/lib/vault-export.test.ts
+  s_3fe90b0d1ae177::t_384ee20bf4384e 4,73-74
+  s_3fe90b0d1ae177::t_1c6bccb66c8220 3,10,17,58-72,75-84
+  s_3fe90b0d1ae177::t_2900d83a9ecb5e 85
+CHANGELOG.md
+  s_3fe90b0d1ae177::t_2ad1458fa44014 33-42
+src-tauri/core/src/vault/export.rs
+  s_3fe90b0d1ae177::t_74024114fbf4d4 64,67,83-84,86,90-92,94-98,102-114
+  s_3fe90b0d1ae177::t_2ac13ddef475eb 236-254
+  s_3fe90b0d1ae177::t_6b63f73160449f 115
+src-tauri/Cargo.lock
+  s_3fe90b0d1ae177::t_cd8a3498a86cdc 2789
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "46ad73c704399d2930bdea2b509f31755521b2e1",
+  "prompts": {},
+  "sessions": {
+    "s_3fe90b0d1ae177": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cc4e75df-98d1-43eb-a307-3a9f4f80c286",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
