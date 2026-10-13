@@ -34,7 +34,7 @@
   );
 </script>
 
-<div class="format-bar" role="toolbar" aria-label="Formatting">
+<div class="format-bar" role="toolbar" aria-label="Formatting" style="--editor-zoom: {editorPrefs.zoom}">
   <div class="fmt-group">
     <button
       class="fmt"
@@ -168,38 +168,48 @@
 
 <style>
   .format-bar {
+    flex: none;
     display: flex;
     align-items: center;
-    gap: 2px;
+    width: 100%;
+    max-width: calc(var(--measure) + 32px * var(--density));
     height: 36px;
-    padding: 0 12px;
+    margin: 0 auto;
+    padding: 0 calc(16px * var(--density) - 6px) 0 calc(16px * var(--density) - 8px);
     background: var(--bg);
-    border-bottom: 1px solid var(--border);
-    font-family: var(--font-ui);
+    font-family: var(--font-body);
+    font-size: calc(14px * var(--density) * var(--editor-zoom, 1));
+    overflow-x: auto;
   }
   .fmt-group {
+    flex: none;
     display: flex;
     align-items: center;
-    gap: 2px;
   }
-  .fmt-group + .fmt-group {
-    margin-left: 6px;
-    padding-left: 6px;
-    border-left: 1px solid var(--border);
+  .fmt-group + .fmt-group::before {
+    content: "";
+    width: 1px;
+    height: 16px;
+    margin: 0 5px;
+    background: var(--border);
   }
   .fmt-group.zoom-group {
     margin-left: auto;
-    padding-left: 0;
-    border-left: none;
+    padding-left: 12px;
+  }
+  .fmt-group.zoom-group::before {
+    content: none;
   }
   .fmt {
+    flex: none;
     display: flex;
     align-items: center;
     justify-content: center;
     width: 28px;
     height: 28px;
-    border-radius: 6px;
+    border-radius: calc(var(--radius) - 2px);
     color: var(--text-secondary);
+    font-family: var(--font-ui);
     font-size: 13px;
   }
   .fmt:hover:not(:disabled) {
@@ -210,19 +220,24 @@
     opacity: 0.35;
     cursor: default;
   }
-  .fmt[aria-pressed="true"] {
+  .fmt[aria-pressed="true"],
+  .fmt[aria-pressed="true"]:hover:not(:disabled) {
     background: var(--accent);
     color: var(--bg);
   }
   .fmt.zoom-step {
-    font-size: 13px;
+    width: 22px;
+    font-family: var(--font-meta);
+    font-size: 11px;
+    color: var(--text-tertiary);
   }
   .fmt.zoom-reset {
     width: auto;
-    min-width: 44px;
-    padding: 0 6px;
+    min-width: 0;
+    padding: 0 4px;
     font-family: var(--font-meta);
-    font-size: 11.5px;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
     color: var(--text-tertiary);
   }
 </style>

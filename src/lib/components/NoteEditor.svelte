@@ -433,6 +433,35 @@
   .editor-header {
     justify-content: flex-end;
     gap: 0;
+    padding-left: calc(16px * var(--density));
+  }
+  .editor-header .icon-btn {
+    color: var(--text-tertiary);
+  }
+  .editor-header .icon-btn:hover {
+    color: var(--text);
+  }
+  .editor-header .icon-btn[aria-pressed="true"] {
+    background: transparent;
+    color: var(--accent-text);
+  }
+  .editor-header .icon-btn[aria-pressed="true"]:hover {
+    background: var(--bg-hover);
+  }
+  .editor-header .icon-btn.danger:hover {
+    color: var(--danger);
+  }
+  .editor-header .icon-group + .icon-group {
+    margin-left: 0;
+    padding-left: 0;
+    border-left: none;
+  }
+  .editor-header .icon-group + .icon-group::before {
+    content: "";
+    width: 1px;
+    height: 16px;
+    margin: 0 5px;
+    background: var(--border);
   }
   .header-title {
     flex: 1;
@@ -457,7 +486,7 @@
     width: 100%;
     max-width: calc(var(--measure) + 32px * var(--density));
     margin: 0 auto;
-    padding: 8px calc(16px * var(--density)) 0;
+    padding: 12px calc(16px * var(--density)) 0;
     container-type: inline-size;
   }
   .doc.wide .doc-head {
