@@ -1,6 +1,8 @@
 mod api;
 mod config;
 mod events;
+#[cfg(test)]
+mod fake_idp;
 mod libraries;
 mod oidc;
 mod sessions;
