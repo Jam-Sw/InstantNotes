@@ -515,6 +515,7 @@ pub fn run() {
             accept_plain_server,
             disconnect_sync_server,
             confirm_sync_join,
+            list_sync_join_requests,
             list_sync_devices,
             revoke_sync_device,
             answer_sync_join,

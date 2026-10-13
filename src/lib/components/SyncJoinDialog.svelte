@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { answerSyncJoin } from "$lib/api/client";
+  import { answerSyncJoin, listSyncJoinRequests } from "$lib/api/client";
   import { EVENTS, listen } from "$lib/api/events";
   import type { SyncJoinRequest } from "$lib/api/types";
   import { toasts } from "$lib/stores/toasts.svelte";
@@ -18,9 +18,16 @@
   const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
   onMount(() => {
+    let heard = false;
     const unlisten = listen<SyncJoinRequest[] | null>(EVENTS.SYNC_JOIN_REQUESTS, (e) => {
+      heard = true;
       requests = (e.payload ?? []).filter((r) => !answered.has(r.id));
     });
+    listSyncJoinRequests()
+      .then((found) => {
+        if (!heard) requests = found.filter((r) => !answered.has(r.id));
+      })
+      .catch(() => {});
     return () => void unlisten.then((off) => off());
   });
 

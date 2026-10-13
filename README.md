@@ -21,7 +21,7 @@ Usage: See the [plugin's readme](https://github.com/jamubc/toolbox/tree/main/plu
 - **Plain Markdown Vault and Sync:** Keep every note as a Markdown file in a folder you choose, readable in any editor. Point several devices at the same folder (a network drive, Syncthing, Dropbox) and they stay in sync; edits made in the folder come back in.
 - **Agents, on your terms:** Connect Claude Code, Codex, or Cursor over MCP (Settings > Agents). Off until you turn it on; what an agent reads or changes lights up as it happens, every call is traced, and every change can be reverted.
 - **Themes:** Eight built-in themes with live previews, light and dark, shareable as files.
-- **Self-hosted sync:** Run the InstantNotes server on your own machine and sync one library across the desktop apps and any browser, phone included. Notes are end-to-end encrypted by default: the server stores only ciphertext.
+- **Self-hosted sync:** Run the InstantNotes server on your own machine and sync one library across the desktop apps and any browser. Phones can use the web app, but its layout is not designed for phone screens yet. Notes are end-to-end encrypted by default: the server stores only ciphertext.
 - **100% Local & Private:** Your library lives in a local SQLite database, and in the vault folder if you set one. No server unless you run your own, zero telemetry.
 
 ## Installation

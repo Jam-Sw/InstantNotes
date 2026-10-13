@@ -16,6 +16,8 @@
   import AgentNote from "$lib/components/AgentNote.svelte";
   import { agentsSpace } from "$lib/stores/agents-space";
   import { isAgentNoteId, isAgentsSpaceId } from "$lib/agents/space";
+  import { mergeSpace } from "$lib/stores/merge-space.svelte";
+  import { isMergeNoteId, isMergeSpaceId } from "$lib/merge/space";
   import { library } from "$lib/stores/library.svelte";
   import { updater } from "$lib/stores/updater.svelte";
   import { editorPrefs } from "$lib/stores/editor.svelte";
@@ -53,6 +55,13 @@
     }
   });
 
+  $effect(() => {
+    if (mergeSpace.visible) return;
+    if (isMergeSpaceId(library.activeWorkspaceId) || isMergeNoteId(library.selected?.id)) {
+      library.selectWorkspace(null);
+    }
+  });
+
   agents.show = () => {
     if (licenseSpace.locked) return;
     settingsOpen = false;
@@ -78,6 +87,7 @@
     void linkPrefsStore.init();
     void contexting.init();
     void agents.init();
+    void mergeSpace.init();
     const warmEditor = setTimeout(() => void import("$lib/components/NoteEditor.svelte"), 800);
     const warmViews = setTimeout(() => {
       void import("$lib/components/SettingsView.svelte");
@@ -383,7 +393,7 @@
     {:else}
       <NoteList />
       <section class="editor-pane">
-        {#if !licenseSpace.locked && library.multiSelected.size <= 1 && library.selected && !isUpdateNoteId(library.selected.id) && !isAgentNoteId(library.selected.id)}
+        {#if !licenseSpace.locked && library.multiSelected.size <= 1 && library.selected && !isUpdateNoteId(library.selected.id) && !isAgentNoteId(library.selected.id) && !isMergeNoteId(library.selected.id)}
           {#await import("$lib/components/NoteEditor.svelte") then { default: NoteEditor }}
             <NoteEditor />
           {/await}
@@ -395,6 +405,10 @@
             <BulkActions />
           {:else if library.selected && isAgentNoteId(library.selected.id)}
             <AgentNote />
+          {:else if library.selected && isMergeNoteId(library.selected.id)}
+            {#await import("$lib/components/MergeNote.svelte") then { default: MergeNote }}
+              <MergeNote />
+            {/await}
           {:else if library.selected}
             <UpdateNote />
           {:else}

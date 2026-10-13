@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { exportVaultToFolder } from "$lib/vault-export";
   import { chooseVaultFolder, describeVaultReport, describeVaultStatus } from "$lib/vault-mirror";
   import {
     confirmVaultRemovals,
@@ -17,7 +16,6 @@
   let busy = $state(false);
   let checking = $state(false);
   let reportLines = $state<string[]>([]);
-  let exporting = $state(false);
 
   const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -95,33 +93,15 @@
       void refresh();
     }
   }
-
-  async function runExport() {
-    if (exporting) return;
-    exporting = true;
-    try {
-      const result = await exportVaultToFolder();
-      if ("cancelled" in result) {
-      } else if (result.ok) {
-        toasts.show("Exported. Every note is now a plain Markdown file in the folder you chose.");
-      } else {
-        toasts.show(`Couldn't export. ${result.error}`);
-      }
-    } finally {
-      exporting = false;
-    }
-  }
 </script>
 
-<div class="vault-pane">
-  <h2>Vault</h2>
+<div>
   <p class="section-hint">
     Your notes as plain Markdown files, with their tags and Spaces, in a folder
     you choose. Readable and editable in any editor, with InstantNotes closed,
     on any device.
   </p>
 
-  <span class="group-label">Sync folder</span>
   {#if !status?.path}
     <PrefRow
       label="Keep your notes in a folder"
@@ -191,44 +171,14 @@
       the folder is offline, your changes wait and sync when it's back.
     </p>
   {/if}
-
-  <span class="group-label">One-time copy</span>
-  <PrefRow
-    label="Export a copy"
-    sub="A snapshot of every note, tag, Space, and attachment, written once to a folder you choose."
-  >
-    {#snippet control()}
-      <button class="primary-btn" disabled={exporting} onclick={runExport}>
-        {exporting ? "Exporting…" : "Export a copy…"}
-      </button>
-    {/snippet}
-  </PrefRow>
 </div>
 
 <style>
-  .vault-pane {
-    max-width: 560px;
-  }
-  h2 {
-    margin: 0 0 6px;
-    font-size: 18px;
-    font-weight: 600;
-  }
   .section-hint {
     color: var(--text-secondary);
     font-size: 13px;
     line-height: 1.5;
-    margin: 0 0 20px;
-  }
-  .group-label {
-    display: block;
-    margin: 20px 0 2px;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    color: var(--text-tertiary);
-    font-family: var(--font-meta);
+    margin: 16px 0 8px;
   }
   .primary-btn {
     flex-shrink: 0;

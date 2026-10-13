@@ -114,7 +114,7 @@ full paths in reports). Ships in 0.10.0: built on `feat/sync-server`, merged loc
 
 - [ ] `README.md` "Self-hosted sync" (design §12), including the web-code line (§4.8) (written); the published hashes and how to compare them (open, with the release work)
 - [ ] `docs/API.md`, `docs/DATA_MODEL.md`
-- [ ] `CHANGELOG.md` `[0.10.0]`: Sync server entries beside folder sync; the `INSTANTNOTES_VAULT_ROOT` entry removed; the sign-in page entry corrected
+- [ ] `CHANGELOG.md` `[0.10.0]`: Sync server entries beside folder sync; the `INSTANTNOTES_VAULT_ROOT` entry removed; the sign-in page entry corrected; a line that the web app is served to phones but not laid out for them yet (D8)
 - [ ] `SEQUENCE.md`: this unit and its placement exception; unit 9 no longer "cuts 0.10.0" and unit 10 (git) no longer "cuts 0.11.0"; git's slot kept
 
 ## 12. Checks
@@ -124,10 +124,10 @@ full paths in reports). Ships in 0.10.0: built on `feat/sync-server`, merged loc
 
 ## In-app checks (open)
 
-- [ ] Two desktop builds, a computer browser and a phone browser on one throwaway server: a note made in each appears in the others
+- [ ] Two desktop builds and a computer browser on one throwaway server: a note made in each appears in the others (phones: no layout check, design D8)
 - [ ] One desktop offline: typing continues, edits arrive after reconnecting
 - [ ] One note edited on two devices while one is offline: both versions survive, one tagged `conflict`
 - [ ] A new device approved by six words; a new browser approved the same way; a device restored by recovery key
 - [ ] Encryption turned off and on again with a second device open: it carries on after off, asks for approval after on, and nothing is lost
 - [ ] Join: a desktop with an existing library joins a server holding another; asked first, exact copies once, likely pairs in Review merge, each choice checked, nothing lost
-- [ ] The phone browser offline after a first visit: opens, edits, syncs on reconnecting
+- [ ] The computer browser offline after a first visit: opens, edits, syncs on reconnecting

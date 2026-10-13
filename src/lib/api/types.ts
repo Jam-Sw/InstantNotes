@@ -142,6 +142,10 @@ export type SyncStage =
   | "joining"
   | "confirmPlain"
   | "syncing"
+  | "upToDate"
+  | "held"
+  | "problem"
+  | "refused"
   | "offline"
   | "signedOut";
 

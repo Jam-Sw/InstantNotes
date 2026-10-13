@@ -4,7 +4,9 @@ use instantnotes_core::store::server_sync::MergeReview;
 use instantnotes_core::sync::crypto::{join_words, JoinKey, LibraryKey, Lock};
 use instantnotes_core::sync::cycle::{ModeCheck, ServerSync, SyncReport, ENCRYPTED, PLAIN};
 use instantnotes_core::sync::remote::RemoteError;
-use instantnotes_server::client::{callback_query, pkce, Client, Connection, Device, JoinAnswer};
+use instantnotes_server::client::{
+    callback_query, pkce, Client, Connection, Device, Join, JoinAnswer,
+};
 use serde::Deserialize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -245,9 +247,11 @@ pub(crate) fn get_sync_server_status(
             status.person = settings.name.clone().or(settings.email.clone());
             status.encrypted = settings.mode.as_deref() == Some(ENCRYPTED);
         }
-    } else if status.stage != "signingIn" {
+    } else if !matches!(status.stage.as_str(), "signingIn" | "confirmJoin") {
+        let message = status.message.take().filter(|_| status.stage == "off");
         status = ServerStatus {
             stage: "off".into(),
+            message,
             ..ServerStatus::default()
         };
     }
@@ -633,6 +637,40 @@ pub(crate) async fn disconnect_sync_server(app: AppHandle) -> CmdResult<()> {
     Ok(())
 }
 
+fn join_requests(joins: Vec<Join>, recipient: &str) -> Vec<JoinRequest> {
+    joins
+        .into_iter()
+        .map(|j| JoinRequest {
+            words: join_words(&j.public_key, recipient)
+                .iter()
+                .map(|w| w.to_string())
+                .collect(),
+            id: j.id,
+            device_name: j.device_name,
+            public_key: j.public_key,
+        })
+        .collect()
+}
+
+fn library_recipient(settings: &ServerSettings) -> Option<String> {
+    keychain_get(settings, "key")
+        .and_then(|k| LibraryKey::from_recovery(&k).ok())
+        .map(|k| k.recipient())
+}
+
+#[tauri::command]
+pub(crate) async fn list_sync_join_requests(app: AppHandle) -> CmdResult<Vec<JoinRequest>> {
+    let settings = connected(&app)?;
+    let Some(recipient) = library_recipient(&settings) else {
+        return Ok(Vec::new());
+    };
+    let joins = client_for(&settings)?
+        .pending_joins(0)
+        .await
+        .map_err(remote_error)?;
+    Ok(join_requests(joins, &recipient))
+}
+
 #[tauri::command]
 pub(crate) async fn list_sync_devices(app: AppHandle) -> CmdResult<Vec<Device>> {
     client_for(&connected(&app)?)?
@@ -927,10 +965,7 @@ pub(crate) fn watch_server(
         };
         let mut shown: Vec<String> = Vec::new();
         while !stop.load(std::sync::atomic::Ordering::Relaxed) {
-            let Some(recipient) = keychain_get(&settings, "key")
-                .and_then(|k| LibraryKey::from_recovery(&k).ok())
-                .map(|k| k.recipient())
-            else {
+            let Some(recipient) = library_recipient(&settings) else {
                 std::thread::sleep(Duration::from_secs(30));
                 continue;
             };
@@ -938,19 +973,8 @@ pub(crate) fn watch_server(
                 Ok(joins) => {
                     let ids: Vec<String> = joins.iter().map(|j| j.id.clone()).collect();
                     if ids != shown {
-                        let requests: Vec<JoinRequest> = joins
-                            .into_iter()
-                            .map(|j| JoinRequest {
-                                words: join_words(&j.public_key, &recipient)
-                                    .iter()
-                                    .map(|w| w.to_string())
-                                    .collect(),
-                                id: j.id,
-                                device_name: j.device_name,
-                                public_key: j.public_key,
-                            })
-                            .collect();
-                        let _ = app.emit(events::SYNC_JOIN_REQUESTS, requests);
+                        let _ =
+                            app.emit(events::SYNC_JOIN_REQUESTS, join_requests(joins, &recipient));
                         shown = ids;
                     }
                 }

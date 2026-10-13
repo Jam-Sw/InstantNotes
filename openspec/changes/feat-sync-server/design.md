@@ -949,6 +949,17 @@ returned different values across devices, and the Linux desktop's web view has
 no WebAuthn at all. "Remember this browser" covers the same everyday need. The
 key design leaves room to add it as one more way in.
 
+### D8. Phone layout: not yet (decided 2026-10-12)
+
+The app has no phone layout: its fixed two-column grid cuts the editor off at
+phone width. The owner chose not to add a quick one here: "I don't want to
+just throw together a hacky solution, it's required that it's properly built
+and done." The web app is still served to phones as it is, and sync works
+there; the README and the changelog say the layout is not designed for phones
+yet. A proper phone and tablet layout, then native iOS and iPadOS apps, are
+the next pre branch's work (planned outside this change). New components here
+must not assume the two-column grid, so that work can start from them.
+
 ## 15. Research and rejected options
 
 Checked on 2026-10-12 against primary sources (crates.io, npm, specs, vendor

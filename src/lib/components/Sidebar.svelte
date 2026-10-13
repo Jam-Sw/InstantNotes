@@ -13,6 +13,8 @@
   import { UPDATE_SPACE_ID, UPDATE_SPACE_NAME } from "$lib/update/space";
   import { agentsSpace } from "$lib/stores/agents-space";
   import { AGENTS_SPACE_ID, AGENTS_SPACE_NAME } from "$lib/agents/space";
+  import { mergeSpace } from "$lib/stores/merge-space.svelte";
+  import { MERGE_SPACE_ID, MERGE_SPACE_NAME } from "$lib/merge/space";
   import { LICENSE_SPACE_NAME, licenseSpace } from "$lib/stores/license-space.svelte";
   import type { TagWithCount, WorkspaceWithCount } from "$lib/api/types";
   import { spacesShown } from "$lib/spaces-shown";
@@ -172,6 +174,25 @@
       >
         {#snippet suffix()}<span class="update-star" aria-hidden="true">*</span>{/snippet}
       </SidebarEntityRow>
+    {/if}
+    {#if mergeSpace.visible}
+      <SidebarEntityRow
+        name={MERGE_SPACE_NAME}
+        count={mergeSpace.notes.length}
+        normalize={(s) => s.trim()}
+        noun="Space"
+        active={library.activeWorkspaceId === MERGE_SPACE_ID}
+        editing={false}
+        readonly
+        onSelect={() =>
+          library.activeWorkspaceId === MERGE_SPACE_ID
+            ? library.selectWorkspace(null)
+            : mergeSpace.open()}
+        onStartRename={() => {}}
+        onRename={async () => ({ ok: true as const })}
+        onDoneRename={() => {}}
+        onMenu={() => {}}
+      />
     {/if}
     {#if agentsSpace.visible}
       <SidebarEntityRow

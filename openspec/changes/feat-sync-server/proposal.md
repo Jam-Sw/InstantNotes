@@ -70,6 +70,8 @@ provider is unchanged.
 ## Non-goals
 
 - A native phone app (the design leaves its slot: §5.1, §15).
+- A phone layout (design D8): phones get the web app as it is, which syncs but
+  is not designed for their screens yet. It is the next pre branch's work.
 - Merging two edits of one note into one text; a conflict keeps both, as 0.10.
 - Git sync (paused), server-side version history, sharing a library between
   people, server-side search.

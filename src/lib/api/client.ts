@@ -31,6 +31,7 @@ import type {
   UpdateNotePatch,
   MergeReview,
   SyncDevice,
+  SyncJoinRequest,
   SyncServerStatus,
   VaultReport,
   VaultStatus,
@@ -282,6 +283,7 @@ export const enterRecoveryKey = (text: string) =>
   call<SyncServerStatus>("enter_recovery_key", { text });
 export const acceptPlainServer = () => call<void>("accept_plain_server");
 export const disconnectSyncServer = () => call<void>("disconnect_sync_server");
+export const listSyncJoinRequests = () => call<SyncJoinRequest[]>("list_sync_join_requests");
 export const listSyncDevices = () => call<SyncDevice[]>("list_sync_devices");
 export const revokeSyncDevice = (id: string | null) => call<void>("revoke_sync_device", { id });
 export const answerSyncJoin = (id: string, publicKey: string, approve: boolean) =>

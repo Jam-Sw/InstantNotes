@@ -3,13 +3,14 @@ import { cleanup, fireEvent, render, waitFor } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { listen } from "@tauri-apps/api/event";
 import SyncJoinDialog from "./SyncJoinDialog.svelte";
-import { answerSyncJoin } from "$lib/api/client";
+import { answerSyncJoin, listSyncJoinRequests } from "$lib/api/client";
 import { EVENTS } from "$lib/api/events";
 import type { SyncJoinRequest } from "$lib/api/types";
 import { toasts } from "$lib/stores/toasts.svelte";
 
 vi.mock("$lib/api/client", () => ({
   answerSyncJoin: vi.fn(),
+  listSyncJoinRequests: vi.fn(),
 }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(),
@@ -48,10 +49,18 @@ beforeEach(() => {
     return () => handlers.delete(event as string);
   });
   vi.mocked(answerSyncJoin).mockReset().mockResolvedValue(undefined);
+  vi.mocked(listSyncJoinRequests).mockReset().mockResolvedValue([]);
   toasts.items = [];
 });
 
 describe("SyncJoinDialog", () => {
+  it("shows a request that was already waiting when it opened", async () => {
+    vi.mocked(listSyncJoinRequests).mockResolvedValue([LAPTOP]);
+    const { findByText } = render(SyncJoinDialog);
+    expect(await findByText(title("Work laptop"))).toBeTruthy();
+  });
+
+
   it("stays hidden until a request arrives", async () => {
     const { queryByRole } = render(SyncJoinDialog);
     await send([]);
