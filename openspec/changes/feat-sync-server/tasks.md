@@ -10,7 +10,7 @@ full paths in reports). Ships in 0.10.0: built on `feat/sync-server`, merged loc
 - [x] Owner's answers recorded in `design.md` §14
 - [x] Generic names where 0.10.0-pre names the maintainer's server or tailnet: `SEQUENCE.md` (unit 9 note), `feat-vault-sync/tasks.md` (the two-device check), `SettingsVault.test.ts` and `vault-mirror.test.ts` fixtures
 - [x] `feat-vault-sync/tasks.md`: delete the in-app check of the desktop app and the web app on one person folder (the server-side folder sync it checks is removed, D3)
-- [ ] Draft for the owner: PR #78's new title and body (Summary, Changes, ADDED Requirements, Scenario, Verification) covering folder sync and Sync server; the owner edits GitHub
+- [x] Draft for the owner: PR #78's new title and body (Summary, Changes, ADDED Requirements, Scenario, Verification) covering folder sync and Sync server; the owner edits GitHub
 
 ## 1. Identity provider tokens (`instantnotes-server`)
 
