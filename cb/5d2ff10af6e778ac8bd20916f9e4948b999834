@@ -1,0 +1,71 @@
+src-tauri/server/src/sessions.rs
+  s_d65fa7209241f3::t_c6d8540bdcd545 163-164,181
+  s_d65fa7209241f3::t_ecee50d1827120 3-4,6,11,13-32,41-56,63-74,79,83,86-93,95-98,105-115,124-128,133-147,150-162,165-180,184-187,193-194,197-215,221-244,249-253,307-322,328-395
+  s_d65fa7209241f3::t_053ffe49f718dc 148-149,220
+  s_d65fa7209241f3::t_175a9f221e0b34 84-85,116-123,188-191,216-219,245-248,323-327
+  s_d65fa7209241f3::t_06fbfa83486cc4 192
+src-tauri/server/src/limits.rs
+  s_d65fa7209241f3::t_1ccd918cce07b6 20
+  s_d65fa7209241f3::t_53f2c6aa92ef1b 1-13,18-19,21-33,35-51,53-74,79-81,84
+  s_d65fa7209241f3::t_5e6f842aa5898b 14
+  s_d65fa7209241f3::t_658ef67b8dfca5 34
+  s_d65fa7209241f3::t_175a9f221e0b34 15-17,75-78
+  s_d65fa7209241f3::t_24151cf613e6d7 52
+  s_d65fa7209241f3::t_91330521f1a8fb 82-83,85-86
+src-tauri/server/src/lib.rs
+  s_d65fa7209241f3::t_e0200666eddf4d 48
+  s_d65fa7209241f3::t_5d5b8404e964de 47
+  s_d65fa7209241f3::t_48f2b38ef857bc 17
+  s_d65fa7209241f3::t_93e87a5893599f 90
+  s_d65fa7209241f3::t_1e1fe89e6d8c5a 82
+  s_d65fa7209241f3::t_d0984a0a392f16 290-291
+  s_d65fa7209241f3::t_2a46db644a6dcb 315
+  s_d65fa7209241f3::t_8387b74769cd35 257,274,282,284,292-299,303,305,310,314,359,383-384
+  s_d65fa7209241f3::t_99123b249eb17f 263
+  s_d65fa7209241f3::t_0a1c90c88d9564 7,18,27,33,66,91-93,100,104-112,172-178,213,258-260,273,275-276,280-281,283,285-289,300-302,304,306-309,311-313,357-358,360-364,382,385-390
+src-tauri/server/tests/hardening_test.rs
+  s_d65fa7209241f3::t_636d4e421d2b73 107-113,115-119
+  s_d65fa7209241f3::t_d17d7fcbc4f140 57-61,65-69,79-87,89-93
+  s_d65fa7209241f3::t_aeb82ee37d93dd 1-56,62-64,70-78,88,94-106,114,120-125
+src-tauri/server/src/config.rs
+  s_d65fa7209241f3::t_12458f8271499d 13
+  s_d65fa7209241f3::t_5ef95b851b144f 41-51,53-56,58
+  s_d65fa7209241f3::t_f29011b154d6a4 62,105-108,110-117
+  s_d65fa7209241f3::t_4d4d4ac1a480f0 52,57
+  s_d65fa7209241f3::t_e19f4f2e858687 109
+  s_d65fa7209241f3::t_e4cc61f00ce4ea 59-61
+  s_d65fa7209241f3::t_e8d5c5229e35f6 118-120
+  s_d65fa7209241f3::t_3e737a92ca6508 31,69,93,121-129
+src-tauri/Cargo.lock
+  s_ecb25a8230b32d::t_55a13a7bc1b76d 35-40,816-829,1332-1337,1493,1497,1628-1650,1709-1714,1721-1722,2143,2148,2664-2669,3271-3285,3437-3445,4207-4215
+src-tauri/server/Cargo.toml
+  s_ecb25a8230b32d::t_df8a4402f78abd 28-29
+src-tauri/server/src/libraries.rs
+  s_ecb25a8230b32d::t_0df2bc8952dd8f 47
+src-tauri/server/tests/isolation_test.rs
+  s_d65fa7209241f3::t_18c8f05d8a05e8 36,38,41-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cb5d2ff10af6e778ac8bd20916f9e4948b999834",
+  "prompts": {},
+  "sessions": {
+    "s_d65fa7209241f3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7cb25860-ff50-4096-a250-5cb972fdc7dd",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    },
+    "s_ecb25a8230b32d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "622b9b0c-62ee-4be3-ba16-e74511885d16",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
