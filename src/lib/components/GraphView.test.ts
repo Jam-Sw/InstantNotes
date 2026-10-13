@@ -144,11 +144,45 @@ describe("GraphView", () => {
   it("opens a note, filters by a tag, and goes into a Space", async () => {
     const { findByRole, getByRole } = render(GraphView);
     await fireEvent.click(await findByRole("button", { name: "Note: Alpha" }));
-    expect(lib.select).toHaveBeenCalledWith("n1");
+    await waitFor(() => expect(lib.select).toHaveBeenCalledWith("n1"));
     await fireEvent.click(getByRole("button", { name: "Tag: #ideas" }));
-    expect(lib.setTagFilter).toHaveBeenCalledWith("t1");
+    await waitFor(() => expect(lib.setTagFilter).toHaveBeenCalledWith("t1"));
     await fireEvent.click(getByRole("button", { name: "Space: Research" }));
-    expect(lib.selectWorkspace).toHaveBeenCalledWith("s1");
+    await waitFor(() => expect(lib.selectWorkspace).toHaveBeenCalledWith("s1"));
+  });
+
+  it("centres on a node clicked twice and opens nothing", async () => {
+    const { findByRole } = render(GraphView);
+    const alpha = await findByRole("button", { name: "Note: Alpha" });
+    await fireEvent.click(alpha);
+    await fireEvent.click(alpha);
+    await waitFor(() => expect(alpha.classList.contains("centred")).toBe(true));
+    await new Promise((r) => setTimeout(r, 350));
+    expect(lib.select).not.toHaveBeenCalled();
+  });
+
+  it("marks what it turns around with a ring fixed in the world, and resets the view", async () => {
+    const { findByRole, getByRole, container } = render(GraphView);
+    await findByRole("button", { name: "Note: Alpha" });
+    const ground = () => container.querySelector("polyline.ring.ground")!.getAttribute("points");
+    expect(container.querySelectorAll(".pivot line")).toHaveLength(3);
+    const front = ground();
+    await fireEvent.keyDown(container.querySelector(".graph-host")!, { key: "ArrowDown" });
+    expect(ground()).not.toBe(front);
+    await fireEvent.click(getByRole("button", { name: "Reset view" }));
+    expect(ground()).toBe(front);
+  });
+
+  it("names the open note and its neighbours, and the rest only on hover", async () => {
+    lib.selected = { id: "n1" };
+    const { findByRole, getByRole, container } = render(GraphView);
+    await findByRole("button", { name: "Note: Alpha" });
+    const drawn = () => [...container.querySelectorAll("text")].map((t) => t.textContent);
+    expect(drawn()).toContain("Alpha");
+    expect(drawn()).toContain("#ideas");
+    expect(drawn()).not.toContain("Beta");
+    await fireEvent.pointerEnter(getByRole("button", { name: "Note: Beta" }));
+    expect(drawn()).toContain("Beta");
   });
 
   it("works from the keyboard", async () => {

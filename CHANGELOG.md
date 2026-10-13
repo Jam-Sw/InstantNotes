@@ -46,6 +46,12 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `attachments/`; the worker's `export_archive()`; the page downloads `InstantNotes-<date>.zip`.
 - Server image: OCI labels (`title`, `description`, `source`, `url`, `documentation`, `licenses`, `vendor`;
   `version`, `revision`, `created` set by the release job), so the GHCR package page links the repository.
+- Graph: a drag turns the view around its centre, marked by a small cross; right-drag, Shift+drag,
+  middle-drag, two fingers and a trackpad's two-finger scroll pan; the mouse wheel, Ctrl+wheel and pinch
+  zoom; double-click or double-tap a node to turn around it; double-click the background, Home, 0 or Reset
+  view to go back. A ground ring and an upright ring stay fixed in the world, farther nodes fade, and
+  labels keep one size: tags and Spaces always, the open, centred or hovered node and its neighbours.
+  A single click opens a node after 300 ms, so a double click can centre it.
 ### Fixed
 - Sync: a device that needs the library key asks for approval as soon as the Sync page shows, with the six
   words on screen, instead of waiting for "Approve on another device" (desktop and web).
