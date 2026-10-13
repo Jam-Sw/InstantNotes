@@ -1,0 +1,69 @@
+openspec/changes/feat-one-experience/diagnostics/design.md
+  s_3fe90b0d1ae177::t_a13b52901093ba 1-72
+openspec/changes/feat-one-experience/server-operators/tasks.md
+  s_3fe90b0d1ae177::t_cfe7af89b375f3 1-18
+openspec/changes/feat-one-experience/actions/tasks.md
+  s_3fe90b0d1ae177::t_242520ee00205d 1-16
+openspec/changes/feat-one-experience/release-chain/design.md
+  s_3fe90b0d1ae177::t_cfe7af89b375f3 1-75
+openspec/changes/feat-one-experience/tasks.md
+  s_3fe90b0d1ae177::t_c81b7c13ab0af0 1-37
+openspec/changes/feat-one-experience/diagnostics/tasks.md
+  s_3fe90b0d1ae177::t_a13b52901093ba 1-13
+openspec/changes/feat-one-experience/mobile/tasks.md
+  s_3fe90b0d1ae177::t_3ed18258c3e575 1-24
+openspec/changes/feat-one-experience/writing/tasks.md
+  s_3fe90b0d1ae177::t_242520ee00205d 1-15
+openspec/changes/feat-one-experience/whiteboard/tasks.md
+  s_3fe90b0d1ae177::t_3ed18258c3e575 1-10
+openspec/changes/feat-one-experience/release-chain/tasks.md
+  s_3fe90b0d1ae177::t_cfe7af89b375f3 1-11
+openspec/changes/feat-one-experience/signed-installs/tasks.md
+  s_3fe90b0d1ae177::t_cfe7af89b375f3 1-76
+openspec/changes/feat-one-experience/design.md
+  s_3fe90b0d1ae177::t_c81b7c13ab0af0 1-140
+openspec/changes/feat-one-experience/signed-installs/design.md
+  s_3fe90b0d1ae177::t_cfe7af89b375f3 1-48
+openspec/changes/feat-one-experience/mobile/design.md
+  s_3fe90b0d1ae177::t_3ed18258c3e575 1-89
+openspec/changes/feat-one-experience/proposal.md
+  s_3fe90b0d1ae177::t_a72bad768a7ba6 1-165
+openspec/changes/feat-one-experience/sync-without-a-server/design.md
+  s_3fe90b0d1ae177::t_cfe7af89b375f3 1-53
+openspec/changes/feat-one-experience/metadata/design.md
+  s_3fe90b0d1ae177::t_242520ee00205d 1-40
+openspec/changes/feat-one-experience/sync-without-a-server/tasks.md
+  s_3fe90b0d1ae177::t_cfe7af89b375f3 1-4
+openspec/changes/feat-one-experience/metadata/tasks.md
+  s_3fe90b0d1ae177::t_242520ee00205d 1-27
+openspec/changes/feat-one-experience/server-operators/design.md
+  s_3fe90b0d1ae177::t_cfe7af89b375f3 1-94
+openspec/changes/feat-one-experience/writing/design.md
+  s_3fe90b0d1ae177::t_242520ee00205d 1-77
+openspec/changes/feat-one-experience/data-safety/design.md
+  s_3fe90b0d1ae177::t_a13b52901093ba 1-123
+openspec/changes/feat-one-experience/data-safety/tasks.md
+  s_3fe90b0d1ae177::t_a13b52901093ba 1-19
+openspec/changes/feat-one-experience/actions/design.md
+  s_3fe90b0d1ae177::t_242520ee00205d 1-97
+openspec/changes/feat-one-experience/whiteboard/design.md
+  s_3fe90b0d1ae177::t_3ed18258c3e575 1-58
+openspec/SEQUENCE.md
+  s_3fe90b0d1ae177::t_da67d3f80fbe62 382-397
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f5e6ef21be3eed49a038fd48471a2ec6cda04119",
+  "prompts": {},
+  "sessions": {
+    "s_3fe90b0d1ae177": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cc4e75df-98d1-43eb-a307-3a9f4f80c286",
+        "model": "unknown"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
