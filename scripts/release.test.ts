@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { notes, section } from "../.github/release-notes.mjs";
 import { manifest } from "../.github/release-manifest.mjs";
+import dockerfile from "../Dockerfile?raw";
 
 const CHANGELOG = `# Changelog
 
@@ -75,5 +76,14 @@ describe("release manifest", () => {
     });
     expect(missing).toEqual(["Windows", "macOS"]);
     expect(Object.keys(latest.platforms)).toEqual(["linux-x86_64", "linux-x86_64-appimage"]);
+  });
+});
+
+describe("the server image", () => {
+  it("names its repository, description and licence in OCI labels", () => {
+    for (const label of ["source", "description", "licenses", "title"]) {
+      expect(dockerfile).toMatch(new RegExp(`org\\.opencontainers\\.image\\.${label}="[^"]+"`));
+    }
+    expect(dockerfile).toContain('org.opencontainers.image.source="https://github.com/Jam-Sw/InstantNotes"');
   });
 });

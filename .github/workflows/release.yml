@@ -135,7 +135,11 @@ jobs:
           mkdir -p "$RUNNER_TEMP/docker" && echo '{}' > "$RUNNER_TEMP/docker/config.json"
           echo "DOCKER_CONFIG=$RUNNER_TEMP/docker" >> "$GITHUB_ENV"
       - run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-      - run: docker build --pull -t "$IMAGE:$VERSION" .
+      - run: |
+          docker build --pull -t "$IMAGE:$VERSION" \
+            --label "org.opencontainers.image.version=$VERSION" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
       - run: docker push "$IMAGE:$VERSION"
       - if: always()
         run: docker logout ghcr.io

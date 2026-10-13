@@ -38,6 +38,13 @@ RUN mkdir -p src && echo 'fn main() {}' > src/main.rs && touch src/lib.rs && ech
  && cargo build --release --locked -p instantnotes-server
 
 FROM gcr.io/distroless/cc-debian12:nonroot
+LABEL org.opencontainers.image.title="InstantNotes server" \
+      org.opencontainers.image.description="Self-hosted sync for InstantNotes: end-to-end encrypted sync for the desktop apps and the web app, sign-in through your own identity provider." \
+      org.opencontainers.image.source="https://github.com/Jam-Sw/InstantNotes" \
+      org.opencontainers.image.url="https://github.com/Jam-Sw/InstantNotes#self-hosted-sync" \
+      org.opencontainers.image.documentation="https://github.com/Jam-Sw/InstantNotes#self-hosted-sync" \
+      org.opencontainers.image.licenses="PolyForm-Strict-1.0.0" \
+      org.opencontainers.image.vendor="Jam-Sw"
 COPY --from=core /src/src-tauri/target/release/instantnotes-server /usr/local/bin/instantnotes
 COPY --from=ui /src/build /app/ui
 ENV INSTANTNOTES_LISTEN=0.0.0.0:8080 \

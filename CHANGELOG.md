@@ -8,6 +8,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.10.1]
+### Changed
+- Server image: OCI labels (`title`, `description`, `source`, `url`, `documentation`, `licenses`, `vendor`;
+  `version`, `revision`, `created` set by the release job), so the GHCR package page links the repository.
 
 ## [0.10.0] - 2026-10-12
 ### Added

@@ -1,11 +1,11 @@
 # Tasks: Package and repository metadata
 
-- [ ] `Dockerfile`: the OCI labels on the final stage (design §1)
-- [ ] `release.yml` image job: `--label` version, revision and created
-- [ ] `scripts/release.test.ts`: the Dockerfile names `source`,
-      `description` and `licenses`
+- [x] `Dockerfile`: the OCI labels on the final stage (design §1)
+- [x] `release.yml` image job: `--label` version, revision and created
+- [x] `scripts/release.test.ts`: the Dockerfile names `source`,
+      `description` and `licenses` (ran `npx vitest run scripts/release.test.ts`: 5 passed)
 - [ ] `docker build` and `docker inspect` show the labels
-- [ ] CHANGELOG line
+- [x] CHANGELOG line
 
 ## Owner steps (GitHub)
 
