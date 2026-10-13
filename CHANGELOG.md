@@ -35,8 +35,9 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `instantnotes.yaml` present (`set_vault_folder` creates it), so an empty mount point pauses sync.
 - A file deleted from the folder trashes its note here; more than half the library (over 20) at once is held
   for `confirm_vault_removals`.
-- Web mode: the server no longer holds a readable library; a 0.9.5 web library moves into the first device that
-  syncs (`GET legacy`, imported, pushed, then `DELETE legacy`).
+- Web mode: the server no longer holds a readable library: `POST /api/<command>` and `/api/events` are removed,
+  the browser runs its own copy; a 0.9.5 web library moves into the first device that syncs (`GET legacy`,
+  imported, pushed, then `DELETE legacy`).
 
 ### Fixed
 - Server: the OIDC `id_token` signature is verified against the provider's `jwks_uri` (issuer, audience, `azp`,
