@@ -381,21 +381,43 @@ The rules are `openspec/changes/feat-vault-sync/design.md`; in short:
   version this device synced: additions and removals on either side both
   survive, and a removal never deletes a tag or Space a note here still uses.
 
-- **Web mode.** With `INSTANTNOTES_VAULT_ROOT` set, `instantnotes serve`
-  syncs each person's library with `<INSTANTNOTES_VAULT_ROOT>/<library folder>`
-  (the same name as under `<data>/libraries/`, from the person's OIDC `sub`),
-  by the same rules. The folder must already exist; the server never creates
-  it. A cycle runs before the first request after the library opens, then
-  after a change or every 5 s while the library is open, and a change from
-  the folder reaches the person's open pages as `notes:changed` and
-  `vault:synced` on `/api/events`. Unset, nothing syncs. The vault commands
-  stay desktop-only.
-
 In `verify_vault`, `missing` are notes whose file is gone, `diverged` are
 files whose contents no longer parse to their note, and `orphans` are `.md`
 files at the vault root or in `trash/` that the mirror did not write. Pending
 notes are counted, not compared. With no folder set it fails with
 `VALIDATION_ERROR`; with the folder missing, `STORAGE_ERROR`.
+
+### 12.4 Sync server (`feat-sync-server`)
+
+`vault.transport = "server"` syncs through an `instantnotes-server` (protocol
+in `openspec/changes/feat-sync-server/design.md` §3 and §6). `"git"` is
+reserved and refused.
+
+| Command | What it does |
+| --- | --- |
+| `get_sync_server_status` | `SyncServerStatus`: `{ stage, message, address, person, encrypted, joinWords, joinKey, recoveryKey, lastSyncedAt, conflicts, heldRemovals, tooLarge, localNotes, serverItems }`. |
+| `connect_sync_server` | `{ address, encrypt }`: signs in through the system browser (loopback, PKCE), keeps the device token in the keychain; the first device makes the library key. |
+| `confirm_sync_join` | `{ combine }`: answers the "combine with the server's library?" stage. |
+| `cancel_sync_sign_in`, `disconnect_sync_server` | Stop a sign-in; leave Sync server (revokes this device, deletes its token and key). |
+| `confirm_recovery_saved`, `show_recovery_key`, `enter_recovery_key` | The recovery key: after saving it, shown again, or typed in (checked against the library's recipient). |
+| `start_sync_join`, `list_sync_join_requests`, `answer_sync_join` | Joining: request the key with six words; list and answer other devices' requests (`{ id, publicKey, approve }`). |
+| `accept_plain_server` | Sync with a server whose library is unencrypted. |
+| `list_sync_devices`, `revoke_sync_device` | `{ id }`, or `null` to sign out everywhere. |
+| `set_sync_encryption` | `{ on }`: switches the library over on the server. |
+| `confirm_sync_removals` | Let the next cycle apply held deletions. |
+| `get_merge_review`, `settle_merge_pair`, `undo_merge_combine`, `clear_merge_review` | The "Review merge" Space after a join. |
+
+| Event | Payload | When |
+| --- | --- | --- |
+| `vault:status` | none | Sync status changed; re-read `get_sync_server_status`. |
+| `sync:join-requests` | `SyncJoinRequest[]` | The pending requests changed. |
+
+- **Web mode.** The server keeps no readable library and has no `/api`
+  routes. The web app runs the core in a browser worker (`static/web/`,
+  `src-tauri/web`) with its own encrypted copy; `call()` posts the same
+  command names to the worker, and the sync commands above are answered by
+  `src/lib/web/sync.ts` with the same shapes. A 0.9.5 web library moves into
+  the first device that syncs (`GET /sync/v1/legacy`, then `DELETE`).
 
 ## 13. Feedback
 

@@ -98,9 +98,10 @@ full paths in reports). Ships in 0.10.0: built on `feat/sync-server`, merged loc
 
 ## 8. Server cleanup (`instantnotes-server`)
 
-- [ ] `/api/<command>`, `api.rs`, the per-person `Store`, SSE events and `vaults.rs` removed; `INSTANTNOTES_VAULT_ROOT` removed and logged as ignored when set
+- [x] `/api/<command>`, `api.rs`, SSE events and `vaults.rs` removed; `INSTANTNOTES_VAULT_ROOT` removed and logged as ignored when set; the per-person `Store` kept only to export and delete a 0.9.5 library (§8.2)
 - [x] `legacy` export and delete for 0.9.5 web libraries; the first device to sync moves them in (desktop and web)
-- [ ] Sign-in page: the server's page hands off without reading notes (`note_sizes` removed); the app draws the background from the local copy (design §9)
+- [x] Sign-in page: the server's page hands off without reading notes (`note_sizes` removed; its decorative placeholder shapes stay)
+- [ ] The app drawing the sign-in background from the local copy: not built
 - [ ] Release image without the core's store at runtime; size checked
 
 ## 9. Settings (`src/`)
@@ -120,8 +121,8 @@ full paths in reports). Ships in 0.10.0: built on `feat/sync-server`, merged loc
 
 - [ ] `README.md` "Self-hosted sync" (design §12), including the web-code line (§4.8) (written); the published hashes and how to compare them (open, with the release work)
 - [ ] `docs/API.md`, `docs/DATA_MODEL.md`
-- [ ] `CHANGELOG.md` `[0.10.0]`: Sync server entries beside folder sync; the `INSTANTNOTES_VAULT_ROOT` entry removed; the sign-in page entry corrected; a line that the web app is served to phones but not laid out for them yet (D8)
-- [ ] `SEQUENCE.md`: this unit and its placement exception; unit 9 no longer "cuts 0.10.0" and unit 10 (git) no longer "cuts 0.11.0"; git's slot kept
+- [x] `CHANGELOG.md` `[0.10.0]`: Sync server entries beside folder sync; the `INSTANTNOTES_VAULT_ROOT` entry removed; the sign-in page entry corrected; a line that the web app is served to phones but not laid out for them yet (D8)
+- [x] `SEQUENCE.md`: this unit and its placement exception; unit 9 no longer "cuts 0.10.0" and unit 10 (git) no longer "cuts 0.11.0"; git's slot kept
 
 ## 12. Checks
 

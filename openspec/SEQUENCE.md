@@ -188,13 +188,16 @@ columns only, and the vault is v5, as `design.md` §5 always said. See
 
 Stage 3. Carries the data-loss risk, which is why units 7 and 8 precede it.
 
-**Cuts 0.10.0.** Portability with no sync: notes readable without the app,
-backup by folder copy, folder-sync tools work by construction.
+Portability with no sync: notes readable without the app, backup by folder
+copy, folder-sync tools work by construction. It no longer cuts 0.10.0: that
+release carries folder sync (13j) and the sync server (13k) instead.
 
 ## 10. Git transport
 
-Stage 4. **Cuts 0.11.0.** Split from unit 9 so that if the vault runs long,
-portability has already shipped and only sync slips.
+Stage 4. Split from unit 9 so that if the vault runs long, portability has
+already shipped and only sync slips. Paused; it keeps its slot as the `git`
+value of `vault.transport`, which 13k reserves and refuses until built. It no
+longer cuts 0.11.0.
 
 ## 11. Attachment garbage collection (DONE, shipped in 0.9.0)
 
@@ -362,6 +365,19 @@ branch model asks of stage 3, on 2026-10-07, with its tests green. It stays
 open until the two-device checks in `changes/feat-vault-sync/tasks.md` pass
 on the real share. Rebuild of a lost database from the vault, attachments
 moving into the vault, and the one-time migration stay with unit 9.
+
+## 13k. `feat-sync-server` (BUILT, open until checked in the app)
+
+Sync through a self-hosted `instantnotes-server`, end-to-end encrypted by
+default, as the third provider beside Off and Folder (13j). It builds on 13j's
+merge rules and ships with it in 0.10.0 (owner's decision D5), on its own
+branch `feat/sync-server` off `0.10.0-pre`. Placement exception: it adds
+persisted state (`sync_objects`, `attachment_files`) before unit 9, because
+the owner asked for sync now and the tables are independent of the vault's
+shape. It removes the server's readable web library and
+`INSTANTNOTES_VAULT_ROOT` (never released). It stays open until the in-app
+checks in `changes/feat-sync-server/tasks.md` pass. A phone layout and native
+iOS and iPadOS apps are the next pre branch (design D8).
 
 ## 14. Local AI
 

@@ -186,6 +186,7 @@ public so tests can build fixtures at a historical schema version.
 | v12 | The hard-delete trigger queues a sheet's `.csv` under its own extension, beside a whiteboard's `.excalidraw` (section 10). No column: sheets live on the v4 and v6 columns. |
 | v13 | `idx_notes_list` (the note list's own sort order, so listing never sorts) and `idx_notes_revisit` (never-opened notes) replace `idx_notes_flags`. No column. |
 | v14 | `notes_fts` rebuilt with a prefix index for one, two and three letters (section 7). Search results and their order are unchanged. |
+| v15 | `sync_objects` and `attachment_files` for the sync server (section 10.2). |
 
 v4 exists because pre-release builds that carried the whiteboard already
 migrated some libraries to it before the whiteboard was lifted off the 0.9.0
@@ -255,11 +256,31 @@ Two settings belong to sync, both device-local:
 - `vault.manifestBase`: the text of `instantnotes.yaml` as this device last
   wrote or read it, the base of the next merge. Cleared when the folder
   changes or syncing stops.
-- `vault.transport`: how changes reach the folder. Absent means `folder`, the
-  only one so far: the OS already shares the folder.
+- `vault.transport`: the sync provider. Absent means `folder` (the OS shares
+  the folder); `server` is the sync server (10.2); `git` is reserved.
 
 The folder must hold `instantnotes.yaml`, which the app creates only when the
 user chooses the folder. Without it nothing is read or written.
+
+### 10.2 Sync server
+
+The sync server reuses section 10.1's decisions; it adds no note column.
+
+- `sync_objects(key, name, remote_sha)`: per synced object (`note:<id>`,
+  `manifest`, `attachment:<file>`), its name on the server and the ciphertext
+  SHA this device last agreed with. A note's plain base is its `file_sha`, the
+  manifest's is `vault.manifestBase`.
+- `attachment_files(name, bytes)`: attachments, in a browser only (it has no
+  folder). The desktop keeps them in its attachments folder as before.
+
+Settings, all device-local:
+
+- `vault.server`: `{ address, deviceId, name, email, mode }`. The device token
+  and library key live in the system keychain, never in the database.
+- `sync.state`: `{ libraryId, epoch, cursor, joined }`, the place in the
+  server's change feed.
+- `sync.mergeReview`: the "Review merge" list left by a join.
+- `sync.legacy`: `imported` or `done`, the move of a 0.9.5 web library.
 
 ## 11. Agent activity
 

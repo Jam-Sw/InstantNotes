@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub const FOLDER: &str = "folder";
+pub const GIT: &str = "git";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Reach {
@@ -66,6 +67,7 @@ impl Transport for Folder {
 pub fn open(name: &str, root: PathBuf) -> Result<Box<dyn Transport>, String> {
     match name {
         FOLDER => Ok(Box::new(Folder::new(root))),
+        GIT => Err("git sync is not available in this version".into()),
         other => Err(format!("unknown vault transport: {other}")),
     }
 }
@@ -96,5 +98,9 @@ mod tests {
         assert_eq!(t.name(), FOLDER);
         assert_eq!(t.root(), dir.path());
         assert!(open("carrier-pigeon", dir.path().to_path_buf()).is_err());
+        assert_eq!(
+            open(GIT, dir.path().to_path_buf()).err().as_deref(),
+            Some("git sync is not available in this version")
+        );
     }
 }
