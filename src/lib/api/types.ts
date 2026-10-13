@@ -122,9 +122,70 @@ export interface FeedbackInput {
 
 export interface VaultStatus {
   path: string | null;
+  transport: string | null;
+  reachable: boolean;
+  unreachable: string | null;
   pending: number;
   lastError: string | null;
   lastFlushedAt: string | null;
+  lastSyncedAt: string | null;
+  heldRemovals: number;
+  conflicts: number;
+}
+
+export type SyncStage =
+  | "off"
+  | "signingIn"
+  | "confirmJoin"
+  | "recoveryKey"
+  | "needsKey"
+  | "joining"
+  | "confirmPlain"
+  | "syncing"
+  | "upToDate"
+  | "held"
+  | "problem"
+  | "refused"
+  | "offline"
+  | "signedOut"
+  | "otherLibrary";
+
+export interface SyncServerStatus {
+  stage: SyncStage;
+  message: string | null;
+  address: string | null;
+  person: string | null;
+  encrypted: boolean;
+  joinWords: string[] | null;
+  joinKey: string | null;
+  recoveryKey: string | null;
+  lastSyncedAt: string | null;
+  conflicts: number;
+  heldRemovals: number;
+  tooLarge: string[];
+  localNotes: number;
+  serverItems: number;
+}
+
+export interface SyncDevice {
+  id: string;
+  name: string;
+  browser: boolean;
+  signedInAt: number;
+  lastSeen: number;
+  current: boolean;
+}
+
+export interface SyncJoinRequest {
+  id: string;
+  deviceName: string;
+  publicKey: string;
+  words: string[];
+}
+
+export interface MergeReview {
+  combined: { kept: string; trashed: string }[];
+  pairs: { a: string; b: string; reason: string }[];
 }
 
 export interface VaultReport {

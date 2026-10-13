@@ -1,7 +1,14 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { save } from "@tauri-apps/plugin-dialog";
-  import { appVersion as fetchAppVersion, exportNoteFile, quitApp, sheetCsv } from "$lib/api/client";
+  import {
+    appVersion as fetchAppVersion,
+    exportNoteFile,
+    getSyncServerStatus,
+    quitApp,
+    sheetCsv,
+  } from "$lib/api/client";
+  import type { SyncStage } from "$lib/api/types";
   import { EVENTS, listen } from "$lib/api/events";
   import { isWeb } from "$lib/api/runtime";
   import Sidebar from "$lib/components/Sidebar.svelte";
@@ -11,10 +18,14 @@
   import WelcomeScreen from "$lib/components/WelcomeScreen.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
+  import SyncJoinDialog from "$lib/components/SyncJoinDialog.svelte";
+  import OtherTabScreen from "$lib/components/OtherTabScreen.svelte";
   import Toast from "$lib/components/Toast.svelte";
   import AgentNote from "$lib/components/AgentNote.svelte";
   import { agentsSpace } from "$lib/stores/agents-space";
   import { isAgentNoteId, isAgentsSpaceId } from "$lib/agents/space";
+  import { mergeSpace } from "$lib/stores/merge-space.svelte";
+  import { isMergeNoteId, isMergeSpaceId } from "$lib/merge/space";
   import { library } from "$lib/stores/library.svelte";
   import { updater } from "$lib/stores/updater.svelte";
   import { editorPrefs } from "$lib/stores/editor.svelte";
@@ -41,6 +52,14 @@
   let appVersion = $state("");
   let paletteOpen = $state(false);
   let settingsOpen = $state(false);
+  let settingsPage = $state<"home" | "vault">("home");
+  const SYNC_NEEDS_YOU = new Set<SyncStage>([
+    "off",
+    "needsKey",
+    "recoveryKey",
+    "confirmPlain",
+    "otherLibrary",
+  ]);
 
   $effect(() => {
     if (updateSpace.visible) return;
@@ -48,6 +67,27 @@
       isUpdateSpaceId(library.activeWorkspaceId) ||
       isVirtualNoteId(library.selected?.id)
     ) {
+      library.selectWorkspace(null);
+    }
+  });
+
+  function checkSync() {
+    void getSyncServerStatus()
+      .then((status) => {
+        if (!SYNC_NEEDS_YOU.has(status.stage) || settingsOpen || licenseSpace.locked) return;
+        settingsPage = "vault";
+        settingsOpen = true;
+      })
+      .catch(() => {});
+  }
+
+  $effect(() => {
+    if (isWeb && !licenseSpace.locked) checkSync();
+  });
+
+  $effect(() => {
+    if (mergeSpace.visible) return;
+    if (isMergeSpaceId(library.activeWorkspaceId) || isMergeNoteId(library.selected?.id)) {
       library.selectWorkspace(null);
     }
   });
@@ -77,6 +117,7 @@
     void linkPrefsStore.init();
     void contexting.init();
     void agents.init();
+    void mergeSpace.init();
     const warmEditor = setTimeout(() => void import("$lib/components/NoteEditor.svelte"), 800);
     const warmViews = setTimeout(() => {
       void import("$lib/components/SettingsView.svelte");
@@ -94,8 +135,14 @@
     let unlistenSettings: (() => void) | undefined;
     void listen(EVENTS.SETTINGS_OPEN, () => {
       if (licenseSpace.locked) return;
+      settingsPage = "home";
       settingsOpen = true;
     }).then((un) => (unlistenSettings = un));
+
+    let unlistenSyncNeeds: (() => void) | undefined;
+    if (isWeb) {
+      void listen(EVENTS.VAULT_STATUS, checkSync).then((un) => (unlistenSyncNeeds = un));
+    }
 
     let unlistenNewNote: (() => void) | undefined;
     void listen(EVENTS.MENU_NEW_NOTE, () => {
@@ -151,6 +198,7 @@
       updater.stop();
       unlistenCheck?.();
       unlistenSettings?.();
+      unlistenSyncNeeds?.();
       unlistenNewNote?.();
       unlistenNewBoard?.();
       unlistenNewSheet?.();
@@ -342,6 +390,7 @@
   {#await import("$lib/components/SettingsView.svelte") then { default: SettingsView }}
     <SettingsView
       {appVersion}
+      initialPage={settingsPage}
       onBack={() => (settingsOpen = false)}
       onShowSpace={(id) => {
         if (isAgentsSpaceId(id)) agentsSpace.open();
@@ -382,7 +431,7 @@
     {:else}
       <NoteList />
       <section class="editor-pane">
-        {#if !licenseSpace.locked && library.multiSelected.size <= 1 && library.selected && !isUpdateNoteId(library.selected.id) && !isAgentNoteId(library.selected.id)}
+        {#if !licenseSpace.locked && library.multiSelected.size <= 1 && library.selected && !isUpdateNoteId(library.selected.id) && !isAgentNoteId(library.selected.id) && !isMergeNoteId(library.selected.id)}
           {#await import("$lib/components/NoteEditor.svelte") then { default: NoteEditor }}
             <NoteEditor />
           {/await}
@@ -394,6 +443,10 @@
             <BulkActions />
           {:else if library.selected && isAgentNoteId(library.selected.id)}
             <AgentNote />
+          {:else if library.selected && isMergeNoteId(library.selected.id)}
+            {#await import("$lib/components/MergeNote.svelte") then { default: MergeNote }}
+              <MergeNote />
+            {/await}
           {:else if library.selected}
             <UpdateNote />
           {:else}
@@ -407,7 +460,11 @@
 
 <CommandPalette bind:open={paletteOpen} />
 <ConfirmDialog />
+<SyncJoinDialog />
 <Toast />
+{#if isWeb}
+  <OtherTabScreen />
+{/if}
 
 <style>
   .layout {

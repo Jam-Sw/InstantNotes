@@ -52,17 +52,17 @@ fn locked_reader<'a>(
 
 fn emit_notes_changed(app: &AppHandle) {
     let _ = app.emit(events::NOTES_CHANGED, ());
-    request_vault_flush(app);
+    request_vault_sync(app);
 }
 
 fn emit_tags_changed(app: &AppHandle) {
     let _ = app.emit(events::TAGS_CHANGED, ());
-    request_vault_flush(app);
+    request_vault_sync(app);
 }
 
 fn emit_workspaces_changed(app: &AppHandle) {
     let _ = app.emit(events::WORKSPACES_CHANGED, ());
-    request_vault_flush(app);
+    request_vault_sync(app);
 }
 
 pub(crate) struct ShortcutStatus {
@@ -86,7 +86,8 @@ use commands::{
 };
 use error::{CmdError, CmdResult};
 use shell::{
-    agents::*, capture::*, files::*, mirror::*, quit::*, stickies::*, update::*, windows::*,
+    agents::*, capture::*, files::*, mirror::*, quit::*, server::*, stickies::*, update::*,
+    windows::*,
 };
 
 pub fn run() {
@@ -177,14 +178,11 @@ pub fn run() {
                 analyst: Mutex::new(analyst),
             });
             app.manage(CaptureMetrics::default());
-            app.manage(start_vault_flusher(app.handle()));
+            app.manage(ServerLink::default());
+            app.manage(start_vault_sync(app.handle()));
             app.manage(start_agent_watcher(app.handle(), db_path.clone()));
             {
-                let handle = app.handle().clone();
-                std::thread::spawn(move || {
-                    let _ = mirror_attachments(&handle);
-                    request_vault_flush(&handle);
-                });
+                request_vault_sync(app.handle());
             }
             if recovered {
                 app.dialog()
@@ -506,6 +504,27 @@ pub fn run() {
             get_vault_status,
             set_vault_folder,
             verify_vault,
+            confirm_vault_removals,
+            get_sync_server_status,
+            connect_sync_server,
+            cancel_sync_sign_in,
+            confirm_recovery_saved,
+            show_recovery_key,
+            start_sync_join,
+            enter_recovery_key,
+            accept_plain_server,
+            disconnect_sync_server,
+            confirm_sync_join,
+            list_sync_join_requests,
+            list_sync_devices,
+            revoke_sync_device,
+            answer_sync_join,
+            confirm_sync_removals,
+            set_sync_encryption,
+            get_merge_review,
+            settle_merge_pair,
+            undo_merge_combine,
+            clear_merge_review,
             stickies_location,
             scan_stickies,
             import_stickies,

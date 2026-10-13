@@ -1,7 +1,7 @@
 [package]
 name = "instantnotes-server"
-version = "0.9.5"
-description = "InstantNotes headless web mode: the core behind an HTTP API and the static UI. No Tauri."
+version = "0.10.0"
+description = "InstantNotes sync server: per-person encrypted sync and the web app. No Tauri."
 edition = "2021"
 
 [lib]
@@ -14,7 +14,7 @@ path = "src/main.rs"
 
 [dependencies]
 instantnotes-core = { path = "../core" }
-axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "query"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "query", "form"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "fs", "signal"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "form"] }
@@ -24,6 +24,13 @@ rand = "0.9"
 base64 = "0.22"
 sha2 = "0.11"
 uuid = { version = "1", features = ["v4"] }
+jsonwebtoken = { version = "11", default-features = false, features = ["aws_lc_rs"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
+governor = "0.10"
+chacha20poly1305 = "0.11"
+hkdf = "0.13"
+tempfile = "3"
 
 [dev-dependencies]
 tempfile = "3"
+aws-lc-rs = "1"

@@ -18,10 +18,11 @@ Usage: See the [plugin's readme](https://github.com/jamubc/toolbox/tree/main/plu
 - **Quick Capture:** Global hotkey (`Opt` / `Ctrl+Shift+Space`) with drafts.
 - **Command Palette:** `Cmd/Ctrl+P` for actions, search, and themes.
 - **Flexible Organization:** Group notes with Spaces and `#inline` tags instead of strict folders.
-- **Plain Markdown Vault:** Keep a live copy of every note as a Markdown file in a folder you choose, readable in any editor.
+- **Plain Markdown Vault and Sync:** Keep every note as a Markdown file in a folder you choose, readable in any editor. Point several devices at the same folder (a network drive, Syncthing, Dropbox) and they stay in sync; edits made in the folder come back in.
 - **Agents, on your terms:** Connect Claude Code, Codex, or Cursor over MCP (Settings > Agents). Off until you turn it on; what an agent reads or changes lights up as it happens, every call is traced, and every change can be reverted.
 - **Themes:** Eight built-in themes with live previews, light and dark, shareable as files.
-- **100% Local & Private:** Everything lives in a local SQLite database. Zero telemetry.
+- **Self-hosted sync:** Run the InstantNotes server on your own machine and sync one library across the desktop apps and any browser. Phones can use the web app, but its layout is not designed for phone screens yet. Notes are end-to-end encrypted by default: the server stores only ciphertext.
+- **100% Local & Private:** Your library lives in a local SQLite database, and in the vault folder if you set one. No server unless you run your own, zero telemetry.
 
 ## Installation
 > The builds are unsigned, You will likely be prompted on first launch.
@@ -45,6 +46,49 @@ Download release then run installer.
 You will get a SmartScreen flags due to the unsigned build: 
     1. To proceed --> click "More info", then "Run anyway".
 
+## Self-hosted sync
+
+Sync is a choice in Settings > Sync, per library: Off (the default), Folder, or Sync server. Sync server keeps one library in step across your desktop apps and browsers through a server you run. Every device keeps its full copy and works offline; edits made in two places at once are both kept, the other copy tagged `conflict`.
+
+### Run the server
+
+```
+docker run -d --name instantnotes \
+  -p 8080:8080 \
+  -v /srv/instantnotes:/data \
+  -e INSTANTNOTES_PUBLIC_URL=https://notes.example.org \
+  -e INSTANTNOTES_OIDC_ISSUER=https://id.example.org \
+  -e INSTANTNOTES_OIDC_CLIENT_ID=instantnotes \
+  -e INSTANTNOTES_OIDC_CLIENT_SECRET=change-me \
+  ghcr.io/jam-sw/instantnotes-server:0.10.0
+```
+
+| Setting | Required | Meaning |
+| --- | --- | --- |
+| `INSTANTNOTES_PUBLIC_URL` | yes | The address people type. Must be `https://` unless it is `localhost`. |
+| `INSTANTNOTES_OIDC_ISSUER` | yes | Your identity provider's issuer URL (any OpenID Connect provider: Pocket ID, Authentik, Keycloak, Authelia, Zitadel, Kanidm, Dex). |
+| `INSTANTNOTES_OIDC_CLIENT_ID`, `INSTANTNOTES_OIDC_CLIENT_SECRET` | yes | A confidential client at that provider. |
+| `INSTANTNOTES_DATA_DIR` | set by the image (`/data`) | Everything the server keeps. Back it up. |
+| `INSTANTNOTES_LISTEN` | set by the image (`0.0.0.0:8080`) | Address and port to listen on. |
+| `INSTANTNOTES_TRUST_PROXY` | no | `true` behind a reverse proxy that sets `X-Forwarded-For`, so rate limits see the real client. |
+| `INSTANTNOTES_MAX_OBJECT_MB` | no | Largest single object the server accepts, default `64`. |
+
+- **At your identity provider**: create one confidential client with the scopes `openid profile email`, the redirect URI `https://<your address>/auth/callback`, and the post-logout redirect URI `https://<your address>`. Allow it the refresh token grant and, where the provider offers it, the `offline_access` scope. The desktop apps need nothing registered: they sign in through your server.
+- **In front**: a reverse proxy with TLS, with a read timeout above 30 seconds (devices hold one request open for up to 25 seconds to hear about changes).
+- **Health**: `GET /healthz` answers `200 ok`, or `503` with the reason (data folder not writable, the identity provider check misconfigured).
+- **Who can sign in** is decided at your identity provider; everyone it lets through gets their own library, and nobody can read anyone else's. When the provider stops accepting a person (disabled, deleted, removed from the app), the server signs out all their devices at its next hourly check, while keeping their stored data. This needs a provider that re-checks the person when a sign-in is refreshed (Pocket ID, Authentik, Keycloak, Zitadel and Kanidm do; Authelia does not, and Dex depends on its connector). Without refresh tokens, devices sign in again every 24 hours.
+
+### Connect a device
+
+In Settings > Sync, choose Sync server, type the server's address, and sign in. The first device makes the library's encryption key and shows a recovery key to keep somewhere safe. Each further device is approved from one you already use, after checking that the same six words show on both.
+
+### What the server can and cannot see
+
+With end-to-end encryption on (the default), notes, titles, tags, Spaces and images are encrypted on your device before they leave it. The server, its operator and its backups hold only ciphertext and never the key. They can still see who signs in, from which devices and when, and roughly how many notes and images there are and how large. If you lose the recovery key and every device, nobody can recover the notes, including whoever runs the server.
+
+The encryption switch is in Settings > Sync. Turned off, the server stores notes readable, and a new device only needs to sign in.
+
+The web app is code your server sends to your browser. Whoever controls the server, or the image it runs, could change that code. For the strongest protection, use the desktop app.
 
 ## Development
 To build from source instead

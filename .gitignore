@@ -14,3 +14,4 @@ src-tauri/gen/
 .hermes_guide.md
 
 /static/excalidraw/
+/static/web/pkg/

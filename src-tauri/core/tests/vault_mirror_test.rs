@@ -355,7 +355,8 @@ fn a_missing_vault_folder_pauses_the_mirror_without_losing_work() {
     fs::create_dir(&root).unwrap();
     let mut s = Store::open_in_memory().unwrap();
     s.configure_vault(Some(&root)).unwrap();
-    fs::remove_dir(&root).unwrap();
+    let marker = fs::read(root.join("instantnotes.yaml")).unwrap();
+    fs::remove_dir_all(&root).unwrap();
 
     create_titled(&mut s, "Plan", "body");
     assert!(s.flush_vault(10_000).is_err());
@@ -365,6 +366,13 @@ fn a_missing_vault_folder_pauses_the_mirror_without_losing_work() {
     assert!(status.last_error.is_some());
 
     fs::create_dir(&root).unwrap();
+    assert!(s.flush_vault(10_000).is_err());
+    assert!(
+        md_files(&root).is_empty(),
+        "wrote into an empty mount point"
+    );
+
+    fs::write(root.join("instantnotes.yaml"), marker).unwrap();
     flush(&mut s);
     assert_eq!(md_files(&root), vec!["Plan.md"]);
     assert!(s.vault_status().unwrap().last_error.is_none());

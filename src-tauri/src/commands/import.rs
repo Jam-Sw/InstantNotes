@@ -120,7 +120,7 @@ pub fn import_stickies(
         .collect();
     let mut outcome = locked(&state)?.import_notes(SOURCE, items, space.as_deref())?;
     outcome.skipped += already;
-    let _ = mirror_attachments(&app);
+    request_vault_sync(&app);
     if outcome.imported > 0 {
         emit_notes_changed(&app);
         emit_tags_changed(&app);

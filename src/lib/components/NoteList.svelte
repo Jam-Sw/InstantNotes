@@ -14,6 +14,8 @@
   import { isUpdateSpaceId } from "$lib/update/space";
   import { agentsSpace } from "$lib/stores/agents-space";
   import { isAgentsSpaceId } from "$lib/agents/space";
+  import { mergeSpace } from "$lib/stores/merge-space.svelte";
+  import { isMergeSpaceId } from "$lib/merge/space";
   import { isSyntheticSpaceId } from "$lib/synthetic";
   import { agreements } from "$lib/agreements.svelte";
   import { licenseSpace } from "$lib/stores/license-space.svelte";
@@ -33,7 +35,9 @@
       ? updateSpace.notes
       : isAgentsSpaceId(library.activeWorkspaceId)
         ? agentsSpace.notes
-        : null,
+        : isMergeSpaceId(library.activeWorkspaceId)
+          ? mergeSpace.notes
+          : null,
   );
 
   const agentSearch = $derived(library.searchText ? null : agents.currentSearch);
@@ -204,7 +208,9 @@
         </button>
       {:else}
         <div class="empty-state">
-          {#if agents.access === "off"}
+          {#if isMergeSpaceId(library.activeWorkspaceId)}
+            Nothing left to review.
+          {:else if agents.access === "off"}
             Agent access is off. Nothing can connect until you turn it on in Settings.
           {:else}
             No agent has connected yet. Connect one from Settings › Agents.

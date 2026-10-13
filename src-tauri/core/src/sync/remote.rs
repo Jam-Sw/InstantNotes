@@ -1,0 +1,117 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteChange {
+    pub name: String,
+    pub sha: Option<String>,
+    pub seq: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteChanges {
+    pub library_id: String,
+    pub epoch: i64,
+    pub head: i64,
+    pub changes: Vec<RemoteChange>,
+    pub more: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteKeys {
+    #[serde(default)]
+    pub library_id: String,
+    pub mode: Option<String>,
+    pub recipient: Option<String>,
+    pub epoch: i64,
+    pub head: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RemoteOp {
+    pub name: String,
+    pub base: Option<String>,
+    pub sha: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RemoteError {
+    Unreachable(String),
+    SignedOut,
+    Gone,
+    Conflict(Vec<String>),
+    WrongEpoch,
+    Refused(String),
+}
+
+impl std::fmt::Display for RemoteError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RemoteError::Unreachable(why) => write!(f, "server unreachable: {why}"),
+            RemoteError::SignedOut => write!(f, "signed out"),
+            RemoteError::Gone => write!(f, "the server's library was reset"),
+            RemoteError::Conflict(names) => {
+                write!(f, "{} objects changed on the server meanwhile", names.len())
+            }
+            RemoteError::WrongEpoch => write!(f, "the library changed form on the server"),
+            RemoteError::Refused(why) => write!(f, "server refused: {why}"),
+        }
+    }
+}
+
+impl RemoteError {
+    pub fn from_answer(status: u16, body: &serde_json::Value) -> RemoteError {
+        let code = body.get("code").and_then(serde_json::Value::as_str);
+        match (status, code) {
+            (401, _) => RemoteError::SignedOut,
+            (410, _) => RemoteError::Gone,
+            (409, Some("WRONG_EPOCH")) => RemoteError::WrongEpoch,
+            (409, Some("CONFLICT")) => RemoteError::Conflict(
+                body.get("conflicts")
+                    .and_then(serde_json::Value::as_array)
+                    .map(|all| {
+                        all.iter()
+                            .filter_map(|c| {
+                                c.get("name")
+                                    .and_then(serde_json::Value::as_str)
+                                    .map(str::to_string)
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            ),
+            (s, _) if s >= 500 => RemoteError::Unreachable(format!("server answered {s}")),
+            (s, code) => RemoteError::Refused(format!(
+                "server answered {s}{}",
+                code.map(|c| format!(" {c}")).unwrap_or_default()
+            )),
+        }
+    }
+}
+
+#[allow(async_fn_in_trait)]
+pub trait Remote {
+    async fn changes(&mut self, since: i64) -> Result<RemoteChanges, RemoteError>;
+    fn max_object_bytes(&self) -> u64;
+    async fn missing(&mut self, shas: &[String]) -> Result<Vec<String>, RemoteError>;
+    async fn upload(&mut self, blobs: &[(String, Vec<u8>)]) -> Result<(), RemoteError>;
+    async fn download(&mut self, shas: &[String]) -> Result<Vec<(String, Vec<u8>)>, RemoteError>;
+    async fn commit(
+        &mut self,
+        epoch: i64,
+        ops: &[RemoteOp],
+        reset: bool,
+    ) -> Result<i64, RemoteError>;
+    async fn keys(&mut self) -> Result<RemoteKeys, RemoteError>;
+    async fn set_keys(&mut self, mode: &str, recipient: Option<&str>) -> Result<(), RemoteError>;
+    async fn switch(
+        &mut self,
+        from_epoch: i64,
+        built_at: i64,
+        mode: &str,
+        recipient: Option<&str>,
+        expected: usize,
+    ) -> Result<i64, RemoteError>;
+}

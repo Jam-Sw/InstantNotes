@@ -186,6 +186,7 @@ public so tests can build fixtures at a historical schema version.
 | v12 | The hard-delete trigger queues a sheet's `.csv` under its own extension, beside a whiteboard's `.excalidraw` (section 10). No column: sheets live on the v4 and v6 columns. |
 | v13 | `idx_notes_list` (the note list's own sort order, so listing never sorts) and `idx_notes_revisit` (never-opened notes) replace `idx_notes_flags`. No column. |
 | v14 | `notes_fts` rebuilt with a prefix index for one, two and three letters (section 7). Search results and their order are unchanged. |
+| v15 | `sync_objects` and `attachment_files` for the sync server (section 10.2). |
 
 v4 exists because pre-release builds that carried the whiteboard already
 migrated some libraries to it before the whiteboard was lifted off the 0.9.0
@@ -200,15 +201,18 @@ the build knows is refused, never migrated.
 
 When a vault folder is set (the device-local setting `vault.path`), every
 note is also written there as Markdown
-(`openspec/changes/feat-portable-vault-sync/design.md`). SQLite stays
-authoritative: the folder is written, never read back.
+(`openspec/changes/feat-portable-vault-sync/design.md`), and changes made
+in the folder are read back in (`openspec/changes/feat-vault-sync/design.md`,
+section 10.1 below).
 
-- `vault_path`: where the note's file was last written, relative to the
-  vault folder (`trash/` for deleted notes).
-- `file_sha`: sha256 of the bytes last written there.
-- `vault_dirty`: 1 while the file is behind the database.
+- `vault_path`: where the note's file was last written or read, relative to
+  the vault folder (`trash/` for deleted notes).
+- `file_sha`: sha256 of the bytes last written or read there: the base that
+  tells this device's own write apart from another device's edit.
+- `vault_dirty`: 1 while the file is behind the database. Edits made while
+  the folder is offline wait here.
 - `board_sha`: for a whiteboard or a sheet, sha256 of its surface file as
-  last written.
+  last written or read.
 
 A surface note has a second file beside its note file with the same name
 (`vault/surface.rs`): a whiteboard's note file carries `kind: whiteboard` and
@@ -230,6 +234,53 @@ permanent delete queues the file, and a surface note's second file, in
 still hold the bytes it wrote, and clears the flags. A crash between the
 commit and the file write leaves the flag set, and the next launch catches
 up.
+
+### 10.1 Sync
+
+Reading the folder back adds no column and no migration. A note's
+`file_sha` and `board_sha` are the base of a three-way decision per note: the
+folder's bytes against the base, the database's state against the file.
+
+- A note read in from the folder is written with every column the file
+  carries, and with `vault_dirty` 0, so it is not written straight back.
+- A note inserted from the folder gets `last_opened_at = updated_at`, so
+  Revisit stays about captures made on this device.
+- A note whose file disappeared is trashed (`is_deleted`, `deleted_at`) and
+  its `vault_path`, `file_sha`, and `board_sha` are cleared.
+- A conflict copy is an ordinary note with an id derived from the original
+  id and the losing bytes, an explicit title ending `(conflict <date time>)`,
+  and the manual tag `conflict`.
+
+Two settings belong to sync, both device-local:
+
+- `vault.manifestBase`: the text of `instantnotes.yaml` as this device last
+  wrote or read it, the base of the next merge. Cleared when the folder
+  changes or syncing stops.
+- `vault.transport`: the sync provider. Absent means `folder` (the OS shares
+  the folder); `server` is the sync server (10.2); `git` is reserved.
+
+The folder must hold `instantnotes.yaml`, which the app creates only when the
+user chooses the folder. Without it nothing is read or written.
+
+### 10.2 Sync server
+
+The sync server reuses section 10.1's decisions; it adds no note column.
+
+- `sync_objects(key, name, remote_sha)`: per synced object (`note:<id>`,
+  `manifest`, `attachment:<file>`), its name on the server and the ciphertext
+  SHA this device last agreed with. A note's plain base is its `file_sha`, the
+  manifest's is `vault.manifestBase`.
+- `attachment_files(name, bytes)`: attachments, in a browser only (it has no
+  folder). The desktop keeps them in its attachments folder as before.
+
+Settings, all device-local:
+
+- `vault.server`: `{ address, deviceId, name, email, mode }`. The device token
+  and library key live in the system keychain, never in the database.
+- `sync.state`: `{ libraryId, epoch, cursor, joined }`, the place in the
+  server's change feed.
+- `sync.mergeReview`: the "Review merge" list left by a join.
+- `sync.legacy`: `imported` or `done`, the move of a 0.9.5 web library.
 
 ## 11. Agent activity
 

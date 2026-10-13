@@ -285,17 +285,18 @@ update, and the dashboard is not on any hot path.
 | Command | Purpose |
 | --- | --- |
 | `export_vault` | Write the whole library to `dest` (an absolute folder path) as a vault: one Markdown file per note plus `instantnotes.yaml`, per `feat-portable-vault-sync/design.md` §3. |
-| `get_vault_status` | The live mirror's state: `{ path, pending, lastError, lastFlushedAt }`. `path` is null when mirroring is off. |
-| `set_vault_folder` | Start mirroring into `path` (an absolute folder), move the mirror to a new folder, or stop it with `path: null`. Returns the new status. |
+| `get_vault_status` | The sync folder's state: `{ path, transport, reachable, unreachable, pending, lastError, lastFlushedAt, lastSyncedAt, heldRemovals, conflicts }`. `path` is null when syncing is off. |
+| `set_vault_folder` | Start syncing with `path` (an absolute folder), move to a new folder, or stop with `path: null`. Returns the new status. |
 | `verify_vault` | Flush anything pending, then compare every file with the library: `{ checked, missing, diverged, orphans, pending, manifestOk }`. Read-only. |
+| `confirm_vault_removals` | Let the next sync cycle trash the notes it is holding back (`heldRemovals`), once. Returns the status. |
 
 | Event | Payload | Meaning |
 | --- | --- | --- |
-| `vault:status` | none | A mirror flush finished; re-read `get_vault_status`. |
+| `vault:status` | none | A sync cycle or flush finished; re-read `get_vault_status`. |
+| `vault:synced` | `{ noteIds }` | Notes changed from the folder: written on another device or in another editor. Also followed by `notes:changed`. |
 
-SQLite stays authoritative for both the export and the mirror; nothing reads a
-vault folder back yet. Folders are chosen by a native folder-picker dialog in
-JS, the same trust boundary as `export_note_file`.
+Folders are chosen by a native folder-picker dialog in JS, the same trust
+boundary as `export_note_file`.
 
 ### 12.1 Export (stage 1)
 
@@ -344,11 +345,79 @@ A missing folder (an unmounted drive) pauses the mirror: `lastError` reads
 recreated, and the next flush after it returns catches up. Stopping the
 mirror leaves the written files in place.
 
+### 12.3 Sync (`feat-vault-sync`)
+
+The folder is read back as well as written, so every device pointed at one
+folder (a network drive, or a Syncthing or Dropbox folder) keeps one library.
+Each device keeps its own database; the database never goes in the folder.
+The rules are `openspec/changes/feat-vault-sync/design.md`; in short:
+
+- **When.** A background thread runs one cycle after local writes go quiet
+  (300 ms, at most 2 s) and every 5 s otherwise: read changed files in, handle
+  removed ones, merge `instantnotes.yaml`, write pending notes, copy
+  attachments both ways.
+- **Marker.** The folder counts as the vault only while it holds
+  `instantnotes.yaml`; `set_vault_folder` creates it when missing. Without it
+  `reachable` is false, `unreachable` reads
+  `vault folder has no instantnotes.yaml: <path>`, nothing is read or written,
+  and local changes stay pending (`pending`) until it is back. This is what
+  keeps an empty mount point from reading as an empty library.
+- **Reading in.** A changed file updates its note, a new one adds a note, a
+  file under `trash/` trashes it, and a Markdown file with no frontmatter is
+  adopted as a note (its id is written back into it). A file whose
+  frontmatter does not parse is reported in `lastError` and left alone.
+- **Conflicts.** When the same note changed here and in the folder since the
+  last sync, this device keeps its version and the other becomes a new note
+  titled `<title> (conflict <date time>)` and tagged `conflict`. `conflicts`
+  counts them since launch.
+- **Never overwritten.** The flush writes a note's file only while it still
+  holds the bytes this device last wrote or read; otherwise the note waits
+  for the next cycle to read the change in first.
+- **Removals.** A note whose file disappears is moved to the Trash here, never
+  destroyed. A cycle that would trash more than half the notes in the folder,
+  and more than 20, trashes none and reports the count in `heldRemovals`
+  until the files return or `confirm_vault_removals` is called.
+- **Tags and Spaces** in `instantnotes.yaml` merge by name against the last
+  version this device synced: additions and removals on either side both
+  survive, and a removal never deletes a tag or Space a note here still uses.
+
 In `verify_vault`, `missing` are notes whose file is gone, `diverged` are
 files whose contents no longer parse to their note, and `orphans` are `.md`
 files at the vault root or in `trash/` that the mirror did not write. Pending
 notes are counted, not compared. With no folder set it fails with
 `VALIDATION_ERROR`; with the folder missing, `STORAGE_ERROR`.
+
+### 12.4 Sync server (`feat-sync-server`)
+
+`vault.transport = "server"` syncs through an `instantnotes-server` (protocol
+in `openspec/changes/feat-sync-server/design.md` §3 and §6). `"git"` is
+reserved and refused.
+
+| Command | What it does |
+| --- | --- |
+| `get_sync_server_status` | `SyncServerStatus`: `{ stage, message, address, person, encrypted, joinWords, joinKey, recoveryKey, lastSyncedAt, conflicts, heldRemovals, tooLarge, localNotes, serverItems }`. |
+| `connect_sync_server` | `{ address, encrypt }`: signs in through the system browser (loopback, PKCE), keeps the device token in the keychain; the first device makes the library key. |
+| `confirm_sync_join` | `{ combine }`: answers the "combine with the server's library?" stage. |
+| `cancel_sync_sign_in`, `disconnect_sync_server` | Stop a sign-in; leave Sync server (revokes this device, deletes its token and key). |
+| `confirm_recovery_saved`, `show_recovery_key`, `enter_recovery_key` | The recovery key: after saving it, shown again, or typed in (checked against the library's recipient). |
+| `start_sync_join`, `list_sync_join_requests`, `answer_sync_join` | Joining: request the key with six words; list and answer other devices' requests (`{ id, publicKey, approve }`). |
+| `accept_plain_server` | Sync with a server whose library is unencrypted. |
+| `list_sync_devices`, `revoke_sync_device` | `{ id }`, or `null` to sign out everywhere. |
+| `set_sync_encryption` | `{ on }`: switches the library over on the server. |
+| `confirm_sync_removals` | Let the next cycle apply held deletions. |
+| `get_merge_review`, `settle_merge_pair`, `undo_merge_combine`, `clear_merge_review` | The "Review merge" Space after a join. |
+
+| Event | Payload | When |
+| --- | --- | --- |
+| `vault:status` | none | Sync status changed; re-read `get_sync_server_status`. |
+| `sync:join-requests` | `SyncJoinRequest[]` | The pending requests changed. |
+
+- **Web mode.** The server keeps no readable library and has no `/api`
+  routes. The web app runs the core in a browser worker (`static/web/`,
+  `src-tauri/web`) with its own encrypted copy; `call()` posts the same
+  command names to the worker, and the sync commands above are answered by
+  `src/lib/web/sync.ts` with the same shapes. A 0.9.5 web library moves into
+  the first device that syncs (`GET /sync/v1/legacy`, then `DELETE`).
 
 ## 13. Feedback
 

@@ -50,6 +50,10 @@ pub struct CmdError {
 }
 
 impl CmdError {
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
     pub fn storage(message: impl Into<String>) -> Self {
         CmdError {
             code: ErrorCode::Storage,

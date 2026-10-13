@@ -295,3 +295,32 @@ describe("another window adds to the open note", () => {
     expect(mockUpdateNote).toHaveBeenLastCalledWith("n1", { body: `${appended.body}!`, expectedUpdatedAt: T1 });
   });
 });
+
+describe("another device's edit arrives through the vault", () => {
+  async function synced() {
+    const { library } = await setup();
+    const call = mockListen.mock.calls.find(([name]) => name === EVENTS.VAULT_SYNCED);
+    const arrive = call![1] as (e: { payload: unknown }) => void;
+    return { library, arrive };
+  }
+
+  it("the open note takes the synced version", async () => {
+    const { library, arrive } = await synced();
+    mockGetNote.mockResolvedValueOnce(mkNote("n1", { body: "Plan\n- from the laptop", updatedAt: T1 }));
+    arrive({ payload: { noteIds: ["n0", "n1"] } });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.selected?.body).toBe("Plan\n- from the laptop");
+  });
+
+  it("leaves the open note alone when the sync touched others or the user is typing", async () => {
+    const { library, arrive } = await synced();
+    mockGetNote.mockClear();
+    arrive({ payload: { noteIds: ["n2"] } });
+    arrive({ payload: "not a sync" });
+    library.editBody("Plan, mid-sentence");
+    arrive({ payload: { noteIds: ["n1"] } });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockGetNote).not.toHaveBeenCalled();
+    expect(library.selected?.body).toBe("Plan, mid-sentence");
+  });
+});

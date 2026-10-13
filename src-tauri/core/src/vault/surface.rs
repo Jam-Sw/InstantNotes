@@ -76,6 +76,55 @@ pub fn canvas_file(surface_data: Option<&str>) -> String {
     text
 }
 
+pub fn canvas_surface(file: &str) -> Result<String, String> {
+    let scene: Value =
+        serde_json::from_str(file).map_err(|e| format!("not an Excalidraw file: {e}"))?;
+    if !scene.is_object() {
+        return Err("not an Excalidraw file: expected a JSON object".into());
+    }
+    let pick = |key: &str, empty: Value| match &scene[key] {
+        v if std::mem::discriminant(v) == std::mem::discriminant(&empty) => v.clone(),
+        _ => empty,
+    };
+    let envelope = json!({
+        "v": 1,
+        "engine": "excalidraw",
+        "data": {
+            "elements": pick("elements", json!([])),
+            "appState": pick("appState", json!({})),
+            "files": pick("files", json!({})),
+        },
+    });
+    Ok(envelope.to_string())
+}
+
+pub fn surface_from_file(
+    kind: &str,
+    file: Option<&str>,
+    existing: Option<&str>,
+) -> Result<Option<String>, String> {
+    match (kind, file) {
+        (CONTENT_KIND_WHITEBOARD, Some(text)) => canvas_surface(text).map(Some),
+        (CONTENT_KIND_SHEET, Some(text)) => {
+            let shape = existing
+                .and_then(|raw| Sheet::parse(raw).ok())
+                .unwrap_or_else(Sheet::new_default);
+            Sheet::from_csv(text, &shape).map(|sheet| Some(sheet.serialize()))
+        }
+        (CONTENT_KIND_WHITEBOARD, None) => {
+            Ok(Some(existing.map(str::to_string).unwrap_or_else(|| {
+                canvas_surface("{}").expect("an empty object is a scene")
+            })))
+        }
+        (CONTENT_KIND_SHEET, None) => Ok(Some(
+            existing
+                .map(str::to_string)
+                .unwrap_or_else(|| Sheet::new_default().serialize()),
+        )),
+        _ => Ok(None),
+    }
+}
+
 pub fn same_surface(kind: &str, a: &str, b: &str) -> bool {
     if kind == CONTENT_KIND_WHITEBOARD {
         same_canvas(a, b)
@@ -122,6 +171,52 @@ mod tests {
         assert!(is_vault_file_name("a.csv"));
         assert!(is_vault_file_name("a.excalidraw"));
         assert!(!is_vault_file_name("a.txt"));
+    }
+
+    #[test]
+    fn a_canvas_file_reads_back_into_the_envelope_it_was_written_from() {
+        let stored = r##"{"v":1,"engine":"excalidraw","data":{"elements":[{"id":"a","version":3}],"appState":{"viewBackgroundColor":"#fff"},"files":{}}}"##;
+        let back = canvas_surface(&canvas_file(Some(stored))).unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(&back).unwrap(),
+            serde_json::from_str::<Value>(stored).unwrap()
+        );
+        assert!(canvas_surface("not json").is_err());
+        assert!(canvas_surface("[]").is_err());
+        let partial: Value =
+            serde_json::from_str(&canvas_surface(r#"{"elements":{}}"#).unwrap()).unwrap();
+        assert_eq!(partial["data"]["elements"], json!([]));
+    }
+
+    #[test]
+    fn a_missing_surface_file_keeps_what_the_note_has_or_starts_empty() {
+        let kept = surface_from_file("whiteboard", None, Some("existing")).unwrap();
+        assert_eq!(kept.as_deref(), Some("existing"));
+        let fresh = surface_from_file("whiteboard", None, None)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(&fresh).unwrap()["engine"],
+            "excalidraw"
+        );
+        let sheet = surface_from_file("sheet", None, None).unwrap().unwrap();
+        assert_eq!(Sheet::parse(&sheet).unwrap(), Sheet::new_default());
+        assert_eq!(
+            surface_from_file("document", Some("x"), None).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn a_sheet_file_keeps_the_column_widths_the_note_had() {
+        let mut shape = Sheet::new_default();
+        shape.cols[0].w = 300.0;
+        let raw = surface_from_file("sheet", Some("a,b,c\r\n"), Some(&shape.serialize()))
+            .unwrap()
+            .unwrap();
+        let sheet = Sheet::parse(&raw).unwrap();
+        assert_eq!(sheet.cols[0].w, 300.0);
+        assert_eq!(sheet.rows[0], vec!["a", "b", "c"]);
     }
 
     #[test]

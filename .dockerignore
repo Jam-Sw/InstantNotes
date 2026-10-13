@@ -13,6 +13,7 @@
 !src-tauri/core
 !src-tauri/agents
 !src-tauri/server
+!src-tauri/web
 !src-tauri/installer
 !rust-toolchain.toml
 src-tauri/core/tests/fixtures/**/*.db

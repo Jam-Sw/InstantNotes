@@ -1,6 +1,6 @@
 {
   "name": "instantnotes",
-  "version": "0.9.5",
+  "version": "0.10.0",
   "description": "InstantNotes — instant capture, organized knowledge",
   "type": "module",
   "engines": {
@@ -25,6 +25,7 @@
     "@codemirror/lang-markdown": "^6.5.2",
     "@codemirror/language": "^6.12.4",
     "@codemirror/language-data": "^6.5.2",
+    "@codemirror/merge": "^6.12.2",
     "@codemirror/state": "^6",
     "@codemirror/view": "^6",
     "@excalidraw/excalidraw": "^0.18.1",
@@ -35,6 +36,7 @@
     "@tauri-apps/plugin-dialog": "^2.8.0",
     "@tauri-apps/plugin-updater": "^2.13.1",
     "d3-force-3d": "^3.0.6",
+    "qrcode-generator": "^2.0.4",
     "rbush": "^4.0.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"

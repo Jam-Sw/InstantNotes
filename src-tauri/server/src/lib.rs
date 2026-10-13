@@ -1,40 +1,47 @@
-mod api;
+pub mod client;
 mod config;
-mod events;
+mod device;
+#[cfg(test)]
+mod fake_idp;
 mod libraries;
+mod limits;
+mod objects;
 mod oidc;
+mod recheck;
 mod sessions;
 mod statics;
+mod sync_api;
 
 pub use config::Config;
 pub use sessions::Person;
 
-use axum::body::Bytes;
-use axum::extract::{DefaultBodyLimit, Path, Query, State};
+use axum::extract::connect_info::IntoMakeServiceWithConnectInfo;
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Query, State};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode, Uri};
-use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Redirect, Response};
-use axum::routing::{get, post};
+use axum::routing::get;
 use axum::{Json, Router};
-use events::Hub;
-use instantnotes_core::AppError;
 use libraries::Libraries;
+use limits::Limits;
+use objects::Stores;
 use oidc::Oidc;
+use recheck::Recheck;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::json;
 use sessions::{Logins, Sessions};
 use std::ffi::OsString;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio_stream::wrappers::BroadcastStream;
-use tokio_stream::StreamExt;
 
 pub const SUBCOMMAND: &str = "serve";
-const MUTATION_HEADER: &str = "x-instantnotes";
-const CLIENT_HEADER: &str = "x-instantnotes-client";
 const BODY_LIMIT: usize = 32 * 1024 * 1024;
-const KEEPALIVE: Duration = Duration::from_secs(15);
 const IDLE_SWEEP: Duration = Duration::from_secs(60);
+const BLOB_SWEEP_TICKS: u64 = 60;
+const SERVER_DB: &str = "server.db";
+const HSTS: &str = "max-age=31536000";
+const LOGIN_COOKIE: &str = "in_login";
+const LOGIN_TTL: Duration = Duration::from_secs(10 * 60);
 
 pub(crate) fn log(event: &str, fields: &[(&str, &str)]) {
     let mut line = String::from(event);
@@ -42,7 +49,7 @@ pub(crate) fn log(event: &str, fields: &[(&str, &str)]) {
         line.push(' ');
         line.push_str(key);
         line.push('=');
-        line.push_str(value);
+        line.extend(value.chars().map(|c| if c.is_control() { ' ' } else { c }));
     }
     println!("{line}");
 }
@@ -52,8 +59,11 @@ pub struct Inner {
     pub sessions: Sessions,
     pub libraries: Libraries,
     logins: Logins,
-    hub: Hub,
-    oidc: Oidc,
+    limits: Limits,
+    oidc: Arc<Oidc>,
+    recheck: Recheck,
+    stores: Stores,
+    devices: device::Devices,
 }
 
 #[derive(Clone)]
@@ -67,7 +77,7 @@ impl std::ops::Deref for AppState {
 }
 
 impl AppState {
-    pub fn new(config: Config) -> Self {
+    pub fn new(config: Config) -> Result<Self, String> {
         let oidc = Oidc::new(
             &config.oidc_issuer,
             &config.oidc_client_id,
@@ -75,14 +85,44 @@ impl AppState {
             &config.public_url,
             &config.redirect_uri(),
         );
-        AppState(Arc::new(Inner {
-            sessions: Sessions::new(config.session_ttl),
+        libraries::create_private_dir(&config.data_dir).map_err(|e| e.to_string())?;
+        let sessions = Sessions::open(&config.data_dir.join(SERVER_DB), config.session_ttl)?;
+        Ok(AppState(Arc::new(Inner {
+            sessions,
             libraries: Libraries::new(&config.data_dir, config.idle_close),
             logins: Logins::default(),
-            hub: Hub::default(),
-            oidc,
+            limits: Limits::new(),
+            oidc: Arc::new(oidc),
+            recheck: Recheck::new(&config.oidc_client_secret),
+            stores: Stores::new(&config.data_dir),
+            devices: device::Devices::default(),
             config,
-        }))
+        })))
+    }
+
+    fn health(&self) -> Result<(), String> {
+        tempfile::Builder::new()
+            .prefix(".healthz")
+            .tempfile_in(&self.config.data_dir)
+            .and_then(|mut probe| std::io::Write::write_all(&mut probe, b"ok"))
+            .map_err(|e| format!("data folder not writable: {e}"))?;
+        self.sessions.healthy()?;
+        match self.recheck.problem() {
+            Some(problem) => Err(problem),
+            None => Ok(()),
+        }
+    }
+
+    pub async fn recheck_people(&self) {
+        let ran = self
+            .recheck
+            .run_due(&self.sessions, &self.oidc, sessions::now_secs())
+            .await;
+        for sub in ran.refused_people {
+            if let Ok(store) = self.stores.of(&sub) {
+                store.cancel_joins();
+            }
+        }
     }
 }
 
@@ -127,7 +167,13 @@ pub fn run(config: Config) -> i32 {
                 return 1;
             }
         };
-        let state = AppState::new(config);
+        let state = match AppState::new(config) {
+            Ok(state) => state,
+            Err(e) => {
+                eprintln!("instantnotes serve: {e}");
+                return 1;
+            }
+        };
         log(
             "serve.start",
             &[
@@ -141,16 +187,34 @@ pub fn run(config: Config) -> i32 {
             let state = state.clone();
             tokio::spawn(async move {
                 let mut tick = tokio::time::interval(IDLE_SWEEP);
+                let mut ticks: u64 = 0;
                 loop {
                     tick.tick().await;
                     state.libraries.close_idle();
+                    state.limits.forget_idle();
+                    ticks += 1;
+                    if ticks.is_multiple_of(BLOB_SWEEP_TICKS) {
+                        let swept = state.clone();
+                        let _ = tokio::task::spawn_blocking(move || swept.stores.sweep()).await;
+                    }
                 }
             })
         };
-        let served = axum::serve(listener, router(state.clone()))
+        let rechecker = {
+            let state = state.clone();
+            tokio::spawn(async move {
+                let mut tick = tokio::time::interval(IDLE_SWEEP);
+                loop {
+                    tick.tick().await;
+                    state.recheck_people().await;
+                }
+            })
+        };
+        let served = axum::serve(listener, app(state.clone()))
             .with_graceful_shutdown(shutdown_signal())
             .await;
         sweeper.abort();
+        rechecker.abort();
         state.libraries.close_all();
         match served {
             Ok(()) => {
@@ -188,41 +252,61 @@ async fn shutdown_signal() {
     }
 }
 
+pub fn app(state: AppState) -> IntoMakeServiceWithConnectInfo<Router, SocketAddr> {
+    router(state).into_make_service_with_connect_info::<SocketAddr>()
+}
+
 pub fn router(state: AppState) -> Router {
     Router::new()
-        .route("/healthz", get(|| async { "ok" }))
+        .merge(sync_api::routes())
+        .merge(device::routes())
+        .route("/healthz", get(healthz))
         .route("/auth/login", get(login))
         .route("/auth/callback", get(callback))
         .route("/auth/logout", get(logout))
-        .route("/api/events", get(events_stream))
-        .route("/api/save_attachment", post(save_attachment))
-        .route("/api/attachments/{name}", get(attachment))
-        .route("/api/{command}", post(command))
         .fallback(get(ui))
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
+        .layer(axum::middleware::map_response_with_state(
+            state.clone(),
+            strict_transport,
+        ))
         .with_state(state)
 }
 
-fn error_response(e: &AppError) -> Response {
-    let status = match e {
-        AppError::NotFound(_) => StatusCode::NOT_FOUND,
-        AppError::Validation(_) => StatusCode::BAD_REQUEST,
-        AppError::Conflict(_) => StatusCode::CONFLICT,
-        _ => StatusCode::INTERNAL_SERVER_ERROR,
-    };
-    (
-        status,
-        Json(json!({ "code": e.code(), "message": e.to_string() })),
-    )
-        .into_response()
+async fn strict_transport(State(state): State<AppState>, mut response: Response) -> Response {
+    if state.config.secure_cookies() {
+        response.headers_mut().insert(
+            header::STRICT_TRANSPORT_SECURITY,
+            HeaderValue::from_static(HSTS),
+        );
+    }
+    response
 }
 
-fn unauthorized() -> Response {
-    (
-        StatusCode::UNAUTHORIZED,
-        Json(json!({ "code": "UNAUTHORIZED", "message": "sign in to continue" })),
+async fn healthz(State(state): State<AppState>) -> Response {
+    let checked = tokio::task::spawn_blocking(move || state.health()).await;
+    match checked {
+        Ok(Ok(())) => "ok".into_response(),
+        Ok(Err(reason)) => (StatusCode::SERVICE_UNAVAILABLE, reason).into_response(),
+        Err(_) => (StatusCode::SERVICE_UNAVAILABLE, "health check panicked").into_response(),
+    }
+}
+
+pub(crate) fn too_many(retry_after: u64) -> Response {
+    let mut response = (
+        StatusCode::TOO_MANY_REQUESTS,
+        Json(json!({ "code": "RATE_LIMITED", "message": "too many requests; try again shortly" })),
     )
-        .into_response()
+        .into_response();
+    if let Ok(value) = HeaderValue::from_str(&retry_after.to_string()) {
+        response.headers_mut().insert(header::RETRY_AFTER, value);
+    }
+    response
+}
+
+fn sign_in_limited(state: &AppState, peer: SocketAddr, headers: &HeaderMap) -> Option<Response> {
+    let ip = limits::client_ip(state.config.trust_proxy, peer, headers);
+    state.limits.sign_in(ip).err().map(too_many)
 }
 
 fn person_of(state: &AppState, headers: &HeaderMap) -> Option<Person> {
@@ -244,9 +328,54 @@ fn cookie(state: &AppState, value: &str, max_age: Option<Duration>) -> HeaderVal
     HeaderValue::from_str(&cookie).expect("cookie header")
 }
 
-async fn login(State(state): State<AppState>) -> Response {
-    match state.oidc.begin(&state.logins).await {
-        Ok(url) => Redirect::to(&url).into_response(),
+fn login_cookie(state: &AppState, value: &str, max_age: Duration) -> HeaderValue {
+    let mut cookie = format!(
+        "{LOGIN_COOKIE}={value}; HttpOnly; SameSite=Lax; Path=/auth; Max-Age={}",
+        max_age.as_secs()
+    );
+    if state.config.secure_cookies() {
+        cookie.push_str("; Secure");
+    }
+    HeaderValue::from_str(&cookie).expect("cookie header")
+}
+
+fn login_cookie_value(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get_all(header::COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .flat_map(|line| line.split(';'))
+        .map(str::trim)
+        .find_map(|pair| {
+            pair.strip_prefix(LOGIN_COOKIE)
+                .and_then(|rest| rest.strip_prefix('='))
+        })
+        .map(str::to_string)
+}
+
+#[derive(Deserialize)]
+struct LoginQuery {
+    device: Option<String>,
+}
+
+async fn login(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Query(q): Query<LoginQuery>,
+) -> Response {
+    if let Some(limited) = sign_in_limited(&state, peer, &headers) {
+        return limited;
+    }
+    match state.oidc.begin(&state.logins, q.device).await {
+        Ok((url, login_state)) => {
+            let mut response = Redirect::to(&url).into_response();
+            response.headers_mut().insert(
+                header::SET_COOKIE,
+                login_cookie(&state, &login_state, LOGIN_TTL),
+            );
+            response
+        }
         Err(e) => {
             log("auth.login.failed", &[("reason", &e)]);
             statics::html(StatusCode::BAD_GATEWAY, statics::error_page(&e))
@@ -262,10 +391,18 @@ struct CallbackQuery {
     error_description: Option<String>,
 }
 
-async fn callback(State(state): State<AppState>, Query(q): Query<CallbackQuery>) -> Response {
+async fn callback(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Query(q): Query<CallbackQuery>,
+) -> Response {
+    if let Some(limited) = sign_in_limited(&state, peer, &headers) {
+        return limited;
+    }
     if let Some(error) = q.error {
+        log("auth.callback.refused", &[("error", &error)]);
         let reason = q.error_description.unwrap_or(error);
-        log("auth.callback.refused", &[("reason", &reason)]);
         return statics::html(StatusCode::BAD_REQUEST, statics::error_page(&reason));
     }
     let (Some(code), Some(login_state)) = (q.code, q.state) else {
@@ -274,14 +411,44 @@ async fn callback(State(state): State<AppState>, Query(q): Query<CallbackQuery>)
             statics::error_page("the sign-in server sent no code"),
         );
     };
+    if login_cookie_value(&headers).as_deref() != Some(login_state.as_str()) {
+        log("auth.callback.foreign", &[]);
+        return statics::html(
+            StatusCode::BAD_REQUEST,
+            statics::error_page("This sign-in was not started in this browser. Start again."),
+        );
+    }
     match state.oidc.finish(&state.logins, &code, &login_state).await {
-        Ok(person) => {
+        Ok(signed_in) => {
+            let person = signed_in.person;
             log(
                 "auth.signed_in",
-                &[("library", &libraries::folder_name(&person.sub))],
+                &[
+                    ("library", &libraries::folder_name(&person.sub)),
+                    ("refresh", &signed_in.refresh_token.is_some().to_string()),
+                ],
             );
+            let sealed = signed_in
+                .refresh_token
+                .map(|token| state.recheck.sealer.seal(&token));
+            state
+                .sessions
+                .signed_in(&person.sub, sealed.as_deref(), sessions::now_secs());
+            if let Some(device) = signed_in.after {
+                let id = state.sessions.create(person);
+                let mut response = Redirect::to(&format!(
+                    "/sync/v1/device/confirm?request={}",
+                    oidc::encode(&device)
+                ))
+                .into_response();
+                response.headers_mut().insert(
+                    header::SET_COOKIE,
+                    cookie(&state, &id, Some(state.sessions.ttl())),
+                );
+                return response;
+            }
             let id = state.sessions.create(person);
-            let mut response = statics::html(StatusCode::OK, statics::SIGNED_IN.to_string());
+            let mut response = statics::html(StatusCode::OK, statics::signed_in());
             response.headers_mut().insert(
                 header::SET_COOKIE,
                 cookie(&state, &id, Some(state.sessions.ttl())),
@@ -312,148 +479,4 @@ async fn ui(State(state): State<AppState>, headers: HeaderMap, uri: Uri) -> Resp
         return statics::html(StatusCode::OK, statics::SIGN_IN.to_string());
     }
     statics::serve_ui(&state.config.ui_dir, uri.path()).await
-}
-
-async fn events_stream(State(state): State<AppState>, headers: HeaderMap) -> Response {
-    let Some(person) = person_of(&state, &headers) else {
-        return unauthorized();
-    };
-    let receiver = state.hub.subscribe(&person.sub);
-    let stream = BroadcastStream::new(receiver).filter_map(|item| {
-        item.ok().map(|change| {
-            Ok::<Event, std::convert::Infallible>(
-                Event::default()
-                    .event(change.event)
-                    .data(change.payload.to_string()),
-            )
-        })
-    });
-    Sse::new(stream)
-        .keep_alive(KeepAlive::new().interval(KEEPALIVE).text("keepalive"))
-        .into_response()
-}
-
-fn client_origin(headers: &HeaderMap) -> Option<String> {
-    headers
-        .get(CLIENT_HEADER)
-        .and_then(|v| v.to_str().ok())
-        .filter(|v| !v.is_empty() && v.len() <= 64)
-        .map(str::to_string)
-}
-
-fn forbidden_without_header(headers: &HeaderMap) -> Option<Response> {
-    if headers.contains_key(MUTATION_HEADER) {
-        return None;
-    }
-    Some(
-        (
-            StatusCode::FORBIDDEN,
-            Json(json!({ "code": "FORBIDDEN", "message": "missing X-InstantNotes header" })),
-        )
-            .into_response(),
-    )
-}
-
-async fn command(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path(command): Path<String>,
-    body: Bytes,
-) -> Response {
-    let Some(person) = person_of(&state, &headers) else {
-        return unauthorized();
-    };
-    if let Some(refused) = forbidden_without_header(&headers) {
-        return refused;
-    }
-    if !api::WEB_COMMANDS.contains(&command.as_str()) {
-        return error_response(&AppError::NotFound(format!("command {command}")));
-    }
-    let args: Value = if body.is_empty() {
-        Value::Null
-    } else {
-        match serde_json::from_slice(&body) {
-            Ok(v) => v,
-            Err(e) => return error_response(&AppError::Validation(format!("arguments: {e}"))),
-        }
-    };
-    let origin = client_origin(&headers);
-    let sub = person.sub.clone();
-    let libraries_state = state.clone();
-    let name = command.clone();
-    let outcome = tokio::task::spawn_blocking(move || {
-        libraries_state.libraries.with(&sub, |lib| {
-            api::dispatch(lib, &name, &args, origin.as_deref())
-        })
-    })
-    .await;
-    match outcome {
-        Ok(Ok(outcome)) => {
-            state.hub.publish(&person.sub, outcome.changes);
-            Json(outcome.value).into_response()
-        }
-        Ok(Err(e)) => {
-            log("api.error", &[("command", &command), ("code", e.code())]);
-            error_response(&e)
-        }
-        Err(_) => error_response(&AppError::Storage("command panicked".into())),
-    }
-}
-
-async fn save_attachment(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Response {
-    let Some(person) = person_of(&state, &headers) else {
-        return unauthorized();
-    };
-    if let Some(refused) = forbidden_without_header(&headers) {
-        return refused;
-    }
-    let ext = headers
-        .get("x-attachment-ext")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or_default()
-        .to_string();
-    let sub = person.sub;
-    let libraries_state = state.clone();
-    let saved = tokio::task::spawn_blocking(move || {
-        libraries_state
-            .libraries
-            .with(&sub, |lib| api::save_attachment(lib, &body, &ext))
-    })
-    .await;
-    match saved {
-        Ok(Ok(name)) => Json(json!(name)).into_response(),
-        Ok(Err(e)) => error_response(&e),
-        Err(_) => error_response(&AppError::Storage("attachment write panicked".into())),
-    }
-}
-
-async fn attachment(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path(name): Path<String>,
-) -> Response {
-    let Some(person) = person_of(&state, &headers) else {
-        return unauthorized();
-    };
-    let sub = person.sub;
-    let libraries_state = state.clone();
-    let path = tokio::task::spawn_blocking(move || {
-        libraries_state.libraries.with(&sub, |lib| {
-            api::attachment_path(lib, &name)
-                .ok_or_else(|| AppError::NotFound(format!("attachment {name}")))
-        })
-    })
-    .await;
-    match path {
-        Ok(Ok(path)) => match statics::serve_file(&path, "private, max-age=86400").await {
-            Some(found) => found,
-            None => error_response(&AppError::NotFound("attachment".into())),
-        },
-        Ok(Err(e)) => error_response(&e),
-        Err(_) => error_response(&AppError::Storage("attachment read panicked".into())),
-    }
 }

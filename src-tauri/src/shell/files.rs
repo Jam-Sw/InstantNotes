@@ -93,7 +93,7 @@ pub fn save_attachment(app: AppHandle, request: tauri::ipc::Request<'_>) -> CmdR
         return Err(CmdError::validation("attachment is empty"));
     }
     let name = write_attachment(&attachments_dir(&app)?, bytes, &ext)?;
-    let _ = mirror_attachments(&app);
+    request_vault_sync(&app);
     Ok(name)
 }
 
@@ -182,7 +182,7 @@ pub fn import_image_file(app: AppHandle, path: String) -> CmdResult<String> {
         return Err(CmdError::validation("image is empty"));
     }
     let name = write_attachment(&attachments_dir(&app)?, &bytes, &ext)?;
-    let _ = mirror_attachments(&app);
+    request_vault_sync(&app);
     Ok(name)
 }
 

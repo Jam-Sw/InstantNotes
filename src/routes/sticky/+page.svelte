@@ -22,6 +22,7 @@
   import { StickyNote } from "$lib/stores/sticky.svelte";
   import { agents } from "$lib/stores/agents.svelte";
   import { parseActivityLog } from "$lib/agent-activity";
+  import { parseVaultSynced } from "$lib/vault-mirror";
   import { theme } from "$lib/stores/theme.svelte";
   import { editorPrefs } from "$lib/stores/editor.svelte";
   import { imagePrefs } from "$lib/stores/images.svelte";
@@ -113,6 +114,9 @@
       listen(EVENTS.NOTES_CHANGED, () => void sticky.refreshMeta()),
       listen<unknown>(EVENTS.LIBRARY_EXTERNAL_CHANGE, (e) => {
         void sticky.adoptExternal(parseActivityLog(e.payload));
+      }),
+      listen<unknown>(EVENTS.VAULT_SYNCED, (e) => {
+        void sticky.adoptSynced(parseVaultSynced(e.payload));
       }),
       win.onMoved(() => persistGeometry()),
       win.onResized(() => persistGeometry()),

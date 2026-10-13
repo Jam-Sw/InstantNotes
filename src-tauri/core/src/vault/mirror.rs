@@ -4,8 +4,10 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Default)]
 pub struct FlushOutcome {
     pub written: usize,
+    pub deferred: usize,
     pub removed: usize,
     pub remaining: i64,
+    pub manifest_changed: bool,
     pub errors: Vec<String>,
 }
 
@@ -13,9 +15,15 @@ pub struct FlushOutcome {
 #[serde(rename_all = "camelCase")]
 pub struct VaultStatus {
     pub path: Option<String>,
+    pub transport: Option<String>,
+    pub reachable: bool,
+    pub unreachable: Option<String>,
     pub pending: i64,
     pub last_error: Option<String>,
     pub last_flushed_at: Option<String>,
+    pub last_synced_at: Option<String>,
+    pub held_removals: usize,
+    pub conflicts: usize,
 }
 
 #[derive(Debug, Default, Serialize)]

@@ -2,8 +2,6 @@ name: Build
 
 on:
   pull_request:
-  push:
-    branches: [main]
 
 jobs:
   build:
@@ -45,5 +43,3 @@ jobs:
       - run: cargo clippy --workspace --all-targets --manifest-path src-tauri/Cargo.toml -- -D warnings
 
       - run: cargo fmt --all --check --manifest-path src-tauri/Cargo.toml
-
-      - run: npm run tauri -- build --no-bundle

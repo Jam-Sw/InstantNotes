@@ -513,6 +513,7 @@ describe("init ordering", () => {
       EVENTS.WORKSPACES_CHANGED,
       EVENTS.STICKIES_CHANGED,
       EVENTS.LIBRARY_EXTERNAL_CHANGE,
+      EVENTS.VAULT_SYNCED,
     ]);
     expect(mockListNotes).not.toHaveBeenCalled();
     expect(mockListTags).not.toHaveBeenCalled();
@@ -534,7 +535,7 @@ describe("init ordering", () => {
     const p2 = library.init();
     await Promise.all([p1, p2]);
 
-    expect(mockListen).toHaveBeenCalledTimes(5);
+    expect(mockListen).toHaveBeenCalledTimes(6);
     expect(mockListNotes).toHaveBeenCalledTimes(1);
     expect(mockCountNotes).toHaveBeenCalledTimes(1);
     expect(mockListTags).toHaveBeenCalledTimes(1);

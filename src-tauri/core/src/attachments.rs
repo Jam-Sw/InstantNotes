@@ -1,10 +1,16 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 const PREFIX: &str = "attachments/";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Attachments {
+    Folder(PathBuf),
+    Database,
+}
 
 fn is_name_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-')
@@ -24,7 +30,7 @@ pub fn referenced_names(text: &str) -> BTreeSet<String> {
     found
 }
 
-fn is_plain_name(name: &str) -> bool {
+pub fn is_plain_name(name: &str) -> bool {
     !name.is_empty() && name.chars().all(is_name_char) && name.chars().any(|c| c != '.')
 }
 

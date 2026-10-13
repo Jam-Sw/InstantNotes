@@ -202,6 +202,84 @@ impl Sheet {
         }
         Ok(start)
     }
+
+    pub fn from_csv(text: &str, shape: &Sheet) -> Result<Sheet, String> {
+        let records = parse_csv(text);
+        let width = records
+            .iter()
+            .map(Vec::len)
+            .max()
+            .unwrap_or(0)
+            .max(if records.is_empty() {
+                shape.cols.len()
+            } else {
+                1
+            });
+        let mut cols: Vec<Column> = shape.cols.iter().take(width).cloned().collect();
+        cols.resize(
+            width,
+            Column {
+                w: DEFAULT_COL_WIDTH,
+            },
+        );
+        let mut rows: Vec<Vec<String>> = records
+            .into_iter()
+            .map(|mut row| {
+                row.resize(width, String::new());
+                row
+            })
+            .collect();
+        let height = rows.len().max(shape.rows.len().min(MAX_ROWS));
+        rows.resize(height, vec![String::new(); width]);
+        let sheet = Sheet { cols, rows };
+        sheet.validate()?;
+        Ok(sheet)
+    }
+}
+
+fn parse_csv(text: &str) -> Vec<Vec<String>> {
+    let text = text.strip_prefix('\u{feff}').unwrap_or(text);
+    let mut records = Vec::new();
+    let mut record = Vec::new();
+    let mut field = String::new();
+    let mut quoted = false;
+    let mut chars = text.chars().peekable();
+    let mut any = false;
+    while let Some(c) = chars.next() {
+        any = true;
+        if quoted {
+            match c {
+                '"' if chars.peek() == Some(&'"') => {
+                    chars.next();
+                    field.push('"');
+                }
+                '"' => quoted = false,
+                _ => field.push(c),
+            }
+            continue;
+        }
+        match c {
+            '"' if field.is_empty() => quoted = true,
+            ',' => record.push(std::mem::take(&mut field)),
+            '\r' | '\n' => {
+                if c == '\r' && chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+                record.push(std::mem::take(&mut field));
+                records.push(std::mem::take(&mut record));
+                any = false;
+            }
+            _ => field.push(c),
+        }
+    }
+    if any {
+        record.push(field);
+        records.push(record);
+    }
+    while records.last().is_some_and(|r| row_is_empty(r)) {
+        records.pop();
+    }
+    records
 }
 
 fn check_cells(row: &[String], r: usize) -> Result<(), String> {
@@ -246,6 +324,46 @@ mod tests {
             s.rows.push(cells);
         }
         s
+    }
+
+    #[test]
+    fn a_csv_round_trips_into_the_shape_it_came_from() {
+        let mut original = Sheet::new_default();
+        original.cols[1].w = 240.0;
+        original
+            .append_rows(vec![
+                vec![
+                    "Date".into(),
+                    "note, with comma".into(),
+                    "say \"hi\"".into(),
+                ],
+                vec!["2026-10-07".into(), "line\nbreak".into(), String::new()],
+            ])
+            .unwrap();
+        let back = Sheet::from_csv(&original.csv(), &Sheet::new_default()).unwrap();
+        assert_eq!(back.rows, original.rows);
+        assert_eq!(back.csv(), original.csv());
+        let kept = Sheet::from_csv(&original.csv(), &original).unwrap();
+        assert_eq!(kept, original);
+    }
+
+    #[test]
+    fn a_csv_from_another_tool_is_read_leniently() {
+        let shape = Sheet::new_default();
+        let s = Sheet::from_csv("\u{feff}a,b,c,d\nx\n", &shape).unwrap();
+        assert_eq!(s.cols.len(), 4);
+        assert_eq!(s.rows[0], vec!["a", "b", "c", "d"]);
+        assert_eq!(s.rows[1], vec!["x", "", "", ""]);
+        assert_eq!(s.rows.len(), shape.rows.len());
+        let empty = Sheet::from_csv("", &shape).unwrap();
+        assert_eq!(empty.cols.len(), shape.cols.len());
+        assert_eq!(empty.filled_rows(), 0);
+    }
+
+    #[test]
+    fn a_csv_past_the_limits_is_refused() {
+        let wide = vec!["x"; MAX_COLS + 1].join(",");
+        assert!(Sheet::from_csv(&wide, &Sheet::new_default()).is_err());
     }
 
     #[test]

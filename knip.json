@@ -7,7 +7,9 @@
   "ignore": [
     "src/lib/agreements.svelte.ts",
     "src/lib/AgreementGate.svelte",
-    "static/boot.js"
+    "static/boot.js",
+    "static/sw.js",
+    "static/web/worker.js"
   ],
   "ignoreDependencies": [
     "@types/d3-force"
@@ -30,6 +32,8 @@
     "src/lib/stores/agents.svelte.ts": ["exports"],
     "src/lib/stores/images.svelte.ts": ["exports"],
     "src/lib/update/release-size.ts": ["exports"],
-    "src/lib/update/space.ts": ["exports"]
+    "src/lib/update/space.ts": ["exports"],
+    "src/lib/web/library.ts": ["exports"],
+    "src/lib/web/sync.ts": ["exports"]
   }
 }
