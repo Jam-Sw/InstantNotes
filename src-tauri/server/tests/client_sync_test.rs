@@ -1,9 +1,8 @@
 use instantnotes_core::sync::crypto::{LibraryKey, Lock};
 use instantnotes_core::sync::cycle::ServerSync;
-use instantnotes_core::sync::remote::Remote;
 use instantnotes_core::types::*;
 use instantnotes_core::Store;
-use instantnotes_server::client::{Blocking, Client};
+use instantnotes_server::client::{Client, Connection};
 use instantnotes_server::{AppState, Config, Person};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -53,7 +52,8 @@ fn start() -> Server {
 
 struct Device {
     store: Mutex<Store>,
-    sync: ServerSync<Blocking>,
+    sync: ServerSync<Connection>,
+    runtime: tokio::runtime::Handle,
 }
 
 impl Server {
@@ -72,7 +72,7 @@ impl Server {
             .set_refresh("alice", Some(b"sealed"), now);
         let (_, token) = self.state.sessions.create_device(&person, "Laptop", now);
         let client = Client::new(&self.base).unwrap().with_token(&token);
-        let remote = Blocking::new(client, 1024 * 1024).unwrap();
+        let remote = Connection::new(client, 1024 * 1024);
         let mut store = Store::open_in_memory().unwrap();
         store.begin_server_sync().unwrap();
         Device {
@@ -82,13 +82,14 @@ impl Server {
                 Lock::Encrypted(LibraryKey::from_recovery(recovery).unwrap()),
                 None,
             ),
+            runtime: self._runtime.handle().clone(),
         }
     }
 }
 
 impl Device {
     fn sync(&mut self) {
-        let report = self.sync.cycle(&self.store);
+        let report = self.runtime.block_on(self.sync.cycle(&self.store));
         assert!(report.errors.is_empty(), "{:?}", report.errors);
         assert!(report.reached(), "{:?}", report.unreachable);
     }
@@ -117,9 +118,14 @@ fn two_devices_sync_one_encrypted_library_through_the_real_server() {
     let recovery = key.recovery();
     let mut laptop = server.device(&recovery);
     laptop
-        .sync
-        .remote
-        .set_keys("encrypted", Some(&key.recipient()))
+        .runtime
+        .block_on(
+            laptop
+                .sync
+                .remote
+                .client
+                .set_keys("encrypted", Some(&key.recipient())),
+        )
         .unwrap();
     let mut desktop = server.device(&recovery);
     let from_laptop = laptop.create("From the laptop", "written on the laptop");
@@ -148,9 +154,14 @@ fn many_notes_travel_in_few_requests() {
     let recovery = key.recovery();
     let mut first = server.device(&recovery);
     first
-        .sync
-        .remote
-        .set_keys("encrypted", Some(&key.recipient()))
+        .runtime
+        .block_on(
+            first
+                .sync
+                .remote
+                .client
+                .set_keys("encrypted", Some(&key.recipient())),
+        )
         .unwrap();
     for n in 0..1100 {
         first.create(&format!("Note {n}"), &format!("body {n}"));

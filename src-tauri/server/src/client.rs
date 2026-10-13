@@ -461,62 +461,59 @@ impl Client {
     }
 }
 
-pub struct Blocking {
-    runtime: tokio::runtime::Runtime,
+pub struct Connection {
     pub client: Client,
     max_object_bytes: u64,
 }
 
-impl Blocking {
-    pub fn new(client: Client, max_object_bytes: u64) -> std::io::Result<Blocking> {
-        Ok(Blocking {
-            runtime: tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()?,
+impl Connection {
+    pub fn new(client: Client, max_object_bytes: u64) -> Connection {
+        Connection {
             client,
             max_object_bytes,
-        })
-    }
-
-    pub fn run<T>(&self, f: impl std::future::Future<Output = T>) -> T {
-        self.runtime.block_on(f)
+        }
     }
 }
 
-impl Remote for Blocking {
-    fn changes(&mut self, since: i64) -> Result<RemoteChanges, RemoteError> {
-        self.runtime.block_on(self.client.changes(since, 0))
+impl Remote for Connection {
+    async fn changes(&mut self, since: i64) -> Result<RemoteChanges, RemoteError> {
+        self.client.changes(since, 0).await
     }
 
     fn max_object_bytes(&self) -> u64 {
         self.max_object_bytes
     }
 
-    fn missing(&mut self, shas: &[String]) -> Result<Vec<String>, RemoteError> {
-        self.runtime.block_on(self.client.missing(shas))
+    async fn missing(&mut self, shas: &[String]) -> Result<Vec<String>, RemoteError> {
+        self.client.missing(shas).await
     }
 
-    fn upload(&mut self, blobs: &[(String, Vec<u8>)]) -> Result<(), RemoteError> {
-        self.runtime.block_on(self.client.upload(blobs))
+    async fn upload(&mut self, blobs: &[(String, Vec<u8>)]) -> Result<(), RemoteError> {
+        self.client.upload(blobs).await
     }
 
-    fn download(&mut self, shas: &[String]) -> Result<Vec<(String, Vec<u8>)>, RemoteError> {
-        self.runtime.block_on(self.client.download(shas))
+    async fn download(&mut self, shas: &[String]) -> Result<Vec<(String, Vec<u8>)>, RemoteError> {
+        self.client.download(shas).await
     }
 
-    fn commit(&mut self, epoch: i64, ops: &[RemoteOp], reset: bool) -> Result<i64, RemoteError> {
-        self.runtime.block_on(self.client.commit(epoch, ops, reset))
+    async fn commit(
+        &mut self,
+        epoch: i64,
+        ops: &[RemoteOp],
+        reset: bool,
+    ) -> Result<i64, RemoteError> {
+        self.client.commit(epoch, ops, reset).await
     }
 
-    fn keys(&mut self) -> Result<RemoteKeys, RemoteError> {
-        self.runtime.block_on(self.client.keys())
+    async fn keys(&mut self) -> Result<RemoteKeys, RemoteError> {
+        self.client.keys().await
     }
 
-    fn set_keys(&mut self, mode: &str, recipient: Option<&str>) -> Result<(), RemoteError> {
-        self.runtime.block_on(self.client.set_keys(mode, recipient))
+    async fn set_keys(&mut self, mode: &str, recipient: Option<&str>) -> Result<(), RemoteError> {
+        self.client.set_keys(mode, recipient).await
     }
 
-    fn switch(
+    async fn switch(
         &mut self,
         from_epoch: i64,
         built_at: i64,
@@ -524,10 +521,9 @@ impl Remote for Blocking {
         recipient: Option<&str>,
         expected: usize,
     ) -> Result<i64, RemoteError> {
-        self.runtime.block_on(
-            self.client
-                .switch(from_epoch, built_at, mode, recipient, expected),
-        )
+        self.client
+            .switch(from_epoch, built_at, mode, recipient, expected)
+            .await
     }
 }
 

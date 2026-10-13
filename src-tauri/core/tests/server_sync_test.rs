@@ -1,3 +1,4 @@
+use futures_executor::block_on;
 use instantnotes_core::store::server_sync::MergeReview;
 use instantnotes_core::sync::crypto::{LibraryKey, Lock};
 use instantnotes_core::sync::cycle::{ModeCheck, ServerSync, SyncReport};
@@ -82,7 +83,7 @@ impl Handle {
 }
 
 impl Remote for Handle {
-    fn changes(&mut self, since: i64) -> Result<RemoteChanges, RemoteError> {
+    async fn changes(&mut self, since: i64) -> Result<RemoteChanges, RemoteError> {
         self.up()?;
         let s = self.server.borrow();
         if since > s.head {
@@ -119,7 +120,7 @@ impl Remote for Handle {
         self.server.borrow().max_object
     }
 
-    fn missing(&mut self, shas: &[String]) -> Result<Vec<String>, RemoteError> {
+    async fn missing(&mut self, shas: &[String]) -> Result<Vec<String>, RemoteError> {
         self.up()?;
         let s = self.server.borrow();
         Ok(shas
@@ -129,7 +130,7 @@ impl Remote for Handle {
             .collect())
     }
 
-    fn upload(&mut self, blobs: &[(String, Vec<u8>)]) -> Result<(), RemoteError> {
+    async fn upload(&mut self, blobs: &[(String, Vec<u8>)]) -> Result<(), RemoteError> {
         self.up()?;
         let mut s = self.server.borrow_mut();
         for (sha, bytes) in blobs {
@@ -141,7 +142,7 @@ impl Remote for Handle {
         Ok(())
     }
 
-    fn download(&mut self, shas: &[String]) -> Result<Vec<(String, Vec<u8>)>, RemoteError> {
+    async fn download(&mut self, shas: &[String]) -> Result<Vec<(String, Vec<u8>)>, RemoteError> {
         self.up()?;
         let s = self.server.borrow();
         Ok(shas
@@ -150,7 +151,12 @@ impl Remote for Handle {
             .collect())
     }
 
-    fn commit(&mut self, epoch: i64, ops: &[RemoteOp], reset: bool) -> Result<i64, RemoteError> {
+    async fn commit(
+        &mut self,
+        epoch: i64,
+        ops: &[RemoteOp],
+        reset: bool,
+    ) -> Result<i64, RemoteError> {
         self.up()?;
         let mut s = self.server.borrow_mut();
         if epoch != s.epoch && epoch != s.epoch + 1 {
@@ -193,7 +199,7 @@ impl Remote for Handle {
         Ok(seq)
     }
 
-    fn keys(&mut self) -> Result<RemoteKeys, RemoteError> {
+    async fn keys(&mut self) -> Result<RemoteKeys, RemoteError> {
         self.up()?;
         let s = self.server.borrow();
         Ok(RemoteKeys {
@@ -205,7 +211,7 @@ impl Remote for Handle {
         })
     }
 
-    fn set_keys(&mut self, mode: &str, recipient: Option<&str>) -> Result<(), RemoteError> {
+    async fn set_keys(&mut self, mode: &str, recipient: Option<&str>) -> Result<(), RemoteError> {
         self.up()?;
         let mut s = self.server.borrow_mut();
         s.mode = Some(mode.into());
@@ -213,7 +219,7 @@ impl Remote for Handle {
         Ok(())
     }
 
-    fn switch(
+    async fn switch(
         &mut self,
         from_epoch: i64,
         built_at: i64,
@@ -317,10 +323,10 @@ impl Device {
     }
 
     fn sync(&mut self) -> SyncReport {
-        let mut report = self.sync.cycle(&self.store);
+        let mut report = block_on(self.sync.cycle(&self.store));
         let mut rounds = 0;
         while report.retry && rounds < 3 {
-            report = self.sync.cycle(&self.store);
+            report = block_on(self.sync.cycle(&self.store));
             rounds += 1;
         }
         assert!(report.errors.is_empty(), "sync errors: {:?}", report.errors);
@@ -422,7 +428,7 @@ fn a_device_offline_for_many_commits_catches_up_and_sends_its_own_edits() {
     let shared = a.create("Shared", "v1");
     settle(&mut [&mut a, &mut b]);
     b.offline(true);
-    let b_report = b.sync.cycle(&b.store);
+    let b_report = block_on(b.sync.cycle(&b.store));
     assert!(b_report.unreachable.is_some());
     let made: Vec<Note> = (0..30)
         .map(|n| {
@@ -820,20 +826,19 @@ fn turning_encryption_on_and_off_rewrites_the_server_and_loses_nothing() {
     let recovery = key.recovery();
     let recipient = key.recipient();
     b.edit(&n.id, "written while switching");
-    a.sync
-        .switch_mode(
-            &a.store,
-            Lock::Encrypted(key),
-            "encrypted",
-            Some(&recipient),
-        )
-        .unwrap();
+    block_on(a.sync.switch_mode(
+        &a.store,
+        Lock::Encrypted(key),
+        "encrypted",
+        Some(&recipient),
+    ))
+    .unwrap();
     assert!(server
         .borrow()
         .live_blobs()
         .iter()
         .all(|blob| !blob.windows(5).any(|w| w == b"diary")));
-    let report = b.sync.cycle(&b.store);
+    let report = block_on(b.sync.cycle(&b.store));
     assert!(report.mode_changed);
     b.sync = ServerSync::new(
         Handle {
@@ -849,11 +854,9 @@ fn turning_encryption_on_and_off_rewrites_the_server_and_loses_nothing() {
         bodies.contains(&"written while switching".to_string()),
         "{bodies:?}"
     );
-    a.sync
-        .switch_mode(&a.store, Lock::Plain, "plain", None)
-        .unwrap();
+    block_on(a.sync.switch_mode(&a.store, Lock::Plain, "plain", None)).unwrap();
     assert!(server.borrow().recipient.is_none());
-    let report = b.sync.cycle(&b.store);
+    let report = block_on(b.sync.cycle(&b.store));
     assert!(report.mode_changed);
     b.sync = ServerSync::new(
         Handle {
@@ -875,7 +878,7 @@ fn a_device_with_the_wrong_key_reports_errors_and_changes_nothing() {
     let stranger = LibraryKey::generate().recovery();
     let server = Rc::clone(&a.sync.remote.server);
     let mut c = Device::join(&server, Some(&stranger));
-    let report = c.sync.cycle(&c.store);
+    let report = block_on(c.sync.cycle(&c.store));
     assert!(!report.errors.is_empty());
     assert!(c.live().is_empty());
 }
@@ -909,7 +912,7 @@ fn an_interrupted_first_upload_keeps_what_was_committed_and_finishes() {
     }
     let mut a = Device::with_store(&server, Some(&recovery), store);
     server.borrow_mut().budget = Some(6);
-    let first = a.sync.cycle(&a.store);
+    let first = block_on(a.sync.cycle(&a.store));
     assert!(first.unreachable.is_some());
     let committed = server.borrow().objects.len();
     assert!(committed >= 500, "kept {committed}");
@@ -952,9 +955,9 @@ fn a_server_cannot_turn_encryption_off_or_swap_the_key_without_the_key() {
         s.mode = Some("plain".into());
         s.recipient = None;
     }
-    let keys = a.sync.remote.keys().unwrap();
+    let keys = block_on(a.sync.remote.keys()).unwrap();
     assert!(matches!(
-        a.sync.check_mode(&keys, Some(&key), 1).unwrap(),
+        block_on(a.sync.check_mode(&keys, Some(&key), 1)).unwrap(),
         ModeCheck::Refuse(_)
     ));
     {
@@ -962,19 +965,19 @@ fn a_server_cannot_turn_encryption_off_or_swap_the_key_without_the_key() {
         s.mode = Some("encrypted".into());
         s.recipient = Some(LibraryKey::generate().recipient());
     }
-    let keys = a.sync.remote.keys().unwrap();
+    let keys = block_on(a.sync.remote.keys()).unwrap();
     assert!(matches!(
-        a.sync.check_mode(&keys, Some(&key), 1).unwrap(),
+        block_on(a.sync.check_mode(&keys, Some(&key), 1)).unwrap(),
         ModeCheck::Refuse(_)
     ));
     server.borrow_mut().recipient = Some(key.recipient());
-    let keys = a.sync.remote.keys().unwrap();
+    let keys = block_on(a.sync.remote.keys()).unwrap();
     assert_eq!(
-        a.sync.check_mode(&keys, Some(&key), 1).unwrap(),
+        block_on(a.sync.check_mode(&keys, Some(&key), 1)).unwrap(),
         ModeCheck::Encrypted
     );
     assert_eq!(
-        a.sync.check_mode(&keys, None, 1).unwrap(),
+        block_on(a.sync.check_mode(&keys, None, 1)).unwrap(),
         ModeCheck::NeedsKey
     );
 }
@@ -984,14 +987,12 @@ fn a_switch_to_plain_made_by_a_key_holder_is_accepted_by_the_others() {
     let (server, mut a, mut b, recovery) = encrypted_pair();
     a.create("Note", "text");
     settle(&mut [&mut a, &mut b]);
-    a.sync
-        .switch_mode(&a.store, Lock::Plain, "plain", None)
-        .unwrap();
-    assert!(b.sync.cycle(&b.store).mode_changed);
-    let keys = b.sync.remote.keys().unwrap();
+    block_on(a.sync.switch_mode(&a.store, Lock::Plain, "plain", None)).unwrap();
+    assert!(block_on(b.sync.cycle(&b.store)).mode_changed);
+    let keys = block_on(b.sync.remote.keys()).unwrap();
     let key = LibraryKey::from_recovery(&recovery).unwrap();
     assert_eq!(
-        b.sync.check_mode(&keys, Some(&key), 1).unwrap(),
+        block_on(b.sync.check_mode(&keys, Some(&key), 1)).unwrap(),
         ModeCheck::Plain
     );
     assert_eq!(server.borrow().mode.as_deref(), Some("plain"));
@@ -1019,8 +1020,8 @@ fn a_device_with_the_wrong_key_catches_up_once_it_has_the_right_one() {
     a.create("Private", "text");
     a.sync();
     let mut c = Device::join(&server, Some(&LibraryKey::generate().recovery()));
-    assert!(!c.sync.cycle(&c.store).errors.is_empty());
-    assert!(!c.sync.cycle(&c.store).errors.is_empty());
+    assert!(!block_on(c.sync.cycle(&c.store)).errors.is_empty());
+    assert!(!block_on(c.sync.cycle(&c.store)).errors.is_empty());
     let attachments = Some(c.attachments.clone());
     rekey(&mut c, &server, lock_for(Some(&recovery)), attachments);
     c.sync();
@@ -1064,12 +1065,12 @@ fn an_older_form_of_the_library_is_refused() {
     let (_server, mut a, _b, recovery) = encrypted_pair();
     a.sync();
     let key = LibraryKey::from_recovery(&recovery).unwrap();
-    let mut keys = a.sync.remote.keys().unwrap();
+    let mut keys = block_on(a.sync.remote.keys()).unwrap();
     keys.epoch = 1;
     keys.mode = Some("plain".into());
     keys.recipient = None;
     assert!(matches!(
-        a.sync.check_mode(&keys, Some(&key), 2).unwrap(),
+        block_on(a.sync.check_mode(&keys, Some(&key), 2)).unwrap(),
         ModeCheck::Refuse(_)
     ));
 }
@@ -1081,14 +1082,12 @@ fn a_switch_to_plain_is_proven_even_when_the_marker_is_pages_away() {
         a.create(&format!("N{n}"), "x");
     }
     settle(&mut [&mut a, &mut b]);
-    a.sync
-        .switch_mode(&a.store, Lock::Plain, "plain", None)
-        .unwrap();
+    block_on(a.sync.switch_mode(&a.store, Lock::Plain, "plain", None)).unwrap();
     server.borrow_mut().page_limit = 5;
-    let keys = b.sync.remote.keys().unwrap();
+    let keys = block_on(b.sync.remote.keys()).unwrap();
     let key = LibraryKey::from_recovery(&recovery).unwrap();
     assert_eq!(
-        b.sync.check_mode(&keys, Some(&key), 1).unwrap(),
+        block_on(b.sync.check_mode(&keys, Some(&key), 1)).unwrap(),
         ModeCheck::Plain
     );
 }
@@ -1103,14 +1102,13 @@ fn a_switch_refused_because_another_device_wrote_is_retried() {
     server.borrow_mut().bump_before_switch = true;
     let key = LibraryKey::generate();
     let recipient = key.recipient();
-    a.sync
-        .switch_mode(
-            &a.store,
-            Lock::Encrypted(key),
-            "encrypted",
-            Some(&recipient),
-        )
-        .unwrap();
+    block_on(a.sync.switch_mode(
+        &a.store,
+        Lock::Encrypted(key),
+        "encrypted",
+        Some(&recipient),
+    ))
+    .unwrap();
     assert_eq!(server.borrow().epoch, 2);
     assert!(!server.borrow().bump_before_switch);
     a.sync();
@@ -1151,15 +1149,13 @@ fn a_switch_is_refused_when_this_device_cannot_read_everything() {
     }
     let key = LibraryKey::generate();
     let recipient = key.recipient();
-    assert!(a
-        .sync
-        .switch_mode(
-            &a.store,
-            Lock::Encrypted(key),
-            "encrypted",
-            Some(&recipient)
-        )
-        .is_err());
+    assert!(block_on(a.sync.switch_mode(
+        &a.store,
+        Lock::Encrypted(key),
+        "encrypted",
+        Some(&recipient)
+    ))
+    .is_err());
     let s = server.borrow();
     assert_eq!(s.epoch, 1);
     assert!(s.objects.contains_key(&(1, "f".repeat(64))));
@@ -1176,18 +1172,16 @@ fn a_device_without_the_attachments_cannot_switch_them_away() {
     a.sync();
     let mut c = Device::join(&server, None);
     rekey(&mut c, &server, Lock::Plain, None);
-    c.sync.cycle(&c.store);
+    block_on(c.sync.cycle(&c.store));
     let key = LibraryKey::generate();
     let recipient = key.recipient();
-    assert!(c
-        .sync
-        .switch_mode(
-            &c.store,
-            Lock::Encrypted(key),
-            "encrypted",
-            Some(&recipient)
-        )
-        .is_err());
+    assert!(block_on(c.sync.switch_mode(
+        &c.store,
+        Lock::Encrypted(key),
+        "encrypted",
+        Some(&recipient)
+    ))
+    .is_err());
     assert_eq!(server.borrow().epoch, 1);
     let mut d = Device::join(&server, None);
     d.sync();

@@ -61,16 +61,22 @@ impl std::fmt::Display for RemoteError {
     }
 }
 
+#[allow(async_fn_in_trait)]
 pub trait Remote {
-    fn changes(&mut self, since: i64) -> Result<RemoteChanges, RemoteError>;
+    async fn changes(&mut self, since: i64) -> Result<RemoteChanges, RemoteError>;
     fn max_object_bytes(&self) -> u64;
-    fn missing(&mut self, shas: &[String]) -> Result<Vec<String>, RemoteError>;
-    fn upload(&mut self, blobs: &[(String, Vec<u8>)]) -> Result<(), RemoteError>;
-    fn download(&mut self, shas: &[String]) -> Result<Vec<(String, Vec<u8>)>, RemoteError>;
-    fn commit(&mut self, epoch: i64, ops: &[RemoteOp], reset: bool) -> Result<i64, RemoteError>;
-    fn keys(&mut self) -> Result<RemoteKeys, RemoteError>;
-    fn set_keys(&mut self, mode: &str, recipient: Option<&str>) -> Result<(), RemoteError>;
-    fn switch(
+    async fn missing(&mut self, shas: &[String]) -> Result<Vec<String>, RemoteError>;
+    async fn upload(&mut self, blobs: &[(String, Vec<u8>)]) -> Result<(), RemoteError>;
+    async fn download(&mut self, shas: &[String]) -> Result<Vec<(String, Vec<u8>)>, RemoteError>;
+    async fn commit(
+        &mut self,
+        epoch: i64,
+        ops: &[RemoteOp],
+        reset: bool,
+    ) -> Result<i64, RemoteError>;
+    async fn keys(&mut self) -> Result<RemoteKeys, RemoteError>;
+    async fn set_keys(&mut self, mode: &str, recipient: Option<&str>) -> Result<(), RemoteError>;
+    async fn switch(
         &mut self,
         from_epoch: i64,
         built_at: i64,

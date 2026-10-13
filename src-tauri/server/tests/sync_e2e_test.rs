@@ -2,7 +2,7 @@ use instantnotes_core::sync::crypto::{join_words, JoinKey, LibraryKey, Lock};
 use instantnotes_core::sync::cycle::{ServerSync, SyncReport, ENCRYPTED};
 use instantnotes_core::types::*;
 use instantnotes_core::Store;
-use instantnotes_server::client::{pkce, Blocking, Client, JoinAnswer};
+use instantnotes_server::client::{pkce, Client, Connection, JoinAnswer};
 use reqwest::header::{COOKIE, LOCATION, SET_COOKIE};
 use std::collections::BTreeMap;
 use std::sync::Mutex;
@@ -123,27 +123,33 @@ async fn sign_in(s: &Setup, device: &str) -> String {
 
 struct Device {
     store: Mutex<Store>,
-    sync: ServerSync<Blocking>,
+    sync: ServerSync<Connection>,
+    runtime: tokio::runtime::Handle,
 }
 
-fn device(s: &Setup, token: &str, lock: Lock) -> Device {
+fn device(s: &Setup, runtime: &tokio::runtime::Runtime, token: &str, lock: Lock) -> Device {
     let client = Client::new(&s.server).unwrap().with_token(token);
     let mut store = Store::open_in_memory().unwrap();
     store.begin_server_sync().unwrap();
     Device {
         store: Mutex::new(store),
-        sync: ServerSync::new(Blocking::new(client, 64 * 1024 * 1024).unwrap(), lock, None),
+        sync: ServerSync::new(Connection::new(client, 64 * 1024 * 1024), lock, None),
+        runtime: runtime.handle().clone(),
     }
 }
 
 impl Device {
+    fn cycle(&mut self) -> SyncReport {
+        self.runtime.block_on(self.sync.cycle(&self.store))
+    }
+
     fn sync(&mut self) -> SyncReport {
-        let mut report = self.sync.cycle(&self.store);
+        let mut report = self.cycle();
         for _ in 0..3 {
             if !report.retry {
                 break;
             }
-            report = self.sync.cycle(&self.store);
+            report = self.cycle();
         }
         assert!(report.errors.is_empty(), "sync errors: {:?}", report.errors);
         assert!(report.unreachable.is_none(), "{:?}", report.unreachable);
@@ -225,6 +231,7 @@ fn two_desktops_share_one_encrypted_library_through_the_real_server() {
         .unwrap();
     let mut a = device(
         &s,
+        &runtime,
         &token_a,
         Lock::Encrypted(LibraryKey::from_recovery(&key.recovery()).unwrap()),
     );
@@ -254,7 +261,7 @@ fn two_desktops_share_one_encrypted_library_through_the_real_server() {
         other => panic!("not approved: {other:?}"),
     };
     let b_key = joining.unwrap(&wrapped, &named).unwrap();
-    let mut b = device(&s, &token_b, Lock::Encrypted(b_key));
+    let mut b = device(&s, &runtime, &token_b, Lock::Encrypted(b_key));
 
     let from_a = a.create("From the laptop", "e2e-marker written on the laptop");
     b.create("From the desktop", "e2e-marker written on the desktop");
@@ -279,13 +286,13 @@ fn two_desktops_share_one_encrypted_library_through_the_real_server() {
     let real = std::mem::replace(
         &mut b.sync,
         ServerSync::new(
-            Blocking::new(offline_client, 64 * 1024 * 1024).unwrap(),
+            Connection::new(offline_client, 64 * 1024 * 1024),
             Lock::Plain,
             None,
         ),
     );
     b.edit(&from_a.id, "e2e-marker edited while offline");
-    assert!(b.sync.cycle(&b.store).unreachable.is_some());
+    assert!(b.cycle().unreachable.is_some());
     b.sync = real;
     b.sync();
     a.sync();

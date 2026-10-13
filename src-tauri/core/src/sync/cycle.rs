@@ -97,11 +97,11 @@ impl<R: Remote> ServerSync<R> {
         self.allow_removals = true;
     }
 
-    fn everything(&mut self) -> Result<RemoteChanges, RemoteError> {
-        let mut all = self.remote.changes(0)?;
+    async fn everything(&mut self) -> Result<RemoteChanges, RemoteError> {
+        let mut all = self.remote.changes(0).await?;
         while all.more {
             let since = all.changes.last().map(|c| c.seq).unwrap_or(0);
-            let page = self.remote.changes(since)?;
+            let page = self.remote.changes(since).await?;
             all.more = page.more;
             all.head = page.head;
             all.changes.extend(page.changes);
@@ -109,7 +109,7 @@ impl<R: Remote> ServerSync<R> {
         Ok(all)
     }
 
-    pub fn check_mode(
+    pub async fn check_mode(
         &mut self,
         keys: &RemoteKeys,
         key: Option<&LibraryKey>,
@@ -131,7 +131,7 @@ impl<R: Remote> ServerSync<R> {
             },
             (Some(PLAIN), None) => Ok(ModeCheck::Plain),
             (Some(PLAIN), Some(key)) => {
-                let all = self.everything()?;
+                let all = self.everything().await?;
                 let name = Lock::Plain.name(MODE_KEY);
                 let marker = all
                     .changes
@@ -142,7 +142,8 @@ impl<R: Remote> ServerSync<R> {
                 let proven = match marker {
                     Some(sha) => self
                         .remote
-                        .download(std::slice::from_ref(&sha))?
+                        .download(std::slice::from_ref(&sha))
+                        .await?
                         .into_iter()
                         .find(|(s, _)| *s == sha)
                         .and_then(|(_, bytes)| Envelope::decode(&bytes))
@@ -164,14 +165,12 @@ impl<R: Remote> ServerSync<R> {
         }
     }
 
-    pub fn cycle(&mut self, store: &impl StoreLock) -> SyncReport {
+    pub async fn cycle(&mut self, store: &impl StoreLock) -> SyncReport {
         let mut report = SyncReport::default();
-        let outcome = self
-            .pull(store, &mut report)
-            .and_then(|()| match report.mode_changed {
-                true => Ok(()),
-                false => self.push(store, &mut report),
-            });
+        let outcome = match self.pull(store, &mut report).await {
+            Ok(()) if !report.mode_changed => self.push(store, &mut report).await,
+            other => other,
+        };
         if let Err(e) = outcome {
             match e {
                 RemoteError::Unreachable(why) => report.unreachable = Some(why),
@@ -187,13 +186,17 @@ impl<R: Remote> ServerSync<R> {
         report
     }
 
-    fn pull(&mut self, store: &impl StoreLock, report: &mut SyncReport) -> Result<(), RemoteError> {
+    async fn pull(
+        &mut self,
+        store: &impl StoreLock,
+        report: &mut SyncReport,
+    ) -> Result<(), RemoteError> {
         let mut state = with(store, |s| s.sync_state())?;
         let mut since = state.cursor;
         let mut reset = false;
         let mut changes: Vec<RemoteChange> = Vec::new();
         let head = loop {
-            let page = match self.remote.changes(since) {
+            let page = match self.remote.changes(since).await {
                 Err(RemoteError::Gone) => {
                     let id = state.library_id.clone();
                     self.reset(store, &mut state, id, None)?;
@@ -280,7 +283,7 @@ impl<R: Remote> ServerSync<R> {
         for batch in wanted.chunks(DOWNLOAD_BATCH) {
             let shas: Vec<String> = batch.iter().filter_map(|c| c.sha.clone()).collect();
             let fetched: HashMap<String, Vec<u8>> =
-                self.remote.download(&shas)?.into_iter().collect();
+                self.remote.download(&shas).await?.into_iter().collect();
             for change in batch {
                 let sha = change.sha.clone().unwrap_or_default();
                 let applied = match fetched.get(&sha) {
@@ -432,12 +435,12 @@ impl<R: Remote> ServerSync<R> {
         out
     }
 
-    fn upload(&mut self, sealed: &[Sealed]) -> Result<(), RemoteError> {
+    async fn upload(&mut self, sealed: &[Sealed]) -> Result<(), RemoteError> {
         let shas: Vec<String> = sealed.iter().filter_map(|s| s.sha.clone()).collect();
         if shas.is_empty() {
             return Ok(());
         }
-        let missing = self.remote.missing(&shas)?;
+        let missing = self.remote.missing(&shas).await?;
         let blobs: Vec<(String, Vec<u8>)> = sealed
             .iter()
             .filter_map(|s| match (&s.sha, &s.bytes) {
@@ -450,7 +453,7 @@ impl<R: Remote> ServerSync<R> {
         if blobs.is_empty() {
             return Ok(());
         }
-        self.remote.upload(&blobs)
+        self.remote.upload(&blobs).await
     }
 
     fn ops(batch: &[Sealed], staging: bool) -> Vec<RemoteOp> {
@@ -468,7 +471,11 @@ impl<R: Remote> ServerSync<R> {
             .collect()
     }
 
-    fn push(&mut self, store: &impl StoreLock, report: &mut SyncReport) -> Result<(), RemoteError> {
+    async fn push(
+        &mut self,
+        store: &impl StoreLock,
+        report: &mut SyncReport,
+    ) -> Result<(), RemoteError> {
         let dir = self.attachments.clone();
         let pending = with(store, |s| s.pending_server_pushes(dir.as_deref()))?;
         let mut state = with(store, |s| s.sync_state())?;
@@ -479,9 +486,10 @@ impl<R: Remote> ServerSync<R> {
             if sealed.is_empty() {
                 continue;
             }
-            self.upload(&sealed)?;
+            self.upload(&sealed).await?;
             self.remote
-                .commit(state.epoch, &Self::ops(&sealed, false), false)?;
+                .commit(state.epoch, &Self::ops(&sealed, false), false)
+                .await?;
             with(store, |st| {
                 for s in &sealed {
                     st.server_pushed(&s.pending, &s.name, s.sha.as_deref())?;
@@ -497,13 +505,13 @@ impl<R: Remote> ServerSync<R> {
         Ok(())
     }
 
-    fn holds_everything(
+    async fn holds_everything(
         &mut self,
         store: &impl StoreLock,
         staged: &[Pending],
     ) -> Result<(), RemoteError> {
         let marker = Lock::Plain.name(MODE_KEY);
-        let all = self.everything()?;
+        let all = self.everything().await?;
         let mut live: BTreeMap<String, bool> = BTreeMap::new();
         for change in all.changes {
             live.insert(change.name, change.sha.is_some());
@@ -523,7 +531,7 @@ impl<R: Remote> ServerSync<R> {
         }
     }
 
-    pub fn switch_mode(
+    pub async fn switch_mode(
         &mut self,
         store: &impl StoreLock,
         lock: Lock,
@@ -535,9 +543,9 @@ impl<R: Remote> ServerSync<R> {
         loop {
             tries += 1;
             let mut report = SyncReport::default();
-            self.pull(store, &mut report)?;
-            self.push(store, &mut report)?;
-            self.pull(store, &mut report)?;
+            self.pull(store, &mut report).await?;
+            self.push(store, &mut report).await?;
+            self.pull(store, &mut report).await?;
             if !report.errors.is_empty() || !report.too_large.is_empty() || report.held_removals > 0
             {
                 return Err(RemoteError::Refused(format!(
@@ -552,7 +560,7 @@ impl<R: Remote> ServerSync<R> {
             let state = with(store, |s| s.sync_state())?;
             let dir = self.attachments.clone();
             let mut everything = with(store, |s| s.all_server_objects(dir.as_deref()))?;
-            self.holds_everything(store, &everything)?;
+            self.holds_everything(store, &everything).await?;
             if let (Lock::Encrypted(old), Lock::Plain) = (&self.lock, &next) {
                 let text = plain_proof_text(
                     state.library_id.as_deref().unwrap_or_default(),
@@ -578,19 +586,26 @@ impl<R: Remote> ServerSync<R> {
                     ));
                     break;
                 }
-                staged = self.upload(&sealed).and_then(|()| {
-                    self.remote
+                staged = match self.upload(&sealed).await {
+                    Ok(()) => self
+                        .remote
                         .commit(state.epoch + 1, &Self::ops(&sealed, true), first)
-                        .map(|_| ())
-                });
+                        .await
+                        .map(|_| ()),
+                    Err(e) => Err(e),
+                };
                 first = false;
                 staged_items.extend(sealed);
             }
             let expected = staged_items.len();
-            let switched = staged.and_then(|()| {
-                self.remote
-                    .switch(state.epoch, state.cursor, mode, recipient, expected)
-            });
+            let switched = match staged {
+                Ok(()) => {
+                    self.remote
+                        .switch(state.epoch, state.cursor, mode, recipient, expected)
+                        .await
+                }
+                Err(e) => Err(e),
+            };
             match switched {
                 Ok(epoch) => {
                     let saved = SyncState {

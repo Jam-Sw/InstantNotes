@@ -73,7 +73,9 @@ pub(crate) fn start_vault_sync(app: &AppHandle) -> VaultSync {
                     if link.allow_removals.swap(false, Ordering::Relaxed) {
                         server.sync.confirm_removals();
                     }
-                    let report = server.sync.cycle(&handle.state::<AppState>().store);
+                    let report = tauri::async_runtime::block_on(
+                        server.sync.cycle(&handle.state::<AppState>().store),
+                    );
                     record_report(&handle, &report);
                     announce(&handle, &report.notes, report.labels_changed);
                     if report.mode_changed || report.signed_out {

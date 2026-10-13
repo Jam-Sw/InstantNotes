@@ -3,8 +3,8 @@ use instantnotes_core::store::iso;
 use instantnotes_core::store::server_sync::MergeReview;
 use instantnotes_core::sync::crypto::{join_words, JoinKey, LibraryKey, Lock};
 use instantnotes_core::sync::cycle::{ModeCheck, ServerSync, SyncReport, ENCRYPTED, PLAIN};
-use instantnotes_core::sync::remote::{Remote, RemoteError};
-use instantnotes_server::client::{callback_query, pkce, Blocking, Client, Device, JoinAnswer};
+use instantnotes_core::sync::remote::RemoteError;
+use instantnotes_server::client::{callback_query, pkce, Client, Connection, Device, JoinAnswer};
 use serde::Deserialize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -713,7 +713,7 @@ fn switch_encryption(
 ) -> CmdResult<Option<String>> {
     let link = link(app);
     let _engine = link.engine.lock().unwrap_or_else(|e| e.into_inner());
-    let remote = blocking_remote(settings)?;
+    let remote = connection(settings)?;
     let current = lock_from_keychain(settings);
     let state = app.state::<AppState>();
     let mut sync = ServerSync::new(remote, current, attachments_dir(app).ok());
@@ -730,8 +730,13 @@ fn switch_encryption(
     } else {
         (Lock::Plain, PLAIN, None, None)
     };
-    sync.switch_mode(&state.store, next, mode, recipient.as_deref())
-        .map_err(remote_error)?;
+    tauri::async_runtime::block_on(sync.switch_mode(
+        &state.store,
+        next,
+        mode,
+        recipient.as_deref(),
+    ))
+    .map_err(remote_error)?;
     match &recovery {
         Some(r) => keychain_set(settings, "key", r).map_err(CmdError::storage)?,
         None => keychain_delete(settings, "key"),
@@ -749,16 +754,14 @@ pub(crate) fn lock_from_keychain(settings: &ServerSettings) -> Lock {
     }
 }
 
-pub(crate) fn blocking_remote(settings: &ServerSettings) -> CmdResult<Blocking> {
+pub(crate) fn connection(settings: &ServerSettings) -> CmdResult<Connection> {
     let client = client_for(settings)?;
-    let blocking = Blocking::new(client, 0).map_err(|e| CmdError::storage(e.to_string()))?;
-    let info = blocking.run(blocking.client.info()).map_err(remote_error)?;
-    Blocking::new(blocking.client.clone(), info.max_object_bytes)
-        .map_err(|e| CmdError::storage(e.to_string()))
+    let info = tauri::async_runtime::block_on(client.info()).map_err(remote_error)?;
+    Ok(Connection::new(client, info.max_object_bytes))
 }
 
 pub(crate) struct ServerEngine {
-    pub sync: ServerSync<Blocking>,
+    pub sync: ServerSync<Connection>,
     pub settings: ServerSettings,
 }
 
@@ -779,7 +782,7 @@ pub(crate) fn build_engine(app: &AppHandle) -> Option<ServerEngine> {
         return None;
     }
     let mode = settings.mode.clone()?;
-    let mut remote = match blocking_remote(&settings) {
+    let remote = match connection(&settings) {
         Ok(r) => r,
         Err(e) => {
             link(app).set(|s| {
@@ -790,7 +793,7 @@ pub(crate) fn build_engine(app: &AppHandle) -> Option<ServerEngine> {
         }
     };
     let key = keychain_get(&settings, "key").and_then(|t| LibraryKey::from_recovery(&t).ok());
-    let keys = match remote.keys() {
+    let keys = match tauri::async_runtime::block_on(remote.client.keys()) {
         Ok(keys) => keys,
         Err(e) => {
             link(app).set(|s| {
@@ -821,7 +824,7 @@ pub(crate) fn build_engine(app: &AppHandle) -> Option<ServerEngine> {
         .filter(|st| st.library_id.as_deref() == Some(keys.library_id.as_str()))
         .map(|st| st.epoch)
         .unwrap_or(0);
-    match sync.check_mode(&keys, key.as_ref(), known_epoch) {
+    match tauri::async_runtime::block_on(sync.check_mode(&keys, key.as_ref(), known_epoch)) {
         Ok(ModeCheck::Encrypted) if mode == ENCRYPTED => {}
         Ok(ModeCheck::Plain) if mode == PLAIN => {}
         Ok(ModeCheck::Plain) => {
@@ -890,7 +893,7 @@ pub(crate) fn watch_server(
         let settings = settings.clone();
         let stop = Arc::clone(&stop);
         std::thread::spawn(move || {
-            let Ok(remote) = blocking_remote(&settings) else {
+            let Ok(remote) = connection(&settings) else {
                 return;
             };
             let mut last = None;
@@ -901,7 +904,7 @@ pub(crate) fn watch_server(
                     .map(|st| st.cursor)
                     .unwrap_or(0);
                 let since = last.map_or(cursor, |seen: i64| seen.max(cursor));
-                match remote.run(remote.client.changes(since, LONG_POLL)) {
+                match tauri::async_runtime::block_on(remote.client.changes(since, LONG_POLL)) {
                     Ok(page) => {
                         if page.head > since || !page.changes.is_empty() {
                             request_vault_sync(&app);
@@ -919,7 +922,7 @@ pub(crate) fn watch_server(
         })
     };
     std::thread::spawn(move || {
-        let Ok(remote) = blocking_remote(&settings) else {
+        let Ok(remote) = connection(&settings) else {
             return;
         };
         let mut shown: Vec<String> = Vec::new();
@@ -931,7 +934,7 @@ pub(crate) fn watch_server(
                 std::thread::sleep(Duration::from_secs(30));
                 continue;
             };
-            match remote.run(remote.client.pending_joins(LONG_POLL)) {
+            match tauri::async_runtime::block_on(remote.client.pending_joins(LONG_POLL)) {
                 Ok(joins) => {
                     let ids: Vec<String> = joins.iter().map(|j| j.id.clone()).collect();
                     if ids != shown {

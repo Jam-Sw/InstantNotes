@@ -2728,6 +2728,7 @@ dependencies = [
  "age",
  "base64 0.22.1",
  "chrono",
+ "futures-executor",
  "getrandom 0.2.17",
  "hkdf 0.13.0",
  "hmac 0.13.0",

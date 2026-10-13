@@ -11,6 +11,7 @@
   import WelcomeScreen from "$lib/components/WelcomeScreen.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
+  import SyncJoinDialog from "$lib/components/SyncJoinDialog.svelte";
   import Toast from "$lib/components/Toast.svelte";
   import AgentNote from "$lib/components/AgentNote.svelte";
   import { agentsSpace } from "$lib/stores/agents-space";
@@ -407,6 +408,7 @@
 
 <CommandPalette bind:open={paletteOpen} />
 <ConfirmDialog />
+<SyncJoinDialog />
 <Toast />
 
 <style>
