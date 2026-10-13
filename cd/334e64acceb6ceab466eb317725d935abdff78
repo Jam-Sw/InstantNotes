@@ -1,0 +1,36 @@
+src-tauri/src/shell/server.rs
+  s_78f0975e18f204::t_5c60f2e1d3c3ca 629
+  s_78f0975e18f204::t_59aec3cbbb0b08 79
+  s_78f0975e18f204::t_dd5b150c97d810 100-107,1212,1221
+  s_78f0975e18f204::t_65292978c4a807 861,878-883,890
+  s_78f0975e18f204::t_bf0c81cb3a7f75 108-114,554,570-574,607-609,620-621,630-631,635-636,850-860,884-889,1151-1153,1209-1211,1213-1220,1222-1240
+src/lib/web/sync.test.ts
+  s_78f0975e18f204::t_67049144a031df 168-173,175-193
+  s_78f0975e18f204::t_13de447093cc3b 174
+CHANGELOG.md
+  s_78f0975e18f204::t_2618a891001a2c 45-51
+docs/API.md
+  s_78f0975e18f204::t_2f5d45314b0474 409-410
+src/lib/components/settings/SyncServer.svelte
+  s_78f0975e18f204::t_e5cd8b14afa519 100-106,310-336,430,441
+src/lib/components/settings/SyncServer.test.ts
+  s_78f0975e18f204::t_505def17e332b5 243,247,249-252,256-269,274-276
+src/lib/web/sync.ts
+  s_78f0975e18f204::t_3ef7721421107a 64,359,370,372,478,494-496,499-500
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cd334e64acceb6ceab466eb317725d935abdff78",
+  "prompts": {},
+  "sessions": {
+    "s_78f0975e18f204": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8588110-69b5-41b5-b1c4-53a3f029dcb4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
