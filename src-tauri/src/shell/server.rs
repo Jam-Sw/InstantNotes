@@ -45,6 +45,8 @@ pub(crate) struct ServerStatus {
     pub conflicts: usize,
     pub held_removals: usize,
     pub too_large: Vec<String>,
+    pub local_notes: usize,
+    pub server_items: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -62,6 +64,13 @@ pub(crate) struct ServerLink {
     pub(crate) engine: Mutex<()>,
     pub(crate) allow_removals: std::sync::atomic::AtomicBool,
     cancel: Mutex<Option<tokio::sync::watch::Sender<bool>>>,
+    pending: Mutex<Option<PendingJoin>>,
+}
+
+struct PendingJoin {
+    settings: ServerSettings,
+    token: String,
+    encrypt: bool,
 }
 
 impl ServerLink {
@@ -322,11 +331,95 @@ pub(crate) async fn connect_sync_server(
     };
     keychain_set(&settings, "token", &issued.token).map_err(|e| fail(&e))?;
     let authed = client.clone().with_token(&issued.token);
+    let local_notes = {
+        let state = app.state::<AppState>();
+        let store = locked(&state)?;
+        store.count_notes(&NoteFilter::default())? as usize
+    };
+    let server_items = live_items(&authed)
+        .await
+        .map_err(|e| fail(&e.to_string()))?;
+    if local_notes > 0 && server_items > 0 {
+        *link(&app).pending.lock().unwrap_or_else(|e| e.into_inner()) = Some(PendingJoin {
+            settings: settings.clone(),
+            token: issued.token.clone(),
+            encrypt,
+        });
+        let status = ServerStatus {
+            stage: "confirmJoin".into(),
+            address: Some(settings.address.clone()),
+            person: settings.name.clone().or(settings.email.clone()),
+            local_notes,
+            server_items,
+            ..ServerStatus::default()
+        };
+        link(&app).set(|s| *s = status.clone());
+        let _ = app.emit(events::VAULT_STATUS, ());
+        return Ok(status);
+    }
+    finish_connect(&app, settings, authed, encrypt).await
+}
+
+async fn live_items(client: &Client) -> Result<usize, RemoteError> {
+    let mut since = 0;
+    let mut live = 0;
+    loop {
+        let page = client.changes(since, 0).await?;
+        live += page.changes.iter().filter(|c| c.sha.is_some()).count();
+        since = page.changes.last().map_or(since, |c| c.seq);
+        if !page.more {
+            return Ok(live);
+        }
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn confirm_sync_join(app: AppHandle, combine: bool) -> CmdResult<ServerStatus> {
+    let pending = link(&app)
+        .pending
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take()
+        .ok_or_else(|| CmdError::storage("no join is waiting for an answer"))?;
+    let client = Client::new(&pending.settings.address)
+        .map_err(CmdError::storage)?
+        .with_token(&pending.token);
+    if !combine {
+        let _ = client.revoke(Some(&pending.settings.device_id)).await;
+        keychain_delete(&pending.settings, "token");
+        let status = ServerStatus {
+            stage: "off".into(),
+            ..ServerStatus::default()
+        };
+        link(&app).set(|s| *s = status.clone());
+        let _ = app.emit(events::VAULT_STATUS, ());
+        return Ok(status);
+    }
+    finish_connect(&app, pending.settings, client, pending.encrypt).await
+}
+
+async fn finish_connect(
+    app: &AppHandle,
+    settings: ServerSettings,
+    authed: Client,
+    encrypt: bool,
+) -> CmdResult<ServerStatus> {
+    let fail = |message: &str| {
+        link(app).set(|s| {
+            *s = ServerStatus {
+                stage: "off".into(),
+                message: Some(message.into()),
+                ..ServerStatus::default()
+            }
+        });
+        let _ = app.emit(events::VAULT_STATUS, ());
+        CmdError::storage(message)
+    };
     let keys = authed.keys().await.map_err(|e| fail(&e.to_string()))?;
     {
         let state = app.state::<AppState>();
         let mut store = locked(&state)?;
-        backup_library(&app, &store)?;
+        backup_library(app, &store)?;
         store.configure_vault(None)?;
         store.set_setting(TRANSPORT_SETTING, serde_json::Value::String(SERVER.into()))?;
         save_settings(&mut store, &settings)?;
@@ -345,7 +438,7 @@ pub(crate) async fn connect_sync_server(
                 .await
                 .map_err(|e| fail(&e.to_string()))?;
             keychain_set(&settings, "key", &key.recovery()).map_err(|e| fail(&e))?;
-            set_mode(&app, ENCRYPTED)?;
+            set_mode(app, ENCRYPTED)?;
             status.stage = "recoveryKey".into();
             status.encrypted = true;
             status.recovery_key = Some(key.recovery());
@@ -355,7 +448,7 @@ pub(crate) async fn connect_sync_server(
                 .set_keys(PLAIN, None)
                 .await
                 .map_err(|e| fail(&e.to_string()))?;
-            set_mode(&app, PLAIN)?;
+            set_mode(app, PLAIN)?;
             status.stage = "syncing".into();
         }
         Some(ENCRYPTED) => {
@@ -364,13 +457,13 @@ pub(crate) async fn connect_sync_server(
         }
         Some(_) if encrypt => status.stage = "confirmPlain".into(),
         Some(_) => {
-            set_mode(&app, PLAIN)?;
+            set_mode(app, PLAIN)?;
             status.stage = "syncing".into();
         }
     }
-    link(&app).set(|s| *s = status.clone());
+    link(app).set(|s| *s = status.clone());
     let _ = app.emit(events::VAULT_STATUS, ());
-    request_vault_sync(&app);
+    request_vault_sync(app);
     Ok(status)
 }
 

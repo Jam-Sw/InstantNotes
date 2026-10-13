@@ -29,6 +29,9 @@ import type {
   Tag,
   TagWithCount,
   UpdateNotePatch,
+  MergeReview,
+  SyncDevice,
+  SyncServerStatus,
   VaultReport,
   VaultStatus,
   Workspace,
@@ -265,6 +268,33 @@ export const setVaultFolder = (path: string | null) =>
   call<VaultStatus>("set_vault_folder", { path });
 export const verifyVault = () => call<VaultReport>("verify_vault");
 export const confirmVaultRemovals = () => call<VaultStatus>("confirm_vault_removals");
+
+export const getSyncServerStatus = () => call<SyncServerStatus>("get_sync_server_status");
+export const connectSyncServer = (address: string, encrypt: boolean) =>
+  call<SyncServerStatus>("connect_sync_server", { address, encrypt });
+export const confirmSyncJoin = (combine: boolean) =>
+  call<SyncServerStatus>("confirm_sync_join", { combine });
+export const cancelSyncSignIn = () => call<void>("cancel_sync_sign_in");
+export const confirmRecoverySaved = () => call<void>("confirm_recovery_saved");
+export const showRecoveryKey = () => call<string>("show_recovery_key");
+export const startSyncJoin = () => call<SyncServerStatus>("start_sync_join");
+export const enterRecoveryKey = (text: string) =>
+  call<SyncServerStatus>("enter_recovery_key", { text });
+export const acceptPlainServer = () => call<void>("accept_plain_server");
+export const disconnectSyncServer = () => call<void>("disconnect_sync_server");
+export const listSyncDevices = () => call<SyncDevice[]>("list_sync_devices");
+export const revokeSyncDevice = (id: string | null) => call<void>("revoke_sync_device", { id });
+export const answerSyncJoin = (id: string, publicKey: string, approve: boolean) =>
+  call<void>("answer_sync_join", { id, publicKey, approve });
+export const confirmSyncRemovals = () => call<void>("confirm_sync_removals");
+export const setSyncEncryption = (on: boolean) =>
+  call<SyncServerStatus>("set_sync_encryption", { on });
+export const getMergeReview = () => call<MergeReview>("get_merge_review");
+export const settleMergePair = (a: string, b: string, keep: string | null) =>
+  call<MergeReview>("settle_merge_pair", { a, b, keep });
+export const undoMergeCombine = (trashed: string) =>
+  call<MergeReview>("undo_merge_combine", { trashed });
+export const clearMergeReview = () => call<void>("clear_merge_review");
 
 export const stickiesLocation = () => call<string | null>("stickies_location");
 export const scanStickies = (folder: string) => call<StickiesScan>("scan_stickies", { folder });

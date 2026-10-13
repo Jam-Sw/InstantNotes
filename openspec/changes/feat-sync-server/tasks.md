@@ -1,78 +1,79 @@
 # Tasks: Sync Server
 
-Every decision in design §14 is made. Blocked on the owner's approval of the
-plan. Ships in 0.10.0: built on `feat/sync-server`, merged locally into
+Every decision in design §14 is made; the owner approved the plan on
+2026-10-12 with three changes (identity re-check, the iPhone spike first,
+full paths in reports). Ships in 0.10.0: built on `feat/sync-server`, merged locally into
 `0.10.0-pre` when done; nothing pushed.
 
 ## 0. Before building
 
-- [ ] Owner's answers recorded in `design.md` §14
-- [ ] Generic names where 0.10.0-pre names the maintainer's server or tailnet: `SEQUENCE.md` (unit 9 note), `feat-vault-sync/tasks.md` (the two-device check), `SettingsVault.test.ts` and `vault-mirror.test.ts` fixtures
-- [ ] `feat-vault-sync/tasks.md`: delete the in-app check of the desktop app and the web app on one person folder (the server-side folder sync it checks is removed, D3)
+- [x] Owner's answers recorded in `design.md` §14
+- [x] Generic names where 0.10.0-pre names the maintainer's server or tailnet: `SEQUENCE.md` (unit 9 note), `feat-vault-sync/tasks.md` (the two-device check), `SettingsVault.test.ts` and `vault-mirror.test.ts` fixtures
+- [x] `feat-vault-sync/tasks.md`: delete the in-app check of the desktop app and the web app on one person folder (the server-side folder sync it checks is removed, D3)
 - [ ] Draft for the owner: PR #78's new title and body (Summary, Changes, ADDED Requirements, Scenario, Verification) covering folder sync and Sync server; the owner edits GitHub
 
 ## 1. Identity provider tokens (`instantnotes-server`)
 
-- [ ] `oidc.rs`: id_token verified with `jsonwebtoken` against the discovery `jwks_uri` (design §5.4); `parse_claims` deleted
-- [ ] Tests with a throwaway signing key: valid accepted; wrong key, `alg: none`, HMAC, wrong issuer, audience, `azp`, nonce, expired, not yet valid each refused
+- [x] `oidc.rs`: id_token verified with `jsonwebtoken` against the discovery `jwks_uri` (design §5.4); `parse_claims` deleted
+- [x] Tests with a throwaway signing key: valid accepted; wrong key, `alg: none`, HMAC, wrong issuer, audience, `azp`, nonce, expired, not yet valid each refused
 
 ## 2. Grants, HTTPS, limits (`instantnotes-server`)
 
-- [ ] `server.db`: hashed browser sessions (surviving a restart) and device tokens (`ins_`, 180 days unused, 100 per person)
-- [ ] HTTPS rule for `INSTANTNOTES_PUBLIC_URL`; HSTS
-- [ ] `governor` limits (design §11); `INSTANTNOTES_TRUST_PROXY`
-- [ ] `/healthz` checks the data folder and `server.db`
-- [ ] Tests for each
+- [x] `server.db`: hashed browser sessions (surviving a restart) and device tokens (`ins_`, 180 days unused, 100 per person)
+- [x] HTTPS rule for `INSTANTNOTES_PUBLIC_URL`; HSTS
+- [x] `governor` limits (design §11); `INSTANTNOTES_TRUST_PROXY`
+- [x] `/healthz` checks the data folder and `server.db`
+- [x] Tests for each
 
 ## 2a. Identity re-check (design §5.6)
 
-- [ ] `offline_access` requested when discovery lists it; the refresh token stored per person, encrypted at rest (XChaCha20-Poly1305, key by HKDF from the client secret), replaced on every sign-in and every refresh
-- [ ] Hourly re-check of every person with a live device token or session, spread over the hour, at most four at once
-- [ ] Accepted: rotated token saved in the same transaction; new id_token verified, same `sub`
-- [ ] Refused (`400`/`401` with `invalid_grant`, `access_denied` or `invalid_request`): all device tokens, sessions and join requests of that person revoked, refresh token deleted, `auth.refused` logged, stored data untouched
-- [ ] Misconfigured (any other 4xx, including `invalid_client` and `429`): nothing revoked, logged, `/healthz` 503 until a re-check succeeds
-- [ ] Breaker: more than half and more than three refused in one hour stops revoking for that hour, logged, on `/healthz`
-- [ ] Unreachable (network error, timeout, 5xx): nothing revoked, logged once per outage, retried next hour
-- [ ] No refresh token: device tokens and sessions of that person need a fresh sign-in 24 hours after the last one; status says why
-- [ ] Tests against a fake provider: refused (each of `invalid_grant`, `invalid_request`, `access_denied`), accepted (rotation saved, data untouched), unreachable (connection refused, timeout, 500), misconfigured (`invalid_client`, `429`), the breaker, no refresh token (24-hour limit), a changed client secret
+- [x] `offline_access` requested when discovery lists it; the refresh token stored per person, encrypted at rest (XChaCha20-Poly1305, key by HKDF from the client secret), replaced on every sign-in and every refresh
+- [x] Hourly re-check of every person with a live device token or session, spread over the hour, at most four at once
+- [x] Accepted: rotated token saved in the same transaction; new id_token verified, same `sub`
+- [x] Refused (`400`/`401` with `invalid_grant`, `access_denied` or `invalid_request`): all device tokens, sessions and join requests of that person revoked, refresh token deleted, `auth.refused` logged, stored data untouched
+- [x] Misconfigured (any other 4xx, including `invalid_client` and `429`): nothing revoked, logged, `/healthz` 503 until a re-check succeeds
+- [x] Breaker: more than half and more than three refused in one hour stops revoking for that hour, logged, on `/healthz`
+- [x] Unreachable (network error, timeout, 5xx): nothing revoked, logged once per outage, retried next hour
+- [x] No refresh token: device tokens and sessions of that person need a fresh sign-in 24 hours after the last one; status says why
+- [x] Tests against a fake provider: refused (each of `invalid_grant`, `invalid_request`, `access_denied`), accepted (rotation saved, data untouched), unreachable (connection refused, timeout, 500), misconfigured (`invalid_client`, `429`), the breaker, no refresh token (24-hour limit), a changed client secret
 - [ ] README line (design §12) replaces the old 180-day line
 
 ## 3. Encrypted object store and API (`instantnotes-server`)
 
-- [ ] `sync/<person>/index.db` and `blobs/`; per-person lock; WAL; hourly sweep
-- [ ] `info`, `changes` (commit-boundary pages, `wait`, `410`), `blobs/missing`, `PUT`/`GET blobs`, `commit` (all or nothing, bases, `409`), `devices`
-- [ ] `keys`, `keys/requests` (create, list with long-poll, approve, deny, wait; 10 min expiry; 5 a minute per person)
-- [ ] Name rule: 64 lowercase hex
-- [ ] Epochs and mode in `meta`; the `switch` commit (old-epoch head check, current epoch moved, old epoch's rows and blobs deleted at once); the recipient set and cleared with the mode
-- [ ] Tests: atomicity, bases, paging, long-poll wake, hash and size checks, name rule, request relay and expiry, sweep
-- [ ] `isolation_test.rs` rewritten for the object store (design §7)
+- [x] `sync/<person>/index.db` and `blobs/`; per-person lock; WAL; hourly sweep
+- [x] `info`, `changes` (commit-boundary pages, `wait`, `410`), `blobs/missing`, `PUT`/`GET blobs`, `commit` (all or nothing, bases, `409`), `devices`
+- [x] `keys`, `keys/requests` (create, list with long-poll, approve, deny, wait; 10 min expiry; 5 a minute per person)
+- [x] Name rule: 64 lowercase hex
+- [x] Epochs and mode in `meta`; the `switch` commit (old-epoch head check, current epoch moved, old epoch's rows and blobs deleted at once); the recipient set and cleared with the mode
+- [x] Tests: atomicity, bases, paging, long-poll wake, hash and size checks, name rule, request relay and expiry, sweep
+- [x] `isolation_test.rs` rewritten for the object store (design §7)
 
 ## 4. Desktop sign-in (`instantnotes-server`)
 
-- [ ] `device/authorize` (loopback-only redirect), OIDC when no session, confirm page, `device/allow` (CSRF), one-time code, `device/token` with PKCE
-- [ ] Tests: non-loopback redirect, code reuse, wrong verifier, expired code each refused
+- [x] `device/authorize` (loopback-only redirect), OIDC when no session, confirm page, `device/allow` (CSRF), one-time code, `device/token` with PKCE
+- [x] Tests: non-loopback redirect, code reuse, wrong verifier, expired code each refused
 
 ## 5. Core (`instantnotes-core`)
 
-- [ ] 5.1 Split 0.10's ingest: reading files (Folder) from deciding and applying a note's bytes, so both providers share `decide`, `equivalent`, conflict copies, the removal guard; Folder's tests stay green unchanged
-- [ ] 5.2 `sync_objects` table (migration); settings keys
-- [ ] 5.3 `crypto.rs`: age encrypt and decrypt to the library recipient, padding (design §4.3), name key and names, join words from a public key; age test vectors
-- [ ] 5.4 `ServerSync::cycle` against `StoreLock` and a `Remote` trait: pull, decide, push, 409, rollback recovery (design §3)
-- [ ] 5.5 Join (design §8.1): the sorting table; exact copies combined with the local copy to the Trash and an undo; likely-same detection (prefix, `similar` ratio at 0.9 over 200 characters, never title alone); `sync.mergeReview`; the legacy move (§8.2)
-- [ ] 5.5a Encryption switch (design §4.10): plain objects when off; epochs; the switch-over in both directions, retried when the old epoch moved; other devices pausing for approval when turned on
+- [x] 5.1 Split 0.10's ingest: reading files (Folder) from deciding and applying a note's bytes, so both providers share `decide`, `equivalent`, conflict copies, the removal guard; Folder's tests stay green unchanged
+- [x] 5.2 `sync_objects` table (migration); settings keys
+- [x] 5.3 `crypto.rs`: age encrypt and decrypt to the library recipient, padding (design §4.3), name key and names, join words from both public keys; age test vectors
+- [x] 5.4 `ServerSync::cycle` against `StoreLock` and a `Remote` trait: pull, decide, push, 409, rollback recovery (design §3)
+- [ ] 5.5 Join (design §8.1) (done except the legacy move, which waits for section 8): the sorting table; exact copies combined with the local copy to the Trash and an undo; likely-same detection (prefix, `similar` ratio at 0.9 over 200 characters, never title alone); `sync.mergeReview`; the legacy move (§8.2)
+- [x] 5.5a Encryption switch (design §4.10): plain objects when off; epochs; the switch-over in both directions, retried when the old epoch moved; other devices pausing for approval when turned on
 - [ ] 5.6 Target-only `uuid/js` and `chrono/wasmbind`; `cargo check --target wasm32-unknown-unknown` in `check.sh`
-- [ ] 5.7 `core/tests/server_sync_test.rs` with an in-memory `Remote`: every case in design §13
+- [x] 5.7 `core/tests/server_sync_test.rs` with an in-memory `Remote`: every case in design §13
 
 ## 6. Desktop (`src-tauri`)
 
-- [ ] HTTP `Remote` (reqwest `blocking`, rustls): bearer token, `401` to signed out, `429`, backoff
-- [ ] `keyring` for token and key; no keychain: Sync server refuses with a reason
-- [ ] Loopback sign-in through the opener plugin; cancel
+- [x] HTTP `Remote` (reqwest `blocking`, rustls): bearer token, `401` to signed out, `429`, backoff
+- [x] `keyring` for token and key; no keychain: Sync server refuses with a reason
+- [x] Loopback sign-in through the opener plugin; cancel
 - [ ] First device: key creation and the recovery key screen (text, QR, Copy, Download, Print, "I saved it")
 - [ ] Further device: join request, six words, waiting; recovery key entry checked against the recipient
 - [ ] Approving: `sync:join-request` shows the request with words; Approve and Deny
 - [ ] Commands and events (proposal Impact); backup before the first cycle; switching providers
-- [ ] The sync thread runs `ServerSync` for `server`; long-poll wakes it
+- [x] The sync thread runs `ServerSync` for `server`; long-poll wakes it
 
 ## 7. Browser (`src-tauri/web`, `src/`)
 
