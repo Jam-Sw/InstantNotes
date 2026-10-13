@@ -11,8 +11,10 @@ pub const OIDC_CLIENT_SECRET: &str = "INSTANTNOTES_OIDC_CLIENT_SECRET";
 pub const UI_DIR: &str = "INSTANTNOTES_UI_DIR";
 pub const VAULT_ROOT: &str = "INSTANTNOTES_VAULT_ROOT";
 pub const TRUST_PROXY: &str = "INSTANTNOTES_TRUST_PROXY";
+pub const MAX_OBJECT_MB: &str = "INSTANTNOTES_MAX_OBJECT_MB";
 
 const DEFAULT_UI_DIR: &str = "/app/ui";
+const DEFAULT_MAX_OBJECT_MB: u64 = 64;
 const IDLE_CLOSE: Duration = Duration::from_secs(10 * 60);
 const SESSION_TTL: Duration = Duration::from_secs(14 * 24 * 60 * 60);
 
@@ -29,6 +31,7 @@ pub struct Config {
     pub idle_close: Duration,
     pub session_ttl: Duration,
     pub trust_proxy: bool,
+    pub max_object_bytes: u64,
 }
 
 fn required(name: &str) -> Result<String, String> {
@@ -91,6 +94,18 @@ impl Config {
             idle_close: IDLE_CLOSE,
             session_ttl: SESSION_TTL,
             trust_proxy: std::env::var(TRUST_PROXY).is_ok_and(|v| v.trim() == "true"),
+            max_object_bytes: match std::env::var(MAX_OBJECT_MB) {
+                Ok(v) if !v.trim().is_empty() => v
+                    .trim()
+                    .parse::<u64>()
+                    .ok()
+                    .filter(|mb| *mb > 0)
+                    .ok_or_else(|| {
+                        format!("{MAX_OBJECT_MB} must be a whole number of megabytes")
+                    })?,
+                _ => DEFAULT_MAX_OBJECT_MB,
+            } * 1024
+                * 1024,
         })
     }
 

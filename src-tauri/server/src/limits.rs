@@ -6,21 +6,24 @@ use std::net::{IpAddr, SocketAddr};
 use std::num::NonZeroU32;
 
 const SIGN_IN_PER_MINUTE: u32 = 30;
+const SYNC_PER_MINUTE: u32 = 600;
+const JOINS_PER_MINUTE: u32 = 5;
+const REFUSED_PER_MINUTE: u32 = 20;
 
 pub struct Limits {
     sign_in: DefaultKeyedRateLimiter<IpAddr>,
+    sync: DefaultKeyedRateLimiter<String>,
+    joins: DefaultKeyedRateLimiter<String>,
+    refused: DefaultKeyedRateLimiter<IpAddr>,
 }
 
-pub fn per_minute<K: Hash + Eq + Clone>(n: u32) -> DefaultKeyedRateLimiter<K> {
+fn per_minute<K: Hash + Eq + Clone>(n: u32) -> DefaultKeyedRateLimiter<K> {
     RateLimiter::keyed(Quota::per_minute(
         NonZeroU32::new(n).unwrap_or(NonZeroU32::MIN),
     ))
 }
 
-pub fn check<K: Hash + Eq + Clone>(
-    limiter: &DefaultKeyedRateLimiter<K>,
-    key: &K,
-) -> Result<(), u64> {
+fn check<K: Hash + Eq + Clone>(limiter: &DefaultKeyedRateLimiter<K>, key: &K) -> Result<(), u64> {
     limiter.check_key(key).map_err(|not_until| {
         not_until
             .wait_time_from(DefaultClock::default().now())
@@ -47,11 +50,26 @@ impl Limits {
     pub fn new() -> Self {
         Limits {
             sign_in: per_minute(SIGN_IN_PER_MINUTE),
+            sync: per_minute(SYNC_PER_MINUTE),
+            joins: per_minute(JOINS_PER_MINUTE),
+            refused: per_minute(REFUSED_PER_MINUTE),
         }
     }
 
     pub fn sign_in(&self, ip: IpAddr) -> Result<(), u64> {
         check(&self.sign_in, &ip)
+    }
+
+    pub fn sync(&self, grant: &str) -> Result<(), u64> {
+        check(&self.sync, &grant.to_string())
+    }
+
+    pub fn join(&self, sub: &str) -> Result<(), u64> {
+        check(&self.joins, &sub.to_string())
+    }
+
+    pub fn refused(&self, ip: IpAddr) -> Result<(), u64> {
+        check(&self.refused, &ip)
     }
 }
 

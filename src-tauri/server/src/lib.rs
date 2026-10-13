@@ -5,10 +5,12 @@ mod events;
 mod fake_idp;
 mod libraries;
 mod limits;
+mod objects;
 mod oidc;
 mod recheck;
 mod sessions;
 mod statics;
+mod sync_api;
 mod vaults;
 
 pub use config::Config;
@@ -26,6 +28,7 @@ use events::Hub;
 use instantnotes_core::AppError;
 use libraries::{Libraries, Library};
 use limits::Limits;
+use objects::Stores;
 use oidc::Oidc;
 use recheck::Recheck;
 use serde::Deserialize;
@@ -44,6 +47,7 @@ const CLIENT_HEADER: &str = "x-instantnotes-client";
 const BODY_LIMIT: usize = 32 * 1024 * 1024;
 const KEEPALIVE: Duration = Duration::from_secs(15);
 const IDLE_SWEEP: Duration = Duration::from_secs(60);
+const BLOB_SWEEP_TICKS: u64 = 60;
 const SYNC_TICK: Duration = Duration::from_secs(1);
 const SIGN_IN_NOTES: usize = 400;
 const SERVER_DB: &str = "server.db";
@@ -69,6 +73,7 @@ pub struct Inner {
     hub: Hub,
     oidc: Arc<Oidc>,
     recheck: Recheck,
+    stores: Stores,
 }
 
 #[derive(Clone)]
@@ -104,6 +109,7 @@ impl AppState {
             hub: Hub::default(),
             oidc: Arc::new(oidc),
             recheck: Recheck::new(&config.oidc_client_secret),
+            stores: Stores::new(&config.data_dir),
             config,
         })))
     }
@@ -203,10 +209,16 @@ pub fn run(config: Config) -> i32 {
             let state = state.clone();
             tokio::spawn(async move {
                 let mut tick = tokio::time::interval(IDLE_SWEEP);
+                let mut ticks: u64 = 0;
                 loop {
                     tick.tick().await;
                     state.libraries.close_idle();
                     state.recheck_people().await;
+                    ticks += 1;
+                    if ticks.is_multiple_of(BLOB_SWEEP_TICKS) {
+                        let swept = state.clone();
+                        let _ = tokio::task::spawn_blocking(move || swept.stores.sweep()).await;
+                    }
                 }
             })
         };
@@ -275,6 +287,7 @@ pub fn app(state: AppState) -> IntoMakeServiceWithConnectInfo<Router, SocketAddr
 
 pub fn router(state: AppState) -> Router {
     Router::new()
+        .merge(sync_api::routes())
         .route("/healthz", get(healthz))
         .route("/auth/login", get(login))
         .route("/auth/callback", get(callback))
@@ -311,7 +324,7 @@ async fn healthz(State(state): State<AppState>) -> Response {
     }
 }
 
-fn too_many(retry_after: u64) -> Response {
+pub(crate) fn too_many(retry_after: u64) -> Response {
     let mut response = (
         StatusCode::TOO_MANY_REQUESTS,
         Json(json!({ "code": "RATE_LIMITED", "message": "too many requests; try again shortly" })),
