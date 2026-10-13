@@ -447,4 +447,71 @@ async fn one_person_can_never_reach_anothers_notes_keys_requests_or_devices() {
     );
     assert_eq!(alice.get("changes").await.status(), 200);
     assert_eq!(alice.changes(0).await["changes"][0]["sha"], json!(note));
+    let stolen = mallory
+        .http
+        .post(mallory.url("blobs/fetch"))
+        .bearer_auth(&mallory.token)
+        .json(&json!({ "shas": [note] }))
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    assert!(stolen.is_empty());
+}
+
+#[tokio::test]
+async fn many_blobs_travel_in_one_request_each_way_and_a_lying_batch_is_refused() {
+    use instantnotes_core::sync::frames;
+    let server = start().await;
+    let d = server.device("alice", "Laptop");
+    let blobs: Vec<(String, Vec<u8>)> = (0..50u8)
+        .map(|n| {
+            let bytes = vec![n; 100];
+            (sha(&bytes), bytes)
+        })
+        .collect();
+    let body = frames::encode(blobs.iter().map(|(s, b)| (s.as_str(), b.as_slice()))).unwrap();
+    let sent = d
+        .http
+        .post(d.url("blobs/batch"))
+        .bearer_auth(&d.token)
+        .body(body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(sent.status(), 200);
+    let shas: Vec<String> = blobs.iter().map(|(s, _)| s.clone()).collect();
+    let back = d
+        .http
+        .post(d.url("blobs/fetch"))
+        .bearer_auth(&d.token)
+        .json(&json!({ "shas": shas }))
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    assert_eq!(frames::decode(&back).unwrap(), blobs);
+    let lie = frames::encode([(sha(b"claimed").as_str(), &b"actual"[..])]).unwrap();
+    let refused = d
+        .http
+        .post(d.url("blobs/batch"))
+        .bearer_auth(&d.token)
+        .body(lie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(refused.status(), 400);
+    let garbage = d
+        .http
+        .post(d.url("blobs/batch"))
+        .bearer_auth(&d.token)
+        .body(vec![1, 2, 3])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(garbage.status(), 400);
 }

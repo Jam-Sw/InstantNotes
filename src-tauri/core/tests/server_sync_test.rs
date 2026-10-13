@@ -1,6 +1,6 @@
 use instantnotes_core::store::server_sync::MergeReview;
 use instantnotes_core::sync::crypto::{LibraryKey, Lock};
-use instantnotes_core::sync::cycle::{ServerSync, SyncReport};
+use instantnotes_core::sync::cycle::{ModeCheck, ServerSync, SyncReport};
 use instantnotes_core::sync::object::sha_hex;
 use instantnotes_core::sync::remote::{
     Remote, RemoteChange, RemoteChanges, RemoteError, RemoteKeys, RemoteOp,
@@ -31,6 +31,10 @@ struct Server {
     recipient: Option<String>,
     objects: BTreeMap<(i64, String), Row>,
     blobs: HashMap<String, Vec<u8>>,
+    page_limit: usize,
+    budget: Option<usize>,
+    uploaded: usize,
+    max_object: u64,
 }
 
 impl Server {
@@ -38,6 +42,7 @@ impl Server {
         Rc::new(RefCell::new(Server {
             library_id: "library-1".into(),
             epoch: 1,
+            max_object: u64::MAX,
             ..Default::default()
         }))
     }
@@ -59,9 +64,17 @@ struct Handle {
 
 impl Handle {
     fn up(&self) -> Result<(), RemoteError> {
-        match *self.online.borrow() {
-            true => Ok(()),
-            false => Err(RemoteError::Unreachable("offline".into())),
+        if !*self.online.borrow() {
+            return Err(RemoteError::Unreachable("offline".into()));
+        }
+        let mut s = self.server.borrow_mut();
+        match &mut s.budget {
+            Some(0) => Err(RemoteError::Unreachable("connection dropped".into())),
+            Some(left) => {
+                *left -= 1;
+                Ok(())
+            }
+            None => Ok(()),
         }
     }
 }
@@ -84,13 +97,24 @@ impl Remote for Handle {
             })
             .collect();
         changes.sort_by_key(|c| c.seq);
+        let mut more = false;
+        if s.page_limit > 0 && changes.len() > s.page_limit {
+            let last = changes[s.page_limit - 1].seq;
+            let whole = changes.iter().take_while(|c| c.seq <= last).count();
+            more = whole < changes.len();
+            changes.truncate(whole);
+        }
         Ok(RemoteChanges {
             library_id: s.library_id.clone(),
             epoch: s.epoch,
             head: s.head,
             changes,
-            more: false,
+            more,
         })
+    }
+
+    fn max_object_bytes(&self) -> u64 {
+        self.server.borrow().max_object
     }
 
     fn missing(&mut self, shas: &[String]) -> Result<Vec<String>, RemoteError> {
@@ -103,24 +127,25 @@ impl Remote for Handle {
             .collect())
     }
 
-    fn upload(&mut self, sha: &str, bytes: &[u8]) -> Result<(), RemoteError> {
+    fn upload(&mut self, blobs: &[(String, Vec<u8>)]) -> Result<(), RemoteError> {
         self.up()?;
-        assert_eq!(sha_hex(bytes), sha);
-        self.server
-            .borrow_mut()
-            .blobs
-            .insert(sha.into(), bytes.to_vec());
+        let mut s = self.server.borrow_mut();
+        for (sha, bytes) in blobs {
+            assert_eq!(&sha_hex(bytes), sha);
+            assert!(bytes.len() as u64 <= s.max_object);
+            s.uploaded += 1;
+            s.blobs.insert(sha.clone(), bytes.clone());
+        }
         Ok(())
     }
 
-    fn download(&mut self, sha: &str) -> Result<Vec<u8>, RemoteError> {
+    fn download(&mut self, shas: &[String]) -> Result<Vec<(String, Vec<u8>)>, RemoteError> {
         self.up()?;
-        self.server
-            .borrow()
-            .blobs
-            .get(sha)
-            .cloned()
-            .ok_or_else(|| RemoteError::Refused("no such blob".into()))
+        let s = self.server.borrow();
+        Ok(shas
+            .iter()
+            .filter_map(|sha| s.blobs.get(sha).map(|b| (sha.clone(), b.clone())))
+            .collect())
     }
 
     fn commit(&mut self, epoch: i64, ops: &[RemoteOp]) -> Result<i64, RemoteError> {
@@ -299,7 +324,12 @@ impl Device {
     }
 
     fn live(&self) -> Vec<Note> {
-        self.s().list_notes(NoteFilter::default()).unwrap()
+        self.s()
+            .list_notes(NoteFilter {
+                limit: Some(5000),
+                ..Default::default()
+            })
+            .unwrap()
     }
 
     fn trashed(&self) -> Vec<Note> {
@@ -814,4 +844,118 @@ fn a_device_with_the_wrong_key_reports_errors_and_changes_nothing() {
     let report = c.sync.cycle(&c.store);
     assert!(!report.errors.is_empty());
     assert!(c.live().is_empty());
+}
+
+#[test]
+fn a_device_far_behind_pages_through_every_change() {
+    let (server, mut a, mut b, _) = encrypted_pair();
+    for n in 0..40 {
+        a.create(&format!("N{n}"), "x");
+        a.sync();
+    }
+    server.borrow_mut().page_limit = 3;
+    b.sync();
+    assert_eq!(b.live().len(), 40);
+}
+
+#[test]
+fn an_interrupted_first_upload_keeps_what_was_committed_and_finishes() {
+    let server = Server::new();
+    server.borrow_mut().mode = Some("encrypted".into());
+    let recovery = LibraryKey::generate().recovery();
+    let mut store = Store::open_in_memory().unwrap();
+    for n in 0..1200 {
+        store
+            .create_note(CreateNoteInput {
+                title: Some(format!("Note {n}")),
+                body: Some(format!("body {n}")),
+                ..Default::default()
+            })
+            .unwrap();
+    }
+    let mut a = Device::with_store(&server, Some(&recovery), store);
+    server.borrow_mut().budget = Some(6);
+    let first = a.sync.cycle(&a.store);
+    assert!(first.unreachable.is_some());
+    let committed = server.borrow().objects.len();
+    assert!(committed >= 500, "kept {committed}");
+    server.borrow_mut().budget = None;
+    a.sync();
+    let s = server.borrow();
+    assert_eq!(s.objects.len(), 1201);
+    assert!(s.uploaded <= 1201 + 500, "uploaded {}", s.uploaded);
+    drop(s);
+    let mut b = Device::join(&server, Some(&recovery));
+    b.sync();
+    assert_eq!(b.live().len(), 1200);
+}
+
+#[test]
+fn an_object_too_large_for_the_server_is_skipped_and_named() {
+    let (server, mut a, mut b, _) = encrypted_pair();
+    server.borrow_mut().max_object = 64 * 1024;
+    std::fs::create_dir_all(&a.attachments).unwrap();
+    std::fs::write(a.attachments.join("huge0000.png"), vec![7u8; 200 * 1024]).unwrap();
+    let n = a.create("Small", "still syncs");
+    let report = a.sync();
+    assert_eq!(
+        report.too_large,
+        vec!["attachment:huge0000.png".to_string()]
+    );
+    b.sync();
+    assert_eq!(b.note(&n.id).body, "still syncs");
+    assert!(!b.attachments.join("huge0000.png").exists());
+}
+
+#[test]
+fn a_server_cannot_turn_encryption_off_or_swap_the_key_without_the_key() {
+    let (server, mut a, _b, recovery) = encrypted_pair();
+    a.create("Private", "text");
+    a.sync();
+    let key = LibraryKey::from_recovery(&recovery).unwrap();
+    {
+        let mut s = server.borrow_mut();
+        s.mode = Some("plain".into());
+        s.recipient = None;
+    }
+    let keys = a.sync.remote.keys().unwrap();
+    assert!(matches!(
+        a.sync.check_mode(&keys, Some(&key)).unwrap(),
+        ModeCheck::Refuse(_)
+    ));
+    {
+        let mut s = server.borrow_mut();
+        s.mode = Some("encrypted".into());
+        s.recipient = Some(LibraryKey::generate().recipient());
+    }
+    let keys = a.sync.remote.keys().unwrap();
+    assert!(matches!(
+        a.sync.check_mode(&keys, Some(&key)).unwrap(),
+        ModeCheck::Refuse(_)
+    ));
+    server.borrow_mut().recipient = Some(key.recipient());
+    let keys = a.sync.remote.keys().unwrap();
+    assert_eq!(
+        a.sync.check_mode(&keys, Some(&key)).unwrap(),
+        ModeCheck::Encrypted
+    );
+    assert_eq!(a.sync.check_mode(&keys, None).unwrap(), ModeCheck::NeedsKey);
+}
+
+#[test]
+fn a_switch_to_plain_made_by_a_key_holder_is_accepted_by_the_others() {
+    let (server, mut a, mut b, recovery) = encrypted_pair();
+    a.create("Note", "text");
+    settle(&mut [&mut a, &mut b]);
+    a.sync
+        .switch_mode(&a.store, Lock::Plain, "plain", None)
+        .unwrap();
+    assert!(b.sync.cycle(&b.store).mode_changed);
+    let keys = b.sync.remote.keys().unwrap();
+    let key = LibraryKey::from_recovery(&recovery).unwrap();
+    assert_eq!(
+        b.sync.check_mode(&keys, Some(&key)).unwrap(),
+        ModeCheck::Plain
+    );
+    assert_eq!(server.borrow().mode.as_deref(), Some("plain"));
 }

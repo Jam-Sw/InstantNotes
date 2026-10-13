@@ -7,6 +7,7 @@ use sha2::{Digest, Sha256};
 use std::str::FromStr;
 
 const NAME_INFO: &[u8] = b"instantnotes object names";
+const PROOF_INFO: &[u8] = b"instantnotes mode proof";
 const PLAIN_PREFIX: &str = "instantnotes:";
 const STEP: usize = 4096;
 const STEPPED_UP_TO: usize = 64 * 1024;
@@ -60,6 +61,7 @@ pub fn unpad(padded: &[u8]) -> Result<Vec<u8>, CryptoError> {
 pub struct LibraryKey {
     identity: Identity,
     names: [u8; 32],
+    proofs: [u8; 32],
 }
 
 impl LibraryKey {
@@ -75,11 +77,44 @@ impl LibraryKey {
     }
 
     fn from_identity(identity: Identity) -> LibraryKey {
+        let hkdf = Hkdf::<Sha256>::new(None, identity.to_string().expose_secret().as_bytes());
         let mut names = [0u8; 32];
-        Hkdf::<Sha256>::new(None, identity.to_string().expose_secret().as_bytes())
-            .expand(NAME_INFO, &mut names)
+        let mut proofs = [0u8; 32];
+        hkdf.expand(NAME_INFO, &mut names)
+            .and_then(|()| hkdf.expand(PROOF_INFO, &mut proofs))
             .expect("32 bytes is a valid HKDF-SHA256 output");
-        LibraryKey { identity, names }
+        LibraryKey {
+            identity,
+            names,
+            proofs,
+        }
+    }
+
+    fn proof_mac(&self) -> Hmac<Sha256> {
+        Hmac::<Sha256>::new_from_slice(&self.proofs).expect("HMAC takes a key of any length")
+    }
+
+    pub fn prove(&self, text: &str) -> String {
+        let mut mac = self.proof_mac();
+        mac.update(text.as_bytes());
+        hex(&mac.finalize().into_bytes())
+    }
+
+    pub fn verify(&self, text: &str, proof: &str) -> bool {
+        let Some(bytes) = (0..proof.len())
+            .step_by(2)
+            .map(|i| {
+                proof
+                    .get(i..i + 2)
+                    .and_then(|p| u8::from_str_radix(p, 16).ok())
+            })
+            .collect::<Option<Vec<u8>>>()
+        else {
+            return false;
+        };
+        let mut mac = self.proof_mac();
+        mac.update(text.as_bytes());
+        mac.verify_slice(&bytes).is_ok()
     }
 
     pub fn recovery(&self) -> String {
@@ -302,6 +337,18 @@ mod tests {
         let other = JoinKey::generate().public();
         assert_ne!(join_words(&public), join_words(&other));
         assert_eq!(WORDS.iter().collect::<HashSet<_>>().len(), 256);
+    }
+
+    #[test]
+    fn only_the_library_key_can_prove_a_switch_to_plain() {
+        let key = LibraryKey::generate();
+        let text = crate::sync::object::plain_proof_text("lib", 2);
+        let proof = key.prove(&text);
+        assert!(key.verify(&text, &proof));
+        assert!(!key.verify(&crate::sync::object::plain_proof_text("lib", 3), &proof));
+        assert!(!LibraryKey::generate().verify(&text, &proof));
+        assert!(!key.verify(&text, "zz"));
+        assert!(!key.verify(&text, ""));
     }
 
     #[test]

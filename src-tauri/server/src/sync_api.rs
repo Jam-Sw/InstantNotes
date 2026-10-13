@@ -15,6 +15,8 @@ use std::time::Duration;
 use tokio_stream::StreamExt;
 
 pub const API: u32 = 1;
+const BATCH_BYTES: usize = 32 * 1024 * 1024;
+const FETCH_SHAS: usize = 1000;
 const MAX_WAIT: u64 = 25;
 const MUTATION_HEADER: &str = "x-instantnotes";
 
@@ -23,6 +25,11 @@ pub fn routes() -> Router<AppState> {
         .route("/sync/v1/info", get(info))
         .route("/sync/v1/changes", get(changes))
         .route("/sync/v1/blobs/missing", post(missing))
+        .route(
+            "/sync/v1/blobs/batch",
+            post(put_blobs).layer(DefaultBodyLimit::max(BATCH_BYTES)),
+        )
+        .route("/sync/v1/blobs/fetch", post(fetch_blobs))
         .route(
             "/sync/v1/blobs/{sha}",
             get(get_blob)
@@ -248,6 +255,84 @@ async fn put_blob(
     match writer.finish() {
         Ok(()) => StatusCode::CREATED.into_response(),
         Err(e) => e.into_response(),
+    }
+}
+
+async fn put_blobs(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    let c = signed_in!(state, peer, headers);
+    let Some(blobs) = instantnotes_core::sync::frames::decode(&body) else {
+        return Refused::BadHash("the upload is not a valid batch".into()).into_response();
+    };
+    let store = Arc::clone(&c.store);
+    let max = state.config.max_object_bytes;
+    let stored = tokio::task::spawn_blocking(move || {
+        for (sha, bytes) in &blobs {
+            if store.blob(sha).is_some() {
+                continue;
+            }
+            let mut writer = store.blob_writer(sha, max)?;
+            writer.write(bytes)?;
+            writer.finish()?;
+        }
+        Ok::<usize, Refused>(blobs.len())
+    })
+    .await;
+    match stored {
+        Ok(Ok(count)) => Json(json!({ "stored": count })).into_response(),
+        Ok(Err(e)) => e.into_response(),
+        Err(_) => Refused::Storage("upload panicked".into()).into_response(),
+    }
+}
+
+async fn fetch_blobs(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(body): Json<Shas>,
+) -> Response {
+    let c = signed_in!(state, peer, headers);
+    if body.shas.len() > FETCH_SHAS {
+        return Refused::TooMany.into_response();
+    }
+    let store = Arc::clone(&c.store);
+    let read = tokio::task::spawn_blocking(move || {
+        let mut found: Vec<(String, Vec<u8>)> = Vec::new();
+        let mut total = 0;
+        for sha in &body.shas {
+            let Some(path) = store.blob(sha) else {
+                continue;
+            };
+            let Ok(bytes) = std::fs::read(path) else {
+                continue;
+            };
+            if total > 0 && total + bytes.len() > BATCH_BYTES {
+                break;
+            }
+            total += bytes.len();
+            found.push((sha.clone(), bytes));
+        }
+        instantnotes_core::sync::frames::encode(
+            found
+                .iter()
+                .map(|(sha, bytes)| (sha.as_str(), bytes.as_slice())),
+        )
+    })
+    .await;
+    match read {
+        Ok(Some(frames)) => (
+            [(
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("application/octet-stream"),
+            )],
+            frames,
+        )
+            .into_response(),
+        _ => Refused::Storage("blobs could not be read".into()).into_response(),
     }
 }
 

@@ -61,9 +61,10 @@ impl std::fmt::Display for RemoteError {
 
 pub trait Remote {
     fn changes(&mut self, since: i64) -> Result<RemoteChanges, RemoteError>;
+    fn max_object_bytes(&self) -> u64;
     fn missing(&mut self, shas: &[String]) -> Result<Vec<String>, RemoteError>;
-    fn upload(&mut self, sha: &str, bytes: &[u8]) -> Result<(), RemoteError>;
-    fn download(&mut self, sha: &str) -> Result<Vec<u8>, RemoteError>;
+    fn upload(&mut self, blobs: &[(String, Vec<u8>)]) -> Result<(), RemoteError>;
+    fn download(&mut self, shas: &[String]) -> Result<Vec<(String, Vec<u8>)>, RemoteError>;
     fn commit(&mut self, epoch: i64, ops: &[RemoteOp]) -> Result<i64, RemoteError>;
     fn keys(&mut self) -> Result<RemoteKeys, RemoteError>;
     fn set_keys(&mut self, mode: &str, recipient: Option<&str>) -> Result<(), RemoteError>;

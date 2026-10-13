@@ -18,6 +18,14 @@ pub struct Envelope {
     pub manifest: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bytes: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proof: Option<String>,
+}
+
+pub const MODE_KEY: &str = "mode";
+
+pub fn plain_proof_text(library_id: &str, epoch: i64) -> String {
+    format!("instantnotes plain\0{library_id}\0{epoch}")
 }
 
 pub fn sha_hex(bytes: &[u8]) -> String {
@@ -44,6 +52,14 @@ impl Envelope {
             surface: None,
             manifest: None,
             bytes: None,
+            proof: None,
+        }
+    }
+
+    pub fn mode_marker(proof: String) -> Envelope {
+        Envelope {
+            proof: Some(proof),
+            ..Envelope::empty(MODE_KEY.to_string())
         }
     }
 
