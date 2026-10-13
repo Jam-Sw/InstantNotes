@@ -4,6 +4,7 @@ mod events;
 #[cfg(test)]
 mod fake_idp;
 mod libraries;
+mod limits;
 mod oidc;
 mod sessions;
 mod statics;
@@ -13,7 +14,8 @@ pub use config::Config;
 pub use sessions::Person;
 
 use axum::body::Bytes;
-use axum::extract::{DefaultBodyLimit, Path, Query, State};
+use axum::extract::connect_info::IntoMakeServiceWithConnectInfo;
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, Query, State};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode, Uri};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Redirect, Response};
@@ -22,11 +24,13 @@ use axum::{Json, Router};
 use events::Hub;
 use instantnotes_core::AppError;
 use libraries::{Libraries, Library};
+use limits::Limits;
 use oidc::Oidc;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sessions::{Logins, Sessions};
 use std::ffi::OsString;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio_stream::wrappers::BroadcastStream;
@@ -40,6 +44,8 @@ const KEEPALIVE: Duration = Duration::from_secs(15);
 const IDLE_SWEEP: Duration = Duration::from_secs(60);
 const SYNC_TICK: Duration = Duration::from_secs(1);
 const SIGN_IN_NOTES: usize = 400;
+const SERVER_DB: &str = "server.db";
+const HSTS: &str = "max-age=31536000";
 
 pub(crate) fn log(event: &str, fields: &[(&str, &str)]) {
     let mut line = String::from(event);
@@ -57,6 +63,7 @@ pub struct Inner {
     pub sessions: Sessions,
     pub libraries: Libraries,
     logins: Logins,
+    limits: Limits,
     hub: Hub,
     oidc: Oidc,
 }
@@ -72,7 +79,7 @@ impl std::ops::Deref for AppState {
 }
 
 impl AppState {
-    pub fn new(config: Config) -> Self {
+    pub fn new(config: Config) -> Result<Self, String> {
         let oidc = Oidc::new(
             &config.oidc_issuer,
             &config.oidc_client_id,
@@ -80,18 +87,29 @@ impl AppState {
             &config.public_url,
             &config.redirect_uri(),
         );
-        AppState(Arc::new(Inner {
-            sessions: Sessions::new(config.session_ttl),
+        libraries::create_private_dir(&config.data_dir).map_err(|e| e.to_string())?;
+        let sessions = Sessions::open(&config.data_dir.join(SERVER_DB), config.session_ttl)?;
+        Ok(AppState(Arc::new(Inner {
+            sessions,
             libraries: Libraries::new(
                 &config.data_dir,
                 config.idle_close,
                 config.vault_root.clone(),
             ),
             logins: Logins::default(),
+            limits: Limits::new(),
             hub: Hub::default(),
             oidc,
             config,
-        }))
+        })))
+    }
+
+    fn health(&self) -> Result<(), String> {
+        let probe = self.config.data_dir.join(".healthz");
+        std::fs::write(&probe, b"ok")
+            .and_then(|_| std::fs::remove_file(&probe))
+            .map_err(|e| format!("data folder not writable: {e}"))?;
+        self.sessions.healthy()
     }
 
     pub fn sync_vaults(&self) {
@@ -151,7 +169,13 @@ pub fn run(config: Config) -> i32 {
                 return 1;
             }
         };
-        let state = AppState::new(config);
+        let state = match AppState::new(config) {
+            Ok(state) => state,
+            Err(e) => {
+                eprintln!("instantnotes serve: {e}");
+                return 1;
+            }
+        };
         log(
             "serve.start",
             &[
@@ -186,7 +210,7 @@ pub fn run(config: Config) -> i32 {
                 }
             })
         });
-        let served = axum::serve(listener, router(state.clone()))
+        let served = axum::serve(listener, app(state.clone()))
             .with_graceful_shutdown(shutdown_signal())
             .await;
         sweeper.abort();
@@ -230,9 +254,13 @@ async fn shutdown_signal() {
     }
 }
 
+pub fn app(state: AppState) -> IntoMakeServiceWithConnectInfo<Router, SocketAddr> {
+    router(state).into_make_service_with_connect_info::<SocketAddr>()
+}
+
 pub fn router(state: AppState) -> Router {
     Router::new()
-        .route("/healthz", get(|| async { "ok" }))
+        .route("/healthz", get(healthz))
         .route("/auth/login", get(login))
         .route("/auth/callback", get(callback))
         .route("/auth/logout", get(logout))
@@ -242,7 +270,47 @@ pub fn router(state: AppState) -> Router {
         .route("/api/{command}", post(command))
         .fallback(get(ui))
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
+        .layer(axum::middleware::map_response_with_state(
+            state.clone(),
+            strict_transport,
+        ))
         .with_state(state)
+}
+
+async fn strict_transport(State(state): State<AppState>, mut response: Response) -> Response {
+    if state.config.secure_cookies() {
+        response.headers_mut().insert(
+            header::STRICT_TRANSPORT_SECURITY,
+            HeaderValue::from_static(HSTS),
+        );
+    }
+    response
+}
+
+async fn healthz(State(state): State<AppState>) -> Response {
+    let checked = tokio::task::spawn_blocking(move || state.health()).await;
+    match checked {
+        Ok(Ok(())) => "ok".into_response(),
+        Ok(Err(reason)) => (StatusCode::SERVICE_UNAVAILABLE, reason).into_response(),
+        Err(_) => (StatusCode::SERVICE_UNAVAILABLE, "health check panicked").into_response(),
+    }
+}
+
+fn too_many(retry_after: u64) -> Response {
+    let mut response = (
+        StatusCode::TOO_MANY_REQUESTS,
+        Json(json!({ "code": "RATE_LIMITED", "message": "too many requests; try again shortly" })),
+    )
+        .into_response();
+    if let Ok(value) = HeaderValue::from_str(&retry_after.to_string()) {
+        response.headers_mut().insert(header::RETRY_AFTER, value);
+    }
+    response
+}
+
+fn sign_in_limited(state: &AppState, peer: SocketAddr, headers: &HeaderMap) -> Option<Response> {
+    let ip = limits::client_ip(state.config.trust_proxy, peer, headers);
+    state.limits.sign_in(ip).err().map(too_many)
 }
 
 fn error_response(e: &AppError) -> Response {
@@ -286,7 +354,14 @@ fn cookie(state: &AppState, value: &str, max_age: Option<Duration>) -> HeaderVal
     HeaderValue::from_str(&cookie).expect("cookie header")
 }
 
-async fn login(State(state): State<AppState>) -> Response {
+async fn login(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+) -> Response {
+    if let Some(limited) = sign_in_limited(&state, peer, &headers) {
+        return limited;
+    }
     match state.oidc.begin(&state.logins).await {
         Ok(url) => Redirect::to(&url).into_response(),
         Err(e) => {
@@ -304,7 +379,15 @@ struct CallbackQuery {
     error_description: Option<String>,
 }
 
-async fn callback(State(state): State<AppState>, Query(q): Query<CallbackQuery>) -> Response {
+async fn callback(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Query(q): Query<CallbackQuery>,
+) -> Response {
+    if let Some(limited) = sign_in_limited(&state, peer, &headers) {
+        return limited;
+    }
     if let Some(error) = q.error {
         let reason = q.error_description.unwrap_or(error);
         log("auth.callback.refused", &[("reason", &reason)]);

@@ -33,12 +33,13 @@ async fn start_with(vault_root: Option<PathBuf>) -> Server {
         vault_root,
         idle_close: Duration::from_secs(600),
         session_ttl: Duration::from_secs(3600),
+        trust_proxy: false,
     };
-    let state = AppState::new(config);
+    let state = AppState::new(config).unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
-    let router = instantnotes_server::router(state.clone());
-    tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    let app = instantnotes_server::app(state.clone());
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     Server {
         base,
         state,

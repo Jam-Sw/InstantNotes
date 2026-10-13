@@ -44,7 +44,7 @@ fn storage(e: std::io::Error, what: &str) -> AppError {
     AppError::Storage(format!("{what}: {e}"))
 }
 
-fn create_private_dir(dir: &Path) -> Result<(), AppError> {
+pub(crate) fn create_private_dir(dir: &Path) -> Result<(), AppError> {
     std::fs::create_dir_all(dir).map_err(|e| storage(e, "cannot create library folder"))?;
     #[cfg(unix)]
     {

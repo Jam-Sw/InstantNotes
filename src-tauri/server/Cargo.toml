@@ -25,6 +25,8 @@ base64 = "0.22"
 sha2 = "0.11"
 uuid = { version = "1", features = ["v4"] }
 jsonwebtoken = { version = "11", default-features = false, features = ["aws_lc_rs"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
+governor = "0.10"
 
 [dev-dependencies]
 tempfile = "3"
