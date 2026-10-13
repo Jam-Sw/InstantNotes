@@ -1,0 +1,42 @@
+docs/DATA_MODEL.md
+  s_d65fa7209241f3::t_75b3c9ab8c76cf 189
+  s_d65fa7209241f3::t_9db51de58246a9 259-260,265-283
+  s_d65fa7209241f3::t_e780dd2f959d1b 284
+src-tauri/core/src/vault/transport.rs
+  s_d65fa7209241f3::t_3328c291eebb84 101-104
+  s_d65fa7209241f3::t_83ba4d2532f82c 70
+  s_d65fa7209241f3::t_b5f922d21f8959 6
+openspec/SEQUENCE.md
+  s_d65fa7209241f3::t_72cb05c1be7bf6 369-380
+  s_d65fa7209241f3::t_9c5435da4cab81 191-193,197-200
+  s_ecb25a8230b32d::t_271543e49a0451 381
+docs/API.md
+  s_d65fa7209241f3::t_7e9c2f644755ea 390-420
+  s_ecb25a8230b32d::t_52f93bc94806ef 421
+openspec/changes/feat-sync-server/tasks.md
+  s_ecb25a8230b32d::t_1c278bdcc48db1 101,103-104,124-125
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "88e6e96cb161cf0052e58a6420e9ed2ae270dfc1",
+  "prompts": {},
+  "sessions": {
+    "s_d65fa7209241f3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7cb25860-ff50-4096-a250-5cb972fdc7dd",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    },
+    "s_ecb25a8230b32d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "622b9b0c-62ee-4be3-ba16-e74511885d16",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
