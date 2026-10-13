@@ -24,7 +24,7 @@ pub fn referenced_names(text: &str) -> BTreeSet<String> {
     found
 }
 
-fn is_plain_name(name: &str) -> bool {
+pub fn is_plain_name(name: &str) -> bool {
     !name.is_empty() && name.chars().all(is_name_char) && name.chars().any(|c| c != '.')
 }
 

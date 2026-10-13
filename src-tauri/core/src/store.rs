@@ -259,6 +259,14 @@ CREATE VIRTUAL TABLE notes_fts USING fts5(
 );
 INSERT INTO notes_fts(notes_fts) VALUES ('rebuild');
 "#,
+    r#"
+CREATE TABLE sync_objects (
+  key        TEXT PRIMARY KEY,
+  name       TEXT NOT NULL,
+  remote_sha TEXT
+);
+CREATE INDEX idx_sync_objects_name ON sync_objects(name);
+"#,
 ];
 
 const NOTE_COLUMNS: &str = "id, title, body, created_at, updated_at, last_opened_at, \
@@ -474,11 +482,10 @@ impl Store {
             .map_err(|e| AppError::Storage(format!("cannot open database: {e}")))?;
         conn.busy_timeout(std::time::Duration::from_secs(5))
             .map_err(|e| AppError::Storage(format!("cannot set busy timeout: {e}")))?;
-        let journal_mode: String = conn.query_row(
-            &format!("PRAGMA journal_mode = {JOURNAL_MODE}"),
-            [],
-            |r| r.get(0),
-        )?;
+        let journal_mode: String =
+            conn.query_row(&format!("PRAGMA journal_mode = {JOURNAL_MODE}"), [], |r| {
+                r.get(0)
+            })?;
         if !journal_mode.eq_ignore_ascii_case(JOURNAL_MODE) {
             return Err(AppError::Storage(format!(
                 "storage location does not support {JOURNAL_MODE} journaling (got '{journal_mode}')"
@@ -655,6 +662,7 @@ mod attachments;
 mod graph;
 mod import;
 mod notes;
+pub mod server_sync;
 mod settings;
 mod stats;
 mod suggest;

@@ -330,7 +330,8 @@ impl Store {
             return Err(Refused::WrongEpoch);
         }
         let mut conflicts = Vec::new();
-        for op in ops {
+        let staging = epoch != current_epoch;
+        for op in ops.iter().filter(|_| !staging) {
             let current: Option<String> = tx
                 .query_row(
                     "SELECT sha FROM objects WHERE epoch = ?1 AND name = ?2",

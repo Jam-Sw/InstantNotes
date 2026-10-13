@@ -17,11 +17,11 @@ use std::io::ErrorKind;
 pub const CONFLICT_TAG: &str = "conflict";
 const MASS_REMOVAL_FLOOR: usize = 20;
 
-struct Row {
+pub(super) struct Row {
     rel: Option<String>,
-    sha: Option<String>,
+    pub(super) sha: Option<String>,
     board_sha: Option<String>,
-    dirty: bool,
+    pub(super) dirty: bool,
 }
 
 enum Read {
@@ -78,7 +78,7 @@ fn adopt(rel: &str, text: &str, sha: &str, path: &Path) -> VaultNote {
     }
 }
 
-fn as_conflict(source: &VaultNote, id: String) -> VaultNote {
+pub(super) fn as_conflict(source: &VaultNote, id: String) -> VaultNote {
     let title = source
         .title
         .clone()
@@ -426,7 +426,7 @@ impl Store {
             .optional()?)
     }
 
-    fn vault_row(&self, id: &str) -> Result<Option<Row>> {
+    pub(super) fn vault_row(&self, id: &str) -> Result<Option<Row>> {
         Ok(self
             .conn
             .query_row(
@@ -444,7 +444,7 @@ impl Store {
             .optional()?)
     }
 
-    fn tombstoned(&self, rel: &str, sha: &str) -> Result<bool> {
+    pub(super) fn tombstoned(&self, rel: &str, sha: &str) -> Result<bool> {
         Ok(self
             .conn
             .query_row(
@@ -481,7 +481,7 @@ impl Store {
         Ok((title, explicit.is_none(), body, surface_data))
     }
 
-    fn insert_from_vault(&self, note: &VaultNote) -> Result<()> {
+    pub(super) fn insert_from_vault(&self, note: &VaultNote) -> Result<()> {
         let (title, title_is_auto, body, surface_data) = self.vault_fields(note, None)?;
         self.conn.execute(
             "INSERT INTO notes (id, title, title_is_auto, body, created_at, updated_at, \
@@ -505,7 +505,7 @@ impl Store {
         self.set_vault_edges(&note.id, &body, &note.tags, &note.spaces)
     }
 
-    fn apply_from_vault(&self, note: &VaultNote) -> Result<()> {
+    pub(super) fn apply_from_vault(&self, note: &VaultNote) -> Result<()> {
         let existing: Option<String> = self.conn.query_row(
             "SELECT surface_data FROM notes WHERE id = ?1",
             params![note.id],
@@ -535,7 +535,11 @@ impl Store {
         self.set_vault_edges(&note.id, &body, &note.tags, &note.spaces)
     }
 
-    fn copy_from_vault(&self, source: &VaultNote, loser_sha: &str) -> Result<Option<String>> {
+    pub(super) fn copy_from_vault(
+        &self,
+        source: &VaultNote,
+        loser_sha: &str,
+    ) -> Result<Option<String>> {
         let id = derived_id(&["conflict", &source.id, loser_sha]);
         let exists = self
             .conn
@@ -594,7 +598,7 @@ impl Store {
         Ok(())
     }
 
-    fn apply_manifest(&mut self, ours: &Manifest, merged: &Manifest) -> Result<bool> {
+    pub(super) fn apply_manifest(&mut self, ours: &Manifest, merged: &Manifest) -> Result<bool> {
         let mut changed = false;
         let now = now_iso();
         for (name, tag) in &merged.tags {

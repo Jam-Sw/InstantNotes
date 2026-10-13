@@ -7,6 +7,7 @@ pub mod import;
 pub mod sensitive;
 pub mod sheet;
 pub mod store;
+pub mod sync;
 pub mod types;
 pub mod vault;
 
