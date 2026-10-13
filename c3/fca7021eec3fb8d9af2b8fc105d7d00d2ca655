@@ -1,0 +1,86 @@
+src/lib/commands.test.ts
+  s_3fe90b0d1ae177::t_1f6322f4b5b40f 39-54,69-74,76-77,125-127,301-411
+src-tauri/src/shell/menu.rs
+  s_3fe90b0d1ae177::t_be9b7f45c61f2b 25-29,33-37,77-81,211-217
+  s_3fe90b0d1ae177::t_ffcd0ac9964b3f 75-76,82-83,87
+  s_3fe90b0d1ae177::t_6e501b676c7b03 1-24,30-32,38-74,84-86,88-210,218-236
+src/lib/components/settings/SettingsAbout.web.test.ts
+  s_3fe90b0d1ae177::t_1f6322f4b5b40f 1-29
+src/lib/stores/shell.svelte.ts
+  s_3fe90b0d1ae177::t_0cf8c31f2cfd51 1-33
+src/lib/components/SettingsView.test.ts
+  s_3fe90b0d1ae177::t_1f6322f4b5b40f 5,40
+src/routes/+page.svelte
+  s_3fe90b0d1ae177::t_7ab8c96aa3b474 3,7,32,68-69,87,91,95,100,120-123,149,173,183,252,316,320,324,387
+  s_3fe90b0d1ae177::t_86f95bbd7bda5d 186-188
+  s_3fe90b0d1ae177::t_352388d9780fe4 184-185
+src/lib/api/events.ts
+  s_3fe90b0d1ae177::t_0cf8c31f2cfd51 17
+src/lib/stores/updater.svelte.test.ts
+  s_3fe90b0d1ae177::t_1f6322f4b5b40f 4,8-13,18-19,48-49,235-303
+src/lib/note-export.ts
+  s_3fe90b0d1ae177::t_0cf8c31f2cfd51 1-26
+src/lib/command-filter.ts
+  s_3fe90b0d1ae177::t_4063faef0de165 12,47,70
+src/lib/components/SettingsView.svelte
+  s_3fe90b0d1ae177::t_7ab8c96aa3b474 21,34,115,139,300
+src/lib/components/settings/SettingsFeedback.svelte
+  s_3fe90b0d1ae177::t_7ab8c96aa3b474 4,25
+src/lib/stores/toasts.svelte.test.ts
+  s_3fe90b0d1ae177::t_1f6322f4b5b40f 29-42
+CHANGELOG.md
+  s_3fe90b0d1ae177::t_e1755adc06248c 11-20,22-25
+src-tauri/src/shell/windows.rs
+  s_3fe90b0d1ae177::t_6e501b676c7b03 132-133
+src/lib/stores/toasts.svelte.ts
+  s_3fe90b0d1ae177::t_0cf8c31f2cfd51 23,31,66
+src-tauri/src/lib.rs
+  s_3fe90b0d1ae177::t_6e501b676c7b03 86,155,199,309-310,390
+src/lib/platform.test.ts
+  s_3fe90b0d1ae177::t_1f6322f4b5b40f 1-20
+docs/API.md
+  s_3fe90b0d1ae177::t_e1755adc06248c 141-142,193-195,207-216
+src/lib/api/client.ts
+  s_3fe90b0d1ae177::t_4063faef0de165 158-159
+src/lib/components/settings/SettingsAbout.test.ts
+  s_3fe90b0d1ae177::t_1f6322f4b5b40f 1-80
+src/lib/stores/updater.svelte.ts
+  s_3fe90b0d1ae177::t_4063faef0de165 2,20,32-33,39,56-60,83,92,147-160
+  s_3fe90b0d1ae177::t_70e61e991f9044 161
+src-tauri/src/shell/mod.rs
+  s_3fe90b0d1ae177::t_6e501b676c7b03 4
+src/lib/commands.ts
+  s_3fe90b0d1ae177::t_86f95bbd7bda5d 20
+  s_3fe90b0d1ae177::t_4063faef0de165 9-14,18,68-77,83-86,92-95,101-104,120,124-164,224-232,288-330,333-338
+  s_3fe90b0d1ae177::t_fbe5e347659809 274-287
+  s_3fe90b0d1ae177::t_f605d2b8b8e566 19,339
+src/lib/platform.ts
+  s_3fe90b0d1ae177::t_0cf8c31f2cfd51 10-18
+src-tauri/src/events.rs
+  s_3fe90b0d1ae177::t_0cf8c31f2cfd51 4
+src/lib/components/settings/SettingsAbout.svelte
+  s_3fe90b0d1ae177::t_fbe5e347659809 3,5-9,13-14,17,22-30,43,49,51-69,71-73,76-78,80-85,87-106,108-111,161-163,168,177,183-189,192-193,196,198-199,201-202,206,210-216
+  s_3fe90b0d1ae177::t_bf7dbcb84be3b8 79,86,190-191,194-195,197,200,203-205,207-209
+src-tauri/src/shell/quit.rs
+  s_3fe90b0d1ae177::t_6e501b676c7b03 40-45,82
+openspec/changes/feat-one-experience/actions/design.md
+  s_3fe90b0d1ae177::t_56295a0ead16a5 43-55
+openspec/changes/feat-one-experience/actions/tasks.md
+  s_3fe90b0d1ae177::t_d8240431fc9633 3,5-7,9,11-18,21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c3fca7021eec3fb8d9af2b8fc105d7d00d2ca655",
+  "prompts": {},
+  "sessions": {
+    "s_3fe90b0d1ae177": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cc4e75df-98d1-43eb-a307-3a9f4f80c286",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
