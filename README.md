@@ -72,9 +72,15 @@ docker run -d --name instantnotes \
 | `INSTANTNOTES_LISTEN` | set by the image (`0.0.0.0:8080`) | Address and port to listen on. |
 | `INSTANTNOTES_TRUST_PROXY` | no | `true` behind a reverse proxy that sets `X-Forwarded-For`, so rate limits see the real client. |
 | `INSTANTNOTES_MAX_OBJECT_MB` | no | Largest single object the server accepts, default `64`. |
+| `INSTANTNOTES_PEOPLE_DIR` | no | Where each person's notes live, for example `/people/{username}/notes` (`{sub}`, `{username}`, `{email}`), so each can sit under their own disk quota. Unset: under `INSTANTNOTES_DATA_DIR`. |
+| `INSTANTNOTES_SIGN_IN_STYLESHEET` | no | An `https://` address or same-origin path of a stylesheet the sign-in page loads after its own; override `--bg`, `--glow`, `--ink`, `--accent` and `--accent-ink` on `:root`. |
 
 - **At your identity provider**: create one confidential client with the scopes `openid profile email`, the redirect URI `https://<your address>/auth/callback`, and the post-logout redirect URI `https://<your address>`. Allow it the refresh token grant and, where the provider offers it, the `offline_access` scope. The desktop apps need nothing registered: they sign in through your server.
 - **In front**: a reverse proxy with TLS, with a read timeout above 30 seconds (devices hold one request open for up to 25 seconds to hear about changes).
+- **After a deploy**: `docker exec instantnotes instantnotes check` proves the encrypted sync path end to end as a reserved test person and cleans up after itself; it prints `ok` (exit 0) or the step that failed (exit 1). Add `--url http://127.0.0.1:8080` to test from inside the container.
+- **Usage**: `docker exec instantnotes instantnotes usage` (or `--json`) lists each person's disk use.
+- **Read-only root**: the server writes only to `/data` and the people folders, so `--read-only` (compose `read_only: true`) works with those volumes owned by uid 1000, and no tmpfs.
+- **Platforms**: the image is published for `linux/amd64` and `linux/arm64`.
 - **Health**: `GET /healthz` answers `200 ok`, or `503` with the reason (data folder not writable, the identity provider check misconfigured).
 - **Who can sign in** is decided at your identity provider; everyone it lets through gets their own library, and nobody can read anyone else's. When the provider stops accepting a person (disabled, deleted, removed from the app), the server signs out all their devices at its next hourly check, while keeping their stored data. This needs a provider that re-checks the person when a sign-in is refreshed (Pocket ID, Authentik, Keycloak, Zitadel and Kanidm do; Authelia does not, and Dex depends on its connector). Without refresh tokens, devices sign in again every 24 hours.
 
@@ -91,6 +97,8 @@ With end-to-end encryption on (the default), notes, titles, tags, Spaces and ima
 The encryption switch is in Settings > Sync. Turned off, the server stores notes readable, and a new device only needs to sign in.
 
 The web app is code your server sends to your browser. Whoever controls the server, or the image it runs, could change that code. For the strongest protection, use the desktop app.
+
+Each release lists the SHA-256 of every web app file in `web-code-sha256.txt`. To check an image: `id=$(docker create ghcr.io/jam-sw/instantnotes-server:<version>) && docker cp $id:/app/ui ./ui && docker rm $id`, then in `./ui` run `sha256sum -c web-code-sha256.txt`.
 
 ## Development
 To build from source instead

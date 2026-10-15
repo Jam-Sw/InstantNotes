@@ -31,6 +31,31 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   shows the code again so you can check it matches. The app uses it when it cannot open a browser, or always with
   `INSTANTNOTES_SIGN_IN=code`. Server: `device/code`, `device/link` and `device/poll` (RFC 8628 shape, bound to
   the app's PKCE challenge).
+- Server: `INSTANTNOTES_PEOPLE_DIR`, a per-person folder template with `{sub}`, `{username}`
+  (`preferred_username`) and `{email}`; a 0.10.0 folder moves once on that person's next request, and a
+  failed move answers 503 for that person. Unset, the layout is unchanged. `server.db` `persons` gains
+  `username`, `email` and `folder`, added at start.
+- Server: `instantnotes usage [--json]` (per-person bytes, blobs, objects, last seen) and
+  `instantnotes check [--url <address>]`, a headless end-to-end proof of the encrypted sync path as the
+  reserved person `instantnotes-check` that cleans up after itself: exit 0 `ok`, exit 1 `failed at <step>`.
+- Server: `INSTANTNOTES_SIGN_IN_STYLESHEET`, an `https://` address or same-origin path of a stylesheet the
+  sign-in pages load after their own (override `--bg`, `--glow`, `--ink`, `--accent`, `--accent-ink`), under
+  a Content-Security-Policy that allows only its origin. The server writes only to its data folder and the
+  people folders, so a read-only root needs no tmpfs.
+- Diagnostics: a panic writes `crashes/crash-<stamp>.txt` and a front-end error `crashes/error-<stamp>.txt`
+  beside the library; `instantnotes.log` records events and rotates at 1 MB to `instantnotes.log.1`.
+  Settings > Diagnostics shows each report in full with Copy and Send (a prefilled GitHub issue in the
+  browser; nothing leaves without a click); palette `app.sendDiagnostics`. `diagnostics.crashReports`
+  (default off) offers new reports at the next launch; `diagnostics.lastPromptAt`. Commands
+  `report_frontend_error`, `list_crash_reports`, `read_crash_report`, `delete_crash_report`,
+  `diagnostics_report`. The web keeps its last 20 errors in sessionStorage (`instantnotes.errors`).
+- Whiteboards open with the pen tool on phones and tablets; the first pen stroke turns on pen mode, so
+  fingers pan and zoom, and a palm resting on the glass while the pen draws is ignored.
+- Open on another device (`note.openElsewhere`, the first button in the editor header): a QR code and a
+  link to `<sync server>/#note=<id>`, built only from the server this device is signed in to; the web app
+  opens `#note=<id>` and waits up to a minute for the note to sync.
+- The built-in theme Night console (`night-console`): amber on deep slate with square corners.
+- Releases list the SHA-256 of every file of the web app the server serves in `web-code-sha256.txt`.
 ### Changed
 - The toolbar shows by default (`editor.toolbarOpen` default true, a stored false kept) and no longer
   decides the editor's mode; `Editor.svelte` exposes `undo`, `redo`, `canUndo`, `canRedo` and reports
@@ -61,6 +86,16 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `secrets.json` next to the library, readable by its owner only, instead of sign-in failing. macOS and Windows
   keep using the system keychain only.
 - A browser that fails to open no longer ends sync sign-in; the code sign-in takes over.
+- Releases build on GitHub-hosted runners (`ubuntu-22.04`, `windows-latest`, `macos-latest`); the server
+  image is multi-arch (`linux/amd64`, `linux/arm64`) and a failed image keeps the release a draft.
+- macOS builds are signed and notarized when `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`,
+  `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` and `APPLE_TEAM_ID` are set, ad-hoc signed
+  otherwise; Windows builds are signed with Azure Trusted Signing when `AZURE_TENANT_ID`,
+  `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_SIGNING_ENDPOINT`, `AZURE_SIGNING_ACCOUNT` and
+  `AZURE_SIGNING_PROFILE` are set. The release notes' first-install text follows what was signed.
+- Dependencies: the cargo and npm groups from dependabot #79 and #75 (tauri 2.12.2, rand 0.10, base64
+  0.23, similar 3, Svelte 5.57.2, Vite 8.3.4 and the rest); SvelteKit stays on 2, TypeScript on 6 and
+  sqlite-wasm-vfs on 0.2, whose next majors need a migration of their own.
 ### Fixed
 - Sync: a device that needs the library key asks for approval as soon as the Sync page shows, with the six
   words on screen, instead of waiting for "Approve on another device" (desktop and web).
