@@ -1,5 +1,5 @@
 use base64::Engine;
-use rand::RngCore;
+use rand::Rng;
 use rusqlite::{params, Connection, OptionalExtension};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;

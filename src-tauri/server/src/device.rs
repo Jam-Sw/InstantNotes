@@ -95,7 +95,7 @@ const USER_CODE_LEN: usize = 8;
 const POLL_SECONDS: u64 = 5;
 
 fn user_code() -> String {
-    use rand::Rng;
+    use rand::RngExt;
     let mut rng = rand::rng();
     (0..USER_CODE_LEN)
         .map(|_| USER_CODE_ALPHABET[rng.random_range(0..USER_CODE_ALPHABET.len())] as char)
