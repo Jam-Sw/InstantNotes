@@ -377,7 +377,8 @@ mod tests {
         assert!(text.starts_with("InstantNotes 9.9.9 ("), "{text}");
         assert!(text.contains("Message: boom 42"), "{text}");
         assert!(
-            text.contains("Location: src/shell/diagnostics.rs:"),
+            text.replace('\\', "/")
+                .contains("Location: src/shell/diagnostics.rs:"),
             "{text}"
         );
         assert!(text.contains("Thread: tester"), "{text}");
