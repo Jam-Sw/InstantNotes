@@ -27,10 +27,10 @@ holds the order, the cross-cutting checks and the hand-back.
       arm64), installing (signed builds once D1 lands), the web-code hashes
 - [ ] The operator's server session told what lands and in which release
       (`server-operators/tasks.md` §0)
-- [ ] `.claude/scripts/check.sh` green at the final commit, with counts;
+- [ ] The full check green at the final commit, with counts;
       `cargo xwin check --workspace --all-targets`; the WebAssembly check
-- [ ] `.claude/scripts/build.sh linux windows macos` at the final commit
-- [ ] `.claude/scripts/sync-e2e.sh test` and `inapp-proof.sh` green
+- [ ] Linux, Windows and macOS builds at the final commit
+- [ ] The sync end-to-end run and the in-app proof run green
 - [ ] actionlint on `release.yml`
 - [ ] `BIG-PICTURE.md` updated
 - [ ] Hand-back: the os-done-or-not report, the merge-gate checklist filled,

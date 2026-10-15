@@ -15,7 +15,7 @@
       contract, platform, SettingsAbout desktop and web, SettingsView: 95
       passed; `cargo test -p instantnotes --lib shell::menu`: 2 passed)
 - [x] `docs/API.md` §7 (the setting) and §9; CHANGELOG lines
-- [x] `.claude/scripts/check.sh` green after `cargo fmt`
+- [x] The full check green after `cargo fmt`
 - [ ] In the app: the Help menu's Check for Updates opens Settings > About and
       checks; the tray's does the same; a pending update shows the toast
       (runs with the in-app proof at hand-back). Remains: a person at the

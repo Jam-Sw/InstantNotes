@@ -134,7 +134,7 @@ spaces:
 
 Spaces must be listed explicitly because an empty space has no note referencing
 it, and empty spaces are legitimate and always visible
-(`docs/superpowers/specs/2026-07-10-spaces-design.md`). Without this file they
+(`docs/specs/2026-07-10-spaces-design.md`). Without this file they
 would vanish on rebuild.
 
 Tag and space **identity is the name**, which is already unique in both tables.

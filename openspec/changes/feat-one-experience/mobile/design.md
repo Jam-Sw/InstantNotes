@@ -1,6 +1,6 @@
 # Design: Mobile
 
-The owner's plan of 2026-10-12 (`.claude/plans/mobile.md`), now this unit.
+The owner's plan of 2026-10-12, now this unit.
 The same Svelte UI serves the phone's browser now and the native apps later,
 so the layouts come first; the desktop stays pixel-identical.
 
@@ -58,9 +58,8 @@ grid scrolls both ways; a cell opens on tap, as Enter does.
 - vitest: the layout store under each query; the page renders one pane on
   the phone and three on the desktop; the back button and the drawer.
 - Screenshots from the real web app in headless Chrome against the e2e
-  server at 390x844, 820x1180 and 1180x820 (`.claude/scripts/mobile-shots.mjs`,
-  built on `web-offline-check.mjs`'s CDP driver), reviewed through
-  `design-worker`, which also does the visual pass on the phone and tablet
+  server at 390x844, 820x1180 and 1180x820 (a local
+  Chrome DevTools Protocol driver), reviewed in a visual pass on the phone and tablet
   layouts.
 - Desktop screenshots before and after, compared.
 

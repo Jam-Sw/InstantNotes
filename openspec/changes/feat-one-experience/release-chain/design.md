@@ -25,7 +25,7 @@ builds from the merge commit (checkout), never a working tree, as before.
 The updater signing stays as it is (`TAURI_SIGNING_PRIVATE_KEY`).
 
 Dropped: the PATH step, the build caches, `instantnotes-prune`, the Mac
-builder step, `DOCKER_CONFIG`. `.claude/scripts/build.sh` and the Mac
+builder step, `DOCKER_CONFIG`. Local smoke builds and the Mac
 builder stay for local smoke builds and are not touched.
 
 Kept: each platform ships or fails on its own; `publish` writes

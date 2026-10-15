@@ -63,10 +63,9 @@ change; the placeholder does not promise one.
 
 ## 5. Visual pass
 
-`design-worker` takes the reference description, this file and the current
-screenshots, restyles in its clone, returns before and after at desktop
-width in the dark default theme and in one light theme. The main session
-merges.
+The visual pass takes the reference description, this file and the current
+screenshots, and shows before and after at desktop width in the dark
+default theme and in one light theme.
 
 ## 6. Tests
 

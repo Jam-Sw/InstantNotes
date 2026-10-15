@@ -14,8 +14,8 @@
       `calc(12px * var(--density))` top; `FormatToolbar.test.ts` and
       `NoteEditor.test.ts`: 9 passed)
 - [x] `commands.ts`: `view.markdownSource`, `view.toolbar` (331d69e)
-- [ ] `design-worker`: before and after screenshots, dark and light.
-      Remains: `.claude/scripts/editor-shots.sh` needs Linux (`kwin_wayland`,
+- [ ] Before and after screenshots, dark and light.
+      Remains: the editor screenshot run needs Linux (`kwin_wayland`,
       `tauri-driver`); run it there on 331d69e~1 and on HEAD
 - [x] CHANGELOG lines; `docs/DATA_MODEL.md` §8 for the key (331d69e)
 - [ ] In the app: typing with the toolbar, bold pressed while in bold text,

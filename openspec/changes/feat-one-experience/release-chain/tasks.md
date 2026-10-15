@@ -12,6 +12,5 @@
       `release-notes.mjs` footer per signed state (with `signed-installs`);
       `scripts/release.test.ts` "install footer", 8/8 pass
 - [ ] README: the hashes paragraph (text handed to the integrator);
-      `.claude/skills/release/SKILL.md` is local tooling, outside the
-      repository (text handed to the integrator)
+      the local release checklist (text handed to the integrator)
 - [ ] CHANGELOG lines (integrator)

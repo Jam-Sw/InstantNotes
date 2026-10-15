@@ -48,8 +48,8 @@ Settings home in the same commit as the feature.
 
 ## 3. What every unit proves
 
-- Unit tests beside every change (vitest, cargo test), the checks in
-  `.claude/scripts/check.sh` green, `cargo xwin check` for Windows, the
+- Unit tests beside every change (vitest, cargo test), the full
+  check green, `cargo xwin check` for Windows, the
   WebAssembly check for the browser.
 - Anything visual: screenshots at desktop width, and from `mobile` on, at
   390x844, 820x1180 and 1180x820, taken from the real web app against a
@@ -83,7 +83,7 @@ The three installers and the image build on GitHub-hosted runners
 repository. Rejected: a second self-hosted runner (another machine to keep
 up, and the signing tools for Windows and macOS do not run on Linux). The
 self-hosted runner and the Mac builder are no longer part of the release;
-`.claude/scripts/build.sh` keeps using them for local smoke builds.
+Local smoke builds keep using them.
 
 ### D3. Sync for people without a server (open; owner)
 

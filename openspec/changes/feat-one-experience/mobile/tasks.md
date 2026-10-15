@@ -15,12 +15,12 @@
       `SettingsView.test.ts`
 - [x] `app.css`: `[data-touch]` sizes, safe areas, the viewport height
 - [x] `CommandPalette.svelte`: the sheet on the phone
-- [x] `.claude/scripts/mobile-shots.mjs`; screenshots at the three sizes.
+- [x] Screenshots at the three sizes.
       Shots taken through Chrome DevTools device emulation against a local
       `instantnotes-server` with real notes typed in; the desktop shot at
       1440x900 is byte-identical decoded before and after. The script is
       written but was not run end to end
-- [ ] `design-worker`: the visual pass with before and after
+- [ ] The visual pass with before and after
 - [ ] README and CHANGELOG: the phone layout line of 0.10.0 replaced
 - [ ] In the app: Chrome device mode at the three sizes; the owner's iPhone
       and iPad in Safari against his server

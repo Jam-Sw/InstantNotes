@@ -119,5 +119,5 @@ of the central directory, with the CRC-32 check value for "123456789".
 Front end: the page per state; restore asks first and names the sync
 consequence; export on the web triggers one download with the dated name.
 In the app: back up, restore from the list, restore from a file, export on
-the desktop and in the browser (`.claude/scripts/inapp-proof.sh` gains the
+the desktop and in the browser (the in-app proof run gains the
 first two).

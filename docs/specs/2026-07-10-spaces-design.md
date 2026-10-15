@@ -3,7 +3,6 @@
 **Date:** 2026-07-10
 **Branch target:** `feat/spaces`
 **Status:** Approved - pending implementation plan
-**Interactive demo:** https://claude.ai/code/artifact/0b62b62a-1682-440f-a16d-e464b9197686 (Direction 2.1)
 
 ---
 
