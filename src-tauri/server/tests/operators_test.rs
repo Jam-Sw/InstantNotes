@@ -1,3 +1,5 @@
+#![cfg(unix)]
+
 use instantnotes_core::sync::remote::RemoteOp;
 use instantnotes_server::client::Client;
 use instantnotes_server::operators::{check, usage};
