@@ -102,6 +102,7 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   0.23, similar 3, Svelte 5.57.2, Vite 8.3.4 and the rest); SvelteKit stays on 2, TypeScript on 6 and
   sqlite-wasm-vfs on 0.2, whose next majors need a migration of their own.
 ### Fixed
+- Server: a fresh Docker named volume at `/data` works; the image now ships `/data` owned by uid 1000, where 0.10.0 stopped with "cannot protect library folder".
 - Sync: a device that needs the library key asks for approval as soon as the Sync page shows, with the six
   words on screen, instead of waiting for "Approve on another device" (desktop and web).
 - Sync: an approval request brings the library window forward on a device that has the key, so it no

@@ -49,6 +49,7 @@ COPY src-tauri/web ./web
 RUN mkdir -p src && echo 'fn main() {}' > src/main.rs && touch src/lib.rs && echo 'fn main() {}' > build.rs \
  && cargo build --release --locked -p instantnotes-server --target "$(cat /tmp/triple)" \
  && cp "target/$(cat /tmp/triple)/release/instantnotes-server" /tmp/instantnotes-server
+RUN mkdir /tmp/data
 
 FROM gcr.io/distroless/cc-debian12:nonroot
 LABEL org.opencontainers.image.title="InstantNotes server" \
@@ -60,6 +61,7 @@ LABEL org.opencontainers.image.title="InstantNotes server" \
       org.opencontainers.image.vendor="Jam-Sw"
 COPY --from=core /tmp/instantnotes-server /usr/local/bin/instantnotes
 COPY --from=ui /src/build /app/ui
+COPY --from=core --chown=1000:1000 /tmp/data /data
 ENV INSTANTNOTES_LISTEN=0.0.0.0:8080 \
     INSTANTNOTES_DATA_DIR=/data \
     INSTANTNOTES_UI_DIR=/app/ui
