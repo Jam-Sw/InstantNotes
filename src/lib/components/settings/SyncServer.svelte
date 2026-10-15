@@ -376,8 +376,17 @@
   {/if}
 {:else if stage === "signingIn"}
   <div class="vault-card step">
-    <p class="lead"><span class="pulse" aria-hidden="true"></span>Finish signing in in your browser.</p>
-    <p class="detail">{host}</p>
+    {#if status?.pairingCode}
+      <p class="lead">
+        <span class="pulse" aria-hidden="true"></span>On any device with a browser, open
+        {status.pairingUrl} and enter this code:
+      </p>
+      <p class="detail"><strong>{status.pairingCode}</strong></p>
+      <p class="detail">{host}</p>
+    {:else}
+      <p class="lead"><span class="pulse" aria-hidden="true"></span>Finish signing in in your browser.</p>
+      <p class="detail">{host}</p>
+    {/if}
     <div class="card-actions">
       <button class="card-btn" onclick={cancelSignIn}>Cancel</button>
     </div>

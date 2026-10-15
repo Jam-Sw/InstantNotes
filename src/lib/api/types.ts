@@ -184,6 +184,8 @@ export interface SyncServerStatus {
   tooLarge: string[];
   localNotes: number;
   serverItems: number;
+  pairingCode: string | null;
+  pairingUrl: string | null;
 }
 
 export interface SyncDevice {

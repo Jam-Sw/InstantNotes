@@ -82,6 +82,8 @@ docker run -d --name instantnotes \
 
 In Settings > Sync, choose Sync server, type the server's address, and sign in. The first device makes the library's encryption key and shows a recovery key to keep somewhere safe. Each further device is approved from one you already use, after checking that the same six words show on both.
 
+On a computer with no browser (a container or a remote desktop), the app shows a short code and an address instead: open the address on any other device, type the code, sign in, and allow. Set `INSTANTNOTES_SIGN_IN=code` in the app's environment to always sign in this way.
+
 ### What the server can and cannot see
 
 With end-to-end encryption on (the default), notes, titles, tags, Spaces and images are encrypted on your device before they leave it. The server, its operator and its backups hold only ciphertext and never the key. They can still see who signs in, from which devices and when, and roughly how many notes and images there are and how large. If you lose the recovery key and every device, nobody can recover the notes, including whoever runs the server.

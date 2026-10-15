@@ -52,6 +52,8 @@ const OFF: SyncServerStatus = {
   tooLarge: [],
   localNotes: 0,
   serverItems: 0,
+  pairingCode: null,
+  pairingUrl: null,
 };
 
 function at(stage: SyncServerStatus["stage"], overrides: Partial<SyncServerStatus> = {}): SyncServerStatus {

@@ -75,6 +75,8 @@ const SERVER_OFF: SyncServerStatus = {
   tooLarge: [],
   localNotes: 0,
   serverItems: 0,
+  pairingCode: null,
+  pairingUrl: null,
 };
 
 const CONNECTED: SyncServerStatus = {

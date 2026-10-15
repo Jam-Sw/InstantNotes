@@ -402,8 +402,8 @@ reserved and refused.
 
 | Command | What it does |
 | --- | --- |
-| `get_sync_server_status` | `SyncServerStatus`: `{ stage, message, address, person, encrypted, joinWords, joinKey, recoveryKey, lastSyncedAt, conflicts, heldRemovals, tooLarge, localNotes, serverItems }`. |
-| `connect_sync_server` | `{ address, encrypt }`: signs in through the system browser (loopback, PKCE), keeps the device token in the keychain; the first device makes the library key. |
+| `get_sync_server_status` | `SyncServerStatus`: `{ stage, message, address, person, encrypted, joinWords, joinKey, recoveryKey, lastSyncedAt, conflicts, heldRemovals, tooLarge, localNotes, serverItems, pairingCode, pairingUrl }`. `pairingCode` and `pairingUrl` are set only while a code sign-in waits (`stage: "signingIn"`), otherwise `null`. |
+| `connect_sync_server` | `{ address, encrypt }`: signs in through the system browser (loopback, PKCE). When no browser opens on this computer, or with `INSTANTNOTES_SIGN_IN=code` in the app's environment, it signs in with a code instead: `pairingCode` and `pairingUrl` appear in the status, the person enters the code at that address on any other device, and the app polls `device/poll` (design §5.1). Keeps the device token and library key in the system keychain; on Linux without one (no Secret Service), in `secrets.json` next to the library, readable by its owner only. The first device makes the library key. |
 | `confirm_sync_join` | `{ combine }`: answers the "combine with the server's library?" stage. |
 | `cancel_sync_sign_in`, `disconnect_sync_server` | Stop a sign-in; leave Sync server (revokes this device, deletes its token and key). |
 | `confirm_recovery_saved`, `show_recovery_key`, `enter_recovery_key` | The recovery key: after saving it, shown again, or typed in (checked against the library's recipient; while this device waits for approval, it withdraws the request). |

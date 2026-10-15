@@ -211,19 +211,61 @@ pub fn escape(text: &str) -> String {
 
 const PAGE_STYLE: &str = ":root{color-scheme:light dark;font-family:system-ui,sans-serif}body{margin:0;min-height:100vh;display:grid;place-items:center}main{text-align:center;padding:2rem;max-width:28rem}button{font:inherit;padding:.6rem 1.4rem;margin:.3rem;border-radius:.5rem;border:1px solid currentColor;background:none;color:inherit;cursor:pointer}button.primary{background:#2f6fde;border-color:#2f6fde;color:#fff}";
 
-pub fn device_confirm(device: &str, person: &str, request: &str, csrf: &str) -> String {
+/// `code` is set for a pairing: the person checks it against the code the app
+/// shows, so a link someone else sent cannot connect their device unnoticed.
+pub fn device_confirm(
+    device: &str,
+    person: &str,
+    code: Option<&str>,
+    request: &str,
+    csrf: &str,
+) -> String {
     let (device, person, request, csrf) = (
         escape(device),
         escape(person),
         escape(request),
         escape(csrf),
     );
+    let code = code
+        .map(|c| {
+            format!(
+                "<p>Allow only if InstantNotes on that device shows <strong>{}</strong>.</p>",
+                escape(c)
+            )
+        })
+        .unwrap_or_default();
     format!(
         r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>InstantNotes</title>
 <style>{PAGE_STYLE}</style></head>
-<body><main><h1>Allow this device?</h1><p>Allow <strong>{device}</strong> to sync your library as <strong>{person}</strong>?</p>
+<body><main><h1>Allow this device?</h1><p>Allow <strong>{device}</strong> to sync your library as <strong>{person}</strong>?</p>{code}
 <form method="post" action="/sync/v1/device/allow"><input type="hidden" name="request" value="{request}"><input type="hidden" name="csrf" value="{csrf}">
 <button class="primary" name="decision" value="allow">Allow</button><button name="decision" value="deny">Cancel</button></form></main></body></html>"#
+    )
+}
+
+pub fn device_link(problem: Option<&str>) -> String {
+    let problem = problem
+        .map(|m| format!(r#"<p role="alert">{}</p>"#, escape(m)))
+        .unwrap_or_default();
+    format!(
+        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>InstantNotes</title>
+<style>{PAGE_STYLE}</style></head>
+<body><main><h1>Connect a device</h1><p>Type the code shown in InstantNotes.</p>{problem}
+<form method="get" action="/sync/v1/device/link"><input name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" autofocus aria-label="Code">
+<button class="primary">Continue</button></form></main></body></html>"#
+    )
+}
+
+pub fn device_paired(allowed: bool) -> String {
+    let line = if allowed {
+        "Allowed. You can close this page and return to InstantNotes."
+    } else {
+        "Cancelled. Nothing was connected."
+    };
+    format!(
+        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>InstantNotes</title>
+<style>{PAGE_STYLE}</style></head>
+<body><main><p>{line}</p></main></body></html>"#
     )
 }
 

@@ -1,3 +1,4 @@
+use super::secrets;
 use crate::*;
 use instantnotes_core::attachments::Attachments;
 use instantnotes_core::commands;
@@ -58,6 +59,8 @@ pub(crate) struct ServerStatus {
     pub too_large: Vec<String>,
     pub local_notes: usize,
     pub server_items: usize,
+    pub pairing_code: Option<String>,
+    pub pairing_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -118,27 +121,45 @@ fn host(address: &str) -> &str {
     address.split("://").nth(1).unwrap_or(address)
 }
 
+fn secret_name(settings: &ServerSettings, what: &str) -> String {
+    format!("{}/{}/{what}", host(&settings.address), settings.device_id)
+}
+
 fn entry(settings: &ServerSettings, what: &str) -> Result<keyring::Entry, String> {
-    keyring::Entry::new(
-        KEYCHAIN,
-        &format!("{}/{}/{what}", host(&settings.address), settings.device_id),
-    )
-    .map_err(|e| format!("the system keychain is not available: {e}"))
+    keyring::Entry::new(KEYCHAIN, &secret_name(settings, what))
+        .map_err(|e| format!("the system keychain is not available: {e}"))
 }
 
 pub(crate) fn keychain_get(settings: &ServerSettings, what: &str) -> Option<String> {
-    entry(settings, what).ok()?.get_password().ok()
+    let keychain = entry(settings, what)
+        .ok()
+        .and_then(|e| e.get_password().ok());
+    keychain.or_else(|| {
+        let path = secrets::default_path()?;
+        secrets::get(&path, &secret_name(settings, what))
+    })
 }
 
+/// The system keychain when there is one, a private file next to the library
+/// when there is not (a container without a Secret Service).
 fn keychain_set(settings: &ServerSettings, what: &str, secret: &str) -> Result<(), String> {
-    entry(settings, what)?
-        .set_password(secret)
-        .map_err(|e| format!("the system keychain refused to store a secret: {e}"))
+    let kept = entry(settings, what).and_then(|e| {
+        e.set_password(secret)
+            .map_err(|e| format!("the system keychain refused to store a secret: {e}"))
+    });
+    let Err(keychain_problem) = kept else {
+        return Ok(());
+    };
+    let path = secrets::default_path().ok_or(keychain_problem)?;
+    secrets::set(&path, &secret_name(settings, what), secret)
 }
 
 pub(crate) fn keychain_delete(settings: &ServerSettings, what: &str) {
     if let Ok(e) = entry(settings, what) {
         let _ = e.delete_credential();
+    }
+    if let Some(path) = secrets::default_path() {
+        secrets::delete(&path, &secret_name(settings, what));
     }
 }
 
@@ -232,6 +253,91 @@ fn backup_library(app: &AppHandle, store: &Store) -> CmdResult<std::path::PathBu
     Ok(path)
 }
 
+/// Sign-in through the browser on this computer. `Ok(None)` means there is no
+/// browser to open here (or `INSTANTNOTES_SIGN_IN=code` asks for the code way),
+/// so the caller falls back to `pairing_sign_in`.
+async fn loopback_sign_in(
+    app: &AppHandle,
+    client: &Client,
+    codes: &instantnotes_server::client::Pkce,
+    cancel: tokio::sync::watch::Receiver<bool>,
+) -> Result<Option<instantnotes_server::client::Issued>, (String, bool)> {
+    if std::env::var("INSTANTNOTES_SIGN_IN").as_deref() == Ok("code") {
+        return Ok(None);
+    }
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .map_err(|e| (format!("cannot listen for the sign-in: {e}"), false))?;
+    let port = listener
+        .local_addr()
+        .map_err(|e| (e.to_string(), false))?
+        .port();
+    let redirect = format!("http://127.0.0.1:{port}/callback");
+    let url = client.authorize_url(&redirect, &codes.state, &codes.challenge, &device_name());
+    if app.opener().open_url(&url, None::<&str>).is_err() {
+        return Ok(None);
+    }
+    let waited = tokio::time::timeout(SIGN_IN_WAIT, await_callback(listener, cancel)).await;
+    let (code, state, error) = match waited {
+        Ok(found) => found.map_err(|e| (e.message().to_string(), false))?,
+        Err(_) => return Err(("sign-in timed out".into(), false)),
+    };
+    if error.is_some() || state.as_deref() != Some(codes.state.as_str()) {
+        return Err(("sign-in was cancelled in the browser".into(), true));
+    }
+    let code = code.ok_or_else(|| ("the server sent no sign-in code".to_string(), true))?;
+    let issued = client
+        .exchange(&code, &codes.verifier, &redirect)
+        .await
+        .map_err(|e| (e.to_string(), true))?;
+    Ok(Some(issued))
+}
+
+/// Sign-in finished in a browser on another device: the app shows a short code
+/// and an address, then polls until the person has allowed it there.
+async fn pairing_sign_in(
+    app: &AppHandle,
+    client: &Client,
+    codes: &instantnotes_server::client::Pkce,
+    mut cancel: tokio::sync::watch::Receiver<bool>,
+) -> CmdResult<instantnotes_server::client::Issued> {
+    let pairing = client
+        .start_pairing(&codes.challenge, &device_name())
+        .await
+        .map_err(remote_error)?;
+    link(app).set(|s| {
+        s.pairing_code = Some(pairing.user_code.clone());
+        s.pairing_url = Some(pairing.verification_uri.clone());
+    });
+    let _ = app.emit(events::VAULT_STATUS, ());
+    let deadline =
+        tokio::time::Instant::now() + SIGN_IN_WAIT.min(Duration::from_secs(pairing.expires_in));
+    let every = Duration::from_secs(pairing.interval.clamp(2, 30));
+    loop {
+        tokio::select! {
+            _ = tokio::time::sleep(every) => {}
+            _ = cancel.changed() => return Err(CmdError::storage("sign-in cancelled")),
+        }
+        if tokio::time::Instant::now() > deadline {
+            return Err(CmdError::storage("sign-in timed out"));
+        }
+        match client
+            .poll_pairing(&pairing.device_code, &codes.verifier)
+            .await
+        {
+            Ok(Some(issued)) => return Ok(issued),
+            Ok(None) | Err(RemoteError::Unreachable(_)) => {}
+            Err(RemoteError::Refused(why)) if why.ends_with("ACCESS_DENIED") => {
+                return Err(CmdError::storage("sign-in was cancelled in the browser"))
+            }
+            Err(RemoteError::Refused(why)) if why.ends_with("EXPIRED") => {
+                return Err(CmdError::storage("sign-in timed out"))
+            }
+            Err(e) => return Err(remote_error(e)),
+        }
+    }
+}
+
 async fn await_callback(
     listener: tokio::net::TcpListener,
     mut cancel: tokio::sync::watch::Receiver<bool>,
@@ -291,16 +397,7 @@ pub(crate) async fn connect_sync_server(
 ) -> CmdResult<ServerStatus> {
     let client = Client::new(&address).map_err(CmdError::storage)?;
     client.info().await.map_err(remote_error)?;
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .map_err(|e| CmdError::storage(format!("cannot listen for the sign-in: {e}")))?;
-    let port = listener
-        .local_addr()
-        .map_err(|e| CmdError::storage(e.to_string()))?
-        .port();
-    let redirect = format!("http://127.0.0.1:{port}/callback");
     let codes = pkce();
-    let url = client.authorize_url(&redirect, &codes.state, &codes.challenge, &device_name());
     let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
     *link(&app).cancel.lock().unwrap_or_else(|e| e.into_inner()) = Some(cancel_tx);
     link(&app).set(|s| {
@@ -311,26 +408,15 @@ pub(crate) async fn connect_sync_server(
         }
     });
     let _ = app.emit(events::VAULT_STATUS, ());
-    app.opener()
-        .open_url(&url, None::<&str>)
-        .map_err(|e| CmdError::storage(format!("cannot open the browser: {e}")))?;
-    let waited = tokio::time::timeout(SIGN_IN_WAIT, await_callback(listener, cancel_rx)).await;
-    let outcome = match waited {
-        Ok(found) => found,
-        Err(_) => Err(CmdError::storage("sign-in timed out")),
-    };
-    let (code, state, error) = match outcome {
-        Ok(found) => found,
-        Err(e) => {
-            link(&app).set(|s| {
-                *s = ServerStatus {
-                    stage: "off".into(),
-                    ..ServerStatus::default()
-                }
-            });
-            let _ = app.emit(events::VAULT_STATUS, ());
-            return Err(e);
-        }
+    let stop = |e: CmdError| {
+        link(&app).set(|s| {
+            *s = ServerStatus {
+                stage: "off".into(),
+                ..ServerStatus::default()
+            }
+        });
+        let _ = app.emit(events::VAULT_STATUS, ());
+        e
     };
     let fail = |message: &str| {
         link(&app).set(|s| {
@@ -343,14 +429,14 @@ pub(crate) async fn connect_sync_server(
         let _ = app.emit(events::VAULT_STATUS, ());
         CmdError::storage(message)
     };
-    if error.is_some() || state.as_deref() != Some(codes.state.as_str()) {
-        return Err(fail("sign-in was cancelled in the browser"));
-    }
-    let code = code.ok_or_else(|| fail("the server sent no sign-in code"))?;
-    let issued = client
-        .exchange(&code, &codes.verifier, &redirect)
-        .await
-        .map_err(|e| fail(&e.to_string()))?;
+    let issued = match loopback_sign_in(&app, &client, &codes, cancel_rx.clone()).await {
+        Ok(Some(issued)) => issued,
+        Ok(None) => pairing_sign_in(&app, &client, &codes, cancel_rx)
+            .await
+            .map_err(&stop)?,
+        Err((message, true)) => return Err(fail(&message)),
+        Err((e, false)) => return Err(stop(CmdError::storage(e))),
+    };
     let settings = ServerSettings {
         address: client.base().to_string(),
         device_id: issued.device_id.clone(),

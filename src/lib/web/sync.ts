@@ -54,6 +54,8 @@ const status: SyncServerStatus = {
   tooLarge: [],
   localNotes: 0,
   serverItems: 0,
+  pairingCode: null,
+  pairingUrl: null,
 };
 
 let timer: ReturnType<typeof setTimeout> | null = null;

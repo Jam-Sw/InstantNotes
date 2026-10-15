@@ -230,3 +230,156 @@ async fn a_forged_allow_without_the_pages_csrf_does_nothing() {
         .unwrap();
     assert_eq!(forged.status(), 400);
 }
+
+#[tokio::test]
+async fn a_headless_app_pairs_with_a_code_the_person_enters_on_another_device() {
+    let server = start().await;
+    let client = http();
+    let started: Value = client
+        .post(format!("{}/sync/v1/device/code", server.base))
+        .json(&json!({ "codeChallenge": challenge(), "deviceName": "Container" }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let device_code = started["deviceCode"].as_str().unwrap();
+    let user_code = started["userCode"].as_str().unwrap();
+    assert_eq!(user_code.len(), 9);
+    assert_eq!(
+        started["verificationUri"],
+        "http://localhost:8080/sync/v1/device/link"
+    );
+    let poll = |verifier: &'static str| {
+        let client = http();
+        let url = format!("{}/sync/v1/device/poll", server.base);
+        let body = json!({ "deviceCode": device_code, "codeVerifier": verifier });
+        async move { client.post(url).json(&body).send().await.unwrap() }
+    };
+    let waiting = poll(VERIFIER).await;
+    assert_eq!(waiting.status(), 202);
+    let cookie = server.cookie();
+    let wrong = client
+        .get(format!(
+            "{}/sync/v1/device/link?code=AAAA-AAAA",
+            server.base
+        ))
+        .header("cookie", &cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(wrong.status(), 404);
+    let signed_out = client
+        .get(format!(
+            "{}/sync/v1/device/link?code={user_code}",
+            server.base
+        ))
+        .send()
+        .await
+        .unwrap();
+    let login = signed_out.headers()["location"].to_str().unwrap();
+    assert!(login.starts_with("/auth/login?device="));
+    assert!(
+        !login.contains(device_code),
+        "the poll secret never reaches a browser"
+    );
+    let page = client
+        .get(format!(
+            "{}/sync/v1/device/link?code={}",
+            server.base,
+            user_code.to_lowercase().replace('-', " ")
+        ))
+        .header("cookie", &cookie)
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    assert!(page.contains("Container"));
+    assert!(page.contains(user_code), "the person checks the code");
+    assert!(!page.contains(device_code));
+    let done = client
+        .post(format!("{}/sync/v1/device/allow", server.base))
+        .header("cookie", &cookie)
+        .form(&[
+            ("request", hidden(&page, "request")),
+            ("csrf", hidden(&page, "csrf")),
+            ("decision", "allow".to_string()),
+        ])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(done.status(), 200);
+    assert_eq!(
+        poll("not-the-verifier-not-the-verifier-not-the-verifier")
+            .await
+            .status(),
+        400
+    );
+    let again = poll(VERIFIER).await;
+    assert_eq!(again.status(), 400, "a wrong verifier burns the grant");
+}
+
+#[tokio::test]
+async fn pairing_hands_over_a_token_once_and_a_cancel_gives_none() {
+    let server = start().await;
+    let cookie = server.cookie();
+    for decision in ["allow", "deny"] {
+        let started: Value = http()
+            .post(format!("{}/sync/v1/device/code", server.base))
+            .json(&json!({ "codeChallenge": challenge(), "deviceName": "Container" }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let page = http()
+            .get(format!(
+                "{}/sync/v1/device/link?code={}",
+                server.base,
+                started["userCode"].as_str().unwrap()
+            ))
+            .header("cookie", &cookie)
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+        http()
+            .post(format!("{}/sync/v1/device/allow", server.base))
+            .header("cookie", &cookie)
+            .form(&[
+                ("request", hidden(&page, "request")),
+                ("csrf", hidden(&page, "csrf")),
+                ("decision", decision.to_string()),
+            ])
+            .send()
+            .await
+            .unwrap();
+        let body = json!({ "deviceCode": started["deviceCode"], "codeVerifier": VERIFIER });
+        let poll = || async {
+            http()
+                .post(format!("{}/sync/v1/device/poll", server.base))
+                .json(&body)
+                .send()
+                .await
+                .unwrap()
+        };
+        let answer = poll().await;
+        if decision == "allow" {
+            assert_eq!(answer.status(), 200);
+            let issued: Value = answer.json().await.unwrap();
+            assert!(issued["token"].as_str().unwrap().starts_with("ins_"));
+            assert_eq!(issued["person"]["name"], "Alice <Example>");
+            assert_eq!(poll().await.status(), 400);
+        } else {
+            assert_eq!(answer.status(), 400);
+            let refused: Value = answer.json().await.unwrap();
+            assert_eq!(refused["code"], "ACCESS_DENIED");
+        }
+    }
+}

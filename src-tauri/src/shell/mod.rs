@@ -7,6 +7,7 @@ pub(crate) mod mirror;
 #[cfg(not(target_os = "macos"))]
 pub(crate) mod paint;
 pub(crate) mod quit;
+pub(crate) mod secrets;
 pub(crate) mod server;
 pub(crate) mod stickies;
 pub(crate) mod update;

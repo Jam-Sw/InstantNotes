@@ -26,6 +26,11 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   source, exact times, link underline, link previews, the outside-link mark, image preview height and tag
   suggestions) follow the library to every device and the web, as one encrypted `settings` object merged
   against `sync.settingsBase`; device settings stay on the device. Event `settings:changed`.
+- Sync sign-in on a computer with no browser (a container, a remote desktop): the app shows a short code and the
+  server's address; open it in a browser on any other device, type the code, sign in, and allow. The confirm page
+  shows the code again so you can check it matches. The app uses it when it cannot open a browser, or always with
+  `INSTANTNOTES_SIGN_IN=code`. Server: `device/code`, `device/link` and `device/poll` (RFC 8628 shape, bound to
+  the app's PKCE challenge).
 ### Changed
 - The toolbar shows by default (`editor.toolbarOpen` default true, a stored false kept) and no longer
   decides the editor's mode; `Editor.svelte` exposes `undo`, `redo`, `canUndo`, `canRedo` and reports
@@ -52,6 +57,10 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   view to go back. A ground ring and an upright ring stay fixed in the world, farther nodes fade, and
   labels keep one size: tags and Spaces always, the open, centred or hovered node and its neighbours.
   A single click opens a node after 300 ms, so a double click can centre it.
+- On Linux with no system keychain (no Secret Service), the sign-in token and library key are kept in
+  `secrets.json` next to the library, readable by its owner only, instead of sign-in failing. macOS and Windows
+  keep using the system keychain only.
+- A browser that fails to open no longer ends sync sign-in; the code sign-in takes over.
 ### Fixed
 - Sync: a device that needs the library key asks for approval as soon as the Sync page shows, with the six
   words on screen, instead of waiting for "Approve on another device" (desktop and web).
