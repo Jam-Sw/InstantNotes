@@ -23,6 +23,17 @@ export function emptyBoard(): Board {
   return { elements: [], appState: { viewBackgroundColor: "transparent" }, files: {} };
 }
 
+export function openingAppState(
+  appState: Record<string, unknown>,
+  touch: boolean,
+): Record<string, unknown> {
+  const type = touch ? "freedraw" : "selection";
+  return {
+    ...appState,
+    activeTool: { type, customType: null, locked: false, lastActiveTool: null },
+  };
+}
+
 export function serializeBoard(board: Board): string {
   return JSON.stringify({ v: 1, engine: EXCALIDRAW_ENGINE, data: board });
 }
