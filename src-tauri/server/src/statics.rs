@@ -135,8 +135,8 @@ const SIGN_IN: &str = r##"<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>InstantNotes</title>
 <style>
-:root{color-scheme:light dark;font-family:system-ui,sans-serif;--bg:#030303;--glow:#262626;--ink:#ededed;--accent:#4d8bf5;--accent-ink:#ffffff}
-@media (prefers-color-scheme: light){:root{--bg:#f6f6f6;--glow:#ffffff;--ink:#151515;--accent:#2f6fde;--accent-ink:#ffffff}}
+:root{color-scheme:light dark;font-family:system-ui,sans-serif;--bg:#030303;--glow:#262626;--ink:#ededed;--accent:#ededed;--accent-ink:#0a0a0a}
+@media (prefers-color-scheme: light){:root{--bg:#f6f6f6;--glow:#ffffff;--ink:#151515;--accent:#151515;--accent-ink:#f6f6f6}}
 html,body{height:100%}
 body{margin:0;overflow:hidden;color:var(--ink);background:radial-gradient(ellipse 70% 45% at 50% 0,var(--glow),var(--bg) 70%) var(--bg)}
 canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none}
