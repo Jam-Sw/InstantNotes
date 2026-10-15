@@ -208,6 +208,14 @@ fn device_name() -> String {
     }
 }
 
+fn join_poll_end(e: &RemoteError) -> Option<String> {
+    match e {
+        RemoteError::Refused(_) => Some("The request expired. Start it again.".into()),
+        RemoteError::SignedOut | RemoteError::Gone => Some(e.to_string()),
+        _ => None,
+    }
+}
+
 fn remote_error(e: RemoteError) -> CmdError {
     CmdError::storage(e.to_string())
 }
@@ -679,7 +687,19 @@ pub(crate) async fn start_sync_join(app: AppHandle) -> CmdResult<ServerStatus> {
                     }
                     break;
                 }
-                Ok(JoinAnswer::Denied) | Err(_) => {
+                Err(e) => match join_poll_end(&e) {
+                    None => tokio::time::sleep(JOIN_REPEAT).await,
+                    Some(message) => {
+                        link(&handle).set(|s| {
+                            s.stage = "needsKey".into();
+                            s.join_words = None;
+                            s.join_key = None;
+                            s.message = Some(message);
+                        });
+                        break;
+                    }
+                },
+                Ok(JoinAnswer::Denied) => {
                     link(&handle).set(|s| {
                         s.stage = "needsKey".into();
                         s.join_words = None;
@@ -1322,5 +1342,19 @@ mod tests {
         assert!(has_new(&ids(&["a", "b"]), &ids(&["a"])));
         assert!(!has_new(&ids(&["a"]), &ids(&["a", "b"])));
         assert!(!has_new(&ids(&[]), &ids(&["a"])));
+    }
+
+    #[test]
+    fn a_failed_poll_for_an_approval_retries_and_only_a_refusal_ends_the_wait() {
+        assert_eq!(
+            join_poll_end(&RemoteError::Unreachable("timed out".into())),
+            None
+        );
+        assert_eq!(join_poll_end(&RemoteError::WrongEpoch), None);
+        assert_eq!(
+            join_poll_end(&RemoteError::Refused("server answered 404".into())).as_deref(),
+            Some("The request expired. Start it again.")
+        );
+        assert!(join_poll_end(&RemoteError::SignedOut).is_some());
     }
 }

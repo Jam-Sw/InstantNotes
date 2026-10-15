@@ -68,6 +68,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   longer waits unseen in a window closed to the tray.
 - Sync: after a restart while waiting for approval, the Sync page asks again instead of staying blank.
 - Sync: the recovery key can be typed while waiting for approval; it withdraws the request.
+- Sync: on the desktop, a failed check for an approval (the network or the server briefly away) retries
+  instead of reporting the request as not approved; only a refused or expired request ends the wait.
 
 ## [0.10.0] - 2026-10-12
 ### Added
