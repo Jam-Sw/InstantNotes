@@ -53,6 +53,9 @@
       "M14.5 10.5a3.5 3.5 0 0 0-5 0L7 13a3.5 3.5 0 0 0 5 5l1-1",
     ],
     markdown: ["M3 5h18v14H3z", "M7 15V9l2.5 3L12 9v6", "m15 12 2 2 2-2", "M17 9v5"],
+    menu: ["M4 7h16", "M4 12h16", "M4 17h16"],
+    back: ["m15 5-7 7 7 7"],
+    command: ["M9 6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3z"],
   } as const;
 
   export type IconName = keyof typeof ICONS;

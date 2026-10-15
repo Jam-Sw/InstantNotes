@@ -301,3 +301,54 @@ html[data-vibrancy][data-vibrancy-derived] .sidebar {
     animation: none;
   }
 }
+
+html[data-touch] {
+  -webkit-tap-highlight-color: transparent;
+}
+html[data-touch] .nav-item,
+html[data-touch] .note-row,
+html[data-touch] .cmd-row,
+html[data-touch] .result,
+html[data-touch] .spaces-more,
+html[data-touch] .workspace-new {
+  min-height: 44px;
+}
+html[data-touch] .nav-item {
+  align-items: center;
+}
+html[data-touch] .space-tag-chip,
+html[data-touch] .filter-pill,
+html[data-touch] .action {
+  min-height: 36px;
+}
+html[data-touch] .icon-btn,
+html[data-touch] .fmt {
+  width: 40px;
+  height: 40px;
+}
+html[data-touch] .format-bar {
+  height: 48px;
+  overflow-x: auto;
+}
+html[data-touch] .search,
+html[data-touch] .nav-filter,
+html[data-touch] .cmd-input {
+  min-height: 36px;
+  font-size: 16px;
+}
+html[data-touch] .new-note {
+  width: 40px;
+}
+html[data-touch] .new-kind {
+  width: 28px;
+}
+html[data-touch] .pane-header {
+  padding-top: env(safe-area-inset-top);
+  height: calc(var(--chrome-h) + env(safe-area-inset-top));
+}
+html[data-touch] .status-bar {
+  padding-bottom: calc(6px + env(safe-area-inset-bottom));
+}
+html[data-touch] .cmd-row kbd {
+  display: none;
+}

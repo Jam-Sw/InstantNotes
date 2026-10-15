@@ -21,6 +21,7 @@
   import { theme } from "$lib/stores/theme.svelte";
   import { agents } from "$lib/stores/agents.svelte";
   import { shell, type SettingsPage as Page } from "$lib/stores/shell.svelte";
+  import { layout } from "$lib/stores/layout.svelte";
   import changelogRaw from "../../../CHANGELOG.md?raw";
 
   let {
@@ -113,12 +114,15 @@
   });
 
   const searching = $derived(filter.trim() !== "");
+  let overview = $state(false);
+  const navPane = $derived(page === "home" && !overview);
   const results = $derived(
     shownGroups.flatMap((g) => g.entries.map((e) => ({ ...e, group: g.label }))),
   );
 
   function openPage(id: Page) {
     shell.settingsPage = id;
+    overview = id === "home";
     filter = "";
   }
 
@@ -143,6 +147,7 @@
         }
         e.preventDefault();
         if (page !== "home") shell.settingsPage = "home";
+        else if (overview && layout.phone) overview = false;
         else onBack();
       }
     }
@@ -160,7 +165,7 @@
   const ACCESS_LABEL = { off: "Off", read: "Read only", write: "Read & write" } as const;
 </script>
 
-<div class="settings-root">
+<div class="settings-root" class:phone={layout.phone} data-pane={navPane ? "nav" : "main"}>
   <nav class="settings-nav" aria-label="Settings pages">
     <div class="pane-header" data-tauri-drag-region></div>
     <div class="nav-top">
@@ -185,7 +190,7 @@
           {#each group.entries as entry (entry.id)}
             <button
               class="nav-item"
-              class:active={page === entry.id}
+              class:active={!layout.phone && page === entry.id}
               aria-current={page === entry.id ? "page" : undefined}
               title={entry.desc}
               onclick={() => openPage(entry.id)}
@@ -221,7 +226,13 @@
         {/each}
       </section>
     {:else if page === "home"}
-      <div class="pane-header" data-tauri-drag-region></div>
+      <div class="pane-header" data-tauri-drag-region>
+        {#if layout.phone}
+          <button class="back-btn" aria-label="Back to Settings" onclick={() => (overview = false)}>
+            <span class="back-arrow" aria-hidden="true">&#8592;</span> Settings
+          </button>
+        {/if}
+      </div>
       <div class="settings-home">
         <header class="home-head">
           <h2 class="home-title">Overview</h2>
@@ -302,6 +313,11 @@
       </div>
     {:else}
       <header class="pane-header page-head" data-tauri-drag-region>
+        {#if layout.phone}
+          <button class="back-btn" aria-label="Back to Settings" onclick={() => (shell.settingsPage = "home")}>
+            <span class="back-arrow" aria-hidden="true">&#8592;</span> Settings
+          </button>
+        {/if}
         <nav class="crumb" aria-label="Breadcrumb">
           <button class="crumb-link" onclick={() => (shell.settingsPage = "home")}>Settings</button>
           <span class="crumb-sep" aria-hidden="true">&rsaquo;</span>
@@ -344,10 +360,37 @@
     display: grid;
     grid-template-columns: 228px minmax(0, 1fr);
     height: 100vh;
+    height: var(--app-height, 100dvh);
     overflow: hidden;
     background: var(--bg);
   }
 
+  .settings-root.phone {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .phone[data-pane="nav"] .settings-main,
+  .phone[data-pane="main"] .settings-nav {
+    display: none;
+  }
+  .phone .settings-nav {
+    border-right: none;
+  }
+  .phone .page-head {
+    padding: 0 16px;
+  }
+  .phone .crumb {
+    display: none;
+  }
+  .phone .pane-header .back-btn {
+    align-self: center;
+    margin-left: 0;
+  }
+  .phone .settings-content {
+    padding: 16px 16px calc(40px + env(safe-area-inset-bottom));
+  }
+  .phone .settings-home {
+    padding: 4px 16px calc(40px + env(safe-area-inset-bottom));
+  }
   .settings-nav {
     display: flex;
     flex-direction: column;

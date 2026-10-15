@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
+  import { fade, fly } from "svelte/transition";
+  import Icon from "$lib/components/Icon.svelte";
+  import { layout } from "$lib/stores/layout.svelte";
   import { appVersion as fetchAppVersion, getSyncServerStatus, quitApp } from "$lib/api/client";
   import type { SyncStage } from "$lib/api/types";
   import { EVENTS, listen } from "$lib/api/events";
@@ -94,6 +97,42 @@
     agents.setWatching(!shell.settingsOpen && isAgentsSpaceId(library.activeWorkspaceId));
   });
 
+  layout.onLeave = () => library.clearMultiSelect();
+
+  const selectedId = $derived(library.selected?.id ?? null);
+  $effect(() => {
+    void layout.mode;
+    const open = selectedId !== null;
+    untrack(() => (open ? layout.showNote() : layout.showList()));
+  });
+
+  $effect(() => {
+    sidebar.setNarrow(layout.mode !== "desktop");
+  });
+
+  const view = $derived(
+    `${library.graphMode}|${library.revisitMode}|${library.activeTagId}|${library.activeWorkspaceId}|${shell.settingsOpen}`,
+  );
+  $effect(() => {
+    void view;
+    untrack(() => (sidebar.narrowOpen = false));
+  });
+
+  const drawer = $derived(sidebar.narrow);
+  const onePane = $derived(layout.phone && !library.graphMode);
+  const showList = $derived(!onePane || layout.pane === "list");
+  const showEditor = $derived(!onePane || layout.pane === "note");
+  const backButton = $derived(onePane && layout.pane === "note");
+  const columns = $derived(
+    layout.phone
+      ? "minmax(0, 1fr)"
+      : drawer
+        ? "320px 1fr"
+        : sidebar.hidden
+          ? "280px 1fr"
+          : `${sidebar.width}px 280px 1fr`,
+  );
+
   function openUpdate() {
     shell.closeSettings();
     library.selectWorkspace(UPDATE_SPACE_ID);
@@ -103,7 +142,7 @@
   updater.show = openUpdate;
 
   onMount(() => {
-    if (isMac) document.documentElement.dataset.chrome = "overlay";
+    if (isMac && !isWeb) document.documentElement.dataset.chrome = "overlay";
     void library.init().then(() => library.openLinked(location.hash));
     void editorPrefs.init();
     void imagePrefs.init();
@@ -149,12 +188,9 @@
     window.addEventListener("blur", flush);
     window.addEventListener("keydown", onKeydown);
     window.addEventListener("keydown", onBoardPaletteKey, true);
-    const narrow = window.matchMedia("(max-width: 960px)");
-    const onNarrow = () => sidebar.setNarrow(narrow.matches);
-    onNarrow();
-    narrow.addEventListener("change", onNarrow);
+    const stopLayout = layout.init();
     return () => {
-      narrow.removeEventListener("change", onNarrow);
+      stopLayout();
       clearTimeout(warmEditor);
       clearTimeout(warmViews);
       updater.stop();
@@ -263,7 +299,9 @@
         }
         break;
       case "Escape":
-        if (!shell.settingsOpen) library.clearMultiSelect();
+        if (sidebar.narrow && sidebar.narrowOpen) sidebar.narrowOpen = false;
+        else if (backButton) layout.back();
+        else if (!shell.settingsOpen) library.clearMultiSelect();
         break;
     }
   }
@@ -342,11 +380,11 @@
 {:else}
   <div
     class="layout"
-    style:grid-template-columns={sidebar.hidden
-      ? "280px 1fr"
-      : `${sidebar.width}px 280px 1fr`}
+    class:phone={layout.phone}
+    data-nav={drawer ? "" : undefined}
+    style:grid-template-columns={columns}
   >
-    {#if !sidebar.hidden}
+    {#if !drawer && !sidebar.hidden}
       <Sidebar />
       <div
         class="sidebar-handle"
@@ -369,35 +407,72 @@
         {/await}
       </section>
     {:else}
-      <NoteList />
-      <section class="editor-pane">
-        {#if !licenseSpace.locked && library.multiSelected.size <= 1 && library.selected && !isUpdateNoteId(library.selected.id) && !isAgentNoteId(library.selected.id) && !isMergeNoteId(library.selected.id)}
-          {#await import("$lib/components/NoteEditor.svelte") then { default: NoteEditor }}
-            <NoteEditor />
-          {/await}
-        {:else}
-          <div class="pane-header" data-tauri-drag-region></div>
-          {#if licenseSpace.locked}
-            <LicenseNote />
-          {:else if library.multiSelected.size > 1}
-            <BulkActions />
-          {:else if library.selected && isAgentNoteId(library.selected.id)}
-            <AgentNote />
-          {:else if library.selected && isMergeNoteId(library.selected.id)}
-            {#await import("$lib/components/MergeNote.svelte") then { default: MergeNote }}
-              <MergeNote />
+      {#if showList}
+        <NoteList />
+      {/if}
+      {#if showEditor}
+        <section class="editor-pane">
+          {#if !licenseSpace.locked && library.multiSelected.size <= 1 && library.selected && !isUpdateNoteId(library.selected.id) && !isAgentNoteId(library.selected.id) && !isMergeNoteId(library.selected.id)}
+            {#await import("$lib/components/NoteEditor.svelte") then { default: NoteEditor }}
+              <NoteEditor />
             {/await}
-          {:else if library.selected}
-            <UpdateNote />
           {:else}
-            <WelcomeScreen {appVersion} onOpenUpdate={openUpdate} />
+            <div class="pane-header" data-tauri-drag-region></div>
+            {#if licenseSpace.locked}
+              <LicenseNote />
+            {:else if library.multiSelected.size > 1}
+              <BulkActions />
+            {:else if library.selected && isAgentNoteId(library.selected.id)}
+              <AgentNote />
+            {:else if library.selected && isMergeNoteId(library.selected.id)}
+              {#await import("$lib/components/MergeNote.svelte") then { default: MergeNote }}
+                <MergeNote />
+              {/await}
+            {:else if library.selected}
+              <UpdateNote />
+            {:else}
+              <WelcomeScreen {appVersion} onOpenUpdate={openUpdate} />
+            {/if}
           {/if}
-        {/if}
-      </section>
+        </section>
+      {/if}
+    {/if}
+    {#if drawer}
+      {#if backButton}
+        <button class="pane-nav" aria-label="Back to the notes" onclick={() => layout.back()}>
+          <Icon name="back" size={20} />
+        </button>
+      {:else}
+        <button
+          class="pane-nav"
+          aria-label="Show the sidebar"
+          aria-expanded={sidebar.narrowOpen}
+          onclick={() => sidebar.toggle()}
+        >
+          <Icon name="menu" size={20} />
+        </button>
+      {/if}
+      {#if sidebar.narrowOpen}
+        <div
+          class="drawer-scrim"
+          role="presentation"
+          transition:fade={{ duration: 160 }}
+          onclick={() => (sidebar.narrowOpen = false)}
+        ></div>
+        <div class="drawer" transition:fly={{ x: -300, duration: 220, opacity: 1 }}>
+          <Sidebar />
+          <button class="drawer-settings" onclick={() => shell.openSettings()}>Settings</button>
+        </div>
+      {/if}
     {/if}
   </div>
 {/if}
 
+{#if layout.touch && !shell.paletteOpen && !sidebar.narrowOpen && !licenseSpace.locked}
+  <button class="palette-fab" aria-label="Commands" onclick={() => shell.togglePalette()}>
+    <Icon name="command" size={22} />
+  </button>
+{/if}
 <CommandPalette bind:open={shell.paletteOpen} />
 <ConfirmDialog />
 <OpenElsewhere />
@@ -412,8 +487,94 @@
     display: grid;
     grid-template-rows: minmax(0, 1fr);
     height: 100vh;
+    height: var(--app-height, 100dvh);
     overflow: hidden;
     position: relative;
+  }
+  .layout[data-nav] > :global(:first-child .pane-header) {
+    padding-left: calc(max(12px, var(--chrome-inset)) + 40px);
+  }
+  .layout.phone .graph-span {
+    grid-column: auto;
+  }
+  .layout.phone > :global(.list-pane) {
+    border-right: none;
+  }
+
+  .pane-nav {
+    position: absolute;
+    top: calc(env(safe-area-inset-top) + (var(--chrome-h) - 36px) / 2);
+    left: calc(max(6px, var(--chrome-inset)) + env(safe-area-inset-left));
+    z-index: 20;
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+  .pane-nav:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+  }
+
+  .drawer-scrim {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    background: rgba(0, 0, 0, 0.32);
+  }
+  .drawer {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 31;
+    display: flex;
+    flex-direction: column;
+    width: min(300px, 84vw);
+    background: var(--bg-sidebar);
+    box-shadow: var(--shadow-lg);
+  }
+  .drawer > :global(.sidebar) {
+    flex: 1;
+    min-height: 0;
+    padding-left: env(safe-area-inset-left);
+    border-right: none;
+  }
+  .drawer-settings {
+    flex: none;
+    min-height: 44px;
+    margin: 0 10px calc(10px + env(safe-area-inset-bottom));
+    padding: 0 10px;
+    border-top: 1px solid var(--divider);
+    text-align: left;
+    color: var(--text);
+  }
+
+  .palette-fab {
+    position: fixed;
+    right: calc(16px + env(safe-area-inset-right));
+    bottom: calc(44px + env(safe-area-inset-bottom));
+    z-index: 90;
+    display: grid;
+    place-items: center;
+    width: 52px;
+    height: 52px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    background: var(--bg-sidebar);
+    color: var(--accent-text);
+    box-shadow: var(--shadow-lg);
+    cursor: pointer;
+  }
+  .palette-fab:active {
+    transform: scale(0.94);
   }
 
   .sidebar-handle {

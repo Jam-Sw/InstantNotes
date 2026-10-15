@@ -15,6 +15,7 @@
   import { library } from "$lib/stores/library.svelte";
   import { formatDate } from "$lib/format";
   import { debounce } from "$lib/debounce";
+  import { layout } from "$lib/stores/layout.svelte";
   import {
     clampActive,
     flattenRows,
@@ -239,6 +240,7 @@
 {#if open}
   <div
     class="overlay"
+    class:sheet={layout.phone}
     role="presentation"
     onclick={(e) => {
       if (e.target === e.currentTarget) open = false;
@@ -320,6 +322,19 @@
     align-items: flex-start;
     padding-top: 12vh;
     background: rgba(0, 0, 0, 0.32);
+  }
+  .overlay.sheet {
+    bottom: auto;
+    height: var(--app-height, 100dvh);
+    align-items: flex-end;
+    padding-top: 0;
+  }
+  .sheet .palette {
+    width: 100%;
+    max-height: 78dvh;
+    border-bottom: none;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
   }
   .palette {
     width: min(560px, 90vw);
