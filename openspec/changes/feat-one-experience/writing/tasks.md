@@ -14,9 +14,9 @@
       `calc(12px * var(--density))` top; `FormatToolbar.test.ts` and
       `NoteEditor.test.ts`: 9 passed)
 - [x] `commands.ts`: `view.markdownSource`, `view.toolbar` (331d69e)
-- [ ] Before and after screenshots, dark and light.
-      Remains: the editor screenshot run needs Linux (`kwin_wayland`,
-      `tauri-driver`); run it there on 331d69e~1 and on HEAD
+- [x] Visual pass on the toolbar and header (173da22)
+- [ ] Before and after screenshots, dark and light, on Linux
+      (`kwin_wayland`, `tauri-driver`)
 - [x] CHANGELOG lines; `docs/DATA_MODEL.md` §8 for the key (331d69e)
 - [ ] In the app: typing with the toolbar, bold pressed while in bold text,
       undo and redo, heading cycle, the Markdown toggle, zoom. Remains: a
