@@ -1,10 +1,14 @@
 # Tasks: Signed installs
 
-- [ ] `release.yml`: the macOS signing and notarization variables from
-      secrets; the Windows signing step, conditional on the secrets
-- [ ] `release-notes.mjs`: the install footer per signed state; test
-- [ ] README: installing, per signed state
-- [ ] CHANGELOG line
+- [x] `release.yml`: the macOS signing and notarization variables from
+      secrets, exported only when all six exist; the Windows signing steps
+      (app exe before bundling, installer after, then the updater `.sig`
+      redone), conditional on all six Azure secrets; `SIGNED_MACOS` and
+      `SIGNED_WINDOWS` at workflow level
+- [x] `release-notes.mjs`: `installFooter({ macos, windows })` and
+      `signedFromEnv`; test "install footer" in `scripts/release.test.ts`
+- [ ] README: installing, per signed state (text handed to the integrator)
+- [ ] CHANGELOG line (integrator)
 
 ## Owner steps
 

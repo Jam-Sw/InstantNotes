@@ -60,13 +60,16 @@ the merge commit. The release skill records this.
 
 ## 6. The web app's code hashes
 
-The `image` job, after the build, runs the built image to print the SHA-256
-of every file under `/app/ui` and uploads `web-code-sha256.txt` to the
-release. The README's "The web app is code your server sends" paragraph
-says how to compare: `docker run --rm --entrypoint sha256sum
-ghcr.io/jam-sw/instantnotes-server:<version> /app/ui/<file>` against the
-list, or against the browser's view of the file. This closes the 0.10.0
-item "published web-code hashes".
+The `image` job, after the push, copies `/app/ui` out of the pushed
+`linux/amd64` image (`docker create` and `docker cp`; the distroless image
+has no shell or `sha256sum`), hashes every file, and uploads
+`web-code-sha256.txt` to the release. Both platforms copy the same `ui`
+stage, built once on the build platform, so one list serves both. The
+README's "The web app is code your server sends" paragraph says how to
+compare: `docker create`, `docker cp <id>:/app/ui ./ui`, `sha256sum -c` in
+`./ui` against the list, or the browser's view of a file. `publish` needs
+`image`, so a failed image leaves the release a draft. This closes the
+0.10.0 item "published web-code hashes".
 
 ## 7. Checks
 
