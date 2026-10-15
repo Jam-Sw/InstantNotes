@@ -54,6 +54,11 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Open on another device (`note.openElsewhere`, the first button in the editor header): a QR code and a
   link to `<sync server>/#note=<id>`, built only from the server this device is signed in to; the web app
   opens `#note=<id>` and waits up to a minute for the note to sync.
+- On a phone, one pane at a time with a back button that follows the system back gesture, and the sidebar as
+  a drawer with Graph, Spaces, tags and Settings; on a tablet, the list and the note side by side with the
+  sidebar behind a menu button; on touch screens, finger-sized controls, safe areas, room for the on-screen
+  keyboard and a command button that opens the palette (a sheet on phones). A desktop window 600 to 960 px
+  wide uses the same drawer.
 - The built-in theme Night console (`night-console`): amber on deep slate with square corners.
 - Releases list the SHA-256 of every file of the web app the server serves in `web-code-sha256.txt`.
 ### Changed
