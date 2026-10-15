@@ -302,6 +302,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     fn template(dir: &Path, rest: &str) -> Template {
         Template::parse(&format!("{}/{rest}", dir.display())).unwrap()
     }
@@ -375,6 +376,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn a_sign_in_without_the_claims_the_template_needs_is_refused() {
         let dir = tempfile::tempdir().unwrap();
         let s = sessions(dir.path());
@@ -391,6 +393,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn the_folder_comes_from_the_record_and_is_resolved_once() {
         let dir = tempfile::tempdir().unwrap();
         let s = sessions(dir.path());
@@ -409,6 +412,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn two_people_with_one_folder_are_a_collision() {
         let dir = tempfile::tempdir().unwrap();
         let s = sessions(dir.path());
@@ -422,6 +426,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn an_old_folder_moves_once_and_a_blocked_move_keeps_refusing() {
         let dir = tempfile::tempdir().unwrap();
         let s = sessions(dir.path());
