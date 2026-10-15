@@ -11,6 +11,7 @@
   import { editorPrefs } from "$lib/stores/editor.svelte";
   import { imagePrefs } from "$lib/stores/images.svelte";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
+  import { openElsewhere } from "$lib/stores/open-elsewhere.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
   import { importImageFile, allowImageFile, openUrl, popOutNote, tagSuggestion } from "$lib/api/client";
   import { isWeb } from "$lib/api/runtime";
@@ -168,6 +169,14 @@
           </div>
         {/if}
         <div class="icon-group">
+          <button
+            class="icon-btn"
+            title="Open on another device"
+            aria-label="Open on another device"
+            onclick={() => void openElsewhere.show(library.selected!.id)}
+          >
+            <Icon name="devices" />
+          </button>
           {#if !isWeb}
             <button
               class="icon-btn"

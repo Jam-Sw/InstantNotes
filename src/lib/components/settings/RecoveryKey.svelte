@@ -1,24 +1,10 @@
 <script lang="ts">
-  import qrcode from "qrcode-generator";
+  import { qrDrawing } from "$lib/qr";
   import { toasts } from "$lib/stores/toasts.svelte";
 
   let { recoveryKey }: { recoveryKey: string } = $props();
 
-  const QUIET = 4;
-
-  const qr = $derived.by(() => {
-    const code = qrcode(0, "M");
-    code.addData(recoveryKey);
-    code.make();
-    const count = code.getModuleCount();
-    let path = "";
-    for (let row = 0; row < count; row++) {
-      for (let col = 0; col < count; col++) {
-        if (code.isDark(row, col)) path += `M${col + QUIET} ${row + QUIET}h1v1h-1z`;
-      }
-    }
-    return { size: count + QUIET * 2, path };
-  });
+  const qr = $derived(qrDrawing(recoveryKey));
 
   async function copy() {
     try {

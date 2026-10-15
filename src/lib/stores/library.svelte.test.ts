@@ -1310,3 +1310,60 @@ describe("each view remembers its open note", () => {
     expect(mockUpdateNote).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("openLinked", () => {
+  const notesChanged = () =>
+    mockListen.mock.calls.filter((c) => c[0] === EVENTS.NOTES_CHANGED).at(-1)?.[1] as () => void;
+
+  it("selects the note named in #note= when it is on this device", async () => {
+    const library = await load();
+    mockGetNote.mockResolvedValueOnce(mkNote("b1")).mockResolvedValueOnce(mkNote("b1"));
+    await library.openLinked("#note=b1");
+    expect(library.selected?.id).toBe("b1");
+    expect(mockListen).not.toHaveBeenCalled();
+  });
+
+  it("ignores a hash that names no note", async () => {
+    const library = await load();
+    await library.openLinked("#settings");
+    await library.openLinked("");
+    expect(mockGetNote).not.toHaveBeenCalled();
+  });
+
+  it("waits for the note to arrive through notes:changed", async () => {
+    const library = await load();
+    const unlisten = vi.fn();
+    mockListen.mockResolvedValue(unlisten);
+    mockGetNote.mockRejectedValueOnce(new Error("not found"));
+    const opening = library.openLinked("#note=b2");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.selected).toBeNull();
+
+    mockGetNote.mockRejectedValueOnce(new Error("not found"));
+    notesChanged()();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(library.selected).toBeNull();
+
+    mockGetNote.mockResolvedValueOnce(mkNote("b2")).mockResolvedValueOnce(mkNote("b2"));
+    notesChanged()();
+    await opening;
+    expect(library.selected?.id).toBe("b2");
+    expect(unlisten).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives up after a minute and says the note is not here yet", async () => {
+    const library = await load();
+    const unlisten = vi.fn();
+    mockListen.mockResolvedValue(unlisten);
+    mockGetNote.mockRejectedValue(new Error("not found"));
+    const opening = library.openLinked("#note=b3");
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(unlisten).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await opening;
+    expect(library.selected).toBeNull();
+    expect(unlisten).toHaveBeenCalledTimes(1);
+    const { toasts } = await import("$lib/stores/toasts.svelte");
+    expect(toasts.items.at(-1)?.message).toBe("That note isn't on this device yet.");
+  });
+});

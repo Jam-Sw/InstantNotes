@@ -14,6 +14,7 @@ import { exportSelectedNote } from "$lib/note-export";
 import { backupNow, openDataFolder, openUrl, requestQuit } from "$lib/api/client";
 import { exportArchiveDownload, exportVaultToFolder } from "$lib/vault-export";
 import { toasts } from "$lib/stores/toasts.svelte";
+import { openElsewhere } from "$lib/stores/open-elsewhere.svelte";
 import { modKey, shiftKey } from "$lib/platform";
 import { isWeb } from "$lib/api/runtime";
 import { isSyntheticNoteId } from "$lib/synthetic";
@@ -221,6 +222,15 @@ export function buildCommands(): Command[] {
         },
       },
     );
+    if (!n.isDeleted && !isSyntheticNoteId(n.id)) {
+      commands.push({
+        id: "note.openElsewhere",
+        title: "Open on another device…",
+        group: "Notes",
+        prefix: notePrefix,
+        run: () => void openElsewhere.show(n.id),
+      });
+    }
     if (!isWeb && !n.isDeleted && !isSyntheticNoteId(n.id)) {
       const out = library.isSticky(n.id);
       commands.push({

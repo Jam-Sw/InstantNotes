@@ -426,6 +426,13 @@ reserved and refused.
   command names to the worker, and the sync commands above are answered by
   `src/lib/web/sync.ts` with the same shapes. A 0.9.5 web library moves into
   the first device that syncs (`GET /sync/v1/legacy`, then `DELETE`).
+- **Open on another device.** `note.openElsewhere` (the editor header and the
+  palette) shows a QR code and a link `<server>/#note=<id>`, built by
+  `noteLink` in `src/lib/qr.ts` only from the `address` of
+  `get_sync_server_status` while signed in; with no server it shows how to set
+  one up. The web app reads `#note=<id>` at start (`library.openLinked`): it
+  opens the note, or waits up to a minute for `notes:changed` to bring it, then
+  says it is not on this device yet.
 
 ### 12.5 Backups and the Markdown export (0.10.1)
 

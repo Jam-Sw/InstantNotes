@@ -12,6 +12,7 @@
   import WelcomeScreen from "$lib/components/WelcomeScreen.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
+  import OpenElsewhere from "$lib/components/OpenElsewhere.svelte";
   import SyncJoinDialog from "$lib/components/SyncJoinDialog.svelte";
   import OtherTabScreen from "$lib/components/OtherTabScreen.svelte";
   import Toast from "$lib/components/Toast.svelte";
@@ -102,7 +103,7 @@
 
   onMount(() => {
     if (isMac) document.documentElement.dataset.chrome = "overlay";
-    void library.init();
+    void library.init().then(() => library.openLinked(location.hash));
     void editorPrefs.init();
     void imagePrefs.init();
     void sidebar.init();
@@ -396,6 +397,7 @@
 
 <CommandPalette bind:open={shell.paletteOpen} />
 <ConfirmDialog />
+<OpenElsewhere />
 <SyncJoinDialog />
 <Toast />
 {#if isWeb}

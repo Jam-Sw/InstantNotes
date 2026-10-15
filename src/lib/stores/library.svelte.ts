@@ -61,12 +61,14 @@ import { parseVaultSynced } from "$lib/vault-mirror";
 import { boardFromText } from "$lib/whiteboard/excalidraw";
 import { appendRows, parseSheet, serializeSheet } from "$lib/sheet/model";
 import { isWeb } from "$lib/api/runtime";
+import { linkedNoteId } from "$lib/qr";
 
 export type { StatusFilter } from "$lib/stores/library/navigation.svelte";
 
 const SEARCH_DEBOUNCE_MS = 150;
 const SUGGESTION_COUNT_DEBOUNCE_MS = 1500;
 const LIST_BODY_CHARS = 2048;
+const LINKED_NOTE_WAIT_MS = 60_000;
 
 class LibraryStore {
   #nav = new NavigationModel();
@@ -446,6 +448,47 @@ class LibraryStore {
       this.#searchRefresh.cancel();
       void this.refresh();
     }
+  }
+
+  async openLinked(hash: string): Promise<void> {
+    const id = linkedNoteId(hash);
+    if (!id) return;
+    const present = async () => {
+      try {
+        await getNote(id, false);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    if (await present()) {
+      await this.select(id);
+      return;
+    }
+    const found = await new Promise<boolean>((resolve) => {
+      let checking = false;
+      let settled = false;
+      let unlisten: (() => void) | null = null;
+      const done = (ok: boolean) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        unlisten?.();
+        resolve(ok);
+      };
+      const timer = setTimeout(() => done(false), LINKED_NOTE_WAIT_MS);
+      void listen(EVENTS.NOTES_CHANGED, async () => {
+        if (checking) return;
+        checking = true;
+        if (await present()) done(true);
+        checking = false;
+      }).then((off) => {
+        if (settled) off();
+        else unlisten = off;
+      });
+    });
+    if (found) await this.select(id);
+    else toasts.show("That note isn't on this device yet.");
   }
 
   async select(id: string): Promise<void> {
