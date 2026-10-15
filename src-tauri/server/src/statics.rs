@@ -131,20 +131,20 @@ pub fn html(status: StatusCode, body: String) -> Response {
     response
 }
 
-pub const SIGN_IN: &str = r##"<!doctype html>
+const SIGN_IN: &str = r##"<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>InstantNotes</title>
 <style>
-:root{color-scheme:light dark;font-family:system-ui,sans-serif;--bg:#030303;--glow:#262626;--ink:#ededed;--btn:#ededed;--btn-ink:#0a0a0a}
-@media (prefers-color-scheme: light){:root{--bg:#f6f6f6;--glow:#ffffff;--ink:#151515;--btn:#151515;--btn-ink:#f6f6f6}}
+:root{color-scheme:light dark;font-family:system-ui,sans-serif;--bg:#030303;--glow:#262626;--ink:#ededed;--accent:#4d8bf5;--accent-ink:#ffffff}
+@media (prefers-color-scheme: light){:root{--bg:#f6f6f6;--glow:#ffffff;--ink:#151515;--accent:#2f6fde;--accent-ink:#ffffff}}
 html,body{height:100%}
 body{margin:0;overflow:hidden;color:var(--ink);background:radial-gradient(ellipse 70% 45% at 50% 0,var(--glow),var(--bg) 70%) var(--bg)}
 canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none}
 main{position:fixed;left:clamp(1.5rem,11vw,9rem);top:30vh}
 h1{font-weight:600;font-size:clamp(2rem,4.5vw,3rem);letter-spacing:-.02em;margin:0 0 1.75rem}
-a{display:inline-block;padding:.65rem 1.5rem;border-radius:.55rem;background:var(--btn);color:var(--btn-ink);text-decoration:none;font-weight:600;transition:opacity .15s}
+a{display:inline-block;padding:.65rem 1.5rem;border-radius:.55rem;background:var(--accent);color:var(--accent-ink);text-decoration:none;font-weight:600;transition:opacity .15s}
 a:hover{opacity:.85}
-a:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 </style></head><body>
 <script type="application/json" id="signin-data">{"notes":48}</script>
 <canvas id="bg" aria-hidden="true"></canvas>
@@ -192,8 +192,54 @@ dark.addEventListener("change",()=>{pal=pick();all()});still.addEventListener("c
 const SIGNED_IN_SCRIPT: &str = r#"<script>document.dispatchEvent(new Event("signin:start"));document.dispatchEvent(new CustomEvent("signin:done",{detail:{href:"/"}}))</script>
 </body>"#;
 
-pub fn signed_in() -> String {
-    SIGN_IN.replacen("</body>", SIGNED_IN_SCRIPT, 1)
+fn origin(url: &str) -> Option<&str> {
+    let scheme = url.find("://")? + 3;
+    let end = url[scheme..].find('/').map_or(url.len(), |i| scheme + i);
+    Some(&url[..end])
+}
+
+fn themed(page: &str, stylesheet: Option<&str>) -> String {
+    match stylesheet {
+        Some(href) => page.replacen(
+            "</style></head>",
+            &format!(
+                r#"</style><link rel="stylesheet" href="{}"></head>"#,
+                escape(href)
+            ),
+            1,
+        ),
+        None => page.to_string(),
+    }
+}
+
+pub fn sign_in_policy(stylesheet: Option<&str>) -> String {
+    let theme = stylesheet
+        .map(|href| origin(href).unwrap_or("'self'"))
+        .map(|from| format!(" {from}"))
+        .unwrap_or_default();
+    format!(
+        "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'{theme}; font-src{}; img-src data:{theme}; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+        if theme.is_empty() { " 'none'" } else { &theme }
+    )
+}
+
+fn sign_in_page(stylesheet: Option<&str>, done: bool) -> String {
+    let page = if done {
+        SIGN_IN.replacen("</body>", SIGNED_IN_SCRIPT, 1)
+    } else {
+        SIGN_IN.to_string()
+    };
+    themed(&page, stylesheet)
+}
+
+pub fn sign_in(status: StatusCode, stylesheet: Option<&str>, done: bool) -> Response {
+    let mut response = html(status, sign_in_page(stylesheet, done));
+    if let Ok(policy) = HeaderValue::from_str(&sign_in_policy(stylesheet)) {
+        response
+            .headers_mut()
+            .insert(header::CONTENT_SECURITY_POLICY, policy);
+    }
+    response
 }
 
 pub fn escape(text: &str) -> String {
@@ -284,9 +330,36 @@ mod tests {
 
     #[test]
     fn signed_in_hands_off_once_without_reading_any_notes() {
-        let page = signed_in();
+        let page = sign_in_page(Some("/theme.css"), true);
         assert_eq!(page.matches("signin:done\",{detail").count(), 1);
         assert!(!page.contains("/api/"));
         assert!(page.trim_end().ends_with("</html>"));
+    }
+
+    #[test]
+    fn the_button_wears_the_accent_in_light_and_dark() {
+        assert_eq!(SIGN_IN.matches("--accent:").count(), 2);
+        assert!(SIGN_IN.contains("prefers-color-scheme: light"));
+        assert!(SIGN_IN.contains("background:var(--accent);color:var(--accent-ink)"));
+    }
+
+    #[test]
+    fn an_operator_stylesheet_comes_after_the_pages_own_and_only_its_origin_is_allowed() {
+        let page = themed(SIGN_IN, Some("https://cdn.example.org/brand/theme.css"));
+        let style = page.find("</style>").unwrap();
+        let link = page
+            .find(r#"<link rel="stylesheet" href="https://cdn.example.org/brand/theme.css">"#)
+            .unwrap();
+        assert!(style < link && link < page.find("</head>").unwrap());
+        let policy = sign_in_policy(Some("https://cdn.example.org/brand/theme.css"));
+        assert!(policy.contains("style-src 'unsafe-inline' https://cdn.example.org;"));
+        assert!(policy.contains("font-src https://cdn.example.org;"));
+        assert!(!policy.contains("*"));
+        let same = sign_in_policy(Some("/brand/theme.css"));
+        assert!(same.contains("style-src 'unsafe-inline' 'self';"));
+        let plain = sign_in_policy(None);
+        assert!(plain.contains("style-src 'unsafe-inline';"));
+        assert!(plain.contains("font-src 'none';"));
+        assert_eq!(themed(SIGN_IN, None), SIGN_IN);
     }
 }

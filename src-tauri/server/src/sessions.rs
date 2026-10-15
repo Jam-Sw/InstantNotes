@@ -62,6 +62,35 @@ pub struct Device {
     pub last_seen: i64,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Record {
+    pub username: Option<String>,
+    pub email: Option<String>,
+    pub folder: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Known {
+    pub sub: String,
+    pub record: Record,
+    pub last_seen: Option<i64>,
+}
+
+const PERSON_COLUMNS: &[&str] = &["username", "email", "folder"];
+
+fn migrate(conn: &Connection) -> rusqlite::Result<()> {
+    let mut stmt = conn.prepare("SELECT name FROM pragma_table_info('persons')")?;
+    let have: Vec<String> = stmt
+        .query_map([], |r| r.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    for column in PERSON_COLUMNS {
+        if !have.iter().any(|c| c == column) {
+            conn.execute_batch(&format!("ALTER TABLE persons ADD COLUMN {column} TEXT"))?;
+        }
+    }
+    Ok(())
+}
+
 pub fn random_token() -> String {
     let mut bytes = [0u8; 32];
     rand::rng().fill_bytes(&mut bytes);
@@ -94,6 +123,7 @@ impl Sessions {
         conn.busy_timeout(Duration::from_secs(5))
             .and_then(|_| conn.pragma_update(None, "journal_mode", "WAL"))
             .and_then(|_| conn.execute_batch(SCHEMA))
+            .and_then(|_| migrate(&conn))
             .map_err(|e| format!("cannot prepare {}: {e}", path.display()))?;
         #[cfg(unix)]
         {
@@ -145,6 +175,32 @@ impl Sessions {
     pub fn create_session(&self, person: &Person, browser: Option<&str>, now: i64) -> String {
         let token = random_token();
         self.insert(&token, SESSION, person, browser, now);
+        token
+    }
+
+    pub fn create_expiring_device(
+        &self,
+        person: &Person,
+        name: &str,
+        now: i64,
+        ttl: i64,
+    ) -> String {
+        let token = format!("{DEVICE_PREFIX}{}", random_token());
+        let _ = self.conn().execute(
+            "INSERT INTO grants (id, token_hash, kind, sub, name, email, device_name, signed_in_at, last_seen)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![
+                uuid::Uuid::new_v4().to_string(),
+                hash(&token),
+                DEVICE,
+                person.sub,
+                person.name,
+                person.email,
+                name,
+                now - WITHOUT_REFRESH + ttl,
+                now
+            ],
+        );
         token
     }
 
@@ -265,6 +321,80 @@ impl Sessions {
         self.conn()
             .execute("DELETE FROM grants WHERE sub = ?1", params![sub])
             .unwrap_or(0)
+    }
+
+    pub fn forget_person(&self, sub: &str) {
+        let conn = self.conn();
+        let _ = conn.execute("DELETE FROM grants WHERE sub = ?1", params![sub]);
+        let _ = conn.execute("DELETE FROM persons WHERE sub = ?1", params![sub]);
+    }
+
+    pub fn record_person(&self, sub: &str, username: Option<&str>, email: Option<&str>, now: i64) {
+        let _ = self.conn().execute(
+            "INSERT INTO persons (sub, refresh, last_check, username, email) VALUES (?1, NULL, ?4, ?2, ?3)
+             ON CONFLICT(sub) DO UPDATE SET username = excluded.username, email = excluded.email",
+            params![sub, username, email, now],
+        );
+    }
+
+    pub fn record(&self, sub: &str) -> Record {
+        self.conn()
+            .query_row(
+                "SELECT username, email, folder FROM persons WHERE sub = ?1",
+                params![sub],
+                |r| {
+                    Ok(Record {
+                        username: r.get(0)?,
+                        email: r.get(1)?,
+                        folder: r.get(2)?,
+                    })
+                },
+            )
+            .unwrap_or_default()
+    }
+
+    pub fn folder_owner(&self, folder: &str, other_than: &str) -> Option<String> {
+        self.conn()
+            .query_row(
+                "SELECT sub FROM persons WHERE folder = ?1 AND sub != ?2",
+                params![folder, other_than],
+                |r| r.get(0),
+            )
+            .optional()
+            .ok()
+            .flatten()
+    }
+
+    pub fn set_folder(&self, sub: &str, folder: &str) {
+        let _ = self.conn().execute(
+            "UPDATE persons SET folder = ?2 WHERE sub = ?1",
+            params![sub, folder],
+        );
+    }
+
+    pub fn known(&self) -> Vec<Known> {
+        let conn = self.conn();
+        let Ok(mut stmt) = conn.prepare(
+            "SELECT s.sub, p.username, coalesce(p.email, (SELECT g.email FROM grants g WHERE g.sub = s.sub AND g.email IS NOT NULL LIMIT 1)),
+                    p.folder, (SELECT max(g.last_seen) FROM grants g WHERE g.sub = s.sub)
+             FROM (SELECT sub FROM persons UNION SELECT sub FROM grants) s
+             LEFT JOIN persons p ON p.sub = s.sub ORDER BY s.sub",
+        ) else {
+            return Vec::new();
+        };
+        stmt.query_map([], |r| {
+            Ok(Known {
+                sub: r.get(0)?,
+                record: Record {
+                    username: r.get(1)?,
+                    email: r.get(2)?,
+                    folder: r.get(3)?,
+                },
+                last_seen: r.get(4)?,
+            })
+        })
+        .map(|rows| rows.filter_map(Result::ok).collect())
+        .unwrap_or_default()
     }
 
     pub fn set_refresh(&self, sub: &str, sealed: Option<&[u8]>, now: i64) {

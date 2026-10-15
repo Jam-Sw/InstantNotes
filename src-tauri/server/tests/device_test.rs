@@ -24,6 +24,8 @@ async fn start() -> Server {
         session_ttl: Duration::from_secs(3600),
         trust_proxy: false,
         max_object_bytes: 4096,
+        people_dir: None,
+        sign_in_stylesheet: None,
     };
     let state = AppState::new(config).unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

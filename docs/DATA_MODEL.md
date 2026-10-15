@@ -295,6 +295,24 @@ Settings, all device-local:
 - `sync.settingsBase`: the shared settings as this device last agreed them
   with the server, the base of the next merge. Cleared with the other bases.
 
+### 10.3 The server's own state
+
+`instantnotes-server` keeps `server.db` in `INSTANTNOTES_DATA_DIR`:
+
+- `grants`: one row per browser session or device token (hashed), with the
+  person's `sub`, `name`, `email`, `device_name`, `signed_in_at`, `last_seen`.
+- `persons`: one row per person: `sub`, the sealed `refresh` token,
+  `last_check`, `refreshed_at`, and (0.10.1, added at start to an older file)
+  `username` (the `preferred_username` claim) and `email`, refreshed on every
+  sign-in, and `folder`, where their store was last resolved.
+
+Each person's store (`index.db`, `blobs/`) is at
+`<INSTANTNOTES_DATA_DIR>/sync/<sub>` (its SHA-256 when the `sub` is not plain), or at the `INSTANTNOTES_PEOPLE_DIR`
+template's folder resolved from `persons` (API.md section 12.6).
+
+Every new or renamed `INSTANTNOTES_*` variable and every subcommand of the
+server is named in its version's CHANGELOG section.
+
 ## 11. Agent activity
 
 `agent_activity` is the trace of every call an agent made through the MCP

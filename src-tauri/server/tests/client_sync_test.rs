@@ -28,6 +28,8 @@ fn start() -> Server {
         session_ttl: Duration::from_secs(3600),
         trust_proxy: false,
         max_object_bytes: 1024 * 1024,
+        people_dir: None,
+        sign_in_stylesheet: None,
     };
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)

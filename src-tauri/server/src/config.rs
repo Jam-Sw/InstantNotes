@@ -2,6 +2,8 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use crate::people::Template;
+
 pub const LISTEN: &str = "INSTANTNOTES_LISTEN";
 pub const DATA_DIR: &str = "INSTANTNOTES_DATA_DIR";
 pub const PUBLIC_URL: &str = "INSTANTNOTES_PUBLIC_URL";
@@ -12,6 +14,8 @@ pub const UI_DIR: &str = "INSTANTNOTES_UI_DIR";
 pub const VAULT_ROOT: &str = "INSTANTNOTES_VAULT_ROOT";
 pub const TRUST_PROXY: &str = "INSTANTNOTES_TRUST_PROXY";
 pub const MAX_OBJECT_MB: &str = "INSTANTNOTES_MAX_OBJECT_MB";
+pub const PEOPLE_DIR: &str = "INSTANTNOTES_PEOPLE_DIR";
+pub const SIGN_IN_STYLESHEET: &str = "INSTANTNOTES_SIGN_IN_STYLESHEET";
 
 const DEFAULT_UI_DIR: &str = "/app/ui";
 const DEFAULT_MAX_OBJECT_MB: u64 = 64;
@@ -31,6 +35,8 @@ pub struct Config {
     pub session_ttl: Duration,
     pub trust_proxy: bool,
     pub max_object_bytes: u64,
+    pub people_dir: Option<Template>,
+    pub sign_in_stylesheet: Option<String>,
 }
 
 fn required(name: &str) -> Result<String, String> {
@@ -50,6 +56,38 @@ pub fn is_local_http(url: &str) -> bool {
         None => authority.split(':').next().unwrap_or_default(),
     };
     matches!(host, "localhost" | "127.0.0.1" | "::1")
+}
+
+fn optional(name: &str) -> Option<String> {
+    std::env::var(name)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+}
+
+pub fn data_dir() -> Result<PathBuf, String> {
+    required(DATA_DIR).map(PathBuf::from)
+}
+
+pub fn people_dir() -> Result<Option<Template>, String> {
+    optional(PEOPLE_DIR)
+        .map(|raw| Template::parse(&raw).map_err(|e| format!("{PEOPLE_DIR} {e}")))
+        .transpose()
+}
+
+pub fn stylesheet(raw: &str) -> Result<String, String> {
+    let same_origin = raw.starts_with('/') && !raw.starts_with("//");
+    let remote = raw.starts_with("https://") || is_local_http(raw);
+    let plain = !raw
+        .chars()
+        .any(|c| c.is_whitespace() || c.is_control() || "\"'<>;,\\`".contains(c));
+    if (same_origin || remote) && plain && raw.len() > 1 {
+        Ok(raw.to_string())
+    } else {
+        Err(format!(
+            "{SIGN_IN_STYLESHEET} must be an https:// address or a path starting with /: {raw}"
+        ))
+    }
 }
 
 fn check_https(setting: &str, url: &str) -> Result<(), String> {
@@ -74,9 +112,14 @@ impl Config {
         if std::env::var(VAULT_ROOT).is_ok_and(|v| !v.trim().is_empty()) {
             crate::log("config.ignored", &[("setting", VAULT_ROOT)]);
         }
+        let sign_in_stylesheet = optional(SIGN_IN_STYLESHEET)
+            .map(|raw| stylesheet(&raw))
+            .transpose()?;
         Ok(Config {
             listen,
-            data_dir: PathBuf::from(required(DATA_DIR)?),
+            people_dir: people_dir()?,
+            sign_in_stylesheet,
+            data_dir: data_dir()?,
             public_url,
             oidc_issuer,
             oidc_client_id: required(OIDC_CLIENT_ID)?,
@@ -135,6 +178,29 @@ mod tests {
         ] {
             let error = check_https(OIDC_ISSUER, refused).unwrap_err();
             assert!(error.starts_with(OIDC_ISSUER), "{refused}");
+        }
+    }
+
+    #[test]
+    fn a_sign_in_stylesheet_is_an_https_address_or_a_same_origin_path() {
+        for ok in [
+            "https://cdn.example.org/theme.css",
+            "/theme/sign-in.css",
+            "http://localhost:9000/t.css",
+        ] {
+            assert_eq!(stylesheet(ok).as_deref(), Ok(ok));
+        }
+        for refused in [
+            "http://cdn.example.org/t.css",
+            "//cdn.example.org/t.css",
+            "theme.css",
+            "/",
+            "/a b.css",
+            "/a\".css",
+            "https://x.org/a.css;script-src *",
+            "javascript:alert(1)",
+        ] {
+            assert!(stylesheet(refused).is_err(), "{refused}");
         }
     }
 }

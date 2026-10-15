@@ -434,6 +434,30 @@ reserved and refused.
   opens the note, or waits up to a minute for `notes:changed` to bring it, then
   says it is not on this device yet.
 
+### 12.6 Running the server for several people (0.10.1)
+
+`instantnotes-server` (the image's `instantnotes`) has three subcommands:
+
+| Subcommand | What it does |
+| --- | --- |
+| `serve` | Runs the server, configured by `INSTANTNOTES_*` variables. |
+| `usage [--json]` | Reads `server.db` and each person's folder and prints one row per person: `sub`, `username`, `email`, `folder`, `bytes` on disk, `blobs`, `objects` in the current index, and last seen (`lastSeen`, unix seconds, in JSON). Needs no token. |
+| `check [--url <address>]` | The post-deploy check. Mints a device token for the reserved person `sub=instantnotes-check` (five minutes, in `server.db`), then against the address (default `INSTANTNOTES_PUBLIC_URL`) runs `GET info`, `PUT keys` (encrypted, a throwaway age recipient), uploads one encrypted blob, commits it, reads `changes` until it appears, downloads and decrypts it, and checks the stored file under the person's folder holds the ciphertext, not the plaintext. Then it removes the token, the person's rows and folder. Prints `ok <total>ms <step>=<ms>...` and exits 0, or `failed at <step>: <reason>` and exits 1. |
+
+A real device token cannot be minted without a person: devices sign in through
+the identity provider by design. `check` is the one exception, scoped to its
+reserved person, whose store the running server never keeps open.
+
+| Variable | Meaning |
+| --- | --- |
+| `INSTANTNOTES_PEOPLE_DIR` | Optional. An absolute path template for each person's store (`index.db`, `blobs/`), with `{sub}`, `{username}` (the `preferred_username` claim) and `{email}`, e.g. `/people/{username}/notes`. Each value must be one segment of letters, digits, `.`, `_`, `-`, `@`, at most 128 bytes, not `.` or `..`; a person whose value fails is refused at sign-in (`people_dir.invalid`), a provider that sends no `preferred_username` for a `{username}` template is refused and logged once (`people_dir.no_username`), and two people who would share a folder are refused (`people_dir.collision`). Unset, stores stay at `<INSTANTNOTES_DATA_DIR>/sync/<sub>` (its SHA-256 when the `sub` is not plain). A store under the old layout moves to the template's folder on the person's next request (`people_dir.moved`); a move that fails answers `503 UNAVAILABLE` for that person until the operator resolves it (`people_dir.move_failed`). `server.db`, sessions and tokens stay in `INSTANTNOTES_DATA_DIR`. |
+| `INSTANTNOTES_SIGN_IN_STYLESHEET` | Optional. An `https://` address, or a same-origin path your reverse proxy serves, of a stylesheet the sign-in page links after its own styles. Override the page's tokens on `:root` (`--bg`, `--glow`, `--ink`, `--accent`, `--accent-ink`); wrap them in `@media (prefers-color-scheme: light)` to theme light and dark apart. The page's `Content-Security-Policy` allows styles, fonts and images from that origin only. |
+
+**Read-only root.** The process writes only under `INSTANTNOTES_DATA_DIR` and,
+when set, `INSTANTNOTES_PEOPLE_DIR`'s folders. Uploads are staged beside their
+final place, never in `/tmp`, so a container with `read_only: true`, those
+folders as volumes owned by uid 1000, and no `tmpfs` works.
+
 ### 12.5 Backups and the Markdown export (0.10.1)
 
 | Command | Purpose |
