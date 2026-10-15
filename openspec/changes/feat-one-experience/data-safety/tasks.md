@@ -21,4 +21,8 @@
 - [x] `docs/API.md` §12.5, `docs/DATA_MODEL.md` §8 and a §12 for the files
       beside the library; CHANGELOG lines
 - [ ] In the app: back up now; restore from the list; restore from a file;
-      export on the desktop; export in Chrome against the e2e server
+      export on the desktop; export in Chrome against the e2e server.
+      Remains: a person at the desktop app, and `sync-e2e.sh up` (needs
+      Docker) for the Chrome export; the logic is covered by
+      `cargo test -p instantnotes-core backup`, `cargo test -p instantnotes
+      backups`, `SettingsBackups.test.ts` and `SettingsBackups.web.test.ts`

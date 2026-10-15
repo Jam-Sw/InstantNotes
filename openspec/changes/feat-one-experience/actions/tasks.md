@@ -18,4 +18,7 @@
 - [x] `.claude/scripts/check.sh` green after `cargo fmt`
 - [ ] In the app: the Help menu's Check for Updates opens Settings > About and
       checks; the tray's does the same; a pending update shows the toast
-      (runs with the in-app proof at hand-back)
+      (runs with the in-app proof at hand-back). Remains: a person at the
+      app; covered by `shell::menu` (both Help and tray carry
+      `app.checkUpdates`) and `commands.test.ts` ("app.checkUpdates" opens
+      About, checks with `manual: true`, shows a pending update)
