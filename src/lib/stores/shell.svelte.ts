@@ -7,6 +7,7 @@ export type SettingsPage =
   | "links"
   | "contexting"
   | "feedback"
+  | "diagnostics"
   | "vault"
   | "backups"
   | "agents"

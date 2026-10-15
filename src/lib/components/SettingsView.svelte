@@ -7,6 +7,7 @@
   import SettingsContexting from "$lib/components/settings/SettingsContexting.svelte";
   import SettingsLinks from "$lib/components/settings/SettingsLinks.svelte";
   import SettingsFeedback from "$lib/components/settings/SettingsFeedback.svelte";
+  import SettingsDiagnostics from "$lib/components/settings/SettingsDiagnostics.svelte";
   import SettingsSync from "$lib/components/settings/SettingsSync.svelte";
   import SettingsBackups from "$lib/components/settings/SettingsBackups.svelte";
   import SettingsAgents from "$lib/components/settings/SettingsAgents.svelte";
@@ -85,6 +86,7 @@
       entries: [
         { id: "about", title: "About", desc: "Version, platform, and project links.", keywords: "version license github" },
         { id: "feedback", title: "Feedback", desc: "Report a bug or send an idea.", keywords: "bug issue idea report" },
+        { id: "diagnostics", title: "Diagnostics", desc: "Crash reports and a report you can send.", keywords: "crash error log problem report debug" },
       ],
     },
     ] as Group[]
@@ -329,6 +331,8 @@
           <SettingsImport {onShowSpace} />
         {:else if page === "feedback"}
           <SettingsFeedback {appVersion} />
+        {:else if page === "diagnostics"}
+          <SettingsDiagnostics />
         {/if}
       </main>
     {/if}

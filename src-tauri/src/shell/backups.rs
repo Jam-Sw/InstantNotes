@@ -1,3 +1,4 @@
+use crate::shell::log;
 use crate::*;
 use chrono::{DateTime, Utc};
 use instantnotes_core::backup;
@@ -120,7 +121,21 @@ fn take_backup(app: &AppHandle) -> CmdResult<()> {
         return Ok(());
     }
     let state = app.state::<AppState>();
-    locked_reader(&state)?.backup_to(&target)?;
+    if let Err(e) = locked_reader(&state)?.backup_to(&target) {
+        log::log("backup.failed", &[("error", &e.to_string())]);
+        return Err(e.into());
+    }
+    let bytes = std::fs::metadata(&target).map(|m| m.len()).unwrap_or(0);
+    log::log(
+        "backup.made",
+        &[
+            (
+                "file",
+                &target.file_name().unwrap_or_default().to_string_lossy(),
+            ),
+            ("bytes", &bytes.to_string()),
+        ],
+    );
     prune(&dir);
     let _ = app.emit(events::BACKUPS_CHANGED, ());
     Ok(())
@@ -207,6 +222,7 @@ pub fn restore_backup(app: AppHandle, path: String) -> CmdResult<()> {
         pending.to_string_lossy().as_bytes(),
     )
     .map_err(|e| CmdError::storage(format!("cannot mark the restore: {e}")))?;
+    log::log("restore.requested", &[]);
     restart_app(app);
     Ok(())
 }
@@ -229,19 +245,35 @@ pub(crate) enum Restored {
 pub(crate) fn apply_restore_at_launch(library: &Path) -> Option<Restored> {
     match backup::apply_pending_restore(library, &backups_dir(library)) {
         Ok(None) => None,
-        Ok(Some(outcome)) => Some(Restored::Done(
-            outcome
-                .made_at
-                .as_deref()
-                .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
-                .map(|at| {
-                    at.with_timezone(&chrono::Local)
-                        .format("%-d %B %Y, %H:%M")
-                        .to_string()
-                })
-                .unwrap_or_else(|| "the chosen file".to_string()),
-        )),
-        Err(e) => Some(Restored::Failed(e.to_string())),
+        Ok(Some(outcome)) => {
+            log::log(
+                "restore.applied",
+                &[(
+                    "snapshot",
+                    &outcome
+                        .snapshot
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy(),
+                )],
+            );
+            Some(Restored::Done(
+                outcome
+                    .made_at
+                    .as_deref()
+                    .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+                    .map(|at| {
+                        at.with_timezone(&chrono::Local)
+                            .format("%-d %B %Y, %H:%M")
+                            .to_string()
+                    })
+                    .unwrap_or_else(|| "the chosen file".to_string()),
+            ))
+        }
+        Err(e) => {
+            log::log("restore.failed", &[("error", &e.to_string())]);
+            Some(Restored::Failed(e.to_string()))
+        }
     }
 }
 

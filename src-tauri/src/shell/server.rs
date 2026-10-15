@@ -1173,6 +1173,9 @@ pub(crate) fn finish_legacy(app: &AppHandle, client: &Client, report: &SyncRepor
 }
 
 pub(crate) fn record_report(app: &AppHandle, report: &SyncReport) {
+    if let Some(error) = report.errors.first() {
+        crate::shell::log::log("sync.failed", &[("transport", "server"), ("error", error)]);
+    }
     link(app).set(|s| {
         s.conflicts += report.conflicts;
         s.held_removals = report.held_removals;

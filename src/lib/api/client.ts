@@ -15,6 +15,7 @@ import type {
   AttachmentCleanup,
   BackupInspection,
   BackupList,
+  CrashReport,
   LibraryGraph,
   CaptureLatencySummary,
   CreateNoteInput,
@@ -235,6 +236,13 @@ export const inspectBackup = (path: string) =>
   call<BackupInspection>("inspect_backup", { path });
 export const restoreBackup = (path: string) => call<void>("restore_backup", { path });
 export const openBackupsFolder = () => call<void>("open_backups_folder");
+
+export const reportFrontendError = (message: string, stack: string | null, where: string) =>
+  call<void>("report_frontend_error", { message, stack, where });
+export const listCrashReports = () => call<CrashReport[]>("list_crash_reports");
+export const readCrashReport = (name: string) => call<string>("read_crash_report", { name });
+export const deleteCrashReport = (name: string) => call<void>("delete_crash_report", { name });
+export const diagnosticsReport = () => call<string>("diagnostics_report");
 
 export const getVaultStatus = () => call<VaultStatus>("get_vault_status");
 export const setVaultFolder = (path: string | null) =>

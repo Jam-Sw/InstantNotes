@@ -65,6 +65,12 @@ pub(crate) fn start_vault_sync(app: &AppHandle) -> VaultSync {
                 }
                 Some(Engine::Folder(s)) => {
                     let report = s.cycle(&handle.state::<AppState>().store);
+                    if let Some(error) = report.errors.first() {
+                        crate::shell::log::log(
+                            "sync.failed",
+                            &[("transport", "folder"), ("error", error)],
+                        );
+                    }
                     announce(&handle, &report.notes, report.labels_changed, false);
                 }
                 Some(Engine::Server(server, stop)) => {
@@ -200,6 +206,9 @@ pub(crate) fn flush_vault_now(app: &AppHandle, max_chunks: Option<usize>) {
             }
             store.flush_vault(chunk)
         };
+        if let Err(e) = &outcome {
+            crate::shell::log::log("vault.flush_failed", &[("error", &e.to_string())]);
+        }
         chunks += 1;
         let more = matches!(&outcome, Ok(out)
             if out.errors.is_empty() && out.written > 0 && out.remaining > 0);

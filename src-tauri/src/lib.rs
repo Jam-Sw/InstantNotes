@@ -85,8 +85,8 @@ use commands::{
 use error::{CmdError, CmdResult};
 use shell::menu::{install as install_menus, run_command};
 use shell::{
-    agents::*, backups::*, capture::*, files::*, mirror::*, quit::*, server::*, stickies::*,
-    update::*, windows::*,
+    agents::*, backups::*, capture::*, diagnostics::*, files::*, mirror::*, quit::*, server::*,
+    stickies::*, update::*, windows::*,
 };
 
 pub fn run() {
@@ -121,6 +121,8 @@ pub fn run() {
                 .expect("cannot resolve app data directory");
             show_painted_library(app.handle(), &dir);
             std::fs::create_dir_all(&dir)?;
+            shell::log::init(&dir);
+            install_panic_hook(&dir, env!("CARGO_PKG_VERSION"));
             let db_path = std::env::var_os("INSTANTNOTES_DB_PATH")
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|| dir.join("instantnotes.db"));
@@ -343,6 +345,11 @@ pub fn run() {
             inspect_backup,
             restore_backup,
             open_backups_folder,
+            report_frontend_error,
+            list_crash_reports,
+            read_crash_report,
+            delete_crash_report,
+            diagnostics_report,
             get_vault_status,
             set_vault_folder,
             verify_vault,

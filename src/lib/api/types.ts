@@ -126,6 +126,12 @@ interface BackupEntry {
   bytes: number;
 }
 
+export interface CrashReport {
+  name: string;
+  madeAt: string;
+  bytes: number;
+}
+
 export interface BackupList {
   backups: BackupEntry[];
   automatic: boolean;

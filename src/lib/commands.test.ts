@@ -351,6 +351,8 @@ describe("the commands every surface shares", () => {
     expect(stores.shell.openSettings).toHaveBeenCalledWith("about");
     void find(commands, "app.sendFeedback").run();
     expect(stores.shell.openSettings).toHaveBeenCalledWith("feedback");
+    void find(commands, "app.sendDiagnostics").run();
+    expect(stores.shell.openSettings).toHaveBeenCalledWith("diagnostics");
     void find(commands, "view.palette").run();
     expect(stores.shell.togglePalette).toHaveBeenCalledOnce();
     void find(commands, "view.zoomIn").run();

@@ -315,6 +315,12 @@ export function buildCommands(): Command[] {
       run: () => openUrl(`${REPO_URL}/blob/main/CHANGELOG.md`),
     },
     {
+      id: "app.sendDiagnostics",
+      title: "Send diagnostics…",
+      group: "Help",
+      run: () => shell.openSettings("diagnostics"),
+    },
+    {
       id: "data.backups",
       title: isWeb ? "Export" : "Backups",
       group: "Data",

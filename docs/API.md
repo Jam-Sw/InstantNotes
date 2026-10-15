@@ -509,6 +509,27 @@ offline or when no browser opens. No note content (title, body, tags, Spaces)
 is ever included; only what `FeedbackDiagnostics` (`src/lib/feedback.ts`)
 names.
 
+### 13.1 Diagnostics
+
+| Command | Purpose |
+| --- | --- |
+| `report_frontend_error` | `{ message, stack, where }`: write `crashes/error-<stamp>.txt` and one log line. Called by the page's `error` and `unhandledrejection` handlers. |
+| `list_crash_reports` | `CrashReport[]` (`name`, `madeAt`, `bytes`), newest first; only `crash-*.txt` and `error-*.txt` files. |
+| `read_crash_report` | `{ name }`: the report's text. A name that is not a report's is `VALIDATION`. |
+| `delete_crash_report` | `{ name }`: remove one report. |
+| `diagnostics_report` | The plain-text report: version and platform, library counts, schema and last integrity check, sync state, backups, crash report names, the last 40 log lines. No note text, address, person or path outside the app data folder. |
+
+A Rust panic writes `crashes/crash-<stamp>.txt` (version, OS, architecture,
+thread, location, message) from the panic hook before the previous hook runs.
+Reports are always written; `diagnostics.crashReports` (default off) decides
+whether the app brings new ones up at launch, and `diagnostics.lastPromptAt`
+records the newest report already offered. Nothing is sent: Send in Settings >
+Diagnostics opens a prefilled GitHub issue through `open_url` with the report
+the person has just seen. On the web the handlers keep the last 20 errors in
+`sessionStorage` (`instantnotes.errors`) and the page builds the report from
+the version, user agent, storage estimate, sync stage and those errors; there
+are no crash report commands there.
+
 ## 14. Error codes
 
 | Code | Meaning |

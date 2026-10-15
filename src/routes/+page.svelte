@@ -38,6 +38,7 @@
   import { agreements } from "$lib/agreements.svelte";
   import LicenseNote from "$lib/components/LicenseNote.svelte";
   import { isMac } from "$lib/platform";
+  import { startDiagnostics } from "$lib/stores/diagnostics";
   import {
     isUpdateNoteId,
     isUpdateSpaceId,
@@ -118,6 +119,7 @@
     }, 5000);
     void fetchAppVersion().then((v) => (appVersion = v));
     void agreements.init();
+    const stopDiagnostics = startDiagnostics();
     updater.start();
     let unlistenCommand: (() => void) | undefined;
     void listen<{ id: string }>(EVENTS.MENU_COMMAND, (e) => void runCommand(e.payload.id)).then(
@@ -156,6 +158,7 @@
       clearTimeout(warmEditor);
       clearTimeout(warmViews);
       updater.stop();
+      stopDiagnostics();
       unlistenCommand?.();
       unlistenSettings?.();
       unlistenSyncNeeds?.();

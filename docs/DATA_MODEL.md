@@ -146,6 +146,9 @@ the code default. The editor keeps `editor.zoom`, `editor.showExactTime`,
 stored false is kept) and `editor.sourceMode` (the Markdown marks shown,
 default false); the two are independent since 0.10.1. `backups.automatic`
 (default true) is whether the daily backup runs (§12).
+`diagnostics.crashReports` (default false) is whether new crash reports are
+brought up at launch, and `diagnostics.lastPromptAt` the `madeAt` of the
+newest report already offered (API.md §13.1).
 
 `stickies` holds which notes are popped out as sticky windows on this device,
 as a map from note id to `{ x, y, width, height, level, collapsed }` in
@@ -393,3 +396,12 @@ The library is `instantnotes.db` in the app data folder, with its `-wal` and
   outside `backups/` and never pruned.
 - `instantnotes.db.corrupt`, `.session`, `.last_version`: recovery and
   housekeeping markers (§9, API.md §9).
+- `crashes/crash-<YYYYMMDD>-<HHMMSS>.txt` and `crashes/error-<stamp>.txt`:
+  a Rust panic and a front-end error, plain text, kept until deleted from
+  Settings > Diagnostics (API.md §13.1).
+- `instantnotes.log` and `instantnotes.log.1`: one line per event,
+  `<RFC 3339> <event> key=value ...`; at 1 MB the file becomes `.log.1`
+  (one old copy kept). Events: `crash`, `frontend.error`, `backup.made`,
+  `backup.failed`, `restore.requested`, `restore.applied`, `restore.failed`,
+  `sync.failed`, `vault.flush_failed`. Values are counts, file names and
+  error strings, never note content.
