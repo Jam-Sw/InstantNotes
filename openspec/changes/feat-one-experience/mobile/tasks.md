@@ -20,12 +20,12 @@
       `instantnotes-server` with real notes typed in; the desktop shot at
       1440x900 is byte-identical decoded before and after. The script is
       written but was not run end to end
-- [ ] The visual pass with before and after
-- [ ] README and CHANGELOG: the phone layout line of 0.10.0 replaced
-- [ ] In the app: Chrome device mode at the three sizes; the owner's iPhone
+- [ ] 0.11: the visual pass with before and after
+- [x] README and CHANGELOG: the phone layout line of 0.10.0 replaced
+- [ ] 0.11: in the app, Chrome device mode at the three sizes; the owner's iPhone
       and iPad in Safari against his server
 
-## B. Native iOS and iPadOS (owner-gated, D4)
+## B. Native iOS and iPadOS (0.11; owner-gated, D4)
 
 Waiting on the owner: building, signing and running on a device need
 Xcode on the Mac and an Apple Developer Program membership, neither of

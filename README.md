@@ -80,7 +80,7 @@ docker run -d --name instantnotes \
 - **After a deploy**: `docker exec instantnotes instantnotes check` proves the encrypted sync path end to end as a reserved test person and cleans up after itself; it prints `ok` (exit 0) or the step that failed (exit 1). Add `--url http://127.0.0.1:8080` to test from inside the container.
 - **Usage**: `docker exec instantnotes instantnotes usage` (or `--json`) lists each person's disk use.
 - **Read-only root**: the server writes only to `/data` and the people folders, so `--read-only` (compose `read_only: true`) works with those volumes owned by uid 1000, and no tmpfs.
-- **Platforms**: the image is published for `linux/amd64` and `linux/arm64`.
+- **Platforms**: the image is published for `linux/amd64` and `linux/arm64`. Building it yourself needs BuildKit (`docker buildx build`); the legacy `docker build` stops at the first `FROM`.
 - **Health**: `GET /healthz` answers `200 ok`, or `503` with the reason (data folder not writable, the identity provider check misconfigured).
 - **Who can sign in** is decided at your identity provider; everyone it lets through gets their own library, and nobody can read anyone else's. When the provider stops accepting a person (disabled, deleted, removed from the app), the server signs out all their devices at its next hourly check, while keeping their stored data. This needs a provider that re-checks the person when a sign-in is refreshed (Pocket ID, Authentik, Keycloak, Zitadel and Kanidm do; Authelia does not, and Dex depends on its connector). Without refresh tokens, devices sign in again every 24 hours.
 
