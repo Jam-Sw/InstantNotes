@@ -18,6 +18,7 @@ pub(crate) const SHELL_ONLY: &[&str] = &["app.quit", "app.capture", "app.library
 
 const SETTINGS: Item = Item::new("view.settings", "Settings…", Some("CmdOrCtrl+,"));
 const QUIT: Item = Item::new("app.quit", "Quit InstantNotes", Some("CmdOrCtrl+Q"));
+#[cfg(any(not(target_os = "macos"), test))]
 const ABOUT: Item = Item::new("view.about", "About InstantNotes", None);
 
 const FILE_NEW: &[Item] = &[
