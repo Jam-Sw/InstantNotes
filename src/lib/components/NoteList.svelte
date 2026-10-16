@@ -71,7 +71,6 @@
       const open = library.selected?.id;
       const id = open && ids.includes(open) ? open : text ? ids[0] : undefined;
       if (id) await library.write(id);
-      else if (text && library.searchResults?.length === 0) await library.newNote(`${text}\n`);
     }
   }
 
@@ -246,7 +245,7 @@
           <p class="empty-title">No notes match{#if query} “{query}”{/if}</p>
           {#if query}
             <button class="action primary" onclick={() => void library.newNote(`${query}\n`)}>
-              Start a note called “{query}”{#if !layout.touch}<kbd aria-hidden="true">↵</kbd>{/if}
+              Start a note called “{query}”
             </button>
           {/if}
         </div>
@@ -620,17 +619,13 @@
     max-width: 100%;
     overflow-wrap: anywhere;
   }
-  .empty-state kbd {
-    margin-left: 6px;
+  .empty-hint kbd {
     padding: 0 5px;
     border: 1px solid var(--border);
     border-radius: 4px;
     font-family: var(--font-meta);
     font-size: 11px;
     color: var(--text-tertiary);
-  }
-  .empty-hint kbd {
-    margin: 0;
   }
   .agreed-mark {
     color: var(--accent-text);

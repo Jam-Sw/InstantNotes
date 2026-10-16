@@ -219,14 +219,16 @@ describe("NoteList search keys", () => {
     expect(searchNow).toHaveBeenCalled();
   });
 
-  it("starts a note with the words when nothing matches", async () => {
+  it("creates nothing on Enter when nothing matches, and starts a note only from the button", async () => {
     list.searchText = "pear tart";
     list.searchResults = [];
     const { container, getByRole } = render(NoteList);
-    expect(getByRole("button", { name: /Start a note called “pear tart”/ })).toBeTruthy();
     await fireEvent.keyDown(container.querySelector("input.search")!, { key: "Enter" });
-    await waitFor(() => expect(newNote).toHaveBeenCalledWith("pear tart\n"));
+    await waitFor(() => expect(searchNow).toHaveBeenCalled());
+    expect(newNote).not.toHaveBeenCalled();
     expect(write).not.toHaveBeenCalled();
+    await fireEvent.click(getByRole("button", { name: "Start a note called “pear tart”" }));
+    expect(newNote).toHaveBeenCalledWith("pear tart\n");
   });
 
   it("leaves Enter alone with an empty search and nothing open", async () => {
