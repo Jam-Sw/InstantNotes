@@ -29,6 +29,35 @@ pub fn rename_workspace(
 }
 
 #[tauri::command(async)]
+pub fn set_workspace_color(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    id: String,
+    color: Option<String>,
+) -> CmdResult<Workspace> {
+    let ws = locked(&state)?.set_workspace_color(&id, color)?;
+    emit_workspaces_changed(&app);
+    Ok(ws)
+}
+
+#[tauri::command(async)]
+pub fn set_workspace_flag(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    id: String,
+    flag: bool,
+) -> CmdResult<Workspace> {
+    let ws = locked(&state)?.set_workspace_flag(&id, flag)?;
+    emit_workspaces_changed(&app);
+    Ok(ws)
+}
+
+#[tauri::command(async)]
+pub fn workspace_tag_slices(state: State<'_, AppState>) -> CmdResult<Vec<TagSlice>> {
+    Ok(locked_reader(&state)?.workspace_tag_slices()?)
+}
+
+#[tauri::command(async)]
 pub fn delete_workspace(
     state: State<'_, AppState>,
     app: AppHandle,

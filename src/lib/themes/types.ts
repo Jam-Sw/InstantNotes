@@ -21,7 +21,36 @@ export const OPTIONAL_TOKEN_KEYS = ["success", "warning", "selection", "codeBg",
 
 export type OptionalTokenKey = (typeof OPTIONAL_TOKEN_KEYS)[number];
 
-export type TokenSet = Record<TokenKey, string> & Partial<Record<OptionalTokenKey, string>>;
+export const SWATCH_NAMES = [
+  "red",
+  "orange",
+  "yellow",
+  "green",
+  "teal",
+  "blue",
+  "purple",
+  "pink",
+  "grey",
+] as const;
+
+export type SwatchName = (typeof SWATCH_NAMES)[number];
+
+export type SwatchSet = Record<SwatchName, string>;
+
+export const SWATCH_VAR: Record<SwatchName, string> = {
+  red: "--swatch-red",
+  orange: "--swatch-orange",
+  yellow: "--swatch-yellow",
+  green: "--swatch-green",
+  teal: "--swatch-teal",
+  blue: "--swatch-blue",
+  purple: "--swatch-purple",
+  pink: "--swatch-pink",
+  grey: "--swatch-grey",
+};
+
+export type TokenSet = Record<TokenKey, string> &
+  Partial<Record<OptionalTokenKey, string>> & { swatches?: Partial<SwatchSet> };
 
 export const TOKEN_VAR: Record<TokenKey, string> = {
   bg: "--bg",

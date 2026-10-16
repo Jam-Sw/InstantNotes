@@ -292,6 +292,45 @@ fn a_result_carries_its_json_structured_and_as_text() {
 }
 
 #[test]
+fn list_tags_and_list_spaces_carry_the_colour_and_the_spaces_their_flag() {
+    let mut store = store_with("read");
+    let tag = store.get_or_create_tag("work").unwrap();
+    store.get_or_create_tag("plain").unwrap();
+    store.set_tag_color(&tag.id, Some("blue".into())).unwrap();
+    let flagged = store.get_or_create_workspace("Flagged").unwrap();
+    store
+        .set_workspace_color(&flagged.id, Some("#aa00bb".into()))
+        .unwrap();
+    store.set_workspace_flag(&flagged.id, true).unwrap();
+    store.get_or_create_workspace("Bare").unwrap();
+
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(1, "list_tags", json!({})),
+            call(2, "list_spaces", json!({})),
+        ],
+    );
+    let (_, _, tags) = result_of(&replies[1]);
+    assert_eq!(
+        tags["tags"],
+        json!([
+            { "name": "plain", "notes": 0, "color": null },
+            { "name": "work", "notes": 0, "color": "blue" },
+        ])
+    );
+    let (_, _, spaces) = result_of(&replies[2]);
+    assert_eq!(
+        spaces["spaces"],
+        json!([
+            { "name": "Bare", "notes": 0, "color": null, "flag": false },
+            { "name": "Flagged", "notes": 0, "color": "#aa00bb", "flag": true },
+        ])
+    );
+}
+
+#[test]
 fn access_off_refuses_everything_and_leaves_no_trace() {
     let mut store = store_with("off");
     let replies = session(&mut store, &[init(), call(1, "list_notes", json!({}))]);
