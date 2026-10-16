@@ -20,6 +20,7 @@
   import { agreements } from "$lib/agreements.svelte";
   import { licenseSpace } from "$lib/stores/license-space.svelte";
   import { layout } from "$lib/stores/layout.svelte";
+  import { contexting } from "$lib/stores/contexting.svelte";
 
   const statusFilters: { id: StatusFilter; label: string }[] = [
     { id: "active", label: "Active" },
@@ -52,6 +53,33 @@
     const rect = newControl?.getBoundingClientRect();
     if (!rect) return;
     newMenu = { x: rect.left, y: rect.bottom + 4 };
+  }
+
+  /** The right-clicked note, or the whole selection when it is part of one, in list order. */
+  function contextTargets(id: string): string[] {
+    const sel = library.multiSelected;
+    if (sel.size > 1 && sel.has(id)) return library.visibleIds.filter((n) => sel.has(n));
+    return [id];
+  }
+
+  async function copyContext(id: string) {
+    await library.flushPendingEdits();
+    await contexting.copyIds(contextTargets(id));
+  }
+
+  function rowMenuItems(id: string) {
+    const count = contextTargets(id).length;
+    const items = [
+      { label: count > 1 ? `Copy context (${count} notes)` : "Copy context", run: () => void copyContext(id) },
+    ];
+    if (!isWeb) {
+      items.push(
+        library.isSticky(id)
+          ? { label: "Bring back from sticky", run: () => void library.popIn(id) }
+          : { label: "Open as sticky", run: () => void library.popOut(id) },
+      );
+    }
+    return items;
   }
 
   function rowClick(e: MouseEvent, id: string) {
@@ -320,14 +348,11 @@
   />
 {/if}
 
-{#if rowMenu && !isWeb}
-  {@const id = rowMenu.id}
+{#if rowMenu}
   <ContextMenu
     x={rowMenu.x}
     y={rowMenu.y}
-    items={library.isSticky(id)
-      ? [{ label: "Bring back from sticky", run: () => void library.popIn(id) }]
-      : [{ label: "Open as sticky", run: () => void library.popOut(id) }]}
+    items={rowMenuItems(rowMenu.id)}
     onclose={() => (rowMenu = null)}
   />
 {/if}
