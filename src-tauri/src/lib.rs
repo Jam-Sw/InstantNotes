@@ -209,46 +209,7 @@ pub fn run() {
 
             install_menus(app)?;
 
-            use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
-            let shortcut = if cfg!(target_os = "macos") {
-                if cfg!(debug_assertions) {
-                    Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::Space)
-                } else {
-                    Shortcut::new(Some(Modifiers::ALT), Code::Space)
-                }
-            } else if cfg!(debug_assertions) {
-                Shortcut::new(
-                    Some(Modifiers::CONTROL | Modifiers::SHIFT | Modifiers::ALT),
-                    Code::Space,
-                )
-            } else {
-                Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Space)
-            };
-            let shortcut_label = if cfg!(target_os = "macos") {
-                if cfg!(debug_assertions) {
-                    "⌥⇧Space"
-                } else {
-                    "⌥Space"
-                }
-            } else if cfg!(debug_assertions) {
-                "Ctrl+Shift+Alt+Space"
-            } else {
-                "Ctrl+Shift+Space"
-            };
-            let wayland =
-                cfg!(target_os = "linux") && std::env::var_os("WAYLAND_DISPLAY").is_some();
-            let shortcut_failure = match app.global_shortcut().register(shortcut) {
-                Err(e) => {
-                    eprintln!("global shortcut registration failed: {e}");
-                    Some(false)
-                }
-                Ok(()) if wayland => Some(true),
-                Ok(()) => None,
-            }
-            .map(|wayland| ShortcutFailure {
-                label: shortcut_label.to_string(),
-                wayland,
-            });
+            let shortcut_failure = register_shortcut(app);
             if let Some(failure) = &shortcut_failure {
                 let _ = app.emit(events::SHORTCUT_FAILED, failure.clone());
             }
@@ -385,6 +346,8 @@ pub fn run() {
             restart_app,
             capture_input_ready,
             get_capture_latency,
+            capture_targets,
+            capture_append,
             get_shortcut_failure,
             pop_out_note,
             pop_in_note,

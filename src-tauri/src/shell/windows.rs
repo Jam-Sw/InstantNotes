@@ -1,12 +1,6 @@
-use crate::shell::capture::CaptureMetrics;
 #[cfg(not(target_os = "macos"))]
 use crate::shell::paint;
 use crate::*;
-
-#[tauri::command]
-pub fn hide_capture(app: AppHandle) {
-    hide_capture_window(&app);
-}
 
 #[tauri::command]
 pub fn open_library(app: AppHandle) {
@@ -90,38 +84,6 @@ pub fn open_url(app: AppHandle, url: String) {
     let _ = app.opener().open_url(&url, None::<&str>);
 }
 
-pub(crate) fn show_capture_window(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window("capture") {
-        if let Some(metrics) = app.try_state::<CaptureMetrics>() {
-            metrics.mark_shown();
-        }
-        let _ = w.center();
-        let _ = w.show();
-        let _ = w.set_focus();
-        let _ = w.emit(events::CAPTURE_SHOWN, ());
-    }
-}
-
-pub(crate) fn hide_capture_window(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window("capture") {
-        let _ = w.hide();
-    }
-}
-
-pub(crate) fn toggle_capture_window(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window("capture") {
-        if w.is_visible().unwrap_or(false) {
-            hide_capture_window(app);
-        } else {
-            show_capture_window(app);
-        }
-    }
-}
-
-pub(crate) fn asks_for_capture<S: AsRef<str>>(args: &[S]) -> bool {
-    args.get(1).is_some_and(|arg| arg.as_ref() == "capture")
-}
-
 pub(crate) fn show_library_window(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("library") {
         let _ = w.show();
@@ -181,15 +143,7 @@ fn refresh_macos_icon(bundle: std::path::PathBuf) {
 
 #[cfg(test)]
 mod tests {
-    use super::{asks_for_capture, icon_refresh_needed};
-
-    #[test]
-    fn only_a_capture_argument_opens_the_capture_panel() {
-        assert!(asks_for_capture(&["instantnotes", "capture"]));
-        assert!(!asks_for_capture(&["instantnotes"]));
-        assert!(!asks_for_capture(&["instantnotes", "mcp", "capture"]));
-        assert!(!asks_for_capture(&["capture"]));
-    }
+    use super::icon_refresh_needed;
 
     #[test]
     fn icon_refresh_when_version_changed_or_unknown() {

@@ -119,6 +119,13 @@ pub struct NoteFilter {
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+pub struct NoteTitle {
+    pub id: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct LibraryStats {
     pub notes_total: i64,
     pub notes_active: i64,

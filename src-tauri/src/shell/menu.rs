@@ -110,13 +110,11 @@ fn submenu<'a>(
     Ok(builder)
 }
 
-fn capture_label() -> &'static str {
-    if !cfg!(target_os = "macos") {
-        "New Capture"
-    } else if cfg!(debug_assertions) {
-        "New Capture\t⌥⇧Space"
+fn capture_label() -> String {
+    if cfg!(target_os = "macos") {
+        format!("New Capture\t{SHORTCUT_LABEL}")
     } else {
-        "New Capture\t⌥Space"
+        "New Capture".into()
     }
 }
 

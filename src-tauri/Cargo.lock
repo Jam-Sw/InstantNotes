@@ -2801,6 +2801,8 @@ dependencies = [
  "instantnotes-core",
  "instantnotes-server",
  "keyring",
+ "objc2",
+ "objc2-app-kit",
  "serde",
  "serde_json",
  "tauri",
