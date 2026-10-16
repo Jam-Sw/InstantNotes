@@ -75,3 +75,36 @@ describe("Editor per-note state isolation", () => {
     expect(viewAfterSwitch.state.selection.main.head).toBe(0);
   });
 });
+
+describe("Editor focus", () => {
+  it("waits for the asked note to load, then puts the caret at its end", async () => {
+    const { component, container, rerender } = render(Editor, { value: "Old", docKey: "a" }) as unknown as {
+      component: { focus: (key?: string, atEnd?: boolean) => void };
+      container: HTMLElement;
+      rerender: (props: Record<string, unknown>) => Promise<void>;
+    };
+
+    component.focus("b", true);
+    const view = findView(container);
+    expect(view.hasFocus).toBe(false);
+
+    await rerender({ value: "pear tart\n", docKey: "b" });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(view.hasFocus).toBe(true);
+    expect(view.state.selection.main.anchor).toBe("pear tart\n".length);
+  });
+
+  it("focuses the loaded note at once, leaving the caret where it is", () => {
+    const { component, container } = render(Editor, { value: "Hello", docKey: "a" }) as unknown as {
+      component: { focus: (key?: string, atEnd?: boolean) => void };
+      container: HTMLElement;
+    };
+
+    component.focus("a");
+    const view = findView(container);
+    expect(view.hasFocus).toBe(true);
+    expect(view.state.selection.main.anchor).toBe(0);
+  });
+});

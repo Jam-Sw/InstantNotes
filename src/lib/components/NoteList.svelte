@@ -43,6 +43,38 @@
           : null,
   );
 
+  const query = $derived(library.searchText.trim());
+  const enterTarget = $derived(
+    query && library.searchResults && !library.searchResults.some((h) => library.isSelected(h.noteId))
+      ? (library.searchResults[0]?.noteId ?? null)
+      : null,
+  );
+  const workspaceName = $derived(library.workspaces.find((w) => w.id === library.activeWorkspaceId)?.name);
+  const tagName = $derived(library.tags.find((t) => t.id === library.activeTagId)?.name);
+  const scopedTagName = $derived(library.workspaceTags.find((t) => t.id === library.scopedTagId)?.name);
+
+  async function onSearchKey(e: KeyboardEvent) {
+    if (e.isComposing || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const id = await library.moveSelection(e.key === "ArrowDown" ? 1 : -1);
+      if (id) {
+        document
+          .querySelector(`.note-row[data-note-id="${CSS.escape(id)}"]`)
+          ?.scrollIntoView({ block: "nearest" });
+      }
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const text = query;
+      if (text) await library.searchNow();
+      const ids = library.visibleIds;
+      const open = library.selected?.id;
+      const id = open && ids.includes(open) ? open : text ? ids[0] : undefined;
+      if (id) await library.write(id);
+      else if (text && library.searchResults?.length === 0) await library.newNote(`${text}\n`);
+    }
+  }
+
   let newMenu = $state<{ x: number; y: number } | null>(null);
   let newControl = $state<HTMLDivElement>();
 
@@ -132,7 +164,7 @@
     </div>
   {:else}
   <div class="pane-header list-toolbar" data-tauri-drag-region>
-    <SearchField />
+    <SearchField onkeydown={onSearchKey} />
     <div
       class="new-control"
       bind:this={newControl}
@@ -189,12 +221,18 @@
   {/if}
   <div class="note-list">
     {#if library.searchResults}
+      {#if library.searchResults.length > 0}
+        <div class="group-header section-label" aria-live="polite">
+          {library.searchResults.length} {library.searchResults.length === 1 ? "note" : "notes"}
+        </div>
+      {/if}
       {#each library.searchResults as hit (hit.noteId)}
         <button
           class="note-row"
           data-note-id={hit.noteId}
           data-agent={agents.noteMark(hit.noteId)}
           class:selected={library.isSelected(hit.noteId)}
+          class:target={enterTarget === hit.noteId}
           onclick={(e) => rowClick(e, hit.noteId)}
         >
           <div class="row-head">
@@ -204,7 +242,14 @@
           <div class="row-preview">{#each parseHighlightSegments(hit.excerpt) as seg, i (i)}{#if seg.hit}<mark>{seg.text}</mark>{:else}{seg.text}{/if}{/each}</div>
         </button>
       {:else}
-        <div class="empty-state">No notes match your search.</div>
+        <div class="empty-state">
+          <p class="empty-title">No notes match{#if query} “{query}”{/if}</p>
+          {#if query}
+            <button class="action primary" onclick={() => void library.newNote(`${query}\n`)}>
+              Start a note called “{query}”{#if !layout.touch}<kbd aria-hidden="true">↵</kbd>{/if}
+            </button>
+          {/if}
+        </div>
       {/each}
     {:else if syntheticNotes}
       {#each syntheticNotes as note (note.id)}
@@ -284,21 +329,33 @@
       {#if library.notes.length === 0}
         <div class="empty-state">
           {#if library.revisitMode}
-            All caught up. Every capture has been seen.
+            <p class="empty-title">All caught up</p>
+            <p class="empty-hint">Every capture has been seen.</p>
           {:else if library.activeWorkspaceId && library.scopedTagId}
-            No notes with this tag in this space.
+            <p class="empty-title">No {scopedTagName ? `#${scopedTagName} ` : ""}notes in this space</p>
+            <button class="action" onclick={() => library.toggleScopedTag(library.scopedTagId!)}>
+              Show the whole space
+            </button>
           {:else if library.activeWorkspaceId}
-            Nothing here yet. New notes land in this space while you're in it.
+            <p class="empty-title">Nothing in {workspaceName ?? "this space"} yet</p>
+            <p class="empty-hint">New notes land in this space while you're in it.</p>
+            <button class="action primary" onclick={() => void library.newNote()}>New note</button>
+          {:else if library.activeTagId}
+            <p class="empty-title">No notes tagged #{tagName ?? "this tag"}</p>
+            <p class="empty-hint">New notes written here get the tag.</p>
+            <button class="action primary" onclick={() => void library.newNote()}>New note</button>
           {:else if library.statusFilter === "trash"}
-            Trash is empty.
+            <p class="empty-title">Trash is empty</p>
+            <p class="empty-hint">Deleted notes wait here until you restore them or delete them for good.</p>
           {:else if library.statusFilter === "archived"}
-            Nothing archived yet.
+            <p class="empty-title">Nothing archived</p>
+            <p class="empty-hint">Archive a note to keep it without it filling your list.</p>
           {:else}
-            {#if layout.touch}
-              No notes yet. Tap ＋ to write your first thought.
-            {:else}
-              No notes yet. Press {captureShortcut} anywhere to capture your first thought.
+            <p class="empty-title">No notes yet</p>
+            {#if !layout.touch && !isWeb}
+              <p class="empty-hint">Press <kbd>{captureShortcut}</kbd> anywhere to capture a thought, or start one here.</p>
             {/if}
+            <button class="action primary" onclick={() => void library.newNote()}>New note</button>
           {/if}
         </div>
       {:else if groups}
@@ -467,6 +524,13 @@
   .note-row.selected {
     background: var(--select-bg);
   }
+  .list-pane:has(.list-toolbar :global(.search:focus)) .note-row.target {
+    background: var(--bg-hover);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+  .note-list > .note-row:first-child {
+    margin-top: 6px;
+  }
   .row-head {
     display: flex;
     align-items: baseline;
@@ -530,10 +594,43 @@
     font-variant-numeric: tabular-nums;
   }
   .empty-state {
-    padding: 32px 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 40px 20px;
     text-align: center;
     color: var(--text-tertiary);
     line-height: 1.5;
+  }
+  .empty-state p {
+    margin: 0;
+  }
+  .empty-title {
+    color: var(--text-secondary);
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+  .empty-hint {
+    max-width: 32ch;
+    font-size: 12px;
+  }
+  .empty-state .action {
+    margin-top: 8px;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+  .empty-state kbd {
+    margin-left: 6px;
+    padding: 0 5px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: var(--font-meta);
+    font-size: 11px;
+    color: var(--text-tertiary);
+  }
+  .empty-hint kbd {
+    margin: 0;
   }
   .agreed-mark {
     color: var(--accent-text);
@@ -551,5 +648,9 @@
   }
   .action.danger {
     color: var(--danger);
+  }
+  .action.primary {
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+    color: var(--accent-text);
   }
 </style>

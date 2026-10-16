@@ -43,7 +43,8 @@
   .search {
     flex: 1;
     min-width: 0;
-    padding: 5px 9px;
+    height: 28px;
+    padding: 0 9px;
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--bg-input);

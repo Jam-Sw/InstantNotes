@@ -33,8 +33,17 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   View menu gains Show or Hide Note List (Cmd or Ctrl+Shift+L) and Search Notes beside Show or Hide
   Sidebar (Cmd or Ctrl+\). Ctrl+Cmd+S also toggles the sidebar on a Mac, and Escape closes an open drawer.
 - Restore on a trashed note's right-click menu, for the note or the whole selection.
+- Search to write: in the note list's search field the arrow keys move through the notes, and Enter
+  opens the first result (or the open note) with the cursor in its body. When nothing matches, Enter or
+  Start a note starts one whose first line is the search; the welcome finder does the same.
+- Empty lists say what belongs there and offer the next step: New note in an empty library, space or
+  tag, Show the whole space when a tag slice inside a space is empty.
 
 ### Changed
+- A new note, from the + button, Cmd or Ctrl+N, the menu or the palette, opens with the cursor in its
+  body, and Enter in a note's title moves the cursor to the body.
+- Search results open with a count, and the first result is marked while the search field has the
+  cursor. The search field is the height of the + control beside it.
 - Panes slide with their content when they show or hide, and snap while the window is being resized,
   as a native split view does.
 - The library schema is version 16 (space colour and flag). Once 0.11 opens a library, 0.10 refuses it

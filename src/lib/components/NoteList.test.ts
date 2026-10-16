@@ -1,14 +1,22 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, fireEvent, cleanup, waitFor } from "@testing-library/svelte";
 
-const { newNote, newWhiteboard, copyIds, restoreIds, list } = vi.hoisted(() => ({
+const { newNote, newWhiteboard, copyIds, restoreIds, write, searchNow, moveSelection, toggleScopedTag, list } = vi.hoisted(() => ({
   newNote: vi.fn(),
+  write: vi.fn(async () => {}),
+  searchNow: vi.fn(async () => {}),
+  moveSelection: vi.fn(async () => null),
+  toggleScopedTag: vi.fn(),
   restoreIds: vi.fn(async () => {}),
   newWhiteboard: vi.fn(),
   copyIds: vi.fn(async () => {}),
   list: {
     notes: [] as Record<string, unknown>[],
     selected: new Set<string>(),
+    searchText: "",
+    searchResults: null as { noteId: string; title: string; excerpt: string; updatedAt: string }[] | null,
+    activeWorkspaceId: null as string | null,
+    scopedTagId: null as string | null,
   },
 }));
 
@@ -32,19 +40,30 @@ vi.mock("$lib/stores/library.svelte", () => ({
       return list.notes;
     },
     get visibleIds() {
-      return list.notes.map((n) => n.id as string);
+      return list.searchResults ? list.searchResults.map((h) => h.noteId) : list.notes.map((n) => n.id as string);
     },
     get multiSelected() {
       return list.selected;
     },
     isSticky: () => false,
     flushPendingEdits: vi.fn(async () => {}),
-    searchText: "",
-    searchResults: null,
+    get searchText() {
+      return list.searchText;
+    },
+    get searchResults() {
+      return list.searchResults;
+    },
+    get activeWorkspaceId() {
+      return list.activeWorkspaceId;
+    },
+    get scopedTagId() {
+      return list.scopedTagId;
+    },
+    selected: null,
     activeTagId: null,
-    activeWorkspaceId: null,
-    scopedTagId: null,
-    workspaceTags: [],
+    workspaceTags: [{ id: "t1", name: "trip", usageCount: 2 }],
+    workspaces: [{ id: "w1", name: "Garden" }],
+    tags: [],
     revisitMode: false,
     statusFilter: "active",
     isSelected: (id: string) => list.selected.has(id),
@@ -55,7 +74,10 @@ vi.mock("$lib/stores/library.svelte", () => ({
     setSearch: vi.fn(),
     setStatusFilter: vi.fn(),
     toggleInSelection: vi.fn(),
-    toggleScopedTag: vi.fn(),
+    toggleScopedTag,
+    write,
+    searchNow,
+    moveSelection,
     extendSelectionTo: vi.fn(),
     emptyTrash: vi.fn(),
     restoreIds,
@@ -72,6 +94,10 @@ import { toasts } from "$lib/stores/toasts.svelte";
 afterEach(() => {
   list.notes = [];
   list.selected = new Set();
+  list.searchText = "";
+  list.searchResults = null;
+  list.activeWorkspaceId = null;
+  list.scopedTagId = null;
   for (const t of [...toasts.items]) toasts.dismiss(t.id);
   cleanup();
   vi.clearAllMocks();
@@ -167,5 +193,73 @@ describe("NoteList trash menu", () => {
     await findByRole("menu");
     await fireEvent.click(getByRole("menuitem", { name: "Restore 2 notes" }));
     await waitFor(() => expect(restoreIds).toHaveBeenCalledWith(["n1", "n3"]));
+  });
+});
+
+describe("NoteList search keys", () => {
+  const hit = (noteId: string, title: string) => ({ noteId, title, excerpt: "", updatedAt: "2026-10-15T10:00:00.000Z" });
+
+  it("counts the results and marks the first as the one Enter opens", () => {
+    list.searchText = "trip";
+    list.searchResults = [hit("a", "Trip plan"), hit("b", "Trip photos")];
+    const { container, getByText } = render(NoteList);
+    expect(getByText("2 notes")).toBeTruthy();
+    expect(container.querySelector(".note-row.target")?.getAttribute("data-note-id")).toBe("a");
+  });
+
+  it("moves through the list from the search field and opens the first result into the editor on Enter", async () => {
+    list.searchText = "trip";
+    list.searchResults = [hit("a", "Trip plan"), hit("b", "Trip photos")];
+    const { container } = render(NoteList);
+    const input = container.querySelector<HTMLInputElement>("input.search")!;
+    await fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(moveSelection).toHaveBeenCalledWith(1);
+    await fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(write).toHaveBeenCalledWith("a"));
+    expect(searchNow).toHaveBeenCalled();
+  });
+
+  it("starts a note with the words when nothing matches", async () => {
+    list.searchText = "pear tart";
+    list.searchResults = [];
+    const { container, getByRole } = render(NoteList);
+    expect(getByRole("button", { name: /Start a note called “pear tart”/ })).toBeTruthy();
+    await fireEvent.keyDown(container.querySelector("input.search")!, { key: "Enter" });
+    await waitFor(() => expect(newNote).toHaveBeenCalledWith("pear tart\n"));
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it("leaves Enter alone with an empty search and nothing open", async () => {
+    list.notes = [noteRow("n1", "One")];
+    const { container } = render(NoteList);
+    await fireEvent.keyDown(container.querySelector("input.search")!, { key: "Enter" });
+    expect(write).not.toHaveBeenCalled();
+    expect(newNote).not.toHaveBeenCalled();
+  });
+});
+
+describe("NoteList empty states", () => {
+  it("names an empty space and offers a note in it", async () => {
+    list.activeWorkspaceId = "w1";
+    const { getByText, getByRole } = render(NoteList);
+    expect(getByText("Nothing in Garden yet")).toBeTruthy();
+    await fireEvent.click(getByRole("button", { name: "New note" }));
+    expect(newNote).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers the whole space back when a tag slice is empty", async () => {
+    list.activeWorkspaceId = "w1";
+    list.scopedTagId = "t1";
+    const { getByText, getByRole } = render(NoteList);
+    expect(getByText("No #trip notes in this space")).toBeTruthy();
+    await fireEvent.click(getByRole("button", { name: "Show the whole space" }));
+    expect(toggleScopedTag).toHaveBeenCalledWith("t1");
+  });
+
+  it("starts the first note from an empty library", async () => {
+    const { getByText, getByRole } = render(NoteList);
+    expect(getByText("No notes yet")).toBeTruthy();
+    await fireEvent.click(getByRole("button", { name: "New note" }));
+    expect(newNote).toHaveBeenCalledTimes(1);
   });
 });

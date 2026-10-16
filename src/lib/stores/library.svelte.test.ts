@@ -545,6 +545,47 @@ describe("search debounce", () => {
   });
 });
 
+describe("capture and find hand the cursor to the editor", () => {
+  it("a new note asks for the cursor at the end of its body", async () => {
+    const library = await load();
+    mockCreateNote.mockResolvedValue(mkNote("new1"));
+    mockGetNote.mockResolvedValue(mkNote("new1"));
+    await library.newNote();
+    expect(mockCreateNote).toHaveBeenCalledWith({});
+    expect(library.focusRequest).toEqual({ id: "new1", atEnd: true });
+    await vi.advanceTimersByTimeAsync(0);
+  });
+
+  it("a note started from a search carries its words as the first line", async () => {
+    const library = await load();
+    mockCreateNote.mockResolvedValue(mkNote("new1"));
+    mockGetNote.mockResolvedValue(mkNote("new1"));
+    library.setSearch("pear tart");
+    await library.newNote("pear tart\n");
+    expect(mockCreateNote).toHaveBeenCalledWith({ body: "pear tart\n" });
+    expect(library.searchText).toBe("");
+    await vi.advanceTimersByTimeAsync(0);
+  });
+
+  it("write opens a note and asks for the cursor without moving it to the end", async () => {
+    const library = await load();
+    mockGetNote.mockResolvedValue(mkNote("n1"));
+    await library.write("n1");
+    expect(library.selected?.id).toBe("n1");
+    expect(library.focusRequest).toEqual({ id: "n1", atEnd: false });
+  });
+
+  it("searchNow runs the pending search at once", async () => {
+    const library = await load();
+    library.setSearch("abc");
+    expect(mockSearchNotes).not.toHaveBeenCalled();
+    await library.searchNow();
+    expect(mockSearchNotes).toHaveBeenCalledWith("abc");
+    await vi.advanceTimersByTimeAsync(200);
+    expect(mockSearchNotes).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("init ordering", () => {
   it("registers listeners before the first fetch and waits for them to resolve", async () => {
     const library = await load();

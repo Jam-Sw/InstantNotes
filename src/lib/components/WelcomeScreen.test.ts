@@ -10,7 +10,9 @@ const { panes, lib } = vi.hoisted(() => ({
     notes: [] as unknown[],
     searchText: "",
     searchResults: null as unknown[] | null,
-    select: vi.fn(),
+    write: vi.fn(),
+    newNote: vi.fn(async () => null),
+    searchNow: vi.fn(async () => {}),
     setSearch: vi.fn(),
   },
 }));
@@ -91,7 +93,7 @@ describe("WelcomeScreen with the note list hidden", () => {
     expect(titles).toEqual(["Trip plan", "Groceries"]);
     expect(queryByText("Never opened")).toBeNull();
     await fireEvent.click(getByText("Groceries"));
-    expect(lib.select).toHaveBeenCalledWith("n1");
+    expect(lib.write).toHaveBeenCalledWith("n1");
   });
 
   it("shows the results of a typed search in place, and opens one from the keyboard", async () => {
@@ -114,17 +116,22 @@ describe("WelcomeScreen with the note list hidden", () => {
     const input = container.querySelector<HTMLInputElement>("input.search")!;
     await fireEvent.keyDown(input, { key: "ArrowDown" });
     await fireEvent.keyDown(input, { key: "Enter" });
-    expect(lib.select).toHaveBeenCalledWith("t1");
+    expect(lib.write).toHaveBeenCalledWith("t1");
     await fireEvent.input(input, { target: { value: "trips" } });
     expect(lib.setSearch).toHaveBeenCalledWith("trips");
   });
 
-  it("says so when nothing matches", async () => {
+  it("says so when nothing matches, and starts a note with the words on Enter", async () => {
     panes.listInline = false;
     vi.mocked(listNotes).mockResolvedValue([]);
     lib.searchText = "zzz";
     lib.searchResults = [];
-    const { getByText } = render(WelcomeScreen, props);
+    const { container, getByText } = render(WelcomeScreen, props);
     expect(getByText("No notes match")).toBeTruthy();
+    expect(getByText("Start a note called “zzz”")).toBeTruthy();
+    const input = container.querySelector<HTMLInputElement>("input.search")!;
+    await fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(lib.newNote).toHaveBeenCalledWith("zzz\n"));
+    expect(lib.searchNow).toHaveBeenCalled();
   });
 });

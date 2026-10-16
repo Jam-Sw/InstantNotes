@@ -65,11 +65,18 @@
   });
 
   function open(id: string) {
-    void library.select(id);
+    void library.write(id);
   }
 
-  function onSearchKey(e: KeyboardEvent) {
-    if (rows.length === 0) return;
+  async function onSearchKey(e: KeyboardEvent) {
+    if (rows.length === 0) {
+      if (e.key !== "Enter" || e.isComposing || !query) return;
+      e.preventDefault();
+      const text = query;
+      await library.searchNow();
+      if (library.searchResults?.length === 0) await library.newNote(`${text}\n`);
+      return;
+    }
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
       const step = e.key === "ArrowDown" ? 1 : -1;
@@ -185,6 +192,11 @@
                 {/if}
               </button>
             {/each}
+            {#if query && library.searchResults !== null && hits.length === 0}
+              <button class="recent-row active" onclick={() => void library.newNote(`${query}\n`)}>
+                <span class="recent-title">Start a note called “{query}”</span>
+              </button>
+            {/if}
             {#if hits.length > HITS}
               <button class="show-all" onclick={() => sidebar.revealList()}>
                 Show all {hits.length} in the note list
