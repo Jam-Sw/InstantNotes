@@ -249,7 +249,7 @@
   /* The keyboard's row shows only while the search has the cursor; otherwise
      the pointer picks. */
   .recent-row:hover,
-  .finder:has(.search:focus) .recent-row.active {
+  .finder:has(:global(.search:focus)) .recent-row.active {
     background: var(--bg-hover);
   }
   .recent-line {
