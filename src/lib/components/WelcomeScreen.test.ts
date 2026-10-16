@@ -2,14 +2,14 @@ import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, cleanup, fireEvent, waitFor } from "@testing-library/svelte";
 import WelcomeScreen from "./WelcomeScreen.svelte";
 import { getShortcutFailure, listNotes } from "$lib/api/client";
-import { focusSearch } from "$lib/search-focus";
 
 const { panes, lib } = vi.hoisted(() => ({
-  panes: { listHidden: false },
+  panes: { listInline: true },
   lib: {
     error: null,
     notes: [] as unknown[],
     searchText: "",
+    searchResults: null as unknown[] | null,
     select: vi.fn(),
     setSearch: vi.fn(),
   },
@@ -20,7 +20,6 @@ vi.mock("$lib/stores/library.svelte", () => ({ library: lib }));
 vi.mock("$lib/stores/updater.svelte", () => ({ updater: { pendingUpdate: null } }));
 vi.mock("$lib/stores/sidebar.svelte", () => ({ sidebar: panes }));
 vi.mock("$lib/stores/agents.svelte", () => ({ agents: { currentSearch: null } }));
-vi.mock("$lib/search-focus", () => ({ focusSearch: vi.fn(async () => true) }));
 
 function opened(id: string, title: string, lastOpenedAt: string | null) {
   return {
@@ -41,7 +40,9 @@ const props = { appVersion: "0.11.0", onOpenUpdate: () => {} };
 
 beforeEach(() => {
   vi.mocked(getShortcutFailure).mockResolvedValue(null);
-  panes.listHidden = false;
+  panes.listInline = true;
+  lib.searchText = "";
+  lib.searchResults = null;
 });
 
 afterEach(() => {
@@ -74,7 +75,7 @@ describe("WelcomeScreen with the note list hidden", () => {
   });
 
   it("offers the search and the notes last opened, newest first, and opens one", async () => {
-    panes.listHidden = true;
+    panes.listInline = false;
     vi.mocked(listNotes).mockResolvedValue([
       opened("n2", "Trip plan", "2026-10-15T09:00:00Z"),
       opened("n1", "Groceries", "2026-10-14T09:00:00Z"),
@@ -93,14 +94,37 @@ describe("WelcomeScreen with the note list hidden", () => {
     expect(lib.select).toHaveBeenCalledWith("n1");
   });
 
-  it("carries typing over to the list's search field", async () => {
-    panes.listHidden = true;
+  it("shows the results of a typed search in place, and opens one from the keyboard", async () => {
+    panes.listInline = false;
+    vi.mocked(listNotes).mockResolvedValue([opened("n1", "Groceries", "2026-10-14T09:00:00Z")] as never);
+    lib.searchText = "trip";
+    lib.searchResults = ["Trip plan", "Trip photos"].map((title, i) => ({
+      noteId: `t${i}`,
+      title,
+      excerpt: "the \u0001trip\u0002 north",
+      score: 1,
+      updatedAt: "2026-10-15T09:00:00Z",
+    }));
+    const { container, getByText, queryByText } = render(WelcomeScreen, props);
+    expect(getByText("Results")).toBeTruthy();
+    expect(queryByText("Groceries")).toBeNull();
+    const titles = [...container.querySelectorAll(".recent-title")].map((el) => el.textContent);
+    expect(titles).toEqual(["Trip plan", "Trip photos"]);
+    expect(container.querySelector(".recent-excerpt mark")?.textContent).toBe("trip");
+    const input = container.querySelector<HTMLInputElement>("input.search")!;
+    await fireEvent.keyDown(input, { key: "ArrowDown" });
+    await fireEvent.keyDown(input, { key: "Enter" });
+    expect(lib.select).toHaveBeenCalledWith("t1");
+    await fireEvent.input(input, { target: { value: "trips" } });
+    expect(lib.setSearch).toHaveBeenCalledWith("trips");
+  });
+
+  it("says so when nothing matches", async () => {
+    panes.listInline = false;
     vi.mocked(listNotes).mockResolvedValue([]);
-    const { container, queryByText } = render(WelcomeScreen, props);
-    await waitFor(() => expect(listNotes).toHaveBeenCalled());
-    expect(queryByText("Continue")).toBeNull();
-    await fireEvent.input(container.querySelector("input.search")!, { target: { value: "trip" } });
-    expect(lib.setSearch).toHaveBeenCalledWith("trip");
-    expect(focusSearch).toHaveBeenCalledWith(document, { select: false });
+    lib.searchText = "zzz";
+    lib.searchResults = [];
+    const { getByText } = render(WelcomeScreen, props);
+    expect(getByText("No notes match")).toBeTruthy();
   });
 });

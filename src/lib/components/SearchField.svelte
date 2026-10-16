@@ -5,7 +5,7 @@
 
   // The note search, wherever it shows: the list header, or the welcome screen
   // while the list is hidden. Both edit the one query in library.searchText.
-  let { onsearch }: { onsearch?: (query: string) => void } = $props();
+  let { onkeydown }: { onkeydown?: (e: KeyboardEvent) => void } = $props();
 
   const agentSearch = $derived(library.searchText ? null : agents.currentSearch);
 </script>
@@ -18,20 +18,15 @@
       ? `${clientLabel(agentSearch.client)} searched “${agentSearch.query}”`
       : "Search notes…"}
     value={library.searchText}
-    oninput={(e) => {
-      library.setSearch(e.currentTarget.value);
-      onsearch?.(e.currentTarget.value);
-    }}
+    oninput={(e) => library.setSearch(e.currentTarget.value)}
+    {onkeydown}
   />
   {#if agentSearch}
     {@const search = agentSearch}
     <button
       class="agent-search-run"
       title="Run this search yourself"
-      onclick={() => {
-        library.setSearch(search.query ?? "");
-        onsearch?.(search.query ?? "");
-      }}
+      onclick={() => library.setSearch(search.query ?? "")}
     >
       {search.noteCount} hit{search.noteCount === 1 ? "" : "s"}
     </button>

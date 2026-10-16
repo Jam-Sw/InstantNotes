@@ -11,6 +11,9 @@ export const NAV_PANE: PaneSpec = { min: 180, def: 220, max: 300 };
 export const LIST_PANE: PaneSpec = { min: 240, def: 300, max: 420 };
 export const EDITOR_MIN = 420;
 const KEY_STEP = 16;
+// A live window resize holds the panes still: they snap across breakpoints, as
+// a native split view does, instead of animating behind the window edge.
+const RESIZE_SETTLE_MS = 160;
 
 const COMPACT = "(max-width: 599px)";
 const MEDIUM = "(max-width: 839px)";
@@ -94,9 +97,11 @@ class LayoutState {
   mode = $state<LayoutMode>("desktop");
   touch = $state(false);
   pane = $state<Pane>("list");
+  resizing = $state(false);
   onLeave: () => void = () => {};
 
   #pushed = false;
+  #settleTimer: ReturnType<typeof setTimeout> | undefined;
 
   get phone(): boolean {
     return this.mode === "phone";
@@ -129,6 +134,12 @@ class LayoutState {
       this.#pushed = false;
       this.#leave();
     };
+    const onWindowResize = () => {
+      this.resizing = true;
+      clearTimeout(this.#settleTimer);
+      this.#settleTimer = setTimeout(() => (this.resizing = false), RESIZE_SETTLE_MS);
+      read();
+    };
     const view = win.visualViewport;
     const root = win.document.documentElement;
     const onResize = () => {
@@ -138,13 +149,15 @@ class LayoutState {
     read();
     onResize();
     for (const q of [compact, medium, expanded, coarse]) q.addEventListener("change", read);
-    win.addEventListener("resize", read);
+    win.addEventListener("resize", onWindowResize);
     coarse.addEventListener("change", onResize);
     view?.addEventListener("resize", onResize);
     win.addEventListener("popstate", onPop);
     return () => {
       for (const q of [compact, medium, expanded, coarse]) q.removeEventListener("change", read);
-      win.removeEventListener("resize", read);
+      win.removeEventListener("resize", onWindowResize);
+      clearTimeout(this.#settleTimer);
+      this.resizing = false;
       coarse.removeEventListener("change", onResize);
       view?.removeEventListener("resize", onResize);
       win.removeEventListener("popstate", onPop);

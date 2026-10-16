@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { onMount, untrack } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
+  import { slide } from "svelte/transition";
+  import { cubicOut } from "svelte/easing";
   import { getShortcutFailure, listNotes } from "$lib/api/client";
   import { library } from "$lib/stores/library.svelte";
   import { updater } from "$lib/stores/updater.svelte";
@@ -8,11 +10,12 @@
   import { layout } from "$lib/stores/layout.svelte";
   import { sidebar } from "$lib/stores/sidebar.svelte";
   import { formatDate, formatExact } from "$lib/format";
-  import { focusSearch } from "$lib/search-focus";
+  import { parseHighlightSegments } from "$lib/highlight";
   import SearchField from "$lib/components/SearchField.svelte";
   import type { Note, ShortcutFailure } from "$lib/api/types";
 
   const RECENT = 5;
+  const HITS = 6;
 
   let { appVersion, onOpenUpdate }: { appVersion: string; onOpenUpdate: () => void } =
     $props();
@@ -20,10 +23,21 @@
   let shortcutConflict = $state<ShortcutFailure | null>(null);
   let conflictDismissed = $state(false);
 
-  // With the list hidden, the welcome screen carries its search and the notes
-  // last opened, so a narrow window can still find and resume a note.
-  const listAway = $derived(sidebar.listHidden && !layout.phone);
+  // With the list not beside the editor, the welcome screen becomes a small
+  // finder: the one search, its first results, or the notes last opened when
+  // nothing is typed. It stays put under the list's overlay.
+  const listAway = $derived(!sidebar.listInline && !layout.phone);
   let recent = $state<Note[]>([]);
+  let active = $state(0);
+  let results = $state<HTMLElement>();
+
+  const query = $derived(library.searchText.trim());
+  const hits = $derived(query ? (library.searchResults ?? []) : []);
+  const rows = $derived(
+    query
+      ? hits.slice(0, HITS).map((h) => ({ id: h.noteId, title: h.title, at: h.updatedAt, excerpt: h.excerpt }))
+      : recent.map((n) => ({ id: n.id, title: n.title, at: n.lastOpenedAt ?? n.updatedAt, excerpt: "" })),
+  );
 
   async function loadRecent() {
     try {
@@ -45,9 +59,39 @@
     untrack(() => void loadRecent());
   });
 
-  // Typing here opens the list on the results; the cursor follows into its field.
-  function carryOver(query: string) {
-    if (query.trim()) void focusSearch(document, { select: false });
+  $effect(() => {
+    void rows;
+    active = 0;
+  });
+
+  function open(id: string) {
+    void library.select(id);
+  }
+
+  function onSearchKey(e: KeyboardEvent) {
+    if (rows.length === 0) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const step = e.key === "ArrowDown" ? 1 : -1;
+      active = (active + step + rows.length) % rows.length;
+      void tick().then(() =>
+        results?.querySelector(".recent-row.active")?.scrollIntoView?.({ block: "nearest" }),
+      );
+    } else if (e.key === "Enter" && !e.isComposing) {
+      e.preventDefault();
+      open(rows[active].id);
+    }
+  }
+
+  const still = () =>
+    layout.resizing ||
+    (typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+
+  // The finder grows open, so the heading above it glides up rather than jumps.
+  function reveal(node: Element) {
+    const grow = slide(node, { duration: still() ? 0 : 240, easing: cubicOut });
+    return { ...grow, css: (t: number, u: number) => `${grow.css?.(t, u) ?? ""}opacity: ${t};` };
   }
 
   onMount(() => {
@@ -116,20 +160,39 @@
       </p>
     {/if}
     {#if listAway}
-      <div class="welcome-search">
-        <SearchField onsearch={carryOver} />
+      <div class="finder" transition:reveal>
+        <div class="welcome-search">
+          <SearchField onkeydown={onSearchKey} />
+        </div>
+        {#if query || rows.length > 0}
+          <section class="recent" aria-label={query ? "Results" : "Continue"} bind:this={results}>
+            <div class="section-label">
+              {#if !query}Continue{:else if library.searchResults === null}Searching…{:else if hits.length === 0}No notes match{:else}Results{/if}
+            </div>
+            {#each rows as row, i (row.id)}
+              <button
+                class="recent-row"
+                class:active={i === active}
+                onclick={() => open(row.id)}
+                onpointermove={() => (active = i)}
+              >
+                <span class="recent-line">
+                  <span class="recent-title">{#each parseHighlightSegments(row.title || "Untitled") as seg, k (k)}{#if seg.hit}<mark>{seg.text}</mark>{:else}{seg.text}{/if}{/each}</span>
+                  <span class="recent-date" title={formatExact(row.at)}>{formatDate(row.at)}</span>
+                </span>
+                {#if row.excerpt}
+                  <span class="recent-excerpt">{#each parseHighlightSegments(row.excerpt) as seg, k (k)}{#if seg.hit}<mark>{seg.text}</mark>{:else}{seg.text}{/if}{/each}</span>
+                {/if}
+              </button>
+            {/each}
+            {#if hits.length > HITS}
+              <button class="show-all" onclick={() => sidebar.revealList()}>
+                Show all {hits.length} in the note list
+              </button>
+            {/if}
+          </section>
+        {/if}
       </div>
-      {#if recent.length > 0}
-        <section class="recent" aria-label="Continue">
-          <div class="section-label">Continue</div>
-          {#each recent as note (note.id)}
-            <button class="recent-row" onclick={() => void library.select(note.id)}>
-              <span class="recent-title">{note.title || "Untitled"}</span>
-              <span class="recent-date" title={formatExact(note.lastOpenedAt!)}>{formatDate(note.lastOpenedAt!)}</span>
-            </button>
-          {/each}
-        </section>
-      {/if}
     {/if}
     {#if library.error}<p class="error">{library.error}</p>{/if}
   </div>
@@ -138,27 +201,36 @@
 <style>
   .no-selection {
     flex: 1;
+    min-height: 0;
     display: flex;
     align-items: center;
     justify-content: center;
+    overflow-y: auto;
   }
   .no-selection-inner {
     text-align: center;
     color: var(--text-tertiary);
   }
-  .welcome-search,
-  .recent {
+  /* A fixed height, so typing never moves the heading: results scroll inside. */
+  .finder {
+    display: flex;
+    flex-direction: column;
     width: min(380px, calc(100vw - 48px));
+    height: min(420px, 56vh);
     margin-inline: auto;
   }
   .welcome-search {
     display: flex;
-    margin-top: 22px;
+    padding-top: 22px;
   }
   .recent {
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    margin-top: 18px;
+    gap: 1px;
+    padding-top: 18px;
+    overflow-y: auto;
     text-align: left;
   }
   .recent .section-label {
@@ -166,16 +238,24 @@
   }
   .recent-row {
     display: flex;
-    align-items: baseline;
-    gap: 12px;
+    flex-direction: column;
+    gap: 2px;
     padding: 7px 10px;
     border-radius: var(--radius);
     color: var(--text);
     text-align: left;
+    transition: background-color 120ms ease-out;
   }
+  /* The keyboard's row shows only while the search has the cursor; otherwise
+     the pointer picks. */
   .recent-row:hover,
-  .recent-row:focus-visible {
+  .finder:has(.search:focus) .recent-row.active {
     background: var(--bg-hover);
+  }
+  .recent-line {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
   }
   .recent-title {
     flex: 1;
@@ -189,6 +269,29 @@
     font-family: var(--font-meta);
     font-size: 11px;
     color: var(--text-tertiary);
+  }
+  .recent-excerpt {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .recent-row :global(mark) {
+    background: var(--accent-soft);
+    color: inherit;
+    border-radius: 2px;
+  }
+  .show-all {
+    align-self: flex-start;
+    margin-top: 4px;
+    padding: 4px 10px;
+    border-radius: var(--radius);
+    font-size: 12px;
+    color: var(--accent-text);
+  }
+  .show-all:hover {
+    background: var(--bg-hover);
   }
   .no-selection-inner h2 {
     font-weight: 600;

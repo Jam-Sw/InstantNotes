@@ -24,9 +24,9 @@ beforeEach(() => {
 type Store = Awaited<ReturnType<typeof load>>;
 
 // A window of the given width, with no note open unless asked.
-function at(sidebar: Store, width: number, noteOpen = false) {
+function at(sidebar: Store, width: number) {
   const cls = width >= 1200 ? "large" : width >= 840 ? "expanded" : width >= 600 ? "medium" : "compact";
-  sidebar.setViewport(cls, width, noteOpen);
+  sidebar.setViewport(cls, width);
 }
 
 function saved(values: Record<string, unknown>) {
@@ -120,7 +120,7 @@ describe("a large window", () => {
 
   it("keeps the list when a note opens", async () => {
     const sidebar = await load();
-    at(sidebar, 1440, true);
+    at(sidebar, 1440);
     sidebar.noteOpened();
     expect(sidebar.listHidden).toBe(false);
     expect(sidebar.closeOverlay()).toBe(false);
@@ -174,23 +174,26 @@ describe("an expanded window", () => {
 });
 
 describe("a medium window", () => {
-  it("shows the editor alone, with the list as a drawer closed once a note is open", async () => {
+  it("shows the editor alone, with the list as a drawer that starts closed", async () => {
     const sidebar = await load();
-    at(sidebar, 700, false);
+    at(sidebar, 700);
     expect(sidebar.listOverlay).toBe(true);
+    expect(sidebar.listHidden).toBe(true);
+    sidebar.toggleList();
     expect(sidebar.listHidden).toBe(false);
     sidebar.noteOpened();
     expect(sidebar.listHidden).toBe(true);
-    at(sidebar, 650, true);
-    expect(sidebar.listHidden).toBe(true);
+    sidebar.toggleList();
+    at(sidebar, 650);
+    expect(sidebar.listHidden).toBe(false);
     at(sidebar, 1440);
-    at(sidebar, 700, true);
+    at(sidebar, 700);
     expect(sidebar.listHidden).toBe(true);
   });
 
   it("opens on toggle and on a search, and closes on request", async () => {
     const sidebar = await load();
-    at(sidebar, 700, true);
+    at(sidebar, 700);
     sidebar.toggleList();
     expect(sidebar.listOpen).toBe(true);
     expect(sidebar.closeList()).toBe(true);
@@ -204,7 +207,7 @@ describe("a medium window", () => {
 
   it("closes the nav drawer before the list drawer on Escape", async () => {
     const sidebar = await load();
-    at(sidebar, 700, true);
+    at(sidebar, 700);
     sidebar.toggleList();
     sidebar.toggle();
     expect(sidebar.closeOverlay()).toBe(true);
@@ -217,7 +220,7 @@ describe("a medium window", () => {
 
   it("never saves a drawer opening or closing", async () => {
     const sidebar = await load();
-    at(sidebar, 700, false);
+    at(sidebar, 700);
     sidebar.toggleList();
     sidebar.toggle();
     sidebar.revealList();
@@ -284,7 +287,7 @@ describe("one state for each width class", () => {
     at(sidebar, 1440);
     sidebar.toggleList();
     mockSetSetting.mockClear();
-    at(sidebar, 700, true);
+    at(sidebar, 700);
     sidebar.toggleList();
     sidebar.revealList();
     sidebar.noteOpened();
@@ -294,15 +297,17 @@ describe("one state for each width class", () => {
     expect(sidebar.state).toBe("nav");
   });
 
-  it("starts the drawers closed when a note is open, whatever was open before", async () => {
+  it("closes the list drawer whenever the window crosses into or out of it", async () => {
     const sidebar = await load();
-    at(sidebar, 700, false);
+    at(sidebar, 700);
+    sidebar.toggleList();
     expect(sidebar.listOpen).toBe(true);
     at(sidebar, 1440);
     expect(sidebar.listOpen).toBe(false);
-    at(sidebar, 700, true);
+    at(sidebar, 700);
     expect(sidebar.listOpen).toBe(false);
   });
+
 });
 
 describe("what is saved", () => {
@@ -459,7 +464,7 @@ describe("resizing the panes", () => {
 
   it("never lets the panes take the editor below 420", async () => {
     const sidebar = await load();
-    sidebar.setViewport("large", 1000, true);
+    sidebar.setViewport("large", 1000);
     sidebar.resizeList(420);
     expect(sidebar.listWidth).toBe(360);
     sidebar.resizeNav(300);
@@ -478,11 +483,11 @@ describe("a window too narrow for the panes", () => {
     const sidebar = await load();
     at(sidebar, 1440);
     expect(sidebar.navInline).toBe(true);
-    sidebar.setViewport("large", 939, true);
+    sidebar.setViewport("large", 939);
     expect(sidebar.navInline).toBe(false);
     expect(sidebar.listInline).toBe(true);
     expect(sidebar.hidden).toBe(true);
-    sidebar.setViewport("large", 719, true);
+    sidebar.setViewport("large", 719);
     expect(sidebar.listInline).toBe(false);
     expect(sidebar.listOverlay).toBe(true);
     expect(sidebar.listHidden).toBe(true);
@@ -490,7 +495,7 @@ describe("a window too narrow for the panes", () => {
     sidebar.toggleList();
     expect(sidebar.listOpen).toBe(true);
     expect(mockSetSetting).not.toHaveBeenCalled();
-    sidebar.setViewport("large", 1440, true);
+    sidebar.setViewport("large", 1440);
     expect(sidebar.navInline).toBe(true);
     expect(sidebar.listInline).toBe(true);
     expect(sidebar.listOpen).toBe(false);
@@ -498,7 +503,7 @@ describe("a window too narrow for the panes", () => {
 
   it("opens the nav drawer, not the saved state, when the nav has yielded", async () => {
     const sidebar = await load();
-    sidebar.setViewport("large", 900, true);
+    sidebar.setViewport("large", 900);
     sidebar.toggle();
     expect(sidebar.narrowOpen).toBe(true);
     expect(sidebar.state).toBe("all");
