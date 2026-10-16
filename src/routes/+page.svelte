@@ -1,8 +1,9 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
   import { fade, fly } from "svelte/transition";
+  import { cubicOut } from "svelte/easing";
   import Icon from "$lib/components/Icon.svelte";
-  import { layout } from "$lib/stores/layout.svelte";
+  import { LIST_PANE, NAV_PANE, layout, layoutShortcut } from "$lib/stores/layout.svelte";
   import { appVersion as fetchAppVersion, getSyncServerStatus, quitApp } from "$lib/api/client";
   import type { SyncStage } from "$lib/api/types";
   import { EVENTS, listen } from "$lib/api/events";
@@ -107,13 +108,9 @@
   });
 
   $effect(() => {
-    sidebar.setNarrow(layout.mode !== "desktop");
-  });
-
-  const listOverlay = $derived(layout.mode === "tablet");
-  $effect(() => {
-    const overlay = listOverlay;
-    untrack(() => sidebar.setListDrawer(overlay, selectedId !== null));
+    const widthClass = layout.widthClass;
+    const width = layout.width;
+    untrack(() => sidebar.setViewport(widthClass, width, selectedId !== null));
   });
   $effect(() => {
     if (selectedId !== null) untrack(() => sidebar.noteOpened());
@@ -130,7 +127,7 @@
     const now = view;
     untrack(() => {
       sidebar.narrowOpen = false;
-      if (lastView !== undefined && lastView !== now && sidebar.listDrawer) sidebar.revealList();
+      if (lastView !== undefined && lastView !== now && sidebar.listOverlay) sidebar.revealList();
       lastView = now;
     });
   });
@@ -140,25 +137,23 @@
   const showList = $derived(!onePane || layout.pane === "list");
   const showEditor = $derived(!onePane || layout.pane === "note");
   const backButton = $derived(onePane && layout.pane === "note");
-  const listHidden = $derived(!layout.phone && sidebar.listHidden);
-  const listColumn = $derived(sidebar.listCollapsed && !library.graphMode ? "0px" : "280px");
+  const listOverlay = $derived(sidebar.listOverlay);
+  const listHidden = $derived(sidebar.listHidden);
+  const navTrack = $derived(sidebar.navTrack);
+  const listTrack = $derived(library.graphMode ? 0 : sidebar.listTrack);
   const columns = $derived(
-    layout.phone
-      ? "minmax(0, 1fr)"
-      : drawer
-        ? "minmax(0, 1fr)"
-        : sidebar.hidden
-          ? `${listColumn} 1fr`
-          : `${sidebar.width}px ${listColumn} 1fr`,
+    layout.phone ? "minmax(0, 1fr)" : `${navTrack}px ${listTrack}px minmax(0, 1fr)`,
   );
   const listToggleShown = $derived(!layout.phone && !library.graphMode);
-  const editorEdge = $derived(
-    listToggleShown && (drawer || (sidebar.hidden && sidebar.listCollapsed)),
-  );
-  const listX = $derived(
-    (sidebar.hidden ? 0 : sidebar.width) + (sidebar.listCollapsed ? 0 : 280),
-  );
+  const editorEdge = $derived(listToggleShown && !sidebar.navInline && !sidebar.listInline);
+  const listX = $derived(navTrack + listTrack);
   let animate = $state(false);
+  let dragging = $state<"nav" | "list" | null>(null);
+
+  const reducedMotion = () =>
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const motion = (ms: number) => (reducedMotion() ? 0 : ms);
 
   function onListClick(e: MouseEvent) {
     if (!listOverlay || e.shiftKey || e.metaKey || e.ctrlKey) return;
@@ -278,17 +273,23 @@
       else agents.show();
       return;
     }
-    if (mod && e.key === "\\") {
+    const toggled = layoutShortcut(e, isMac);
+    if (toggled) {
       e.preventDefault();
-      sidebar.toggle();
-      return;
-    }
-    if (mod && e.shiftKey && (e.key === "l" || e.key === "L")) {
-      e.preventDefault();
-      if (!layout.phone) sidebar.toggleList();
+      if (toggled === "nav") sidebar.toggle();
+      else sidebar.toggleList();
       return;
     }
     if (isWhiteboardTarget(e.target)) return;
+    if (
+      e.key === "Escape" &&
+      !shell.paletteOpen &&
+      !(e.target instanceof HTMLInputElement && e.target.type === "search" && e.target.value) &&
+      sidebar.closeOverlay()
+    ) {
+      e.preventDefault();
+      return;
+    }
     if (mod && (e.key === "=" || e.key === "+")) {
       e.preventDefault();
       editorPrefs.zoomIn();
@@ -338,9 +339,7 @@
         }
         break;
       case "Escape":
-        if (sidebar.narrow && sidebar.narrowOpen) sidebar.narrowOpen = false;
-        else if (sidebar.closeList()) break;
-        else if (backButton) layout.back();
+        if (backButton) layout.back();
         else if (!shell.settingsOpen) library.clearMultiSelect();
         break;
     }
@@ -362,32 +361,35 @@
     }
   }
 
-  let draggingSidebar = $state(false);
-
-  function startSidebarDrag(e: PointerEvent) {
+  function startDrag(e: PointerEvent, pane: "nav" | "list") {
     if (e.button !== 0) return;
     e.preventDefault();
     const handle = e.currentTarget as HTMLElement;
     handle.setPointerCapture(e.pointerId);
-    draggingSidebar = true;
+    dragging = pane;
     const startX = e.clientX;
-    const startWidth = sidebar.width;
-    const move = (ev: PointerEvent) => sidebar.setWidth(startWidth + ev.clientX - startX);
+    const startWidth = pane === "nav" ? sidebar.navWidth : sidebar.listWidth;
+    const move = (ev: PointerEvent) => {
+      const raw = startWidth + ev.clientX - startX;
+      if (pane === "nav") sidebar.resizeNav(raw);
+      else sidebar.resizeList(raw);
+    };
     const up = () => {
       handle.removeEventListener("pointermove", move);
       handle.removeEventListener("pointerup", up);
-      draggingSidebar = false;
-      sidebar.commitWidth();
+      handle.removeEventListener("pointercancel", up);
+      dragging = null;
+      sidebar.commitDrag(pane);
     };
     handle.addEventListener("pointermove", move);
     handle.addEventListener("pointerup", up);
+    handle.addEventListener("pointercancel", up);
   }
 
-  function onHandleKeydown(e: KeyboardEvent) {
+  function onHandleKeydown(e: KeyboardEvent, pane: "nav" | "list") {
     if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
       e.preventDefault();
-      sidebar.setWidth(sidebar.width + (e.key === "ArrowLeft" ? -10 : 10));
-      sidebar.commitWidth();
+      sidebar.stepPane(pane, e.key === "ArrowLeft" ? -1 : 1);
     }
   }
 
@@ -422,28 +424,19 @@
     class="layout"
     class:phone={layout.phone}
     class:animate
-    class:resizing={draggingSidebar}
+    class:resizing={dragging !== null}
     data-nav={drawer ? "" : undefined}
     data-list-overlay={listOverlay ? "" : undefined}
     data-edge={editorEdge ? "" : undefined}
     style:--list-x="{listX}px"
+    style:--nav-w="{sidebar.navWidth}px"
+    style:--list-w="{sidebar.listWidth}px"
     style:grid-template-columns={columns}
   >
-    {#if !drawer && !sidebar.hidden}
-      <Sidebar />
-      <div
-        class="sidebar-handle"
-        class:dragging={draggingSidebar}
-        style:left="{sidebar.width - 3}px"
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize sidebar"
-        aria-valuenow={sidebar.width}
-        tabindex="0"
-        onpointerdown={startSidebarDrag}
-        ondblclick={() => sidebar.resetWidth()}
-        onkeydown={onHandleKeydown}
-      ></div>
+    {#if layout.widthClass === "large"}
+      <div class="nav-slot" class:hidden={!sidebar.navInline} inert={!sidebar.navInline}>
+        <Sidebar />
+      </div>
     {/if}
     {#if library.graphMode && !licenseSpace.locked}
       <section class="graph-span">
@@ -490,22 +483,58 @@
         </section>
       {/if}
     {/if}
+    {#if sidebar.navInline}
+      <div
+        class="divider"
+        class:dragging={dragging === "nav"}
+        class:snapping={sidebar.snapping === "nav"}
+        style:left="{navTrack - 5}px"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize sidebar"
+        aria-valuenow={sidebar.navWidth}
+        aria-valuemin={NAV_PANE.min}
+        aria-valuemax={NAV_PANE.max}
+        tabindex="0"
+        onpointerdown={(e) => startDrag(e, "nav")}
+        ondblclick={() => sidebar.resetWidth("nav")}
+        onkeydown={(e) => onHandleKeydown(e, "nav")}
+      ></div>
+    {/if}
+    {#if sidebar.listInline && !library.graphMode && showList}
+      <div
+        class="divider"
+        class:dragging={dragging === "list"}
+        class:snapping={sidebar.snapping === "list"}
+        style:left="{listX - 5}px"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize note list"
+        aria-valuenow={sidebar.listWidth}
+        aria-valuemin={LIST_PANE.min}
+        aria-valuemax={LIST_PANE.max}
+        tabindex="0"
+        onpointerdown={(e) => startDrag(e, "list")}
+        ondblclick={() => sidebar.resetWidth("list")}
+        onkeydown={(e) => onHandleKeydown(e, "list")}
+      ></div>
+    {/if}
     {#if listToggleShown}
       <button
         class="pane-nav list-toggle"
         aria-label="Toggle note list"
         aria-expanded={!listHidden}
-        title={`Toggle note list (${modKey}${shiftKey}L)`}
+        title={`${listHidden ? "Show" : "Hide"} Note List (${modKey}${shiftKey}L)`}
         onclick={() => sidebar.toggleList()}
       >
         <Icon name="list" size={20} />
       </button>
     {/if}
-    {#if listOverlay && showList && sidebar.listOpen}
+    {#if listOverlay && showList && sidebar.listOpen && !library.graphMode}
       <div
         class="drawer-scrim list-scrim"
         role="presentation"
-        transition:fade={{ duration: 160 }}
+        transition:fade={{ duration: motion(160) }}
         onclick={() => sidebar.closeList()}
       ></div>
     {/if}
@@ -528,10 +557,10 @@
         <div
           class="drawer-scrim"
           role="presentation"
-          transition:fade={{ duration: 160 }}
+          transition:fade={{ duration: motion(160) }}
           onclick={() => (sidebar.narrowOpen = false)}
         ></div>
-        <div class="drawer" transition:fly={{ x: -300, duration: 220, opacity: 1 }}>
+        <div class="drawer" transition:fly={{ x: -300, duration: motion(220), opacity: 1, easing: cubicOut }}>
           <Sidebar />
           <button class="drawer-settings" onclick={() => shell.openSettings()}>Settings</button>
         </div>
@@ -556,6 +585,8 @@
 
 <style>
   .layout {
+    --pane-ms: 220ms;
+    --pane-ease: cubic-bezier(0, 0, 0.2, 1);
     display: grid;
     grid-template-rows: minmax(0, 1fr);
     height: 100vh;
@@ -563,37 +594,52 @@
     overflow: hidden;
     position: relative;
   }
-  .layout[data-nav] > :global(:first-child .pane-header) {
-    padding-left: calc(max(12px, var(--chrome-inset)) + 40px);
-  }
-  .layout.phone .graph-span {
-    grid-column: auto;
-  }
-  .layout.phone :global(.list-pane) {
-    border-right: none;
-  }
   .layout.animate:not(.resizing) {
-    transition: grid-template-columns 200ms cubic-bezier(0.2, 0, 0, 1);
+    transition: grid-template-columns var(--pane-ms) var(--pane-ease);
   }
 
+  /* The dividers draw the line between panes, so the panes drop their own. */
+  .layout :global(.list-pane),
+  .layout :global(.sidebar) {
+    border-right: none;
+  }
+
+  .nav-slot,
   .list-slot {
     display: flex;
     min-width: 0;
     min-height: 0;
     overflow: hidden;
-    transition: visibility 0s linear 200ms;
+    transition: visibility 0s linear var(--pane-ms);
+  }
+  .nav-slot {
+    grid-column: 1;
+  }
+  .nav-slot > :global(.sidebar) {
+    flex: none;
+    width: var(--nav-w);
+  }
+  .list-slot {
+    grid-column: 2;
   }
   .list-slot > :global(.list-pane) {
     flex: none;
-    width: 280px;
+    width: var(--list-w);
   }
+  .nav-slot.hidden,
   .list-slot.hidden {
     visibility: hidden;
   }
   .layout.phone > .list-slot {
     display: contents;
   }
+  .layout.phone > .nav-slot,
+  .layout.phone > .editor-pane,
+  .layout.phone > .graph-span {
+    grid-column: auto;
+  }
   .layout[data-list-overlay] > .list-slot {
+    grid-column: auto;
     position: absolute;
     top: 0;
     bottom: 0;
@@ -604,30 +650,34 @@
     box-shadow: var(--shadow-lg);
     transform: translateX(-100%);
     transition:
-      transform 220ms cubic-bezier(0.2, 0, 0, 1),
-      visibility 0s linear 220ms;
+      transform var(--pane-ms) var(--pane-ease),
+      visibility 0s linear var(--pane-ms);
   }
   .layout[data-list-overlay] > .list-slot:not(.hidden) {
     transform: none;
-    transition: transform 220ms cubic-bezier(0.2, 0, 0, 1);
+    transition: transform var(--pane-ms) var(--pane-ease);
   }
   .layout[data-list-overlay] > .list-slot > :global(.list-pane) {
     flex: 1;
     width: auto;
     padding-left: env(safe-area-inset-left);
   }
-  .layout[data-list-overlay] > .list-slot :global(.pane-header) {
-    padding-left: 12px;
-  }
   .list-scrim {
     z-index: 28;
   }
 
+  /* With the nav in its drawer, the menu button covers the left edge of the first pane. */
+  .layout[data-nav] > .list-slot :global(.pane-header),
+  .layout[data-nav] > .graph-span :global(.pane-header),
+  .layout[data-nav].phone > .editor-pane :global(.pane-header) {
+    padding-left: calc(max(12px, var(--chrome-inset)) + 40px);
+  }
+  .layout[data-list-overlay] > .list-slot :global(.pane-header) {
+    padding-left: 12px;
+  }
+
   .layout:not(.phone) > .editor-pane > :global(.pane-header) {
     padding-left: 46px;
-  }
-  .layout[data-edge]:not([data-nav]) > .editor-pane > :global(.pane-header) {
-    padding-left: calc(max(6px, var(--chrome-inset)) + 40px);
   }
   .layout[data-edge][data-nav] > .editor-pane > :global(.pane-header) {
     padding-left: calc(max(6px, var(--chrome-inset)) + env(safe-area-inset-left) + 80px);
@@ -657,12 +707,12 @@
     left: calc(var(--list-x) + 6px);
   }
   .layout.animate:not(.resizing) .list-toggle {
-    transition: left 200ms cubic-bezier(0.2, 0, 0, 1);
+    transition: left var(--pane-ms) var(--pane-ease);
   }
   .layout[data-edge] .list-toggle {
     left: calc(max(6px, var(--chrome-inset)) + env(safe-area-inset-left));
   }
-  .layout[data-nav] .list-toggle {
+  .layout[data-edge][data-nav] .list-toggle {
     left: calc(max(6px, var(--chrome-inset)) + env(safe-area-inset-left) + 40px);
   }
 
@@ -721,22 +771,37 @@
     transform: scale(0.94);
   }
 
-  .sidebar-handle {
+  .divider {
     position: absolute;
     top: 0;
     bottom: 0;
-    width: 6px;
-    cursor: col-resize;
     z-index: 10;
-  }
-  .sidebar-handle:hover,
-  .sidebar-handle.dragging,
-  .sidebar-handle:focus-visible {
-    background: var(--accent-soft);
+    width: 8px;
+    cursor: col-resize;
+    touch-action: none;
     outline: none;
+  }
+  .divider::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 4px;
+    width: 1px;
+    background: var(--divider);
+  }
+  .divider:hover::after,
+  .divider.dragging::after,
+  .divider:focus-visible::after {
+    background: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent-soft);
+  }
+  .divider.snapping::after {
+    background: var(--danger);
   }
 
   .editor-pane {
+    grid-column: 3;
     display: flex;
     flex-direction: column;
     min-width: 0;
@@ -744,7 +809,7 @@
     background: var(--bg);
   }
   .graph-span {
-    grid-column: span 2;
+    grid-column: 2 / 4;
     min-width: 0;
     min-height: 0;
   }
@@ -752,7 +817,10 @@
   @media (prefers-reduced-motion: reduce) {
     .layout.animate:not(.resizing),
     .layout.animate:not(.resizing) .list-toggle,
-    .layout[data-list-overlay] > .list-slot {
+    .nav-slot,
+    .list-slot,
+    .layout[data-list-overlay] > .list-slot,
+    .layout[data-list-overlay] > .list-slot:not(.hidden) {
       transition: none;
     }
   }
