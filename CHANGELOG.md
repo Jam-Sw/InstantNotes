@@ -62,6 +62,7 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The built-in theme Night console (`night-console`): amber on deep slate with square corners.
 - Releases list the SHA-256 of every file of the web app the server serves in `web-code-sha256.txt`.
 ### Changed
+- Editor: the formatting toolbar sits on the page at the width of the text, so zoom in and out stay in view in the default window, and the header's note actions step back to a quieter ink.
 - The toolbar shows by default (`editor.toolbarOpen` default true, a stored false kept) and no longer
   decides the editor's mode; `Editor.svelte` exposes `undo`, `redo`, `canUndo`, `canRedo` and reports
   history through `onhistory`; `ActiveMarks` gains `heading`.
