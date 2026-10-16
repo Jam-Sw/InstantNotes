@@ -43,7 +43,7 @@
     const o = OPTIONS[i];
     if (!o) return;
     group?.querySelectorAll("button")[i]?.focus();
-    if (o.value !== markerPrefs.mode) markerPrefs.setMode(o.value);
+    if (o.value !== markerPrefs.mode) void markerPrefs.setMode(o.value);
   }
 
   function onkeydown(e: KeyboardEvent) {
