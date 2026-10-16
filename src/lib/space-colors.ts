@@ -30,10 +30,6 @@ export function normalizeHex(input: string): string | null {
   return `#${full}`;
 }
 
-export function isStoredColor(value: unknown): value is string {
-  return typeof value === "string" && (isSwatchName(value) || HEX_RE.test(value));
-}
-
 // A stored colour (a swatch name or "#rrggbb") as a CSS value. A swatch name
 // resolves through the theme's --swatch-<name> variable, so switching theme
 // recolours it; a custom hex stays as it is. Null for none or anything invalid.

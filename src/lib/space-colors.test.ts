@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   cssColor,
   groupSlices,
-  isStoredColor,
   markerParts,
   normalizeHex,
   parseMarkerMode,
@@ -23,15 +22,6 @@ describe("cssColor", () => {
     expect(cssColor("chartreuse")).toBeNull();
     expect(cssColor("#fff")).toBeNull();
     expect(cssColor("red; background: url(x)")).toBeNull();
-  });
-});
-
-describe("isStoredColor", () => {
-  it("accepts a swatch name or lowercase #rrggbb only", () => {
-    expect(isStoredColor("teal")).toBe(true);
-    expect(isStoredColor("#00ff7f")).toBe(true);
-    expect(isStoredColor("#00FF7F")).toBe(false);
-    expect(isStoredColor(3)).toBe(false);
   });
 });
 

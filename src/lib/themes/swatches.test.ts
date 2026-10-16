@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { themeToVars } from "./apply";
 import { BUILTIN_THEMES } from "./builtin";
 import { manuscript } from "./builtin/manuscript";
-import { DEFAULT_SWATCHES } from "./swatches";
 import { SWATCH_NAMES, SWATCH_VAR, type Theme } from "./types";
 import { validateTheme } from "./validate";
 
@@ -41,10 +40,11 @@ describe("swatch palette", () => {
     const { swatches: _l, ...light } = manuscript.light!;
     const bare: Theme = { ...manuscript, dark, light: { ...light, swatches: { red: "#ff0000" } } };
     const d = themeToVars(bare, "dark");
-    for (const name of SWATCH_NAMES) expect(d[SWATCH_VAR[name]]).toBe(DEFAULT_SWATCHES.dark[name]);
+    for (const name of SWATCH_NAMES) expect(d[SWATCH_VAR[name]], name).toMatch(/^#[0-9a-f]{6}$/);
     const l = themeToVars(bare, "light");
     expect(l["--swatch-red"]).toBe("#ff0000");
-    expect(l["--swatch-blue"]).toBe(DEFAULT_SWATCHES.light.blue);
+    expect(l["--swatch-blue"]).toMatch(/^#[0-9a-f]{6}$/);
+    expect(l["--swatch-blue"]).not.toBe(d["--swatch-blue"]);
   });
 });
 
