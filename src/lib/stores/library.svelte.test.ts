@@ -10,6 +10,7 @@ import {
   getOrCreateWorkspace,
   listNotes,
   listTags,
+  restoreNotes,
   listWorkspaces,
   listStickies,
   listWorkspaceTags,
@@ -437,6 +438,35 @@ describe("soft delete flushes queued edits (Undo restores the last keystrokes)",
     expect(library.error).toBeTruthy();
     await vi.advanceTimersByTimeAsync(3000);
     expect(mockUpdateNote).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("restoring from the Trash by id", () => {
+  it("restores the given notes and closes the open one when it is among them", async () => {
+    const library = await load();
+    await selectNote(library, "n1", { isDeleted: true });
+    const mockRestoreNotes = vi.mocked(restoreNotes);
+    mockRestoreNotes.mockResolvedValue(undefined);
+
+    await library.restoreIds(["n2", "n1"]);
+
+    expect(mockRestoreNotes).toHaveBeenCalledWith(["n2", "n1"]);
+    expect(library.selected).toBeNull();
+    expect(library.error).toBeNull();
+  });
+
+  it("keeps the open note when it is not among them, and surfaces a failure", async () => {
+    const library = await load();
+    await selectNote(library, "n1", { isDeleted: true });
+    const mockRestoreNotes = vi.mocked(restoreNotes);
+    mockRestoreNotes.mockResolvedValueOnce(undefined);
+    await library.restoreIds(["n2"]);
+    expect(library.selected?.id).toBe("n1");
+
+    mockRestoreNotes.mockRejectedValueOnce(new ApiError("NOT_FOUND", "gone"));
+    await library.restoreIds(["n1"]);
+    expect(library.selected?.id).toBe("n1");
+    expect(library.error).toBeTruthy();
   });
 });
 

@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, fireEvent, cleanup, waitFor } from "@testing-library/svelte";
 
-const { newNote, newWhiteboard, copyIds, list } = vi.hoisted(() => ({
+const { newNote, newWhiteboard, copyIds, restoreIds, list } = vi.hoisted(() => ({
   newNote: vi.fn(),
+  restoreIds: vi.fn(async () => {}),
   newWhiteboard: vi.fn(),
   copyIds: vi.fn(async () => {}),
   list: {
@@ -57,6 +58,7 @@ vi.mock("$lib/stores/library.svelte", () => ({
     toggleScopedTag: vi.fn(),
     extendSelectionTo: vi.fn(),
     emptyTrash: vi.fn(),
+    restoreIds,
   },
 }));
 vi.mock("$lib/stores/update-space", () => ({ updateSpace: { notes: [] } }));
@@ -129,5 +131,29 @@ describe("NoteList copy context", () => {
     await findByRole("menu");
     await fireEvent.click(getByRole("menuitem", { name: "Copy context" }));
     await waitFor(() => expect(copyIds).toHaveBeenCalledWith(["n3"]));
+  });
+});
+
+describe("NoteList trash menu", () => {
+  const trashed = (id: string, title: string) => ({ ...noteRow(id, title), isDeleted: true });
+
+  it("copies the context of a trashed note, and offers Restore in place of the sticky items", async () => {
+    list.notes = [trashed("n1", "One")];
+    const { container, findByRole, getByRole } = render(NoteList);
+    await fireEvent.contextMenu(container.querySelector('[data-note-id="n1"]')!);
+    const menu = await findByRole("menu");
+    expect(menu.textContent).not.toContain("sticky");
+    await fireEvent.click(getByRole("menuitem", { name: "Copy context" }));
+    await waitFor(() => expect(copyIds).toHaveBeenCalledWith(["n1"]));
+  });
+
+  it("restores the whole selection when the clicked note is part of it", async () => {
+    list.notes = [trashed("n1", "One"), trashed("n2", "Two"), trashed("n3", "Three")];
+    list.selected = new Set(["n3", "n1"]);
+    const { container, findByRole, getByRole } = render(NoteList);
+    await fireEvent.contextMenu(container.querySelector('[data-note-id="n1"]')!);
+    await findByRole("menu");
+    await fireEvent.click(getByRole("menuitem", { name: "Restore 2 notes" }));
+    await waitFor(() => expect(restoreIds).toHaveBeenCalledWith(["n1", "n3"]));
   });
 });
