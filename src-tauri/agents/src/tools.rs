@@ -148,7 +148,7 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Read,
         destructive: false,
         idempotent: true,
-        description: "Every tag, each with name and notes, how many notes outside the Trash use it.",
+        description: "Every tag, each with name, notes (how many notes outside the Trash use it) and color (a swatch name such as blue, a #rrggbb value, or null).",
         schema: || object(json!({}), &[]),
     },
     ToolDef {
@@ -157,7 +157,7 @@ const TOOLS: &[ToolDef] = &[
         level: Access::Read,
         destructive: false,
         idempotent: true,
-        description: "Every Space, each with name and notes, how many notes outside the Trash it holds. Call this before create_note and add_to_space, and pass one of these names, so the note is filed in an existing Space.",
+        description: "Every Space, each with name, notes (how many notes outside the Trash it holds), color (a swatch name such as blue, a #rrggbb value, or null) and flag (whether it shows a flag). Call this before create_note and add_to_space, and pass one of these names, so the note is filed in an existing Space.",
         schema: || object(json!({}), &[]),
     },
     ToolDef {
@@ -467,13 +467,14 @@ impl<'a> Tools<'a> {
             "list_tags" => {
                 let tags = self.store.list_tags().map_err(fail)?;
                 Ok(json!({ "tags": tags.iter().map(|t| json!({
-                    "name": t.tag.name, "notes": t.usage_count
+                    "name": t.tag.name, "notes": t.usage_count, "color": t.tag.color
                 })).collect::<Vec<_>>() }))
             }
             "list_spaces" => {
                 let spaces = self.store.list_workspaces().map_err(fail)?;
                 Ok(json!({ "spaces": spaces.iter().map(|w| json!({
-                    "name": w.workspace.name, "notes": w.note_count
+                    "name": w.workspace.name, "notes": w.note_count,
+                    "color": w.workspace.color, "flag": w.workspace.flag
                 })).collect::<Vec<_>>() }))
             }
             "suggest_space" => self.suggest_space(parse(args)?),
