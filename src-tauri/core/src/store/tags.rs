@@ -76,10 +76,29 @@ impl Store {
             None => existing.name,
         };
 
+        let color = color.map(|raw| validated_color(&raw)).transpose()?;
         self.conn.execute(
             "UPDATE tags SET name = ?1, color = COALESCE(?2, color), updated_at = ?3 WHERE id = ?4",
             params![new_name, color, now_iso(), id],
         )?;
+        self.conn
+            .query_row(
+                "SELECT id, name, color, created_at, updated_at FROM tags WHERE id = ?1",
+                params![id],
+                row_to_tag,
+            )
+            .map_err(Into::into)
+    }
+
+    pub fn set_tag_color(&mut self, id: &str, color: Option<String>) -> Result<Tag> {
+        let color = color.map(|raw| validated_color(&raw)).transpose()?;
+        let affected = self.conn.execute(
+            "UPDATE tags SET color = ?1, updated_at = ?2 WHERE id = ?3",
+            params![color, now_iso(), id],
+        )?;
+        if affected == 0 {
+            return Err(AppError::NotFound(format!("tag {id} not found")));
+        }
         self.conn
             .query_row(
                 "SELECT id, name, color, created_at, updated_at FROM tags WHERE id = ?1",

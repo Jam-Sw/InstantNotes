@@ -235,6 +235,11 @@ pub fn dispatch(
             changes.push(tags_changed());
             out(tag)?
         }
+        "set_tag_color" => {
+            let tag = store.set_tag_color(&arg::<String>(args, "id")?, opt(args, "color")?)?;
+            changes.push(tags_changed());
+            out(tag)?
+        }
         "delete_tag" => {
             store.delete_tag(&arg::<String>(args, "id")?)?;
             changes.push(tags_changed());
@@ -272,6 +277,17 @@ pub fn dispatch(
             changes.push(workspaces_changed());
             out(ws)?
         }
+        "set_workspace_color" => {
+            let ws = store.set_workspace_color(&arg::<String>(args, "id")?, opt(args, "color")?)?;
+            changes.push(workspaces_changed());
+            out(ws)?
+        }
+        "set_workspace_flag" => {
+            let ws = store.set_workspace_flag(&arg::<String>(args, "id")?, arg(args, "flag")?)?;
+            changes.push(workspaces_changed());
+            out(ws)?
+        }
+        "workspace_tag_slices" => out(store.workspace_tag_slices()?)?,
         "delete_workspace" => {
             let members = store.delete_workspace(&arg::<String>(args, "id")?)?;
             changes.push(workspaces_changed());
