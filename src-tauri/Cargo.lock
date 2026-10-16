@@ -2794,7 +2794,7 @@ dependencies = [
 
 [[package]]
 name = "instantnotes"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "chrono",
  "instantnotes-agents",

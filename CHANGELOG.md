@@ -7,7 +7,40 @@ in-app updater, written for users. Newest first.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.10.1]
+## [0.11.0]
+### Added
+- Space and tag colours: right-click a space or tag to pick a swatch from the theme's palette (every
+  theme carries one) or any `#rrggbb` colour, and right-click a space to show its flag. Settings >
+  Appearance chooses how a space is marked (Color, Flag or Both) with live previews, and a space's marker shows the
+  share of its tags as slices. Colours and flags travel through folder sync and the sync server.
+  Commands `set_tag_color`, `set_workspace_color`, `set_workspace_flag` and `workspace_tag_slices`; MCP
+  `list_tags` and `list_spaces` report the colour, `list_spaces` the flag.
+- Copy context: right-click a note, or a selection of notes, to copy it for an agent, including from the
+  Trash. A source line names the copy time and the note id that MCP `get_note` reads, live or trashed;
+  Settings > Contexting previews it on the selected note and explains every template variable
+  (`contexting.sourceLine` turns it off). A refused clipboard write says so.
+- Layouts for every window width: large from 1200 px shows the sidebar, the note list and the editor;
+  expanded from 840 px keeps the sidebar inline while the editor keeps 420 px and drops it into a drawer
+  below about 940 px; medium from 600 px shows the editor with the list as a drawer; compact stacks the
+  list and the editor behind a back button. Large and expanded remember their own choice
+  (`layout.large`, `layout.expanded`), and the sidebar and the list hide separately.
+- Drag dividers for the sidebar and the note list: double-click resets, arrow keys move 16 px, and a drag
+  past half the minimum hides the pane. Widths are saved (`layout.navWidth`, `layout.listWidth`).
+- With the note list hidden, the welcome screen is a finder: the same search field, the first six
+  results in place, the five notes opened last when nothing is typed, arrow keys and Enter, and Show all
+  in the note list.
+- Cmd or Ctrl+Shift+F (Search notes) puts the cursor in search, showing the list if it is hidden; the
+  View menu gains Show or Hide Note List (Cmd or Ctrl+Shift+L) and Search Notes beside Show or Hide
+  Sidebar (Cmd or Ctrl+\). Ctrl+Cmd+S also toggles the sidebar on a Mac, and Escape closes an open drawer.
+- Restore on a trashed note's right-click menu, for the note or the whole selection.
+
+### Changed
+- Panes slide with their content when they show or hide, and snap while the window is being resized,
+  as a native split view does.
+- The library schema is version 16 (space colour and flag). Once 0.11 opens a library, 0.10 refuses it
+  as too new.
+
+## [0.10.1] - 2026-10-15
 ### Added
 - Settings > About: the real platform, the last update check (`updates.lastCheckedAt`), Check for updates
   and Show update; the web app shows its server's version.
