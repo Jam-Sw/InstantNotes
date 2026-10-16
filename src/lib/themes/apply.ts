@@ -8,6 +8,7 @@ import {
   type TokenSet,
   type Variant,
 } from "./types";
+import { swatchVars } from "./swatches";
 
 function optionalFallback(key: OptionalTokenKey, t: TokenSet): string {
   switch (key) {
@@ -43,6 +44,7 @@ export function themeToVars(theme: Theme, variant: Variant): Record<string, stri
   for (const key of OPTIONAL_TOKEN_KEYS) {
     vars[OPTIONAL_TOKEN_VAR[key]] = tokens[key] ?? optionalFallback(key, tokens);
   }
+  Object.assign(vars, swatchVars(tokens.swatches, effectiveVariant(theme, variant)));
   vars["--font-ui"] = theme.fonts.ui;
   vars["--font-mono"] = theme.fonts.mono;
   vars["--font-body"] = theme.fonts.body === "mono" ? theme.fonts.mono : theme.fonts.ui;
