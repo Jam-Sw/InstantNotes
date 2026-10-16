@@ -5,6 +5,9 @@ import {
   NAV_PANE,
   clampPane,
   dragWidth,
+  hasList,
+  hasNav,
+  paneState,
   resolveLayout,
   stepWidth,
   type PaneState,
@@ -25,8 +28,8 @@ const LEGACY_WIDTH = "sidebar.width";
 const LEGACY_NAV_COLLAPSED = "sidebar.collapsed";
 const LEGACY_LIST_COLLAPSED = "notes.collapsed";
 
-const DEFAULTS: Record<InlineClass, PaneState> = { large: "all", expanded: "double" };
-const STATES: readonly PaneState[] = ["all", "double", "detail"];
+const DEFAULTS: Record<InlineClass, PaneState> = { large: "all", expanded: "all" };
+const STATES: readonly PaneState[] = ["all", "double", "nav", "detail"];
 
 function isState(value: unknown): value is PaneState {
   return typeof value === "string" && (STATES as readonly string[]).includes(value);
@@ -48,7 +51,6 @@ class SidebarState {
   // The pane a drag is about to collapse, so the page can preview it.
   snapping = $state<Pane | null>(null);
 
-  #before: Record<InlineClass, "all" | "double"> = { large: "all", expanded: "double" };
   #loaded = false;
 
   // The chosen state of the current width class. Medium and compact windows
@@ -83,7 +85,7 @@ class SidebarState {
   get listOverlay(): boolean {
     if (this.widthClass === "compact") return false;
     if (this.widthClass === "medium") return true;
-    return this.state !== "detail" && !this.listInline;
+    return hasList(this.state) && !this.listInline;
   }
 
   get listHidden(): boolean {
@@ -113,12 +115,13 @@ class SidebarState {
         getSetting<boolean>(LEGACY_LIST_COLLAPSED),
       ]);
       const migrated: PaneState | null =
-        legacyList === true ? "detail" : legacyNav === true ? "double" : null;
+        legacyNav === true || legacyList === true
+          ? paneState(legacyNav !== true, legacyList !== true)
+          : null;
       if (isState(large)) this.states.large = large;
       else if (migrated) this.states.large = migrated;
-      if (isState(expanded)) this.states.expanded = expanded === "all" ? "double" : expanded;
-      else if (migrated) this.states.expanded = migrated === "detail" ? "detail" : "double";
-      this.#before.large = this.states.large === "double" ? "double" : "all";
+      if (isState(expanded)) this.states.expanded = expanded;
+      else if (migrated) this.states.expanded = migrated;
       if (typeof nav === "number" && nav >= NAV_PANE.min && nav <= NAV_PANE.max) this.navWidth = nav;
       else if (typeof legacyWidth === "number" && legacyWidth >= 150 && legacyWidth <= 420) {
         this.navWidth = clampPane(NAV_PANE, legacyWidth);
@@ -145,23 +148,29 @@ class SidebarState {
   }
 
   #setState(cls: InlineClass, state: PaneState): void {
-    const next = cls === "expanded" && state === "all" ? "double" : state;
-    if (this.states[cls] === next) return;
-    if (next !== "detail") this.#before[cls] = next;
-    this.states[cls] = next;
+    if (this.states[cls] === state) return;
+    this.states[cls] = state;
     this.narrowOpen = false;
-    void setSetting(KEYS[cls], next);
+    void setSetting(KEYS[cls], state);
   }
 
+  // The nav and the list are chosen apart: hiding one never hides the other.
+  #setPanes(cls: InlineClass, nav: boolean, list: boolean): void {
+    this.#setState(cls, paneState(nav, list));
+  }
+
+  // An inline nav hides; a hidden one comes back inline when the window has
+  // room for it, and opens as a drawer when it has not.
   toggle(): void {
     const cls = this.widthClass;
-    if (cls === "large") {
-      if (!this.narrow && this.state === "all") {
-        this.#setState(cls, "double");
+    if (isInline(cls)) {
+      const list = hasList(this.state);
+      if (this.navInline) {
+        this.#setPanes(cls, false, list);
         return;
       }
-      if (this.state === "double" && this.resolved("all").nav) {
-        this.#setState(cls, "all");
+      if (!hasNav(this.state) && this.resolved(paneState(true, list)).nav) {
+        this.#setPanes(cls, true, list);
         return;
       }
     }
@@ -176,15 +185,14 @@ class SidebarState {
       return;
     }
     if (!isInline(cls)) return;
-    if (this.state === "detail") this.#setState(cls, this.#before[cls]);
-    else this.#setState(cls, "detail");
+    this.#setPanes(cls, hasNav(this.state), !hasList(this.state));
   }
 
   revealList(): void {
     const cls = this.widthClass;
     if (cls === "compact") return;
     if (this.listOverlay) this.listOpen = true;
-    else if (isInline(cls) && this.state === "detail") this.#setState(cls, this.#before[cls]);
+    else if (isInline(cls) && !hasList(this.state)) this.#setPanes(cls, hasNav(this.state), true);
   }
 
   closeList(): boolean {
@@ -230,7 +238,10 @@ class SidebarState {
     const collapse = this.snapping === pane;
     this.snapping = null;
     const cls = this.widthClass;
-    if (collapse && isInline(cls)) this.#setState(cls, pane === "nav" ? "double" : "detail");
+    if (collapse && isInline(cls)) {
+      const state = this.state;
+      this.#setPanes(cls, pane === "nav" ? false : hasNav(state), pane === "list" ? false : hasList(state));
+    }
     this.#saveWidth(pane);
   }
 

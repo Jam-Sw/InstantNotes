@@ -1,5 +1,7 @@
 export type WidthClass = "large" | "expanded" | "medium" | "compact";
-export type PaneState = "all" | "double" | "detail";
+// Which panes the user wants beside the editor: "all" is the nav and the list,
+// "double" the list alone, "nav" the nav alone, "detail" neither.
+export type PaneState = "all" | "double" | "nav" | "detail";
 type LayoutMode = "phone" | "tablet" | "desktop";
 type Pane = "list" | "note";
 
@@ -41,10 +43,22 @@ export function stepWidth(spec: PaneSpec, width: number, direction: -1 | 1, room
   return dragWidth(spec, Math.max(spec.min, width + direction * KEY_STEP), room).width;
 }
 
-// Which panes sit beside the editor. Large windows follow the chosen state;
-// expanded windows keep the nav in its drawer; medium ones keep both drawers.
+export function hasNav(state: PaneState): boolean {
+  return state === "all" || state === "nav";
+}
+
+export function hasList(state: PaneState): boolean {
+  return state === "all" || state === "double";
+}
+
+export function paneState(nav: boolean, list: boolean): PaneState {
+  return nav ? (list ? "all" : "nav") : list ? "double" : "detail";
+}
+
+// Which panes sit beside the editor. Large and expanded windows follow the
+// chosen state; medium and compact ones keep both panes in drawers or a stack.
 // When the window is too narrow for the editor to keep its minimum the nav
-// yields first, then the list.
+// yields to its drawer first, then the list to its overlay.
 export function resolveLayout(
   cls: WidthClass,
   state: PaneState,
@@ -53,8 +67,8 @@ export function resolveLayout(
   listWidth: number,
 ): { nav: boolean; list: boolean } {
   const wide = cls === "large" || cls === "expanded";
-  let nav = cls === "large" && state === "all";
-  let list = wide && state !== "detail";
+  let nav = wide && hasNav(state);
+  let list = wide && hasList(state);
   if (nav && navWidth + (list ? listWidth : 0) + EDITOR_MIN > width) nav = false;
   if (list && listWidth + EDITOR_MIN > width) list = false;
   return { nav, list };

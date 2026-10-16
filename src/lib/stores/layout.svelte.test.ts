@@ -201,14 +201,27 @@ describe("which panes sit beside the editor", () => {
     const { resolveLayout } = await import("./layout.svelte");
     expect(resolveLayout("large", "all", 1440, 220, 300)).toEqual({ nav: true, list: true });
     expect(resolveLayout("large", "double", 1440, 220, 300)).toEqual({ nav: false, list: true });
+    expect(resolveLayout("large", "nav", 1440, 220, 300)).toEqual({ nav: true, list: false });
     expect(resolveLayout("large", "detail", 1440, 220, 300)).toEqual({ nav: false, list: false });
   });
 
-  it("keeps the nav in its drawer on an expanded window", async () => {
+  it("keeps the nav inline on an expanded window only while it fits", async () => {
     const { resolveLayout } = await import("./layout.svelte");
-    expect(resolveLayout("expanded", "all", 1000, 220, 300)).toEqual({ nav: false, list: true });
+    expect(resolveLayout("expanded", "all", 1000, 220, 300)).toEqual({ nav: true, list: true });
+    expect(resolveLayout("expanded", "all", 900, 220, 300)).toEqual({ nav: false, list: true });
+    expect(resolveLayout("expanded", "nav", 840, 220, 300)).toEqual({ nav: true, list: false });
     expect(resolveLayout("expanded", "double", 1000, 220, 300)).toEqual({ nav: false, list: true });
     expect(resolveLayout("expanded", "detail", 1000, 220, 300)).toEqual({ nav: false, list: false });
+  });
+
+  it("maps the nav and list choices to one state and back", async () => {
+    const { hasList, hasNav, paneState } = await import("./layout.svelte");
+    for (const nav of [true, false]) {
+      for (const list of [true, false]) {
+        const state = paneState(nav, list);
+        expect([hasNav(state), hasList(state)]).toEqual([nav, list]);
+      }
+    }
   });
 
   it("keeps both in drawers on a medium or compact window", async () => {

@@ -433,7 +433,7 @@
     style:--list-w="{sidebar.listWidth}px"
     style:grid-template-columns={columns}
   >
-    {#if layout.widthClass === "large"}
+    {#if layout.widthClass === "large" || layout.widthClass === "expanded"}
       <div class="nav-slot" class:hidden={!sidebar.navInline} inert={!sidebar.navInline}>
         <Sidebar />
       </div>
