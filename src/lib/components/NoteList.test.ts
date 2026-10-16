@@ -67,10 +67,12 @@ vi.mock("$lib/stores/license-space.svelte", () => ({ licenseSpace: { locked: fal
 vi.mock("$lib/stores/contexting.svelte", () => ({ contexting: { copyIds } }));
 
 import NoteList from "./NoteList.svelte";
+import { toasts } from "$lib/stores/toasts.svelte";
 
 afterEach(() => {
   list.notes = [];
   list.selected = new Set();
+  for (const t of [...toasts.items]) toasts.dismiss(t.id);
   cleanup();
   vi.clearAllMocks();
 });
@@ -131,6 +133,16 @@ describe("NoteList copy context", () => {
     await findByRole("menu");
     await fireEvent.click(getByRole("menuitem", { name: "Copy context" }));
     await waitFor(() => expect(copyIds).toHaveBeenCalledWith(["n3"]));
+  });
+
+  it("says so when the copy fails instead of leaving the clipboard silently empty", async () => {
+    copyIds.mockRejectedValueOnce(new Error("NotAllowedError"));
+    list.notes = [noteRow("n1", "One")];
+    const { container, findByRole, getByRole } = render(NoteList);
+    await fireEvent.contextMenu(container.querySelector('[data-note-id="n1"]')!);
+    await findByRole("menu");
+    await fireEvent.click(getByRole("menuitem", { name: "Copy context" }));
+    await waitFor(() => expect(toasts.items.map((t) => t.message)).toEqual([expect.stringContaining("Couldn't copy")]));
   });
 });
 
