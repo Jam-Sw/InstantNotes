@@ -114,7 +114,8 @@ word, and the frontend's one-tap accept is `add_note_to_workspace`.
 | Command | Purpose |
 | --- | --- |
 | `list_tags` | All tags with usage counts. |
-| `update_tag` | Rename or recolor a tag. |
+| `update_tag` | Rename or recolor a tag (`color` is validated; omitting it keeps the colour). |
+| `set_tag_color` | `{ id, color }` sets a tag's colour, `color: null` clears it. Returns the tag. |
 | `delete_tag` | Remove a tag and its note associations. |
 | `add_tag_to_note` / `remove_tag_from_note` | Attach or detach a tag. |
 | `tags_for_note` | Tags on one note. |
@@ -129,10 +130,20 @@ them "Spaces"; the command and storage names keep `workspace`.
 | `list_workspaces` | All workspaces with note counts. |
 | `get_or_create_workspace` | Resolve a name to a workspace, creating it if new. |
 | `rename_workspace` | Rename a workspace (duplicate names rejected as `CONFLICT`). |
+| `set_workspace_color` | `{ id, color }` sets a workspace's colour, `color: null` clears it. Returns the workspace. |
+| `set_workspace_flag` | `{ id, flag }` turns the workspace's flag marker on or off. Returns the workspace. |
+| `workspace_tag_slices` | One row per workspace and coloured tag, `{ workspaceId, tagId, color, noteCount }`, counting notes outside the Trash. Uncoloured tags are left out. |
 | `delete_workspace` | Delete a workspace; member notes are untouched. |
 | `list_workspace_tags` | Tags used by notes in one workspace. |
 | `add_note_to_workspace` / `remove_note_from_workspace` | Manage membership. |
 | `workspaces_for_note` | Workspaces a note belongs to. |
+
+Colours, for tags and workspaces alike, are stored as one of the swatch names
+`red orange yellow green teal blue purple pink grey`, or a lowercase `#rrggbb`
+value, or null. Anything else is a `VALIDATION_ERROR`; swatch names and hex
+digits are accepted in any case and stored lowercase. A workspace also carries
+`flag` (boolean, default false). Colours and flags sync through the vault and
+server manifest the way a tag colour does.
 
 ## 7. Settings
 
