@@ -7,6 +7,15 @@ in-app updater, written for users. Newest first.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+### Added
+- Two themes: Folio (book paper, serif type, a vermilion mark) and Peony (plum
+  and peony pink, soft round corners, with glass).
+
+### Removed
+- The Ember and Paper Dark themes. If one was your theme, the app opens in
+  Manuscript; pick any theme in Settings > Appearance.
+
 ## [0.10.1]
 ### Added
 - Settings > About: the real platform, the last update check (`updates.lastCheckedAt`), Check for updates
