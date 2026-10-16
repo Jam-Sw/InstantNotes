@@ -224,6 +224,8 @@ mod tests {
         );
         m.spaces.push(ManifestSpace {
             name: "Engineering".to_string(),
+            color: None,
+            flag: false,
             created: "2026-01-01T00:00:00.000000Z".to_string(),
         });
         export_vault(&[], &m, dir.path()).unwrap();
