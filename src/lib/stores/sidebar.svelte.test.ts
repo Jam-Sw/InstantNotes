@@ -243,6 +243,16 @@ describe("a compact window", () => {
     expect(mockSetSetting).not.toHaveBeenCalled();
   });
 
+  it("says the list cannot be shown or hidden, so nothing offers the choice", async () => {
+    const sidebar = await load();
+    at(sidebar, 1440);
+    expect(sidebar.listToggleable).toBe(true);
+    at(sidebar, 700);
+    expect(sidebar.listToggleable).toBe(true);
+    at(sidebar, 500);
+    expect(sidebar.listToggleable).toBe(false);
+  });
+
   it("keeps the nav in its drawer", async () => {
     const sidebar = await load();
     at(sidebar, 500);

@@ -630,7 +630,9 @@
   .list-slot {
     grid-column: 2;
   }
-  .list-slot > :global(.list-pane) {
+  /* Not on the compact stack: there the slot is `display: contents`, so the
+     pane is the grid item itself and fills the window. */
+  .layout:not(.phone) > .list-slot > :global(.list-pane) {
     flex: none;
     width: var(--list-w);
   }
