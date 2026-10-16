@@ -1,5 +1,6 @@
 import { library } from "$lib/stores/library.svelte";
 import { sidebar } from "$lib/stores/sidebar.svelte";
+import { layout } from "$lib/stores/layout.svelte";
 import { theme } from "$lib/stores/theme.svelte";
 import { agents } from "$lib/stores/agents.svelte";
 import { contexting } from "$lib/stores/contexting.svelte";
@@ -118,6 +119,15 @@ export function buildCommands(): Command[] {
       group: "View",
       shortcut: `${modKey}\\`,
       run: () => sidebar.toggle(),
+    },
+    {
+      id: "view.noteList",
+      title: "Toggle note list",
+      group: "View",
+      shortcut: `${modKey}${shiftKey}L`,
+      run: () => {
+        if (!layout.phone) sidebar.toggleList();
+      },
     },
     {
       id: "view.agents",
