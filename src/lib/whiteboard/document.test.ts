@@ -3,6 +3,7 @@ import {
   boardText,
   emptyBoard,
   excalidrawFile,
+  openingAppState,
   parseBoard,
   sceneFingerprint,
   serializeBoard,
@@ -113,5 +114,17 @@ describe("excalidrawFile", () => {
       appState: board.appState,
       files: {},
     });
+  });
+});
+
+describe("openingAppState", () => {
+  it("opens with the pen tool on touch", () => {
+    const state = openingAppState({ gridSize: 20 }, true);
+    expect(state.activeTool).toMatchObject({ type: "freedraw" });
+    expect(state.gridSize).toBe(20);
+  });
+
+  it("keeps the selection tool first on the desktop", () => {
+    expect(openingAppState({}, false).activeTool).toMatchObject({ type: "selection" });
   });
 });

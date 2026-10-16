@@ -1,10 +1,15 @@
 pub(crate) mod agents;
+pub(crate) mod backups;
 pub(crate) mod capture;
+pub(crate) mod diagnostics;
 pub(crate) mod files;
+pub(crate) mod log;
+pub(crate) mod menu;
 pub(crate) mod mirror;
 #[cfg(not(target_os = "macos"))]
 pub(crate) mod paint;
 pub(crate) mod quit;
+pub(crate) mod secrets;
 pub(crate) mod server;
 pub(crate) mod stickies;
 pub(crate) mod update;

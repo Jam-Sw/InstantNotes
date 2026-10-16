@@ -5,9 +5,6 @@ import { getSyncServerStatus, getVaultStatus, listSyncDevices } from "$lib/api/c
 import type { SyncServerStatus } from "$lib/api/types";
 
 vi.mock("$lib/api/runtime", () => ({ clientId: "tab-1", isWeb: true }));
-vi.mock("$lib/vault-export", () => ({
-  exportVaultToFolder: vi.fn(),
-}));
 vi.mock("$lib/api/client", () => ({
   acceptPlainServer: vi.fn(),
   cancelSyncSignIn: vi.fn(),
@@ -51,6 +48,8 @@ const OFF: SyncServerStatus = {
   tooLarge: [],
   localNotes: 0,
   serverItems: 0,
+  pairingCode: null,
+  pairingUrl: null,
 };
 
 const CONNECTED: SyncServerStatus = {
@@ -74,7 +73,7 @@ beforeEach(() => {
 });
 
 describe("SettingsSync on the web", () => {
-  it("shows the server card with no provider choice, folder or export", async () => {
+  it("shows the server card with no provider choice or folder", async () => {
     const { findByText, queryByRole, queryByText } = showing(CONNECTED);
 
     expect(await findByText("sam@example.org")).toBeTruthy();
@@ -82,7 +81,6 @@ describe("SettingsSync on the web", () => {
     expect(queryByRole("radio", { name: "Folder" })).toBeNull();
     expect(queryByRole("radio", { name: "Sync server" })).toBeNull();
     expect(queryByRole("button", { name: /Choose folder/ })).toBeNull();
-    expect(queryByRole("button", { name: /Export a copy/ })).toBeNull();
     expect(getVaultStatus).not.toHaveBeenCalled();
   });
 

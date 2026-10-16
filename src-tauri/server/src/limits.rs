@@ -10,10 +10,12 @@ const SYNC_PER_MINUTE: u32 = 600;
 const JOINS_PER_MINUTE: u32 = 5;
 const REFUSED_PER_MINUTE: u32 = 20;
 const DEVICE_TOKEN_PER_MINUTE: u32 = 10;
+const DEVICE_POLL_PER_MINUTE: u32 = 30;
 
 pub struct Limits {
     sign_in: DefaultKeyedRateLimiter<IpAddr>,
     device_token: DefaultKeyedRateLimiter<IpAddr>,
+    device_poll: DefaultKeyedRateLimiter<IpAddr>,
     sync: DefaultKeyedRateLimiter<String>,
     joins: DefaultKeyedRateLimiter<String>,
     refused: DefaultKeyedRateLimiter<IpAddr>,
@@ -53,6 +55,7 @@ impl Limits {
         Limits {
             sign_in: per_minute(SIGN_IN_PER_MINUTE),
             device_token: per_minute(DEVICE_TOKEN_PER_MINUTE),
+            device_poll: per_minute(DEVICE_POLL_PER_MINUTE),
             sync: per_minute(SYNC_PER_MINUTE),
             joins: per_minute(JOINS_PER_MINUTE),
             refused: per_minute(REFUSED_PER_MINUTE),
@@ -66,6 +69,7 @@ impl Limits {
     pub fn forget_idle(&self) {
         self.sign_in.retain_recent();
         self.device_token.retain_recent();
+        self.device_poll.retain_recent();
         self.sync.retain_recent();
         self.joins.retain_recent();
         self.refused.retain_recent();
@@ -73,6 +77,10 @@ impl Limits {
 
     pub fn device_token(&self, ip: IpAddr) -> Result<(), u64> {
         check(&self.device_token, &ip)
+    }
+
+    pub fn device_poll(&self, ip: IpAddr) -> Result<(), u64> {
+        check(&self.device_poll, &ip)
     }
 
     pub fn sync(&self, grant: &str) -> Result<(), u64> {

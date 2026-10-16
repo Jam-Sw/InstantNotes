@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, fireEvent, cleanup, waitFor } from "@testing-library/svelte";
 import SettingsSync from "./SettingsSync.svelte";
-import { exportVaultToFolder } from "$lib/vault-export";
 import {
   disconnectSyncServer,
   getSyncServerStatus,
@@ -13,9 +12,6 @@ import { confirmDialog } from "$lib/stores/confirm.svelte";
 import { toasts } from "$lib/stores/toasts.svelte";
 import type { SyncServerStatus, VaultStatus } from "$lib/api/types";
 
-vi.mock("$lib/vault-export", () => ({
-  exportVaultToFolder: vi.fn(),
-}));
 vi.mock("$lib/api/client", () => ({
   acceptPlainServer: vi.fn(),
   cancelSyncSignIn: vi.fn(),
@@ -79,6 +75,8 @@ const SERVER_OFF: SyncServerStatus = {
   tooLarge: [],
   localNotes: 0,
   serverItems: 0,
+  pairingCode: null,
+  pairingUrl: null,
 };
 
 const CONNECTED: SyncServerStatus = {
@@ -104,7 +102,6 @@ function selected(getByRole: (role: string, options: { name: string }) => HTMLEl
 afterEach(cleanup);
 
 beforeEach(() => {
-  vi.mocked(exportVaultToFolder).mockReset();
   vi.mocked(getVaultStatus).mockReset();
   vi.mocked(getSyncServerStatus).mockReset();
   vi.mocked(setVaultFolder).mockReset();
@@ -205,56 +202,5 @@ describe("SettingsSync provider choice", () => {
 
     expect(await findByRole("button", { name: /Choose folder/ })).toBeTruthy();
     expect(selected(getByRole, "Folder")).toBe(true);
-  });
-});
-
-describe("SettingsSync export", () => {
-  it("shows a success toast after a completed export", async () => {
-    vi.mocked(exportVaultToFolder).mockResolvedValue({ ok: true });
-    const { getByRole } = showing(VAULT_OFF, SERVER_OFF);
-
-    await fireEvent.click(getByRole("button", { name: /Export a copy/ }));
-
-    await waitFor(() =>
-      expect(toasts.items.map((t) => t.message)).toEqual([expect.stringContaining("Exported.")]),
-    );
-  });
-
-  it("shows no toast when the user cancels the folder picker", async () => {
-    vi.mocked(exportVaultToFolder).mockResolvedValue({ cancelled: true });
-    const { getByRole } = showing(VAULT_OFF, SERVER_OFF);
-
-    await fireEvent.click(getByRole("button", { name: /Export a copy/ }));
-    await waitFor(() => expect(vi.mocked(exportVaultToFolder)).toHaveBeenCalled());
-
-    expect(toasts.items).toEqual([]);
-  });
-
-  it("shows the error on failure", async () => {
-    vi.mocked(exportVaultToFolder).mockResolvedValue({ ok: false, error: "disk full" });
-    const { getByRole } = showing(VAULT_OFF, SERVER_OFF);
-
-    await fireEvent.click(getByRole("button", { name: /Export a copy/ }));
-
-    await waitFor(() =>
-      expect(toasts.items.map((t) => t.message)).toEqual([expect.stringContaining("disk full")]),
-    );
-  });
-
-  it("disables the button while exporting", async () => {
-    let resolve!: (v: { ok: true }) => void;
-    vi.mocked(exportVaultToFolder).mockReturnValue(
-      new Promise((r) => {
-        resolve = r;
-      }),
-    );
-    const { getByRole } = showing(VAULT_OFF, SERVER_OFF);
-    const button = getByRole("button", { name: /Export a copy/ }) as HTMLButtonElement;
-
-    await fireEvent.click(button);
-    expect(button.disabled).toBe(true);
-
-    resolve({ ok: true });
-    await waitFor(() => expect(button.disabled).toBe(false));
   });
 });

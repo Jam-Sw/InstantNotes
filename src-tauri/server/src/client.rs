@@ -35,6 +35,17 @@ pub struct Issued {
     pub person: Person,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Pairing {
+    pub device_code: String,
+    pub user_code: String,
+    pub verification_uri: String,
+    pub verification_uri_complete: String,
+    pub expires_in: u64,
+    pub interval: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Device {
@@ -270,6 +281,35 @@ impl Client {
             encode(challenge),
             encode(device_name)
         )
+    }
+
+    /// Starts a sign-in finished on another device with a short code.
+    pub async fn start_pairing(
+        &self,
+        challenge: &str,
+        device_name: &str,
+    ) -> Result<Pairing, RemoteError> {
+        let body = json!({ "codeChallenge": challenge, "deviceName": device_name });
+        self.json(|| self.request(Method::POST, "device/code").json(&body))
+            .await
+    }
+
+    /// `Ok(None)` while the person has not answered yet.
+    pub async fn poll_pairing(
+        &self,
+        device_code: &str,
+        verifier: &str,
+    ) -> Result<Option<Issued>, RemoteError> {
+        let body = json!({ "deviceCode": device_code, "codeVerifier": verifier });
+        let answer: Value = self
+            .json(|| self.request(Method::POST, "device/poll").json(&body))
+            .await?;
+        if answer.get("token").is_none() {
+            return Ok(None);
+        }
+        serde_json::from_value(answer)
+            .map(Some)
+            .map_err(|e| RemoteError::Refused(format!("unreadable answer: {e}")))
     }
 
     pub async fn exchange(

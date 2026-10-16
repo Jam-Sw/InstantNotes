@@ -2,6 +2,8 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, fireEvent, cleanup, within } from "@testing-library/svelte";
 import SettingsView from "./SettingsView.svelte";
 import { setSetting } from "$lib/api/client";
+import { shell } from "$lib/stores/shell.svelte";
+import { layout } from "$lib/stores/layout.svelte";
 
 vi.mock("$lib/api/client", () => ({
   getSetting: vi.fn().mockResolvedValue(undefined),
@@ -36,6 +38,7 @@ vi.mock("$lib/api/client", () => ({
 afterEach(cleanup);
 
 function open() {
+  shell.settingsPage = "home";
   const onBack = vi.fn();
   const view = render(SettingsView, { appVersion: "0.8.0", onBack, onShowSpace: vi.fn() });
   return { onBack, ...view };
@@ -163,5 +166,29 @@ describe("SettingsView", () => {
 
     await fireEvent.click(within(groups[1]).getByRole("radio", { name: "Never" }));
     expect(vi.mocked(setSetting)).toHaveBeenCalledWith("links.underline", "never");
+  });
+});
+
+describe("SettingsView on a phone", () => {
+  afterEach(() => {
+    layout.mode = "desktop";
+  });
+
+  it("makes the page list the page and opens each entry full width with a way back", async () => {
+    layout.mode = "phone";
+    const { container, getByRole } = open();
+    const root = container.querySelector(".settings-root")!;
+    expect(root.getAttribute("data-pane")).toBe("nav");
+
+    await fireEvent.click(getByRole("button", { name: /Appearance/ }));
+    expect(root.getAttribute("data-pane")).toBe("main");
+    await fireEvent.click(getByRole("button", { name: "Back to Settings" }));
+    expect(root.getAttribute("data-pane")).toBe("nav");
+
+    await fireEvent.click(getByRole("button", { name: /Overview/ }));
+    expect(root.getAttribute("data-pane")).toBe("main");
+    expect(getByRole("heading", { name: "Overview" })).toBeTruthy();
+    await fireEvent.click(getByRole("button", { name: "Back to Settings" }));
+    expect(root.getAttribute("data-pane")).toBe("nav");
   });
 });

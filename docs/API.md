@@ -138,7 +138,8 @@ them "Spaces"; the command and storage names keep `workspace`.
 
 A simple key/value store for UI preferences. `get_setting`, `set_setting`,
 `delete_setting`. Values are JSON-encoded; reads are best-effort and fall back
-to defaults when a key is absent or malformed.
+to defaults when a key is absent or malformed. `updates.lastCheckedAt` holds the
+ISO time of the last finished update check, shown in Settings > About.
 
 ## 8. Attachments
 
@@ -189,9 +190,9 @@ a copy at export time regardless of storage mode; see
 
 ## 9. Windows and shell
 
-`hide_capture`, `open_library`, `set_window_vibrancy`, `set_window_theme`,
-`export_theme_file`, `import_theme_file`, `export_note_file`, `open_url`,
-`quit_app`, `restart_app`. These drive native windows, theme file I/O, and external links; they
+`hide_capture`, `open_library`, `open_data_folder`, `set_window_vibrancy`,
+`set_window_theme`, `export_theme_file`, `import_theme_file`,
+`export_note_file`, `open_url`, `request_quit`, `quit_app`, `restart_app`. These drive native windows, theme file I/O, and external links; they
 carry no note data beyond what the user explicitly exports. `export_note_file`
 writes `.md`, `.txt`, `.excalidraw` (a whiteboard's canvas), or `.csv` (a
 sheet's grid, from `sheet_csv`).
@@ -203,10 +204,16 @@ when registration succeeded but the session cannot deliver the key (the
 `instantnotes capture` starts the app with the capture panel open, or opens
 it in the running app, so a desktop shortcut can be bound to it.
 
-The File menu announces itself to the library window with `menu:new-note`,
-`menu:new-whiteboard`, `menu:new-sheet`, `menu:export-note`, and
-`menu:toggle-sticky` (no payload). Every event name the
-shell emits is declared in `src-tauri/src/events.rs`.
+Every action has two homes: Settings (set or check) and the command palette
+(do). The menus and the tray are shortcuts to the same registry
+(`src/lib/commands.ts`): each menu and tray item carries a command id, and the
+shell answers it with `menu:command { id }` to the library window after showing
+it (`src-tauri/src/shell/menu.rs`, `run_command`), where `runCommand(id)` runs
+the command or ignores an id that is not available right now. Three ids the
+shell handles itself, so they work with no page loaded: `app.quit` (the quit
+handshake), `app.capture` (the capture panel) and `app.library` (the library
+window). `request_quit` lets the palette start the same handshake. Every event
+name the shell emits is declared in `src-tauri/src/events.rs`.
 
 ### 9.1 Stickies
 
@@ -395,12 +402,12 @@ reserved and refused.
 
 | Command | What it does |
 | --- | --- |
-| `get_sync_server_status` | `SyncServerStatus`: `{ stage, message, address, person, encrypted, joinWords, joinKey, recoveryKey, lastSyncedAt, conflicts, heldRemovals, tooLarge, localNotes, serverItems }`. |
-| `connect_sync_server` | `{ address, encrypt }`: signs in through the system browser (loopback, PKCE), keeps the device token in the keychain; the first device makes the library key. |
+| `get_sync_server_status` | `SyncServerStatus`: `{ stage, message, address, person, encrypted, joinWords, joinKey, recoveryKey, lastSyncedAt, conflicts, heldRemovals, tooLarge, localNotes, serverItems, pairingCode, pairingUrl }`. `pairingCode` and `pairingUrl` are set only while a code sign-in waits (`stage: "signingIn"`), otherwise `null`. |
+| `connect_sync_server` | `{ address, encrypt }`: signs in through the system browser (loopback, PKCE). When no browser opens on this computer, or with `INSTANTNOTES_SIGN_IN=code` in the app's environment, it signs in with a code instead: `pairingCode` and `pairingUrl` appear in the status, the person enters the code at that address on any other device, and the app polls `device/poll` (design §5.1). Keeps the device token and library key in the system keychain; on Linux without one (no Secret Service), in `secrets.json` next to the library, readable by its owner only. The first device makes the library key. |
 | `confirm_sync_join` | `{ combine }`: answers the "combine with the server's library?" stage. |
 | `cancel_sync_sign_in`, `disconnect_sync_server` | Stop a sign-in; leave Sync server (revokes this device, deletes its token and key). |
-| `confirm_recovery_saved`, `show_recovery_key`, `enter_recovery_key` | The recovery key: after saving it, shown again, or typed in (checked against the library's recipient). |
-| `start_sync_join`, `list_sync_join_requests`, `answer_sync_join` | Joining: request the key with six words; list and answer other devices' requests (`{ id, publicKey, approve }`). |
+| `confirm_recovery_saved`, `show_recovery_key`, `enter_recovery_key` | The recovery key: after saving it, shown again, or typed in (checked against the library's recipient; while this device waits for approval, it withdraws the request). |
+| `start_sync_join`, `list_sync_join_requests`, `answer_sync_join` | Joining: request the key with six words; list and answer other devices' requests (`{ id, publicKey, approve }`). The Sync page calls `start_sync_join` by itself when the stage is `needsKey`; a desktop that has the key brings its library window forward when a request it has not shown arrives. |
 | `accept_plain_server` | Sync with a server whose library is unencrypted. |
 | `list_sync_devices`, `revoke_sync_device` | `{ id }`, or `null` to sign out everywhere. |
 | `set_sync_encryption` | `{ on }`: switches the library over on the server. |
@@ -411,6 +418,7 @@ reserved and refused.
 | --- | --- | --- |
 | `vault:status` | none | Sync status changed; re-read `get_sync_server_status`. |
 | `sync:join-requests` | `SyncJoinRequest[]` | The pending requests changed. |
+| `settings:changed` | none | A sync cycle changed the shared settings; re-read the theme and the editor, link and image settings. |
 
 - **Web mode.** The server keeps no readable library and has no `/api`
   routes. The web app runs the core in a browser worker (`static/web/`,
@@ -418,6 +426,64 @@ reserved and refused.
   command names to the worker, and the sync commands above are answered by
   `src/lib/web/sync.ts` with the same shapes. A 0.9.5 web library moves into
   the first device that syncs (`GET /sync/v1/legacy`, then `DELETE`).
+- **Open on another device.** `note.openElsewhere` (the editor header and the
+  palette) shows a QR code and a link `<server>/#note=<id>`, built by
+  `noteLink` in `src/lib/qr.ts` only from the `address` of
+  `get_sync_server_status` while signed in; with no server it shows how to set
+  one up. The web app reads `#note=<id>` at start (`library.openLinked`): it
+  opens the note, or waits up to a minute for `notes:changed` to bring it, then
+  says it is not on this device yet.
+
+### 12.6 Running the server for several people (0.10.1)
+
+`instantnotes-server` (the image's `instantnotes`) has three subcommands:
+
+| Subcommand | What it does |
+| --- | --- |
+| `serve` | Runs the server, configured by `INSTANTNOTES_*` variables. |
+| `usage [--json]` | Reads `server.db` and each person's folder and prints one row per person: `sub`, `username`, `email`, `folder`, `bytes` on disk, `blobs`, `objects` in the current index, and last seen (`lastSeen`, unix seconds, in JSON). Needs no token. |
+| `check [--url <address>]` | The post-deploy check. Mints a device token for the reserved person `sub=instantnotes-check` (five minutes, in `server.db`), then against the address (default `INSTANTNOTES_PUBLIC_URL`) runs `GET info`, `PUT keys` (encrypted, a throwaway age recipient), uploads one encrypted blob, commits it, reads `changes` until it appears, downloads and decrypts it, and checks the stored file under the person's folder holds the ciphertext, not the plaintext. Then it removes the token, the person's rows and folder. Prints `ok <total>ms <step>=<ms>...` and exits 0, or `failed at <step>: <reason>` and exits 1. |
+
+A real device token cannot be minted without a person: devices sign in through
+the identity provider by design. `check` is the one exception, scoped to its
+reserved person, whose store the running server never keeps open.
+
+| Variable | Meaning |
+| --- | --- |
+| `INSTANTNOTES_PEOPLE_DIR` | Optional. An absolute path template for each person's store (`index.db`, `blobs/`), with `{sub}`, `{username}` (the `preferred_username` claim) and `{email}`, e.g. `/people/{username}/notes`. Each value must be one segment of letters, digits, `.`, `_`, `-`, `@`, at most 128 bytes, not `.` or `..`; a person whose value fails is refused at sign-in (`people_dir.invalid`), a provider that sends no `preferred_username` for a `{username}` template is refused and logged once (`people_dir.no_username`), and two people who would share a folder are refused (`people_dir.collision`). Unset, stores stay at `<INSTANTNOTES_DATA_DIR>/sync/<sub>` (its SHA-256 when the `sub` is not plain). A store under the old layout moves to the template's folder on the person's next request (`people_dir.moved`); a move that fails answers `503 UNAVAILABLE` for that person until the operator resolves it (`people_dir.move_failed`). `server.db`, sessions and tokens stay in `INSTANTNOTES_DATA_DIR`. |
+| `INSTANTNOTES_SIGN_IN_STYLESHEET` | Optional. An `https://` address, or a same-origin path your reverse proxy serves, of a stylesheet the sign-in page links after its own styles. Override the page's tokens on `:root` (`--bg`, `--glow`, `--ink`, `--accent`, `--accent-ink`); wrap them in `@media (prefers-color-scheme: light)` to theme light and dark apart. The page's `Content-Security-Policy` allows styles, fonts and images from that origin only. |
+
+**Read-only root.** The process writes only under `INSTANTNOTES_DATA_DIR` and,
+when set, `INSTANTNOTES_PEOPLE_DIR`'s folders. Uploads are staged beside their
+final place, never in `/tmp`, so a container with `read_only: true`, those
+folders as volumes owned by uid 1000, and no `tmpfs` works.
+
+### 12.5 Backups and the Markdown export (0.10.1)
+
+| Command | Purpose |
+| --- | --- |
+| `list_backups` | `{ backups: [{ path, madeAt, bytes }], automatic, lastAt, folder }`, newest first. The folder is `backups/` beside the library. |
+| `backup_now` | One backup through `VACUUM INTO` on the reader connection, then the prune; returns the list. |
+| `set_backups_automatic` | Writes `backups.automatic` (`on: bool`). |
+| `inspect_backup` | `{ madeAt, notes, schemaVersion }` for `path`, or `VALIDATION_ERROR` naming why it is not a library this build can open. |
+| `restore_backup` | Verifies `path`, copies it to `backups/pending-restore.db`, writes the `instantnotes.db.restore` marker beside the library and restarts the app. The next launch applies it before the store opens (DATA_MODEL.md §12). |
+| `open_backups_folder` | Reveal the folder. |
+
+| Event | Payload | When |
+| --- | --- | --- |
+| `backups:changed` | none | A backup was made, pruned, or the setting changed; re-read `list_backups`. |
+
+A background thread wakes 30 seconds after launch and then hourly; with
+`backups.automatic` on it backs up when the newest backup is older than
+24 hours. The keep rule (`core::backup::keep`): every backup of the last
+7 days, the newest per ISO week for the 5 weeks before, the newest per
+calendar month for the 6 months before, nothing older; file names that do
+not parse are never touched.
+
+The browser makes no backups (its library is a replica of the server's);
+the worker's `export_archive()` returns a stored `.zip` of the same files
+`export_vault` writes plus `attachments/<name>` from the database, which
+the page downloads as `InstantNotes-<YYYY-MM-DD>.zip`.
 
 ## 13. Feedback
 
@@ -442,6 +508,27 @@ through `open_url` after the local write succeeds, so feedback is durable even
 offline or when no browser opens. No note content (title, body, tags, Spaces)
 is ever included; only what `FeedbackDiagnostics` (`src/lib/feedback.ts`)
 names.
+
+### 13.1 Diagnostics
+
+| Command | Purpose |
+| --- | --- |
+| `report_frontend_error` | `{ message, stack, where }`: write `crashes/error-<stamp>.txt` and one log line. Called by the page's `error` and `unhandledrejection` handlers. |
+| `list_crash_reports` | `CrashReport[]` (`name`, `madeAt`, `bytes`), newest first; only `crash-*.txt` and `error-*.txt` files. |
+| `read_crash_report` | `{ name }`: the report's text. A name that is not a report's is `VALIDATION`. |
+| `delete_crash_report` | `{ name }`: remove one report. |
+| `diagnostics_report` | The plain-text report: version and platform, library counts, schema and last integrity check, sync state, backups, crash report names, the last 40 log lines. No note text, address, person or path outside the app data folder. |
+
+A Rust panic writes `crashes/crash-<stamp>.txt` (version, OS, architecture,
+thread, location, message) from the panic hook before the previous hook runs.
+Reports are always written; `diagnostics.crashReports` (default off) decides
+whether the app brings new ones up at launch, and `diagnostics.lastPromptAt`
+records the newest report already offered. Nothing is sent: Send in Settings >
+Diagnostics opens a prefilled GitHub issue through `open_url` with the report
+the person has just seen. On the web the handlers keep the last 20 errors in
+`sessionStorage` (`instantnotes.errors`) and the page builds the report from
+the version, user agent, storage estimate, sync stage and those errors; there
+are no crash report commands there.
 
 ## 14. Error codes
 

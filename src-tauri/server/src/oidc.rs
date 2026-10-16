@@ -33,6 +33,7 @@ pub struct Discovery {
 
 pub struct SignedIn {
     pub person: Person,
+    pub username: Option<String>,
     pub refresh_token: Option<String>,
     pub after: Option<String>,
 }
@@ -117,6 +118,7 @@ struct Claims {
     nonce: Option<String>,
     name: Option<String>,
     email: Option<String>,
+    preferred_username: Option<String>,
 }
 
 #[derive(Deserialize, Default)]
@@ -392,6 +394,7 @@ impl Oidc {
             .await
             .map_err(String::from)?;
         Ok(SignedIn {
+            username: claims.preferred_username,
             person: Person {
                 sub: claims.sub,
                 name: claims.name,
@@ -578,6 +581,18 @@ mod tests {
         let person = r.sign_in_edited(|_| {}).await.unwrap();
         assert_eq!(person.sub, "person-1");
         assert_eq!(person.name.as_deref(), Some("Person One"));
+    }
+
+    #[tokio::test]
+    async fn the_preferred_username_comes_with_the_person() {
+        let r = run().await;
+        let (nonce, state) = r.nonce_and_state().await;
+        let mut claims = r.claims(&nonce);
+        claims["preferred_username"] = json!("alice");
+        r.idp
+            .answer_token(json!({ "id_token": r.idp.signer().sign(&claims) }));
+        let signed_in = r.oidc.finish(&r.logins, "code", &state).await.unwrap();
+        assert_eq!(signed_in.username.as_deref(), Some("alice"));
     }
 
     #[tokio::test]

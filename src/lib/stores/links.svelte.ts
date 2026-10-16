@@ -37,6 +37,11 @@ class LinkPrefsStore {
     }
   }
 
+  async reload(): Promise<void> {
+    this.#loaded = false;
+    await this.init();
+  }
+
   snapshot(): LinkPrefsSnapshot {
     return {
       openWith: this.openWith,

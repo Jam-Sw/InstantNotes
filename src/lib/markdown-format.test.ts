@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toggleWrap, toggleLinePrefix, insertLink, formatEdit } from "./markdown-format";
+import { toggleWrap, toggleLinePrefix, insertLink, formatEdit, cycleHeading } from "./markdown-format";
 
 describe("toggleWrap", () => {
   it("inserts an empty pair and puts the cursor inside when nothing is selected", () => {
@@ -87,5 +87,42 @@ describe("formatEdit", () => {
   });
   it("maps link to a markdown link", () => {
     expect(formatEdit("hi", { from: 0, to: 2 }, "link").text).toBe("[hi](url)");
+  });
+});
+
+describe("cycleHeading", () => {
+  it("makes a plain line an H1 and keeps the caret on the same word", () => {
+    expect(cycleHeading("hello", { from: 2, to: 2 })).toEqual({
+      text: "# hello",
+      selection: { from: 4, to: 4 },
+    });
+  });
+
+  it("steps an H1 to H2 and an H2 to H3", () => {
+    expect(cycleHeading("# hello", { from: 3, to: 3 }).text).toBe("## hello");
+    expect(cycleHeading("## hello", { from: 4, to: 4 }).text).toBe("### hello");
+  });
+
+  it("takes an H3 back to plain text, and never leaves the caret before the line", () => {
+    expect(cycleHeading("### hello", { from: 1, to: 1 })).toEqual({
+      text: "hello",
+      selection: { from: 0, to: 0 },
+    });
+  });
+
+  it("touches only the caret's line of a longer document", () => {
+    expect(cycleHeading("one\ntwo\nthree", { from: 5, to: 5 }).text).toBe("one\n# two\nthree");
+  });
+
+  it("puts the heading after a list marker, so the list stays a list", () => {
+    expect(cycleHeading("- item", { from: 4, to: 4 })).toEqual({
+      text: "- # item",
+      selection: { from: 6, to: 6 },
+    });
+    expect(cycleHeading("- [ ] # task", { from: 10, to: 10 }).text).toBe("- [ ] ## task");
+  });
+
+  it("is what formatEdit does for heading", () => {
+    expect(formatEdit("x", { from: 0, to: 0 }, "heading").text).toBe("# x");
   });
 });

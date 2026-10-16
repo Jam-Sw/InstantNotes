@@ -141,7 +141,14 @@ accepts plain user input without exposing FTS syntax errors.
 
 `settings` is a `key`/`value`/`updated_at` table holding JSON-encoded UI
 preferences. Reads are best-effort: a missing or malformed value falls back to
-the code default.
+the code default. The editor keeps `editor.zoom`, `editor.showExactTime`,
+`editor.toolbarOpen` (the formatting toolbar's visibility, default true; a
+stored false is kept) and `editor.sourceMode` (the Markdown marks shown,
+default false); the two are independent since 0.10.1. `backups.automatic`
+(default true) is whether the daily backup runs (§12).
+`diagnostics.crashReports` (default false) is whether new crash reports are
+brought up at launch, and `diagnostics.lastPromptAt` the `madeAt` of the
+newest report already offered (API.md §13.1).
 
 `stickies` holds which notes are popped out as sticky windows on this device,
 as a map from note id to `{ x, y, width, height, level, collapsed }` in
@@ -267,9 +274,16 @@ user chooses the folder. Without it nothing is read or written.
 The sync server reuses section 10.1's decisions; it adds no note column.
 
 - `sync_objects(key, name, remote_sha)`: per synced object (`note:<id>`,
-  `manifest`, `attachment:<file>`), its name on the server and the ciphertext
-  SHA this device last agreed with. A note's plain base is its `file_sha`, the
-  manifest's is `vault.manifestBase`.
+  `manifest`, `settings`, `attachment:<file>`), its name on the server and the
+  ciphertext SHA this device last agreed with. A note's plain base is its
+  `file_sha`, the manifest's is `vault.manifestBase`, the settings object's is
+  `sync.settingsBase`.
+- The `settings` object is a JSON map of the shared settings
+  (`SHARED_SETTINGS` in `core/src/store/settings.rs`: the look and the editor,
+  never device, sync, agent or backup settings). It travels in its own
+  envelope field, so a 0.10.0 device ignores it. Each key merges three ways
+  against the base: a side that changed wins, both changed keeps this
+  device's, with no base the server's wins, and a key one side removed goes.
 - `attachment_files(name, bytes)`: attachments, in a browser only (it has no
   folder). The desktop keeps them in its attachments folder as before.
 
@@ -281,6 +295,26 @@ Settings, all device-local:
   server's change feed.
 - `sync.mergeReview`: the "Review merge" list left by a join.
 - `sync.legacy`: `imported` or `done`, the move of a 0.9.5 web library.
+- `sync.settingsBase`: the shared settings as this device last agreed them
+  with the server, the base of the next merge. Cleared with the other bases.
+
+### 10.3 The server's own state
+
+`instantnotes-server` keeps `server.db` in `INSTANTNOTES_DATA_DIR`:
+
+- `grants`: one row per browser session or device token (hashed), with the
+  person's `sub`, `name`, `email`, `device_name`, `signed_in_at`, `last_seen`.
+- `persons`: one row per person: `sub`, the sealed `refresh` token,
+  `last_check`, `refreshed_at`, and (0.10.1, added at start to an older file)
+  `username` (the `preferred_username` claim) and `email`, refreshed on every
+  sign-in, and `folder`, where their store was last resolved.
+
+Each person's store (`index.db`, `blobs/`) is at
+`<INSTANTNOTES_DATA_DIR>/sync/<sub>` (its SHA-256 when the `sub` is not plain), or at the `INSTANTNOTES_PEOPLE_DIR`
+template's folder resolved from `persons` (API.md section 12.6).
+
+Every new or renamed `INSTANTNOTES_*` variable and every subcommand of the
+server is named in its version's CHANGELOG section.
 
 ## 11. Agent activity
 
@@ -334,3 +368,40 @@ Space that has since gone), or trashes the created note; it sets
 `reverted_at` on the row and inserts a `revert` row of its own carrying the
 state it replaced. Reads carry no snapshot. The table keeps the newest 2000
 rows; older ones are pruned on insert. Clearing it never touches a note.
+
+## 12. Files beside the library
+
+The library is `instantnotes.db` in the app data folder, with its `-wal` and
+`-shm` companions while open. Beside it:
+
+- `attachments/`: image files on the desktop (API.md §8).
+- `backups/instantnotes-<YYYYMMDD>-<HHMMSS>.db`: consistent snapshots made
+  with `VACUUM INTO`, daily by default and on request, pruned by the keep
+  rule in API.md §12.5. A snapshot holds everything in the database: notes,
+  tags, Spaces, settings and the sync bases; desktop images are not in it.
+- `backups/instantnotes-<stamp>-before-restore.db`: the library as it was
+  just before a restore, a normal backup under the same rule.
+- `backups/pending-restore.db` and `instantnotes.db.restore`: a restore in
+  flight. The marker holds the pending file's path. At launch, before the
+  store opens, `core::backup::apply_pending_restore` verifies the pending
+  file (read-only open, `quick_check`, `user_version` at most this build's,
+  a `notes` table), snapshots the current library, removes `-wal` and
+  `-shm`, moves the pending file into place and deletes the marker. On any
+  failure the current library is untouched and the marker is still deleted,
+  so the app cannot loop. After a restore `Store::detach_sync` runs: the
+  vault folder and server settings (`vault.transport`, `vault.server`,
+  `sync.state`) are cleared and the keychain entries deleted, so the next
+  sync set-up is a fresh join.
+- `instantnotes.db.backup-v<n>`: the pre-migration copies of 0.9.x (§9),
+  outside `backups/` and never pruned.
+- `instantnotes.db.corrupt`, `.session`, `.last_version`: recovery and
+  housekeeping markers (§9, API.md §9).
+- `crashes/crash-<YYYYMMDD>-<HHMMSS>.txt` and `crashes/error-<stamp>.txt`:
+  a Rust panic and a front-end error, plain text, kept until deleted from
+  Settings > Diagnostics (API.md §13.1).
+- `instantnotes.log` and `instantnotes.log.1`: one line per event,
+  `<RFC 3339> <event> key=value ...`; at 1 MB the file becomes `.log.1`
+  (one old copy kept). Events: `crash`, `frontend.error`, `backup.made`,
+  `backup.failed`, `restore.requested`, `restore.applied`, `restore.failed`,
+  `sync.failed`, `vault.flush_failed`. Values are counts, file names and
+  error strings, never note content.

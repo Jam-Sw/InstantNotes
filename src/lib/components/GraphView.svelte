@@ -22,16 +22,40 @@
     type Graph,
     type GraphNode,
   } from "$lib/graph/layout";
-  import { FRONT, centroid, projector, turn, type Orbit } from "$lib/graph/projection";
+  import {
+    FRONT,
+    centreView,
+    centroid,
+    clampZoom,
+    ease,
+    fog,
+    mix3,
+    mixView,
+    pinch,
+    projector,
+    reach,
+    ring,
+    turn,
+    wheelKind,
+    zoomAt,
+    type Orbit,
+    type Point3,
+    type View,
+    type WheelKind,
+  } from "$lib/graph/projection";
   import { clampLabel, nodeLabel, placeLabels } from "$lib/graph/labels";
 
   const FRAME_BUDGET_MS = 12;
   const KIND_LABEL = { note: "Note", tag: "Tag", space: "Space" } as const;
-  const ZOOM = { min: 0.2, max: 4 };
-  const NOTE_LABEL_ZOOM = 1.3;
   const LENS_HOPS = 2;
   const KEY_TURN = 20;
   const PAGE = 25;
+  const TAP_SLOP = 5;
+  const DOUBLE_MS = 300;
+  const GLIDE_MS = 320;
+  const WHEEL_GAP_MS = 200;
+  const RING_MARGIN = 30;
+  const PIVOT_ARM = 14;
 
   let graph = $state.raw<Graph | null>(null);
   let failed = $state(false);
@@ -40,10 +64,21 @@
   let hovered = $state<string | null>(null);
   let width = $state(800);
   let height = $state(600);
-  let view = $state({ x: 400, y: 300, k: 1 });
+  let view = $state<View>({ x: 400, y: 300, k: 1 });
   let orbit = $state<Orbit>(FRONT);
   let lens = $state(true);
+  let centre = $state<string | null>(null);
+  let glide = $state<{ from: Point3; t: number } | null>(null);
+  let grabbing = $state(false);
   let userMoved = false;
+  let glideFrame: number | null = null;
+  let pendingOpen: ReturnType<typeof setTimeout> | null = null;
+  let lastTap: { id: string | null; at: number } | null = null;
+  let wheelLatch: { kind: WheelKind; at: number } | null = null;
+  const pointers = new Map<number, { x: number; y: number }>();
+  let pressedAt = { x: 0, y: 0 };
+  let panning = false;
+  let dragged = false;
   let positions = new Map<string, { x: number; y: number; z: number }>();
   let frame: number | null = null;
   let host: HTMLDivElement;
@@ -80,43 +115,70 @@
     return currentId && lens ? neighbors(graph, currentId, LENS_HOPS) : null;
   });
 
-  const pivot = $derived.by(() => {
+  const framed = $derived.by(() => {
     const nodes = graph?.nodes ?? [];
     const around = graph && lens && currentId ? neighbors(graph, currentId, LENS_HOPS) : null;
-    return centroid(around ? nodes.filter((n) => around.has(n.id)) : nodes);
+    return around ? nodes.filter((n) => around.has(n.id)) : nodes;
   });
-  const projected = $derived.by(() => {
-    const project = projector(orbit, pivot);
-    return new Map((graph?.nodes ?? []).map((n) => [n.id, project(n)]));
+  const aim = $derived.by((): Point3 => {
+    const c = centre ? byId.get(centre) : undefined;
+    return c ? { x: c.x, y: c.y, z: c.z } : centroid(framed);
   });
+  const pivot = $derived(glide ? mix3(glide.from, aim, ease(glide.t)) : aim);
+  const project = $derived(projector(orbit, pivot));
+  const projected = $derived(new Map((graph?.nodes ?? []).map((n) => [n.id, project(n)])));
   const painted = $derived(
     [...(graph?.nodes ?? [])].sort((a, b) => projected.get(b.id)!.depth - projected.get(a.id)!.depth),
   );
+  const rings = $derived.by(() => {
+    const r = reach(framed, pivot) + RING_MARGIN;
+    return (["ground", "upright"] as const).map((plane) => ({
+      plane,
+      points: ring(pivot, r, plane)
+        .map(project)
+        .map((p) => `${p.x},${p.y}`)
+        .join(" "),
+    }));
+  });
+  const arms = $derived(
+    [
+      { x: PIVOT_ARM, y: 0, z: 0 },
+      { x: 0, y: PIVOT_ARM, z: 0 },
+      { x: 0, y: 0, z: PIVOT_ARM },
+    ].map((d) => [
+      project({ x: pivot.x - d.x, y: pivot.y - d.y, z: pivot.z - d.z }),
+      project({ x: pivot.x + d.x, y: pivot.y + d.y, z: pivot.z + d.z }),
+    ]),
+  );
+  const focusId = $derived(hovered ?? centre ?? currentId);
+  const named = $derived(graph && focusId && byId.has(focusId) ? neighbors(graph, focusId) : null);
   const labeled = $derived.by(() => {
     const candidates = [];
+    const discs = [];
     for (const n of graph?.nodes ?? []) {
-      if (!showLabel(n)) continue;
       const p = projected.get(n.id)!;
+      const x = view.x + p.x * view.k;
+      const y = view.y + p.y * view.k;
+      const r = nodeRadius(n) * p.scale * view.k;
+      discs.push({ x, y, r });
+      if (!showLabel(n)) continue;
       const focus =
-        n.id === currentId ? 4 : n.id === hovered ? 3 : lit?.has(n.id) ? 2 : 0;
+        n.id === currentId ? 4 : n.id === hovered || n.id === centre ? 3 : named?.has(n.id) ? 2 : 0;
       const hub = n.kind === "note" ? 0 : 1e4 + n.degree * 10;
-      const r = nodeRadius(n) * p.scale;
       candidates.push({
-        ...nodeLabel(n.id, n.label, p.x, p.y, r, focus * 1e6 + hub - p.depth),
+        ...nodeLabel(n.id, n.label, x, y, r, focus * 1e6 + hub - p.depth),
         pinned: focus >= 3,
       });
     }
-    const discs = (graph?.nodes ?? []).map((n) => {
-      const p = projected.get(n.id)!;
-      return { x: p.x, y: p.y, r: nodeRadius(n) * p.scale };
-    });
     return placeLabels(candidates, discs);
   });
 
-  const labelsOn = $derived(view.k >= NOTE_LABEL_ZOOM);
-
   function showLabel(n: GraphNode): boolean {
-    return n.kind !== "note" || labelsOn || !!lit?.has(n.id);
+    return n.kind !== "note" || !!named?.has(n.id);
+  }
+
+  function shade(n: GraphNode, depth: number): number {
+    return n.id === currentId || n.id === centre || n.id === hovered ? 1 : fog(depth);
   }
 
   function nodeName(n: GraphNode): string {
@@ -164,17 +226,14 @@
 
   function frameView() {
     if (!graph || graph.nodes.length === 0) return;
-    const around = lens && currentId ? neighbors(graph, currentId, LENS_HOPS) : null;
-    const shownNodes = graph.nodes
-      .filter((n) => !around || around.has(n.id))
-      .map((n) => projected.get(n.id)!);
+    const around = lens && !!currentId;
+    const shownNodes = framed.map((n) => projected.get(n.id)!);
     const xs = shownNodes.map((n) => n.x);
     const ys = shownNodes.map((n) => n.y);
     const pad = 60;
     const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
     const k = Math.min(
-      ZOOM.max,
-      Math.max(ZOOM.min, Math.min(width / (maxX - minX + 2 * pad), height / (maxY - minY + 2 * pad))),
+      clampZoom(Math.min(width / (maxX - minX + 2 * pad), height / (maxY - minY + 2 * pad))),
       around ? 1.6 : 1.2,
     );
     view = {
@@ -186,14 +245,71 @@
 
   function toggleLens() {
     lens = !lens;
+    stopGlide();
+    centre = null;
     userMoved = false;
     frameView();
+  }
+
+  function resetView() {
+    stopGlide();
+    centre = null;
+    orbit = FRONT;
+    userMoved = false;
+    frameView();
+  }
+
+  function stopGlide() {
+    if (glideFrame !== null) cancelRaf(glideFrame);
+    glideFrame = null;
+    glide = null;
+  }
+
+  function centreOn(n: GraphNode) {
+    const from = pivot;
+    const fromView = view;
+    stopGlide();
+    centre = n.id;
+    userMoved = true;
+    const began = performance.now();
+    const step = () => {
+      const t = Math.min(1, (performance.now() - began) / GLIDE_MS);
+      glide = t < 1 ? { from, t } : null;
+      view = mixView(fromView, centreView(fromView.k, aim, width, height), ease(t));
+      glideFrame = t < 1 ? raf(step) : null;
+    };
+    step();
   }
 
   function open(n: GraphNode) {
     if (n.kind === "note") void library.select(n.id);
     else if (n.kind === "tag") library.setTagFilter(n.id);
     else library.selectWorkspace(n.id);
+  }
+
+  function cancelOpen() {
+    if (pendingOpen !== null) clearTimeout(pendingOpen);
+    pendingOpen = null;
+  }
+
+  function isDouble(id: string | null): boolean {
+    const now = Date.now();
+    const twice = lastTap !== null && lastTap.id === id && now - lastTap.at < DOUBLE_MS;
+    lastTap = twice ? null : { id, at: now };
+    return twice;
+  }
+
+  function onNodeClick(n: GraphNode) {
+    if (dragged) return;
+    cancelOpen();
+    if (isDouble(n.id)) {
+      centreOn(n);
+      return;
+    }
+    pendingOpen = setTimeout(() => {
+      pendingOpen = null;
+      open(n);
+    }, DOUBLE_MS);
   }
 
   function onNodeKey(e: KeyboardEvent, n: GraphNode) {
@@ -246,25 +362,77 @@
   const percent = (p: number) => `${Math.round(p * 100)}%`;
   const because = (s: SpaceSuggestion) => s.reasons.map((r) => r.label).join(", ");
 
-  let drag = $state<{ id: number; x: number; y: number; turn: boolean } | null>(null);
+  function local(e: PointerEvent | WheelEvent) {
+    const rect = host.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
 
   function onPointerDown(e: PointerEvent) {
-    if ((e.target as Element).closest(".node") && e.button !== 2) return;
-    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, turn: e.button === 2 || e.shiftKey };
-    (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+    if (e.button > 2) return;
+    const at = local(e);
+    pointers.set(e.pointerId, at);
+    if (pointers.size === 1) {
+      pressedAt = at;
+      panning = e.button !== 0 || e.shiftKey;
+      dragged = false;
+    } else {
+      dragged = true;
+      grabbing = true;
+      for (const id of pointers.keys()) host.setPointerCapture?.(id);
+    }
   }
 
   function onPointerMove(e: PointerEvent) {
-    if (!drag || drag.id !== e.pointerId) return;
+    const before = pointers.get(e.pointerId);
+    if (!before) return;
+    const at = local(e);
+    if (pointers.size >= 2) {
+      const ids = [...pointers.keys()].slice(0, 2);
+      if (!ids.includes(e.pointerId)) return;
+      const pair = () => ids.map((id) => pointers.get(id)!) as [typeof at, typeof at];
+      const was = pair();
+      pointers.set(e.pointerId, at);
+      stopGlide();
+      userMoved = true;
+      view = pinch(view, was, pair());
+      return;
+    }
+    pointers.set(e.pointerId, at);
+    if (!dragged) {
+      if (Math.hypot(at.x - pressedAt.x, at.y - pressedAt.y) < TAP_SLOP) return;
+      dragged = true;
+      grabbing = true;
+      host.setPointerCapture?.(e.pointerId);
+    }
     userMoved = true;
-    const dx = e.clientX - drag.x;
-    const dy = e.clientY - drag.y;
-    if (drag.turn) orbit = turn(orbit, dx, dy);
-    else view = { ...view, x: view.x + dx, y: view.y + dy };
-    drag = { ...drag, x: e.clientX, y: e.clientY };
+    const dx = at.x - before.x;
+    const dy = at.y - before.y;
+    if (panning) {
+      stopGlide();
+      view = { ...view, x: view.x + dx, y: view.y + dy };
+    } else orbit = turn(orbit, dx, dy);
+  }
+
+  function onPointerUp(e: PointerEvent) {
+    const tapped = !dragged && pointers.size === 1 && pointers.has(e.pointerId);
+    release(e);
+    if (tapped && e.button === 0 && !(e.target as Element).closest(".node") && isDouble(null)) {
+      resetView();
+    }
+  }
+
+  function release(e: PointerEvent) {
+    pointers.delete(e.pointerId);
+    if (pointers.size === 0) grabbing = false;
+    if (pointers.size === 1) panning = false;
   }
 
   function onHostKey(e: KeyboardEvent) {
+    if ((e.key === "Home" || e.key === "0") && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      resetView();
+      return;
+    }
     const step = {
       ArrowLeft: [-KEY_TURN, 0],
       ArrowRight: [KEY_TURN, 0],
@@ -277,19 +445,21 @@
     orbit = turn(orbit, step[0], step[1]);
   }
 
-  function onPointerUp() {
-    drag = null;
-  }
-
   function onWheel(e: WheelEvent) {
     e.preventDefault();
     userMoved = true;
-    const rect = host.getBoundingClientRect();
-    const px = e.clientX - rect.left;
-    const py = e.clientY - rect.top;
-    const factor = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.002));
-    const k = Math.min(ZOOM.max, Math.max(ZOOM.min, view.k * factor));
-    view = { k, x: px - ((px - view.x) * k) / view.k, y: py - ((py - view.y) * k) / view.k };
+    stopGlide();
+    const latched = wheelLatch && e.timeStamp - wheelLatch.at < WHEEL_GAP_MS ? wheelLatch.kind : null;
+    const kind = e.ctrlKey ? "zoom" : (latched ?? wheelKind(e));
+    wheelLatch = { kind, at: e.timeStamp };
+    if (kind === "pan") {
+      view = { ...view, x: view.x - e.deltaX, y: view.y - e.deltaY };
+      return;
+    }
+    const { x, y } = local(e);
+    const lines = e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? 800 : 1;
+    const factor = Math.exp(-e.deltaY * lines * (e.ctrlKey ? 0.01 : 0.002));
+    view = zoomAt(view, clampZoom(view.k * factor), x, y);
   }
 
   onMount(() => {
@@ -310,6 +480,8 @@
       observer?.disconnect();
       host.removeEventListener("wheel", onWheel);
       reload.cancel();
+      cancelOpen();
+      stopGlide();
       if (frame !== null) cancelRaf(frame);
       void unlisten.then((offs) => offs.forEach((off) => off()));
     };
@@ -331,23 +503,26 @@
         {plural(counts.note, "note", "notes")} · {plural(counts.tag, "tag", "tags")} ·
         {plural(counts.space, "Space", "Spaces")}
       </span>
-      {#if currentId}
-        <button class="bar-btn" onclick={toggleLens}>
-          {lens ? "Show all" : "Around this note"}
-        </button>
-      {/if}
+      <span class="bar-actions">
+        {#if currentId}
+          <button class="bar-btn" onclick={toggleLens}>
+            {lens ? "Show all" : "Around this note"}
+          </button>
+        {/if}
+        <button class="bar-btn" onclick={resetView}>Reset view</button>
+      </span>
     {/if}
   </header>
 
   <div class="graph-body">
     <div
       class="graph-host"
-      class:panning={drag !== null}
+      class:panning={grabbing}
       bind:this={host}
       onpointerdown={onPointerDown}
       onpointermove={onPointerMove}
       onpointerup={onPointerUp}
-      onpointercancel={onPointerUp}
+      onpointercancel={release}
       onkeydown={onHostKey}
       oncontextmenu={(e) => e.preventDefault()}
     >
@@ -361,6 +536,9 @@
       {:else if graph}
         <svg {width} {height} role="group" aria-label="Notes, tags, and Spaces">
           <g transform="translate({view.x} {view.y}) scale({view.k})">
+            {#each rings as g (g.plane)}
+              <polyline class="ring {g.plane}" points={g.points} vector-effect="non-scaling-stroke" />
+            {/each}
             {#each graph.edges as e, i (i)}
               {@const a = projected.get(e.source)}
               {@const b = projected.get(e.target)}
@@ -369,6 +547,7 @@
                   class="edge {e.kind} {e.tagSource ?? ''}"
                   class:lit={lit?.has(e.source) && lit?.has(e.target)}
                   class:dim={lit && !(lit.has(e.source) && lit.has(e.target))}
+                  style:stroke-opacity={fog((a.depth + b.depth) / 2)}
                   x1={a.x}
                   y1={a.y}
                   x2={b.x}
@@ -379,32 +558,48 @@
             {#each painted as n (n.id)}
               {@const p = projected.get(n.id)!}
               {@const r = nodeRadius(n) * p.scale}
+              {@const shown = shade(n, p.depth)}
               <g
                 class="node {n.kind}"
                 class:dim={lit && !lit.has(n.id)}
                 class:current={currentId === n.id}
+                class:centred={centre === n.id}
                 class:suggested={n.suggested}
                 transform="translate({p.x} {p.y})"
                 role="button"
                 tabindex="0"
                 aria-label={nodeName(n)}
-                onclick={() => open(n)}
+                onclick={() => onNodeClick(n)}
                 onkeydown={(e) => onNodeKey(e, n)}
                 onpointerenter={() => (hovered = n.id)}
                 onpointerleave={() => (hovered = null)}
                 onfocus={() => (hovered = n.id)}
                 onblur={() => (hovered = null)}
               >
+                {#if centre === n.id}
+                  <circle class="centre-ring" r={r + 5} />
+                {/if}
                 {#if n.board}
-                  <rect x={-r} y={-r} width={r * 2} height={r * 2} rx="2" />
+                  <rect x={-r} y={-r} width={r * 2} height={r * 2} rx="2" style:opacity={shown} />
                 {:else}
-                  <circle {r} style:fill={n.kind === "tag" && n.color ? n.color : null} />
+                  <circle
+                    {r}
+                    style:fill={n.kind === "tag" && n.color ? n.color : null}
+                    style:opacity={shown}
+                  />
                 {/if}
                 {#if n.kind === "note" && agentWritten.has(n.id)}
-                  <circle class="agent-ring" r={r + 3} />
+                  <circle class="agent-ring" r={r + 3} style:opacity={shown} />
                 {/if}
               </g>
             {/each}
+            <g class="pivot" aria-hidden="true">
+              {#each arms as [a, b], i (i)}
+                <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} vector-effect="non-scaling-stroke" />
+              {/each}
+            </g>
+          </g>
+          <g class="labels">
             {#each painted as n (n.id)}
               {@const at = labeled.get(n.id)}
               {#if at}
@@ -517,8 +712,12 @@
     font-size: 12px;
     font-family: var(--font-meta);
   }
-  .bar-btn {
+  .bar-actions {
+    display: flex;
+    gap: 8px;
     margin-left: auto;
+  }
+  .bar-btn {
     padding: 4px 10px;
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -548,6 +747,33 @@
   }
   svg {
     display: block;
+  }
+  .ring {
+    fill: none;
+    stroke: var(--text-tertiary);
+    stroke-width: 1;
+    stroke-opacity: 0.22;
+    stroke-dasharray: 2 5;
+    pointer-events: none;
+  }
+  .ring.ground {
+    stroke-opacity: 0.3;
+    stroke-dasharray: none;
+  }
+  .pivot line {
+    stroke: var(--accent);
+    stroke-width: 1.5;
+    stroke-opacity: 0.75;
+    stroke-linecap: round;
+  }
+  .pivot {
+    pointer-events: none;
+  }
+  .node.centred circle.centre-ring {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 1.5;
+    stroke-opacity: 0.6;
   }
   .edge {
     stroke: var(--border);

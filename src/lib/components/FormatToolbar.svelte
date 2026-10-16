@@ -1,38 +1,97 @@
 <script lang="ts">
+  import Icon from "$lib/components/Icon.svelte";
   import { editorPrefs } from "$lib/stores/editor.svelte";
   import { modKey, shiftKey } from "$lib/platform";
   import type { FormatKind } from "$lib/markdown-format";
   import type { ActiveMarks } from "$lib/markdown-active";
 
-  let { active, onFormat }: { active: ActiveMarks; onFormat: (k: FormatKind) => void } =
-    $props();
+  let {
+    active,
+    history = { undo: false, redo: false },
+    sourceMode = false,
+    onFormat,
+    onUndo,
+    onRedo,
+    onImage,
+    onToggleSource,
+  }: {
+    active: ActiveMarks;
+    history?: { undo: boolean; redo: boolean };
+    sourceMode?: boolean;
+    onFormat: (k: FormatKind) => void;
+    onUndo?: () => void;
+    onRedo?: () => void;
+    onImage?: () => void;
+    onToggleSource?: () => void;
+  } = $props();
+
+  const headingTitle = $derived(
+    active.heading === 0
+      ? "Heading"
+      : active.heading >= 3
+        ? "Heading 3 (click for plain text)"
+        : `Heading ${active.heading} (click for heading ${active.heading + 1})`,
+  );
 </script>
 
-<div class="format-bar">
+<div class="format-bar" role="toolbar" aria-label="Formatting" style="--editor-zoom: {editorPrefs.zoom}">
   <div class="fmt-group">
+    <button
+      class="fmt"
+      title={`Undo (${modKey}Z)`}
+      aria-label="Undo"
+      disabled={!history.undo}
+      onclick={() => onUndo?.()}
+    >
+      <Icon name="undo" />
+    </button>
+    <button
+      class="fmt"
+      title={`Redo (${modKey}${shiftKey}Z)`}
+      aria-label="Redo"
+      disabled={!history.redo}
+      onclick={() => onRedo?.()}
+    >
+      <Icon name="redo" />
+    </button>
+  </div>
+  <div class="fmt-group">
+    <button
+      class="fmt"
+      title={headingTitle}
+      aria-label="Heading"
+      aria-pressed={active.heading > 0}
+      onclick={() => onFormat("heading")}
+    >
+      <Icon name="heading" />
+    </button>
     <button
       class="fmt"
       title={`Bold (${modKey}B)`}
       aria-label="Bold"
       aria-pressed={active.bold}
       onclick={() => onFormat("bold")}
-    ><span class="fmt-b">B</span></button>
+    >
+      <Icon name="bold" />
+    </button>
     <button
       class="fmt"
       title={`Italic (${modKey}I)`}
       aria-label="Italic"
       aria-pressed={active.italic}
       onclick={() => onFormat("italic")}
-    ><span class="fmt-i">I</span></button>
+    >
+      <Icon name="italic" />
+    </button>
     <button
       class="fmt"
       title="Strikethrough"
       aria-label="Strikethrough"
       aria-pressed={active.strike}
       onclick={() => onFormat("strike")}
-    ><span class="fmt-s">S</span></button>
-  </div>
-  <div class="fmt-group">
+    >
+      <Icon name="strike" />
+    </button>
     <button
       class="fmt"
       title={`Code (${modKey}E)`}
@@ -40,8 +99,10 @@
       aria-pressed={active.code}
       onclick={() => onFormat("code")}
     >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 8l-4 4 4 4" /><path d="M15 8l4 4-4 4" /></svg>
+      <Icon name="code" />
     </button>
+  </div>
+  <div class="fmt-group">
     <button
       class="fmt"
       title="Blockquote"
@@ -49,7 +110,7 @@
       aria-pressed={active.quote}
       onclick={() => onFormat("quote")}
     >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 7h4v5c0 2.2-1.4 3.6-3.6 4l-.4-1.2c1.2-.3 1.9-1 2-2H7V7zm7 0h4v5c0 2.2-1.4 3.6-3.6 4l-.4-1.2c1.2-.3 1.9-1 2-2H14V7z" /></svg>
+      <Icon name="quote" />
     </button>
     <button
       class="fmt"
@@ -58,7 +119,7 @@
       aria-pressed={active.list}
       onclick={() => onFormat("list")}
     >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="7" r="1.4" fill="currentColor" stroke="none" /><circle cx="5" cy="13" r="1.4" fill="currentColor" stroke="none" /><path d="M10 7h9" /><path d="M10 13h9" /></svg>
+      <Icon name="list" />
     </button>
     <button
       class="fmt"
@@ -67,7 +128,7 @@
       aria-pressed={active.task}
       onclick={() => onFormat("task")}
     >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="6" height="6" rx="1.5" /><path d="M5.8 8l1.4 1.4L9.6 7" stroke-width="1.6" /><path d="M13 8h7" /><path d="M4.5 15.5h5" /><path d="M13 16h7" /></svg>
+      <Icon name="task" />
     </button>
     <button
       class="fmt"
@@ -75,82 +136,108 @@
       aria-label="Link"
       onclick={() => onFormat("link")}
     >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 13.5a3.5 3.5 0 0 0 5 0l2.5-2.5a3.5 3.5 0 0 0-5-5l-1 1" /><path d="M14.5 10.5a3.5 3.5 0 0 0-5 0L7 13a3.5 3.5 0 0 0 5 5l1-1" /></svg>
+      <Icon name="link" />
     </button>
+    {#if onImage}
+      <button class="fmt" title="Insert image from a file" aria-label="Insert image" onclick={() => onImage?.()}>
+        <Icon name="image" />
+      </button>
+    {/if}
   </div>
+  {#if onToggleSource}
+    <div class="fmt-group">
+      <button
+        class="fmt"
+        title={sourceMode ? "Hide Markdown source" : "Show Markdown source"}
+        aria-label="Markdown source"
+        aria-pressed={sourceMode}
+        onclick={() => onToggleSource?.()}
+      >
+        <Icon name="markdown" />
+      </button>
+    </div>
+  {/if}
   <div class="fmt-group zoom-group">
-    <button class="fmt zoom-step" title={`Zoom out (${modKey}−)`} onclick={() => editorPrefs.zoomOut()}>A−</button>
-    <button class="fmt zoom-reset" title={`Reset zoom (${modKey}0)`} onclick={() => editorPrefs.resetZoom()}>
+    <button class="fmt zoom-step" title={`Zoom out (${modKey}−)`} aria-label="Zoom out" onclick={() => editorPrefs.zoomOut()}>A−</button>
+    <button class="fmt zoom-reset" title={`Reset zoom (${modKey}0)`} aria-label="Reset zoom" onclick={() => editorPrefs.resetZoom()}>
       {Math.round(editorPrefs.zoom * 100)}%
     </button>
-    <button class="fmt zoom-step" title={`Zoom in (${modKey}+)`} onclick={() => editorPrefs.zoomIn()}>A+</button>
+    <button class="fmt zoom-step" title={`Zoom in (${modKey}+)`} aria-label="Zoom in" onclick={() => editorPrefs.zoomIn()}>A+</button>
   </div>
 </div>
 
 <style>
   .format-bar {
+    flex: none;
     display: flex;
     align-items: center;
-    gap: 2px;
-    padding: 7px 16px;
-    background: var(--bg-sidebar);
-    border-bottom: 1px solid var(--border);
+    width: 100%;
+    max-width: calc(var(--measure) + 32px * var(--density));
+    height: 36px;
+    margin: 0 auto;
+    padding: 0 calc(16px * var(--density) - 6px) 0 calc(16px * var(--density) - 8px);
+    background: var(--bg);
+    font-family: var(--font-body);
+    font-size: calc(14px * var(--density) * var(--editor-zoom, 1));
+    overflow-x: auto;
   }
   .fmt-group {
+    flex: none;
     display: flex;
     align-items: center;
-    gap: 2px;
   }
-  .fmt-group + .fmt-group {
-    margin-left: 6px;
-    padding-left: 6px;
-    border-left: 1px solid var(--border);
+  .fmt-group + .fmt-group::before {
+    content: "";
+    width: 1px;
+    height: 16px;
+    margin: 0 5px;
+    background: var(--border);
   }
   .fmt-group.zoom-group {
     margin-left: auto;
-    padding-left: 0;
-    border-left: none;
+    padding-left: 12px;
+  }
+  .fmt-group.zoom-group::before {
+    content: none;
   }
   .fmt {
+    flex: none;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 30px;
-    height: 26px;
-    border-radius: 7px;
-    border: 1px solid transparent;
+    width: 28px;
+    height: 28px;
+    border-radius: calc(var(--radius) - 2px);
     color: var(--text-secondary);
+    font-family: var(--font-ui);
     font-size: 13px;
   }
-  .fmt:hover {
+  .fmt:hover:not(:disabled) {
     background: var(--bg-hover);
     color: var(--text);
   }
-  .fmt[aria-pressed="true"] {
-    background: var(--accent-soft);
-    color: var(--accent-text);
-    border-color: var(--accent);
+  .fmt:disabled {
+    opacity: 0.35;
+    cursor: default;
   }
-  .fmt-b {
-    font-weight: 700;
-  }
-  .fmt-i {
-    font-style: italic;
-    font-weight: 600;
-  }
-  .fmt-s {
-    text-decoration: line-through;
-    font-weight: 600;
+  .fmt[aria-pressed="true"],
+  .fmt[aria-pressed="true"]:hover:not(:disabled) {
+    background: var(--accent);
+    color: var(--bg);
   }
   .fmt.zoom-step {
-    font-size: 14px;
+    width: 22px;
+    font-family: var(--font-meta);
+    font-size: 11px;
+    color: var(--text-tertiary);
   }
   .fmt.zoom-reset {
     width: auto;
-    min-width: 46px;
-    padding: 0 8px;
+    min-width: 0;
+    padding: 0 4px;
     font-family: var(--font-meta);
-    font-size: 11.5px;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
     color: var(--text-tertiary);
   }
 </style>

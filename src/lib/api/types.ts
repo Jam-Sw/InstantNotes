@@ -120,6 +120,31 @@ export interface FeedbackInput {
   diagnostics?: unknown;
 }
 
+interface BackupEntry {
+  path: string;
+  madeAt: string;
+  bytes: number;
+}
+
+export interface CrashReport {
+  name: string;
+  madeAt: string;
+  bytes: number;
+}
+
+export interface BackupList {
+  backups: BackupEntry[];
+  automatic: boolean;
+  lastAt: string | null;
+  folder: string;
+}
+
+export interface BackupInspection {
+  madeAt: string | null;
+  notes: number;
+  schemaVersion: number;
+}
+
 export interface VaultStatus {
   path: string | null;
   transport: string | null;
@@ -165,6 +190,8 @@ export interface SyncServerStatus {
   tooLarge: string[];
   localNotes: number;
   serverItems: number;
+  pairingCode: string | null;
+  pairingUrl: string | null;
 }
 
 export interface SyncDevice {

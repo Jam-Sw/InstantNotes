@@ -7,6 +7,7 @@ import { fjord } from "./fjord";
 import { twilight } from "./twilight";
 import { terminal } from "./terminal";
 import { contrast } from "./contrast";
+import { nightConsole } from "./night-console";
 
 export const BUILTIN_THEMES: Theme[] = [
   manuscript,
@@ -17,6 +18,7 @@ export const BUILTIN_THEMES: Theme[] = [
   twilight,
   terminal,
   contrast,
+  nightConsole,
 ];
 
 export const DEFAULT_THEME_ID = manuscript.id;

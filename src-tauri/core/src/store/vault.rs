@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 use std::fs;
 
 const VAULT_PATH_SETTING: &str = "vault.path";
-const TRANSPORT_SETTING: &str = "vault.transport";
+pub(super) const TRANSPORT_SETTING: &str = "vault.transport";
 pub(super) const MANIFEST_BASE_SETTING: &str = "vault.manifestBase";
 
 pub(crate) struct VaultState {

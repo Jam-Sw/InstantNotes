@@ -1,3 +1,4 @@
+pub mod archive;
 pub mod export;
 pub mod manifest;
 pub mod mirror;
@@ -11,7 +12,7 @@ pub mod sync;
 pub mod transport;
 pub mod write;
 
-pub use export::{collect_from_store, export_vault};
+pub use export::{collect_from_store, export_archive, export_vault};
 pub use manifest::{
     merge_manifest, parse_manifest, serialize_manifest, Manifest, ManifestSpace, ManifestTag,
 };

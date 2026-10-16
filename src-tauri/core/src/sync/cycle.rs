@@ -1,5 +1,7 @@
 use super::crypto::{LibraryKey, Lock};
-use super::object::{plain_proof_text, sha_hex, Envelope, MANIFEST_KEY, MODE_KEY, NOTE_PREFIX};
+use super::object::{
+    plain_proof_text, sha_hex, Envelope, MANIFEST_KEY, MODE_KEY, NOTE_PREFIX, SETTINGS_KEY,
+};
 use super::remote::{Remote, RemoteChange, RemoteChanges, RemoteError, RemoteKeys, RemoteOp};
 use crate::attachments::Attachments;
 use crate::store::server_sync::{JoinCandidates, Pending, SyncState};
@@ -17,6 +19,7 @@ pub const ENCRYPTED: &str = "encrypted";
 pub struct SyncReport {
     pub notes: Vec<String>,
     pub labels_changed: bool,
+    pub settings_changed: bool,
     pub conflicts: usize,
     pub held_removals: usize,
     pub pushed: usize,
@@ -378,6 +381,15 @@ impl<R: Remote> ServerSync<R> {
             let text = envelope.manifest.clone().unwrap_or_default();
             match with(store, |s| s.ingest_server_manifest(name, sha, &text)) {
                 Ok(changed) => report.labels_changed |= changed,
+                Err(e) => {
+                    report.errors.push(e.to_string());
+                    return Ok(false);
+                }
+            }
+        } else if envelope.key == SETTINGS_KEY {
+            let text = envelope.settings.clone().unwrap_or_default();
+            match with(store, |s| s.ingest_server_settings(name, sha, &text)) {
+                Ok(changed) => report.settings_changed |= changed,
                 Err(e) => {
                     report.errors.push(e.to_string());
                     return Ok(false);

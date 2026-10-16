@@ -107,6 +107,14 @@ impl IntoResponse for Refused {
                 StatusCode::CONFLICT,
                 "the new form of the library is missing objects the old one has",
             ),
+            Refused::Unavailable(e) => {
+                crate::log("sync.unavailable", &[("reason", &e)]);
+                refusal(
+                    "UNAVAILABLE",
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "this library is waiting for the server's operator",
+                )
+            }
             Refused::Storage(e) => {
                 crate::log("sync.storage", &[("error", &e)]);
                 refusal(
@@ -159,8 +167,7 @@ fn caller(
         return Err(Box::new(too_many(wait)));
     }
     let store = state
-        .stores
-        .of(&grant.person.sub)
+        .store(&grant.person.sub)
         .map_err(|e| Box::new(e.into_response()))?;
     Ok(Caller { grant, store })
 }

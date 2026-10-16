@@ -19,20 +19,30 @@ export function notes(md, version) {
   );
 }
 
-export const INSTALL_FOOTER = [
-  "---",
-  "First install on macOS: download the `.dmg`, open it, and drag InstantNotes to Applications. macOS blocks the first launch of this unnotarized build: run `xattr -d com.apple.quarantine /Applications/InstantNotes.app` or use System Settings > Privacy & Security > \"Open Anyway\".",
-  "",
-  "First install on Windows: download and run the `-setup.exe` installer. SmartScreen flags the unsigned build: click \"More info\", then \"Run anyway\".",
-  "",
-  "First install on Linux: download the `.AppImage`, make it executable (`chmod +x`), and run it.",
-  "",
-  "Existing installs update in place from inside the app.",
-].join("\n");
+export function installFooter({ macos = false, windows = false } = {}) {
+  return [
+    "---",
+    macos
+      ? "First install on macOS: download the `.dmg`, open it, and drag InstantNotes to Applications. The app is signed and notarized, so it opens like any other."
+      : "First install on macOS: download the `.dmg`, open it, and drag InstantNotes to Applications. macOS blocks the first launch of this unnotarized build: run `xattr -d com.apple.quarantine /Applications/InstantNotes.app` or use System Settings > Privacy & Security > \"Open Anyway\".",
+    "",
+    windows
+      ? "First install on Windows: download and run the `-setup.exe` installer. It is signed by Jam-Sw; SmartScreen may still warn for the first weeks of a new signature: click \"More info\", then \"Run anyway\"."
+      : "First install on Windows: download and run the `-setup.exe` installer. SmartScreen flags the unsigned build: click \"More info\", then \"Run anyway\".",
+    "",
+    "First install on Linux: download the `.AppImage`, make it executable (`chmod +x`), and run it.",
+    "",
+    "Existing installs update in place from inside the app.",
+  ].join("\n");
+}
+
+export function signedFromEnv(env) {
+  return { macos: env.SIGNED_MACOS === "true", windows: env.SIGNED_WINDOWS === "true" };
+}
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const version = process.argv[2];
   if (!version) throw new Error("usage: release-notes.mjs <version>");
   const md = readFileSync(CHANGELOG, "utf8");
-  process.stdout.write(`${notes(md, version)}\n\n${INSTALL_FOOTER}\n`);
+  process.stdout.write(`${notes(md, version)}\n\n${installFooter(signedFromEnv(process.env))}\n`);
 }

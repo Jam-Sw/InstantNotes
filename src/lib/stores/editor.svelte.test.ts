@@ -43,7 +43,36 @@ describe("editorPrefs", () => {
     const prefs = await load();
     await prefs.init();
     await prefs.init();
-    expect(mockGetSetting).toHaveBeenCalledTimes(3);
+    expect(mockGetSetting).toHaveBeenCalledTimes(4);
+  });
+
+  it("shows the toolbar by default, in the rendered view", async () => {
+    const prefs = await load();
+    expect(prefs.toolbarOpen).toBe(true);
+    expect(prefs.sourceMode).toBe(false);
+    await prefs.init();
+    expect(prefs.toolbarOpen).toBe(true);
+    expect(prefs.sourceMode).toBe(false);
+  });
+
+  it("respects a stored false for the toolbar and a stored true for the source view", async () => {
+    mockGetSetting.mockImplementation(async (key: string) =>
+      key === "editor.toolbarOpen" ? false : key === "editor.sourceMode" ? true : undefined,
+    );
+    const prefs = await load();
+    await prefs.init();
+    expect(prefs.toolbarOpen).toBe(false);
+    expect(prefs.sourceMode).toBe(true);
+  });
+
+  it("toggles the toolbar and the source view under their own keys", async () => {
+    const prefs = await load();
+    prefs.toggleToolbar();
+    expect(mockSetSetting).toHaveBeenCalledWith("editor.toolbarOpen", false);
+    prefs.toggleSourceMode();
+    expect(prefs.sourceMode).toBe(true);
+    expect(mockSetSetting).toHaveBeenCalledWith("editor.sourceMode", true);
+    expect(prefs.toolbarOpen).toBe(false);
   });
 
   it("falls back to defaults silently when the settings read fails", async () => {

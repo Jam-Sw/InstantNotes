@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { exportVaultToFolder } from "$lib/vault-export";
   import {
     cancelSyncSignIn,
     disconnectSyncServer,
@@ -30,7 +29,6 @@
   let server = $state<SyncServerStatus | null>(null);
   let picked = $state<Provider | null>(null);
   let switching = $state(false);
-  let exporting = $state(false);
 
   const providerOf = (v: VaultStatus | null, s: SyncServerStatus | null): Provider =>
     s && s.stage !== "off" ? "server" : v?.path ? "folder" : "off";
@@ -89,22 +87,6 @@
     }
     picked = next;
   }
-
-  async function runExport() {
-    if (exporting) return;
-    exporting = true;
-    try {
-      const result = await exportVaultToFolder();
-      if ("cancelled" in result) {
-      } else if (result.ok) {
-        toasts.show("Exported. Every note is now a plain Markdown file in the folder you chose.");
-      } else {
-        toasts.show(`Couldn't export. ${result.error}`);
-      }
-    } finally {
-      exporting = false;
-    }
-  }
 </script>
 
 <div class="sync-pane">
@@ -137,17 +119,6 @@
       <p class="fine-print">Your notes are on this device only.</p>
     {/if}
 
-    <span class="group-label">One-time copy</span>
-    <PrefRow
-      label="Export a copy"
-      sub="A snapshot of every note, tag, Space, and attachment, written once to a folder you choose."
-    >
-      {#snippet control()}
-        <button class="primary-btn" disabled={exporting} onclick={runExport}>
-          {exporting ? "Exporting…" : "Export a copy…"}
-        </button>
-      {/snippet}
-    </PrefRow>
   {/if}
 </div>
 
@@ -171,16 +142,6 @@
     font-size: 13px;
     line-height: 1.5;
     margin: 16px 0 8px;
-  }
-  .group-label {
-    display: block;
-    margin: 28px 0 2px;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    color: var(--text-tertiary);
-    font-family: var(--font-meta);
   }
   .primary-btn {
     flex-shrink: 0;

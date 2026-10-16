@@ -21,7 +21,7 @@ Usage: See the [plugin's readme](https://github.com/jamubc/toolbox/tree/main/plu
 - **Plain Markdown Vault and Sync:** Keep every note as a Markdown file in a folder you choose, readable in any editor. Point several devices at the same folder (a network drive, Syncthing, Dropbox) and they stay in sync; edits made in the folder come back in.
 - **Agents, on your terms:** Connect Claude Code, Codex, or Cursor over MCP (Settings > Agents). Off until you turn it on; what an agent reads or changes lights up as it happens, every call is traced, and every change can be reverted.
 - **Themes:** Eight built-in themes with live previews, light and dark, shareable as files.
-- **Self-hosted sync:** Run the InstantNotes server on your own machine and sync one library across the desktop apps and any browser. Phones can use the web app, but its layout is not designed for phone screens yet. Notes are end-to-end encrypted by default: the server stores only ciphertext.
+- **Self-hosted sync:** Run the InstantNotes server on your own machine and sync one library across the desktop apps and any browser. The web app works on phones and tablets: one pane at a time on a phone, side by side on a tablet, with touch-sized controls and a command button for the palette. Notes are end-to-end encrypted by default: the server stores only ciphertext.
 - **100% Local & Private:** Your library lives in a local SQLite database, and in the vault folder if you set one. No server unless you run your own, zero telemetry.
 
 ## Installation
@@ -60,7 +60,7 @@ docker run -d --name instantnotes \
   -e INSTANTNOTES_OIDC_ISSUER=https://id.example.org \
   -e INSTANTNOTES_OIDC_CLIENT_ID=instantnotes \
   -e INSTANTNOTES_OIDC_CLIENT_SECRET=change-me \
-  ghcr.io/jam-sw/instantnotes-server:0.10.0
+  ghcr.io/jam-sw/instantnotes-server:0.10.1
 ```
 
 | Setting | Required | Meaning |
@@ -72,15 +72,23 @@ docker run -d --name instantnotes \
 | `INSTANTNOTES_LISTEN` | set by the image (`0.0.0.0:8080`) | Address and port to listen on. |
 | `INSTANTNOTES_TRUST_PROXY` | no | `true` behind a reverse proxy that sets `X-Forwarded-For`, so rate limits see the real client. |
 | `INSTANTNOTES_MAX_OBJECT_MB` | no | Largest single object the server accepts, default `64`. |
+| `INSTANTNOTES_PEOPLE_DIR` | no | Where each person's notes live, for example `/people/{username}/notes` (`{sub}`, `{username}`, `{email}`), so each can sit under their own disk quota. Unset: under `INSTANTNOTES_DATA_DIR`. |
+| `INSTANTNOTES_SIGN_IN_STYLESHEET` | no | An `https://` address or same-origin path of a stylesheet the sign-in page loads after its own; override `--bg`, `--glow`, `--ink`, `--accent` and `--accent-ink` on `:root`. |
 
 - **At your identity provider**: create one confidential client with the scopes `openid profile email`, the redirect URI `https://<your address>/auth/callback`, and the post-logout redirect URI `https://<your address>`. Allow it the refresh token grant and, where the provider offers it, the `offline_access` scope. The desktop apps need nothing registered: they sign in through your server.
 - **In front**: a reverse proxy with TLS, with a read timeout above 30 seconds (devices hold one request open for up to 25 seconds to hear about changes).
+- **After a deploy**: `docker exec instantnotes instantnotes check` proves the encrypted sync path end to end as a reserved test person and cleans up after itself; it prints `ok` (exit 0) or the step that failed (exit 1). Add `--url http://127.0.0.1:8080` to test from inside the container.
+- **Usage**: `docker exec instantnotes instantnotes usage` (or `--json`) lists each person's disk use.
+- **Read-only root**: the server writes only to `/data` and the people folders, so `--read-only` (compose `read_only: true`) works with those volumes owned by uid 1000, and no tmpfs.
+- **Platforms**: the image is published for `linux/amd64` and `linux/arm64`. Building it yourself needs BuildKit (`docker buildx build`); the legacy `docker build` stops at the first `FROM`.
 - **Health**: `GET /healthz` answers `200 ok`, or `503` with the reason (data folder not writable, the identity provider check misconfigured).
 - **Who can sign in** is decided at your identity provider; everyone it lets through gets their own library, and nobody can read anyone else's. When the provider stops accepting a person (disabled, deleted, removed from the app), the server signs out all their devices at its next hourly check, while keeping their stored data. This needs a provider that re-checks the person when a sign-in is refreshed (Pocket ID, Authentik, Keycloak, Zitadel and Kanidm do; Authelia does not, and Dex depends on its connector). Without refresh tokens, devices sign in again every 24 hours.
 
 ### Connect a device
 
 In Settings > Sync, choose Sync server, type the server's address, and sign in. The first device makes the library's encryption key and shows a recovery key to keep somewhere safe. Each further device is approved from one you already use, after checking that the same six words show on both.
+
+On a computer with no browser (a container or a remote desktop), the app shows a short code and an address instead: open the address on any other device, type the code, sign in, and allow. Set `INSTANTNOTES_SIGN_IN=code` in the app's environment to always sign in this way.
 
 ### What the server can and cannot see
 
@@ -89,6 +97,8 @@ With end-to-end encryption on (the default), notes, titles, tags, Spaces and ima
 The encryption switch is in Settings > Sync. Turned off, the server stores notes readable, and a new device only needs to sign in.
 
 The web app is code your server sends to your browser. Whoever controls the server, or the image it runs, could change that code. For the strongest protection, use the desktop app.
+
+Each release lists the SHA-256 of every web app file in `web-code-sha256.txt`. To check an image: `id=$(docker create ghcr.io/jam-sw/instantnotes-server:<version>) && docker cp $id:/app/ui ./ui && docker rm $id`, then in `./ui` run `sha256sum -c web-code-sha256.txt`.
 
 ## Development
 To build from source instead

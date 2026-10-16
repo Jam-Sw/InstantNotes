@@ -7,7 +7,113 @@ in-app updater, written for users. Newest first.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.10.0]
+## [0.10.1]
+### Added
+- Settings > About: the real platform, the last update check (`updates.lastCheckedAt`), Check for updates
+  and Show update; the web app shows its server's version.
+- An update found by an automatic check shows a toast with Show that stays until dismissed, once per
+  version per launch. `toasts.show` takes a duration; `Infinity` keeps the toast.
+- Commands `view.settings`, `view.about`, `view.palette`, `view.zoomIn`, `view.zoomOut`, `view.zoomReset`,
+  `app.checkUpdates`, `app.showUpdate`, `app.sendFeedback`, `app.openRepo`, `app.openChangelog`,
+  `app.openDataFolder`, `app.quit`, `note.export`; the palette offers them on every platform they apply to.
+- Menus File, Edit, View and Help; the tray offers New Capture, Open Library, Check for Updates, Settings
+  and Quit.
+- The formatting toolbar: undo and redo, a heading cycle (`heading` in `markdown-format.ts`), icons for
+  every tool, an image button on the desktop, a Markdown source toggle and zoom, in one row above the note.
+- `editor.sourceMode` (the Markdown marks shown) is its own setting; commands `view.toolbar` and
+  `view.markdownSource`; Settings > Editor switches both.
+- Sync: the look and editor settings (theme, light or dark, custom theme, body font, toolbar, Markdown
+  source, exact times, link underline, link previews, the outside-link mark, image preview height and tag
+  suggestions) follow the library to every device and the web, as one encrypted `settings` object merged
+  against `sync.settingsBase`; device settings stay on the device. Event `settings:changed`.
+- Sync sign-in on a computer with no browser (a container, a remote desktop): the app shows a short code and the
+  server's address; open it in a browser on any other device, type the code, sign in, and allow. The confirm page
+  shows the code again so you can check it matches. The app uses it when it cannot open a browser, or always with
+  `INSTANTNOTES_SIGN_IN=code`. Server: `device/code`, `device/link` and `device/poll` (RFC 8628 shape, bound to
+  the app's PKCE challenge).
+- Server: `INSTANTNOTES_PEOPLE_DIR`, a per-person folder template with `{sub}`, `{username}`
+  (`preferred_username`) and `{email}`; a 0.10.0 folder moves once on that person's next request, and a
+  failed move answers 503 for that person. Unset, the layout is unchanged. `server.db` `persons` gains
+  `username`, `email` and `folder`, added at start.
+- Server: `instantnotes usage [--json]` (per-person bytes, blobs, objects, last seen) and
+  `instantnotes check [--url <address>]`, a headless end-to-end proof of the encrypted sync path as the
+  reserved person `instantnotes-check` that cleans up after itself: exit 0 `ok`, exit 1 `failed at <step>`.
+- Server: `INSTANTNOTES_SIGN_IN_STYLESHEET`, an `https://` address or same-origin path of a stylesheet the
+  sign-in pages load after their own (override `--bg`, `--glow`, `--ink`, `--accent`, `--accent-ink`), under
+  a Content-Security-Policy that allows only its origin. The server writes only to its data folder and the
+  people folders, so a read-only root needs no tmpfs.
+- Diagnostics: a panic writes `crashes/crash-<stamp>.txt` and a front-end error `crashes/error-<stamp>.txt`
+  beside the library; `instantnotes.log` records events and rotates at 1 MB to `instantnotes.log.1`.
+  Settings > Diagnostics shows each report in full with Copy and Send (a prefilled GitHub issue in the
+  browser; nothing leaves without a click); palette `app.sendDiagnostics`. `diagnostics.crashReports`
+  (default off) offers new reports at the next launch; `diagnostics.lastPromptAt`. Commands
+  `report_frontend_error`, `list_crash_reports`, `read_crash_report`, `delete_crash_report`,
+  `diagnostics_report`. The web keeps its last 20 errors in sessionStorage (`instantnotes.errors`).
+- Whiteboards open with the pen tool on phones and tablets; the first pen stroke turns on pen mode, so
+  fingers pan and zoom, and a palm resting on the glass while the pen draws is ignored.
+- Open on another device (`note.openElsewhere`, the first button in the editor header): a QR code and a
+  link to `<sync server>/#note=<id>`, built only from the server this device is signed in to; the web app
+  opens `#note=<id>` and waits up to a minute for the note to sync.
+- On a phone, one pane at a time with a back button that follows the system back gesture, and the sidebar as
+  a drawer with Graph, Spaces, tags and Settings; on a tablet, the list and the note side by side with the
+  sidebar behind a menu button; on touch screens, finger-sized controls, safe areas, room for the on-screen
+  keyboard and a command button that opens the palette (a sheet on phones). A desktop window 600 to 960 px
+  wide uses the same drawer.
+- The built-in theme Night console (`night-console`): amber on deep slate with square corners.
+- Releases list the SHA-256 of every file of the web app the server serves in `web-code-sha256.txt`.
+### Changed
+- Editor: the formatting toolbar sits on the page at the width of the text, so zoom in and out stay in view in the default window, and the header's note actions step back to a quieter ink.
+- The toolbar shows by default (`editor.toolbarOpen` default true, a stored false kept) and no longer
+  decides the editor's mode; `Editor.svelte` exposes `undo`, `redo`, `canUndo`, `canRedo` and reports
+  history through `onhistory`; `ActiveMarks` gains `heading`.
+- Every menu and tray item is a command id, answered with one event, `menu:command { id }`
+  (`src-tauri/src/shell/menu.rs`, `runCommand`); `settings:open`, `menu:new-note`, `menu:new-whiteboard`,
+  `menu:new-sheet`, `menu:export-note`, `menu:toggle-sticky` and `updater:check` are gone.
+- Shell commands `open_data_folder` and `request_quit`.
+- Daily backups: `backups/instantnotes-<stamp>.db` beside the library through `VACUUM INTO` on the reader
+  connection, 30 s after launch and then hourly when the newest is older than a day; kept 7 days, then one
+  per ISO week for 5 weeks, then one per month for 6 months (`core::backup::keep`); `backups.automatic`.
+- Settings > Backups (web: Export): Automatic backups, Back up now, the list with Restore, Restore from a
+  file, Open backups folder, and the Markdown export moved here from Sync. Restore verifies the file,
+  asks, restarts, keeps the old library as `-before-restore.db`, turns sync off (`Store::detach_sync`).
+- Commands `list_backups`, `backup_now`, `set_backups_automatic`, `inspect_backup`, `restore_backup`,
+  `open_backups_folder`; event `backups:changed`; palette `data.backups`, `data.export`, `data.backupNow`.
+- Web export: `vault::archive` writes a stored `.zip` (no dependency) of the vault files plus
+  `attachments/`; the worker's `export_archive()`; the page downloads `InstantNotes-<date>.zip`.
+- Server image: OCI labels (`title`, `description`, `source`, `url`, `documentation`, `licenses`, `vendor`;
+  `version`, `revision`, `created` set by the release job), so the GHCR package page links the repository.
+- Graph: a drag turns the view around its centre, marked by a small cross; right-drag, Shift+drag,
+  middle-drag, two fingers and a trackpad's two-finger scroll pan; the mouse wheel, Ctrl+wheel and pinch
+  zoom; double-click or double-tap a node to turn around it; double-click the background, Home, 0 or Reset
+  view to go back. A ground ring and an upright ring stay fixed in the world, farther nodes fade, and
+  labels keep one size: tags and Spaces always, the open, centred or hovered node and its neighbours.
+  A single click opens a node after 300 ms, so a double click can centre it.
+- On Linux with no system keychain (no Secret Service), the sign-in token and library key are kept in
+  `secrets.json` next to the library, readable by its owner only, instead of sign-in failing. macOS and Windows
+  keep using the system keychain only.
+- A browser that fails to open no longer ends sync sign-in; the code sign-in takes over.
+- Releases build on GitHub-hosted runners (`ubuntu-22.04`, `windows-latest`, `macos-latest`); the server
+  image is multi-arch (`linux/amd64`, `linux/arm64`) and a failed image keeps the release a draft.
+- macOS builds are signed and notarized when `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`,
+  `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` and `APPLE_TEAM_ID` are set, ad-hoc signed
+  otherwise; Windows builds are signed with Azure Trusted Signing when `AZURE_TENANT_ID`,
+  `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_SIGNING_ENDPOINT`, `AZURE_SIGNING_ACCOUNT` and
+  `AZURE_SIGNING_PROFILE` are set. The release notes' first-install text follows what was signed.
+- Dependencies: the cargo and npm groups from dependabot #79 and #75 (tauri 2.12.2, rand 0.10, base64
+  0.23, similar 3, Svelte 5.57.2, Vite 8.3.4 and the rest); SvelteKit stays on 2, TypeScript on 6 and
+  sqlite-wasm-vfs on 0.2, whose next majors need a migration of their own.
+### Fixed
+- Server: a fresh Docker named volume at `/data` works; the image now ships `/data` owned by uid 1000, where 0.10.0 stopped with "cannot protect library folder".
+- Sync: a device that needs the library key asks for approval as soon as the Sync page shows, with the six
+  words on screen, instead of waiting for "Approve on another device" (desktop and web).
+- Sync: an approval request brings the library window forward on a device that has the key, so it no
+  longer waits unseen in a window closed to the tray.
+- Sync: after a restart while waiting for approval, the Sync page asks again instead of staying blank.
+- Sync: the recovery key can be typed while waiting for approval; it withdraws the request.
+- Sync: on the desktop, a failed check for an approval (the network or the server briefly away) retries
+  instead of reporting the request as not approved; only a refused or expired request ends the wait.
+
+## [0.10.0] - 2026-10-12
 ### Added
 - Vault sync: the vault folder is read back (`Syncer::cycle`: pull, scan, ingest, removals, manifest merge,
   flush, attachments, push; 5 s poll), so devices sharing one folder (network drive, Syncthing) stay in step;

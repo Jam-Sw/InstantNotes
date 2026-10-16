@@ -15,16 +15,17 @@ concurrency:
 
 env:
   GH_TOKEN: ${{ github.token }}
+  SIGNED_MACOS: ${{ secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.APPLE_SIGNING_IDENTITY != '' && secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
+  SIGNED_WINDOWS: ${{ secrets.AZURE_TENANT_ID != '' && secrets.AZURE_CLIENT_ID != '' && secrets.AZURE_CLIENT_SECRET != '' && secrets.AZURE_SIGNING_ENDPOINT != '' && secrets.AZURE_SIGNING_ACCOUNT != '' && secrets.AZURE_SIGNING_PROFILE != '' }}
 
 jobs:
   plan:
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-22.04
     outputs:
       version: ${{ steps.plan.outputs.version }}
       ship: ${{ steps.plan.outputs.ship }}
     steps:
-      - uses: actions/checkout@v7
-      - run: echo "$HOME/.local/bin:$HOME/.cargo/bin:$(ls -d "$HOME"/.local/share/nvm/v*/bin | sort -V | tail -1)" >> "$GITHUB_PATH"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - id: plan
         run: |
@@ -52,19 +53,25 @@ jobs:
   linux:
     needs: plan
     if: needs.plan.outputs.ship == 'true'
-    runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 45
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
     env:
       VERSION: ${{ needs.plan.outputs.version }}
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
-      - uses: actions/checkout@v7
-      - run: echo "$HOME/.local/bin:$HOME/.cargo/bin:$(ls -d "$HOME"/.local/share/nvm/v*/bin | sort -V | tail -1)" >> "$GITHUB_PATH"
-      - run: echo "INSTANTNOTES_BUILDCACHE=$HOME/.cache/instantnotes-build/linux" >> "$GITHUB_ENV"
-      - run: instantnotes-buildroot run . sh -c 'npm ci --no-audit --no-fund && npm run tauri -- build --bundles appimage'
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@67b7c9de7d66c881487796e401478f3cb00704b0 # 1.91.1
       - run: |
-          dir="$INSTANTNOTES_BUILDCACHE/target/release/bundle/appimage"
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - run: npm ci --no-audit --no-fund
+      - run: npm run tauri -- build --bundles appimage
+      - run: |
+          dir="src-tauri/target/release/bundle/appimage"
           gh release upload "v$VERSION" --clobber \
             "$dir/InstantNotes_${VERSION}_amd64.AppImage" \
             "$dir/InstantNotes_${VERSION}_amd64.AppImage.sig"
@@ -72,20 +79,49 @@ jobs:
   windows:
     needs: plan
     if: needs.plan.outputs.ship == 'true'
-    runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 45
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
     env:
       VERSION: ${{ needs.plan.outputs.version }}
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
-      - uses: actions/checkout@v7
-      - run: echo "$HOME/.local/bin:$HOME/.cargo/bin:$(ls -d "$HOME"/.local/share/nvm/v*/bin | sort -V | tail -1)" >> "$GITHUB_PATH"
-      - run: echo "CARGO_TARGET_DIR=$HOME/.cache/instantnotes-build/windows/target" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@67b7c9de7d66c881487796e401478f3cb00704b0 # 1.91.1
       - run: npm ci --no-audit --no-fund
-      - run: npm run tauri -- build --runner cargo-xwin --target x86_64-pc-windows-msvc --bundles nsis
+      - run: npm run tauri -- build --no-bundle
+      - if: env.SIGNED_WINDOWS == 'true'
+        uses: azure/trusted-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.AZURE_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\src-tauri\target\release
+          files-folder-filter: exe
+      - run: npm run tauri -- bundle --bundles nsis
+      - if: env.SIGNED_WINDOWS == 'true'
+        uses: azure/trusted-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.AZURE_SIGNING_PROFILE }}
+          files: ${{ github.workspace }}\src-tauri\target\release\bundle\nsis\InstantNotes_${{ needs.plan.outputs.version }}_x64-setup.exe
+      - if: env.SIGNED_WINDOWS == 'true'
+        run: npx tauri signer sign "src-tauri/target/release/bundle/nsis/InstantNotes_${VERSION}_x64-setup.exe"
       - run: |
-          dir="$CARGO_TARGET_DIR/x86_64-pc-windows-msvc/release/bundle/nsis"
+          dir="src-tauri/target/release/bundle/nsis"
           gh release upload "v$VERSION" --clobber \
             "$dir/InstantNotes_${VERSION}_x64-setup.exe" \
             "$dir/InstantNotes_${VERSION}_x64-setup.exe.sig"
@@ -93,62 +129,88 @@ jobs:
   macos:
     needs: plan
     if: needs.plan.outputs.ship == 'true'
-    runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 45
+    runs-on: macos-latest
+    timeout-minutes: 60
     env:
       VERSION: ${{ needs.plan.outputs.version }}
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
-      - uses: actions/checkout@v7
-      - run: echo "$HOME/.local/bin:$HOME/.cargo/bin:$(ls -d "$HOME"/.local/share/nvm/v*/bin | sort -V | tail -1)" >> "$GITHUB_PATH"
-      - id: mac
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@67b7c9de7d66c881487796e401478f3cb00704b0 # 1.91.1
+      - if: env.SIGNED_MACOS == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          if [ "$(ssh -o BatchMode=yes -o ConnectTimeout=10 mac-builder status 2>/dev/null)" != online ]; then
-            echo "::warning::Mac builder offline; v$VERSION ships without macOS"
-            exit 0
-          fi
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            delim="EOF_$(uuidgen)"
+            printf '%s<<%s\n%s\n%s\n' "$name" "$delim" "${!name}" "$delim" >> "$GITHUB_ENV"
+          done
+      - run: npm ci --no-audit --no-fund
+      - run: npm run tauri -- build --bundles app
+      - run: |
           out="$RUNNER_TEMP/macos"
           mkdir -p "$out"
-          git archive "$GITHUB_SHA" | ssh -o BatchMode=yes mac-builder "build $VERSION" | tar -xf - --exclude='._*' -C "$out"
-          echo "out=$out" >> "$GITHUB_OUTPUT"
-      - if: steps.mac.outputs.out
-        run: |
-          npm ci --no-audit --no-fund
-          npx tauri signer sign "$OUT/InstantNotes_${VERSION}_aarch64.app.tar.gz"
-          gh release upload "v$VERSION" --clobber "$OUT"/InstantNotes_"$VERSION"_aarch64.*
-        env:
-          OUT: ${{ steps.mac.outputs.out }}
+          dir="src-tauri/target/release/bundle"
+          cp "$dir/macos/InstantNotes.app.tar.gz" "$out/InstantNotes_${VERSION}_aarch64.app.tar.gz"
+          cp "$dir/macos/InstantNotes.app.tar.gz.sig" "$out/InstantNotes_${VERSION}_aarch64.app.tar.gz.sig"
+          if npm run tauri -- bundle --bundles dmg --config '{"bundle":{"createUpdaterArtifacts":false}}'; then
+            cp "$dir/dmg/InstantNotes_${VERSION}_aarch64.dmg" "$out/"
+          else
+            echo "::warning::dmg failed; v$VERSION ships the macOS update bundle without it"
+          fi
+          gh release upload "v$VERSION" --clobber "$out"/InstantNotes_"$VERSION"_aarch64.*
 
   image:
     needs: plan
     if: needs.plan.outputs.ship == 'true'
-    runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 60
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
     env:
       VERSION: ${{ needs.plan.outputs.version }}
       IMAGE: ghcr.io/jam-sw/instantnotes-server
     steps:
-      - uses: actions/checkout@v7
-      - run: echo "$HOME/.local/bin:$HOME/.cargo/bin:$(ls -d "$HOME"/.local/share/nvm/v*/bin | sort -V | tail -1)" >> "$GITHUB_PATH"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
       - run: |
-          mkdir -p "$RUNNER_TEMP/docker" && echo '{}' > "$RUNNER_TEMP/docker/config.json"
-          echo "DOCKER_CONFIG=$RUNNER_TEMP/docker" >> "$GITHUB_ENV"
-      - run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-      - run: docker build --pull -t "$IMAGE:$VERSION" .
-      - run: docker push "$IMAGE:$VERSION"
-      - if: always()
-        run: docker logout ghcr.io
+          docker buildx build --pull --push \
+            --platform linux/amd64,linux/arm64 \
+            --metadata-file "$RUNNER_TEMP/metadata.json" \
+            -t "$IMAGE:$VERSION" \
+            --label "org.opencontainers.image.version=$VERSION" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
+          digest="$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/metadata.json")"
+          echo "Pushed \`$IMAGE:$VERSION\` at \`$digest\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "DIGEST=$digest" >> "$GITHUB_ENV"
+      - run: |
+          docker pull --platform linux/amd64 "$IMAGE@$DIGEST"
+          id="$(docker create --platform linux/amd64 "$IMAGE@$DIGEST")"
+          docker cp "$id:/app/ui" "$RUNNER_TEMP/ui"
+          docker rm "$id"
+          (cd "$RUNNER_TEMP/ui" && find . -type f | LC_ALL=C sort | sed 's|^\./||' | xargs -d '\n' sha256sum) > web-code-sha256.txt
+          gh release upload "v$VERSION" --clobber web-code-sha256.txt
 
   publish:
-    needs: [plan, linux, windows, macos]
-    if: always() && needs.plan.outputs.ship == 'true'
-    runs-on: [self-hosted, Linux, X64]
+    needs: [plan, linux, windows, macos, image]
+    if: always() && needs.plan.outputs.ship == 'true' && needs.image.result == 'success'
+    runs-on: ubuntu-22.04
     env:
       VERSION: ${{ needs.plan.outputs.version }}
     steps:
-      - uses: actions/checkout@v7
-      - run: echo "$HOME/.local/bin:$HOME/.cargo/bin:$(ls -d "$HOME"/.local/share/nvm/v*/bin | sort -V | tail -1)" >> "$GITHUB_PATH"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: node .github/release-manifest.mjs "$VERSION"
-      - if: always()
-        run: instantnotes-prune

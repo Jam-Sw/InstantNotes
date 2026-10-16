@@ -2,6 +2,7 @@ import { getSetting, setSetting } from "$lib/api/client";
 
 const KEY_ZOOM = "editor.zoom";
 const KEY_TOOLBAR = "editor.toolbarOpen";
+const KEY_SOURCE = "editor.sourceMode";
 const KEY_EXACT_TIME = "editor.showExactTime";
 const MIN = 0.7;
 const MAX = 2.5;
@@ -9,7 +10,8 @@ const STEP = 0.1;
 
 class EditorPrefs {
   zoom = $state(1);
-  toolbarOpen = $state(false);
+  toolbarOpen = $state(true);
+  sourceMode = $state(false);
   showExactTime = $state(false);
 
   #loaded = false;
@@ -19,9 +21,10 @@ class EditorPrefs {
     if (this.#loaded) return;
     this.#loaded = true;
     try {
-      const [z, open, exact] = await Promise.all([
+      const [z, open, source, exact] = await Promise.all([
         getSetting<number>(KEY_ZOOM),
         getSetting<boolean>(KEY_TOOLBAR),
+        getSetting<boolean>(KEY_SOURCE),
         getSetting<boolean>(KEY_EXACT_TIME),
       ]);
       if (!this.#touched.has(KEY_ZOOM) && typeof z === "number" && z >= MIN && z <= MAX) {
@@ -30,11 +33,20 @@ class EditorPrefs {
       if (!this.#touched.has(KEY_TOOLBAR) && typeof open === "boolean") {
         this.toolbarOpen = open;
       }
+      if (!this.#touched.has(KEY_SOURCE) && typeof source === "boolean") {
+        this.sourceMode = source;
+      }
       if (!this.#touched.has(KEY_EXACT_TIME) && typeof exact === "boolean") {
         this.showExactTime = exact;
       }
     } catch {
     }
+  }
+
+  async reload(): Promise<void> {
+    this.#loaded = false;
+    this.#touched.clear();
+    await this.init();
   }
 
   setShowExactTime(v: boolean): void {
@@ -69,6 +81,12 @@ class EditorPrefs {
     this.#touched.add(KEY_TOOLBAR);
     this.toolbarOpen = !this.toolbarOpen;
     void setSetting(KEY_TOOLBAR, this.toolbarOpen);
+  }
+
+  toggleSourceMode(): void {
+    this.#touched.add(KEY_SOURCE);
+    this.sourceMode = !this.sourceMode;
+    void setSetting(KEY_SOURCE, this.sourceMode);
   }
 }
 

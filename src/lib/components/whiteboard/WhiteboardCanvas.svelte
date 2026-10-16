@@ -3,8 +3,10 @@
   import type { ComponentProps } from "react";
   import type { Root } from "react-dom/client";
   import { loadExcalidraw } from "$lib/whiteboard/excalidraw";
+  import { PenGuard } from "$lib/whiteboard/pen";
   import {
     boardText,
+    openingAppState,
     parseBoard,
     sceneFingerprint,
     serializeBoard,
@@ -45,6 +47,24 @@
   let savedPrint = sceneFingerprint(initial.elements, initial.files);
   let pending: Scene | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let api: { updateScene: (scene: { appState: Record<string, unknown> }) => void } | null = null;
+  const pen = new PenGuard();
+  const touch = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+
+  function guard(e: PointerEvent) {
+    const wasSeen = pen.seen;
+    const palm =
+      e.type === "pointerdown"
+        ? pen.down(e)
+        : e.type === "pointermove"
+          ? pen.move(e)
+          : pen.up(e);
+    if (palm) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    if (!wasSeen && pen.seen) api?.updateScene({ appState: { penMode: true, penDetected: true } });
+  }
 
   function handleChange(elements: readonly unknown[], appState: object, files: object) {
     const scene = {
@@ -78,6 +98,8 @@
   onMount(() => {
     let destroyed = false;
     const unregister = registerFlush(flush);
+    const pointerEvents = ["pointerdown", "pointermove", "pointerup", "pointercancel"] as const;
+    for (const type of pointerEvents) host?.addEventListener(type, guard, { capture: true });
     void (async () => {
       try {
         const [React, ReactDOM, mod] = await Promise.all([
@@ -91,7 +113,7 @@
         const h = React.createElement;
         const initialData = {
           elements: initial.elements,
-          appState: { ...initial.appState, collaborators: new Map() },
+          appState: { ...openingAppState(initial.appState, touch), collaborators: new Map() },
           files: initial.files,
           scrollToContent: initial.elements.length > 0 && initial.appState.scrollX === undefined,
         };
@@ -116,6 +138,7 @@
             theme,
             viewModeEnabled: readonly,
             aiEnabled: false,
+            excalidrawAPI: (instance) => (api = instance as unknown as typeof api),
             onChange: (els, state, fileMap) => handleChange(els, state, fileMap),
             onLinkOpen: (element, event) => {
               const link = element.link ?? "";
@@ -146,6 +169,7 @@
       destroyed = true;
       flush();
       unregister();
+      for (const type of pointerEvents) host?.removeEventListener(type, guard, { capture: true });
       root?.unmount();
       root = null;
     };
@@ -167,6 +191,7 @@
   .board-host {
     position: absolute;
     inset: 0;
+    touch-action: none;
   }
   .board-failed {
     position: absolute;

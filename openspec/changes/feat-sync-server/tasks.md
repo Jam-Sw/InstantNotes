@@ -52,6 +52,8 @@ full paths in reports). Ships in 0.10.0: built on `feat/sync-server`, merged loc
 
 - [x] `device/authorize` (loopback-only redirect), OIDC when no session, confirm page, `device/allow` (CSRF), one-time code, `device/token` with PKCE
 - [x] Tests: non-loopback redirect, code reuse, wrong verifier, expired code each refused
+- [x] Code sign-in (design §5.1): `device/code`, `device/link` (the code typed in any case or spacing, shown again on the confirm page), `device/poll` bound to the PKCE challenge; the poll secret separate from the request id the pages carry; the answer written and collected under one lock, once; constant-time compares; `device/poll` 30 a minute
+- [x] Tests: pending, allowed once, cancelled, a wrong verifier burns the answer, an unknown code, the poll secret absent from the login redirect and the confirm page
 
 ## 5. Core (`instantnotes-core`)
 
@@ -67,8 +69,9 @@ full paths in reports). Ships in 0.10.0: built on `feat/sync-server`, merged loc
 ## 6. Desktop (`src-tauri`)
 
 - [x] HTTP `Remote` (reqwest `blocking`, rustls): bearer token, `401` to signed out, `429`, backoff
-- [x] `keyring` for token and key; no keychain: Sync server refuses with a reason
+- [x] `keyring` for token and key; a refusing keychain on macOS or Windows: Sync server refuses with a reason; Linux with no Secret Service: owner-only `secrets.json` next to the library (design §4.4), with tests for the file mode and a leftover temporary file
 - [x] Loopback sign-in through the opener plugin; cancel
+- [x] Code sign-in when no browser opens or with `INSTANTNOTES_SIGN_IN=code`: the code and address in Settings, polling at the server's interval until the request expires; cancel
 - [x] First device: key creation and the recovery key screen (text, QR, Copy, Download, Print, "I saved it")
 - [x] Further device: join request, six words, waiting; recovery key entry checked against the recipient
 - [x] Approving: `sync:join-requests` shows the request with words; Approve and Deny; current requests read on open (`list_sync_join_requests`)
@@ -94,7 +97,7 @@ full paths in reports). Ships in 0.10.0: built on `feat/sync-server`, merged loc
 - [ ] Scanning the recovery key's QR code with a phone camera: not built
 - [x] Web manifest and icons (phone layout: not this release, design D8)
 - [x] The worker and its `.wasm` built by `scripts/build-web-core.sh` outside Vite; the Dockerfile's `web` stage builds them
-- [x] Headless Chrome against the real image: the worker reads the desktops' notes, writes one, and a desktop receives it (`.claude/scripts/sync-e2e.sh`, passing)
+- [x] Headless Chrome against the real image: the worker reads the desktops' notes, writes one, and a desktop receives it (the sync end-to-end run, passing)
 
 ## 8. Server cleanup (`instantnotes-server`)
 
@@ -114,7 +117,7 @@ full paths in reports). Ships in 0.10.0: built on `feat/sync-server`, merged loc
 
 ## 10. End to end
 
-- [x] `.claude/scripts/sync-e2e.sh` (local tooling, git-excluded): image plus a throwaway Dex with Docker, then `server/tests/sync_e2e_test.rs` (`#[ignore]`)
+- [x] A local sync end-to-end run: image plus a throwaway Dex with Docker, then `server/tests/sync_e2e_test.rs` (`#[ignore]`)
 - [x] Two desktop clients through real sign-in and join approval, and the web engine in headless Chrome, on one library: each one's note appears in the others; an offline edit arrives after reconnecting; a conflict leaves both; the data folder holds no note text
 
 ## 11. Docs
@@ -127,12 +130,12 @@ full paths in reports). Ships in 0.10.0: built on `feat/sync-server`, merged loc
 
 ## 12. Checks
 
-- [x] `.claude/scripts/check.sh` green (945 vitest, 632 Rust tests, svelte-check, clippy, rustfmt, knip); `cargo xwin check --workspace --all-targets`; the WebAssembly check
+- [x] The full check green (945 vitest, 632 Rust tests, svelte-check, clippy, rustfmt, knip); `cargo xwin check --workspace --all-targets`; the WebAssembly check
 - [x] Image builds (no workflow changed)
 
 ## In-app checks
 
-Run by `.claude/scripts/inapp-proof.sh`: two desktop test builds driven through their windows and commands, and the web app in Chrome, on a throwaway server image with Dex.
+Run locally: two desktop test builds driven through their windows and commands, and the web app in Chrome, on a throwaway server image with Dex.
 
 - [x] Two desktop builds and a computer browser on one throwaway server: a note made in each appears in the others (phones: no layout check, design D8)
 - [x] One desktop offline: edits made while the server is stopped arrive after it is back
@@ -142,5 +145,6 @@ Run by `.claude/scripts/inapp-proof.sh`: two desktop test builds driven through 
 - [ ] Encryption turned off and on again with a second device open: covered by `server_sync_test.rs` only
 - [x] Join: a desktop with notes joins a server holding another library; asked first (Combine), the exact copy kept once on both, its own notes reach the other device
 - [ ] Join: likely pairs in Review merge and each choice: covered by tests only
-- [x] The computer browser offline after a first visit: the app and its engine open with the server unreachable (`.claude/scripts/web-offline-check.mjs`)
+- [x] The computer browser offline after a first visit: the app and its engine open with the server unreachable (checked locally)
 - [ ] The computer browser editing offline and syncing on reconnecting: not checked in the app
+- [ ] Code sign-in from a desktop build in a container shown through a remote desktop, allowed from another device's browser: covered by tests only

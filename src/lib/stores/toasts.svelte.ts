@@ -20,7 +20,7 @@ class ToastStore {
   #remaining = new Map<string, number>();
   #startedAt = new Map<string, number>();
 
-  show(message: string, action?: ToastAction): string {
+  show(message: string, action?: ToastAction, duration = AUTO_DISMISS_MS): string {
     const id = `toast-${++this.#nextId}`;
     const next = [...this.items, { id, message, action }];
     if (next.length > MAX_VISIBLE) {
@@ -28,7 +28,7 @@ class ToastStore {
       if (evicted) this.#clearTimer(evicted.id);
     }
     this.items = next;
-    this.#schedule(id, AUTO_DISMISS_MS);
+    this.#schedule(id, duration);
     return id;
   }
 
@@ -63,6 +63,7 @@ class ToastStore {
     if (existing !== undefined) clearTimeout(existing);
     this.#startedAt.set(id, Date.now());
     this.#remaining.set(id, ms);
+    if (!Number.isFinite(ms)) return;
     this.#timers.set(
       id,
       setTimeout(() => this.dismiss(id), ms),

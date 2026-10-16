@@ -52,4 +52,10 @@ describe("activeMarks", () => {
   it("lights italic across a selection that covers it", () => {
     expect(marksAt("a *cap* b", 3, 6)).toEqual({ ...NO_MARKS, italic: true });
   });
+
+  it("reports the heading level of the caret's line", () => {
+    expect(marksAt("# Title", 3).heading).toBe(1);
+    expect(marksAt("### Deep", 5).heading).toBe(3);
+    expect(marksAt("plain", 2).heading).toBe(0);
+  });
 });

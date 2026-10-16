@@ -1,5 +1,5 @@
 import { check, type Update } from "@tauri-apps/plugin-updater";
-import { installUpdate, restartApp } from "$lib/api/client";
+import { getSetting, installUpdate, restartApp, setSetting } from "$lib/api/client";
 import { isWeb } from "$lib/api/runtime";
 import { toasts } from "$lib/stores/toasts.svelte";
 import { fetchUpdateSizeDelta } from "$lib/update/release-size";
@@ -17,6 +17,7 @@ type DeltaState = "idle" | "loading" | "ready" | "unavailable";
 
 const RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const FIRST_CHECK_DELAY_MS = 8_000;
+const KEY_LAST_CHECKED = "updates.lastCheckedAt";
 
 class UpdaterStore {
   status = $state<UpdateStatus>("idle");
@@ -28,11 +29,14 @@ class UpdaterStore {
   error = $state<string | null>(null);
   sizeDelta = $state<number | null>(null);
   deltaState = $state<DeltaState>("idle");
+  lastCheckedAt = $state<string | null>(null);
+  show: () => void = () => {};
 
   #update: Update | null = null;
   #timer: ReturnType<typeof setInterval> | null = null;
   #firstCheck: ReturnType<typeof setTimeout> | null = null;
   #acknowledgedVersion: string | null = null;
+  #announcedVersion: string | null = null;
 
   get pendingUpdate(): boolean {
     if (this.version == null || this.version === this.#acknowledgedVersion) {
@@ -49,6 +53,11 @@ class UpdaterStore {
 
   start() {
     if (isWeb || this.#timer) return;
+    void getSetting<string>(KEY_LAST_CHECKED)
+      .then((at) => {
+        if (typeof at === "string" && this.lastCheckedAt === null) this.lastCheckedAt = at;
+      })
+      .catch(() => {});
     this.#timer = setInterval(() => void this.checkNow(), RECHECK_INTERVAL_MS);
     this.#firstCheck = setTimeout(() => void this.checkNow(), FIRST_CHECK_DELAY_MS);
   }
@@ -71,6 +80,7 @@ class UpdaterStore {
     this.error = null;
     try {
       const update = await check();
+      this.#markChecked();
       if (update) {
         this.#update = update;
         this.version = update.version;
@@ -79,6 +89,7 @@ class UpdaterStore {
         this.date = update.date ?? null;
         this.status = "available";
         void this.#loadSizeDelta();
+        if (!manual) this.#announce(update.version);
       } else {
         this.status = manual ? "uptodate" : "idle";
         if (manual) toasts.show("InstantNotes is up to date");
@@ -131,6 +142,21 @@ class UpdaterStore {
     this.#acknowledgedVersion = this.version;
     this.status = "idle";
     this.error = null;
+  }
+
+  #markChecked() {
+    this.lastCheckedAt = new Date().toISOString();
+    void setSetting(KEY_LAST_CHECKED, this.lastCheckedAt).catch(() => {});
+  }
+
+  #announce(version: string) {
+    if (version === this.#announcedVersion || version === this.#acknowledgedVersion) return;
+    this.#announcedVersion = version;
+    toasts.show(
+      `InstantNotes v${version} is available`,
+      { label: "Show", run: () => this.show() },
+      Infinity,
+    );
   }
 
   async #loadSizeDelta(): Promise<void> {

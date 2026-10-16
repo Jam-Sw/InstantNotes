@@ -19,6 +19,7 @@
   import { isSyntheticSpaceId } from "$lib/synthetic";
   import { agreements } from "$lib/agreements.svelte";
   import { licenseSpace } from "$lib/stores/license-space.svelte";
+  import { layout } from "$lib/stores/layout.svelte";
 
   const statusFilters: { id: StatusFilter; label: string }[] = [
     { id: "active", label: "Active" },
@@ -277,7 +278,11 @@
           {:else if library.statusFilter === "archived"}
             Nothing archived yet.
           {:else}
-            No notes yet. Press {captureShortcut} anywhere to capture your first thought.
+            {#if layout.touch}
+              No notes yet. Tap ＋ to write your first thought.
+            {:else}
+              No notes yet. Press {captureShortcut} anywhere to capture your first thought.
+            {/if}
           {/if}
         </div>
       {:else if groups}

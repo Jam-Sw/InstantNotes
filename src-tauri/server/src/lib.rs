@@ -7,12 +7,15 @@ mod libraries;
 mod limits;
 mod objects;
 mod oidc;
+pub mod operators;
+mod people;
 mod recheck;
 mod sessions;
 mod statics;
 mod sync_api;
 
 pub use config::Config;
+pub use people::Template as PeopleDir;
 pub use sessions::Person;
 
 use axum::extract::connect_info::IntoMakeServiceWithConnectInfo;
@@ -38,7 +41,7 @@ pub const SUBCOMMAND: &str = "serve";
 const BODY_LIMIT: usize = 32 * 1024 * 1024;
 const IDLE_SWEEP: Duration = Duration::from_secs(60);
 const BLOB_SWEEP_TICKS: u64 = 60;
-const SERVER_DB: &str = "server.db";
+pub(crate) const SERVER_DB: &str = "server.db";
 const HSTS: &str = "max-age=31536000";
 const LOGIN_COOKIE: &str = "in_login";
 const LOGIN_TTL: Duration = Duration::from_secs(10 * 60);
@@ -63,6 +66,7 @@ pub struct Inner {
     oidc: Arc<Oidc>,
     recheck: Recheck,
     stores: Stores,
+    people: people::People,
     devices: device::Devices,
 }
 
@@ -94,10 +98,19 @@ impl AppState {
             limits: Limits::new(),
             oidc: Arc::new(oidc),
             recheck: Recheck::new(&config.oidc_client_secret),
-            stores: Stores::new(&config.data_dir),
+            stores: Stores::default(),
+            people: people::People::new(&config.data_dir, config.people_dir.clone()),
             devices: device::Devices::default(),
             config,
         })))
+    }
+
+    fn store(&self, sub: &str) -> Result<Arc<objects::Store>, objects::Refused> {
+        self.stores.of(sub, || {
+            self.people
+                .folder(&self.sessions, sub)
+                .map_err(|e| objects::Refused::Unavailable(e.to_string()))
+        })
     }
 
     fn health(&self) -> Result<(), String> {
@@ -119,7 +132,7 @@ impl AppState {
             .run_due(&self.sessions, &self.oidc, sessions::now_secs())
             .await;
         for sub in ran.refused_people {
-            if let Ok(store) = self.stores.of(&sub) {
+            if let Ok(store) = self.store(&sub) {
                 store.cancel_joins();
             }
         }
@@ -127,7 +140,12 @@ impl AppState {
 }
 
 pub fn run_from_args(mut args: impl Iterator<Item = OsString>) -> Option<i32> {
-    if args.next().as_deref() != Some(SUBCOMMAND.as_ref()) {
+    let command = args.next()?;
+    let command = command.to_str()?;
+    if [operators::USAGE, operators::CHECK].contains(&command) {
+        return Some(operators::run(command, args));
+    }
+    if command != SUBCOMMAND {
         return None;
     }
     if args.next().is_some() {
@@ -421,6 +439,18 @@ async fn callback(
     match state.oidc.finish(&state.logins, &code, &login_state).await {
         Ok(signed_in) => {
             let person = signed_in.person;
+            if state
+                .people
+                .admit(&state.sessions, &person, signed_in.username.as_deref())
+                .is_err()
+            {
+                return statics::html(
+                    StatusCode::FORBIDDEN,
+                    statics::error_page(
+                        "This server cannot give your account a library. Ask whoever runs it.",
+                    ),
+                );
+            }
             log(
                 "auth.signed_in",
                 &[
@@ -448,7 +478,11 @@ async fn callback(
                 return response;
             }
             let id = state.sessions.create(person);
-            let mut response = statics::html(StatusCode::OK, statics::signed_in());
+            let mut response = statics::sign_in(
+                StatusCode::OK,
+                state.config.sign_in_stylesheet.as_deref(),
+                true,
+            );
             response.headers_mut().insert(
                 header::SET_COOKIE,
                 cookie(&state, &id, Some(state.sessions.ttl())),
@@ -476,7 +510,11 @@ async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Response {
 
 async fn ui(State(state): State<AppState>, headers: HeaderMap, uri: Uri) -> Response {
     if person_of(&state, &headers).is_none() {
-        return statics::html(StatusCode::OK, statics::SIGN_IN.to_string());
+        return statics::sign_in(
+            StatusCode::OK,
+            state.config.sign_in_stylesheet.as_deref(),
+            false,
+        );
     }
     statics::serve_ui(&state.config.ui_dir, uri.path()).await
 }

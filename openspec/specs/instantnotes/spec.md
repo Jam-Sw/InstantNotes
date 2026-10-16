@@ -68,6 +68,16 @@ The app SHALL draw the library as a graph of notes, tags, and Spaces, linked by 
 - **THEN** the view frames that note, its tags and Spaces, and the notes they gather
 - **AND** "Show all" fits the whole library until "Around this note" is chosen again
 
+#### Scenario: Move around the graph
+- **WHEN** the user drags, scrolls, pinches, or double-clicks on the graph, with a mouse, a trackpad, or a finger
+- **THEN** a drag turns the view around a marked centre, a right-drag, Shift+drag, two-finger drag or two-finger scroll pans, the wheel or a pinch zooms, and a double-click on a node turns the view around that node
+- **AND** a double-click on the background, Home, 0, or "Reset view" brings back the first view
+
+#### Scenario: Keep a sense of scale
+- **WHEN** the view turns
+- **THEN** a ground ring and an upright ring fixed in the world turn with the graph, farther nodes are drawn smaller and fainter, and the centre stays marked
+- **AND** tags and Spaces keep their labels, the open, centred or hovered node and its neighbours are labelled, and other notes are labelled on hover, all at one size whatever the zoom
+
 ### Requirement: Filing Suggestions
 The app SHALL say, in the Graph, which Space each live note in no Space most likely belongs to, with a probability and up to three reasons drawn from the note's tags and words, judged against the notes already filed, recounted on every read with nothing trained or stored. The app SHALL only suggest, never file on its own, and SHALL say nothing until two Spaces hold notes or when the evidence does not clearly favour one Space.
 

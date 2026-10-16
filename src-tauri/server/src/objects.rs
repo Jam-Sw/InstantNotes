@@ -91,6 +91,7 @@ pub enum Refused {
     NotFound,
     Busy,
     Incomplete,
+    Unavailable(String),
     Storage(String),
 }
 
@@ -713,27 +714,25 @@ fn set_meta(conn: &Connection, key: &str, value: &str) -> Result<(), Refused> {
     .map_err(storage)
 }
 
+#[derive(Default)]
 pub struct Stores {
-    root: PathBuf,
     open: Mutex<HashMap<String, Arc<Store>>>,
 }
 
 impl Stores {
-    pub fn new(data_dir: &Path) -> Stores {
-        Stores {
-            root: data_dir.join("sync"),
-            open: Mutex::new(HashMap::new()),
-        }
-    }
-
-    pub fn of(&self, sub: &str) -> Result<Arc<Store>, Refused> {
+    pub fn of(
+        &self,
+        sub: &str,
+        folder: impl FnOnce() -> Result<PathBuf, Refused>,
+    ) -> Result<Arc<Store>, Refused> {
         let mut open = self.open.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(store) = open.get(sub) {
             return Ok(Arc::clone(store));
         }
-        let dir = self.root.join(crate::libraries::folder_name(sub));
-        let store = Arc::new(Store::open(&dir)?);
-        open.insert(sub.to_string(), Arc::clone(&store));
+        let store = Arc::new(Store::open(&folder()?)?);
+        if sub != crate::people::CHECK_SUB {
+            open.insert(sub.to_string(), Arc::clone(&store));
+        }
         Ok(store)
     }
 
@@ -1111,9 +1110,11 @@ mod tests {
     #[test]
     fn two_people_never_share_a_store_or_a_blob() {
         let dir = tempfile::tempdir().unwrap();
-        let stores = Stores::new(dir.path());
-        let a = stores.of("alice").unwrap();
-        let b = stores.of("../alice").unwrap();
+        let people = crate::people::People::new(dir.path(), None);
+        let stores = Stores::default();
+        let of = |sub: &str| stores.of(sub, || Ok(people.legacy_folder(sub))).unwrap();
+        let a = of("alice");
+        let b = of("../alice");
         let blob = put(&a, b"alice's note");
         a.commit(1, &[op(&name(1), None, Some(&blob))], "d", false)
             .unwrap();
@@ -1123,6 +1124,6 @@ mod tests {
             b.commit(1, &[op(&name(1), None, Some(&blob))], "d", false),
             Err(Refused::MissingBlob(_))
         ));
-        assert!(Arc::ptr_eq(&a, &stores.of("alice").unwrap()));
+        assert!(Arc::ptr_eq(&a, &of("alice")));
     }
 }

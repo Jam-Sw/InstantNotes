@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { INSTALL_FOOTER, notes } from "./release-notes.mjs";
+import { installFooter, notes, signedFromEnv } from "./release-notes.mjs";
 
 export const PLATFORMS = [
   { name: "Linux", file: (v) => `InstantNotes_${v}_amd64.AppImage`, keys: ["linux-x86_64", "linux-x86_64-appimage"] },
@@ -59,7 +59,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const pending = missing.length
     ? `\n\nNot in this release yet: ${missing.join(", ")}. Those installs stay on their current version until it is added.`
     : "";
-  writeFileSync("notes.md", `${body}${pending}\n\n${INSTALL_FOOTER}\n`);
+  writeFileSync("notes.md", `${body}${pending}\n\n${installFooter(signedFromEnv(process.env))}\n`);
   gh("release", "edit", tag, "--notes-file", "notes.md", "--draft=false", "--latest");
   console.log(`${tag} published: ${PLATFORMS.length - missing.length}/${PLATFORMS.length} platforms${missing.length ? ` (missing ${missing.join(", ")})` : ""}`);
 }

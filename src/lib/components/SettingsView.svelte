@@ -7,7 +7,9 @@
   import SettingsContexting from "$lib/components/settings/SettingsContexting.svelte";
   import SettingsLinks from "$lib/components/settings/SettingsLinks.svelte";
   import SettingsFeedback from "$lib/components/settings/SettingsFeedback.svelte";
+  import SettingsDiagnostics from "$lib/components/settings/SettingsDiagnostics.svelte";
   import SettingsSync from "$lib/components/settings/SettingsSync.svelte";
+  import SettingsBackups from "$lib/components/settings/SettingsBackups.svelte";
   import SettingsAgents from "$lib/components/settings/SettingsAgents.svelte";
   import SettingsImport from "$lib/components/settings/SettingsImport.svelte";
   import { getLibraryStats, getCaptureLatency, openUrl } from "$lib/api/client";
@@ -18,33 +20,21 @@
   import { parseChangelog } from "$lib/changelog";
   import { theme } from "$lib/stores/theme.svelte";
   import { agents } from "$lib/stores/agents.svelte";
+  import { shell, type SettingsPage as Page } from "$lib/stores/shell.svelte";
+  import { layout } from "$lib/stores/layout.svelte";
   import changelogRaw from "../../../CHANGELOG.md?raw";
 
   let {
     appVersion,
     onBack,
     onShowSpace,
-    initialPage = "home",
   }: {
     appVersion: string;
     onBack: () => void;
     onShowSpace: (workspaceId: string) => void;
-    initialPage?: Page;
   } = $props();
 
-  type Page =
-    | "home"
-    | "appearance"
-    | "about"
-    | "editor"
-    | "images"
-    | "links"
-    | "contexting"
-    | "feedback"
-    | "vault"
-    | "agents"
-    | "import";
-  let page = $state<Page>(initialPage);
+  const page = $derived(shell.settingsPage);
   let filter = $state("");
   let filterInput = $state<HTMLInputElement>();
 
@@ -76,7 +66,10 @@
     {
       label: "Your data",
       entries: [
-        { id: "vault", title: "Sync", desc: isWeb ? "Keep your notes the same on every device signed in to this server." : "Keep your notes the same on every device, through a folder or your own server.", keywords: "vault folder server sign in encryption recovery key devices export backup markdown files" },
+        { id: "vault", title: "Sync", desc: isWeb ? "Keep your notes the same on every device signed in to this server." : "Keep your notes the same on every device, through a folder or your own server.", keywords: "vault folder server sign in encryption recovery key devices" },
+        isWeb
+          ? { id: "backups" as const, title: "Export", desc: "Every note as plain Markdown, in one download.", keywords: "export backup markdown zip files download" }
+          : { id: "backups" as const, title: "Backups", desc: "Daily copies of your library, restore, and export as Markdown.", keywords: "backup restore export markdown files copy snapshot" },
         { id: "contexting", title: "Contexting", desc: "Shape what copying a note hands to other tools and AI.", keywords: "copy context clipboard ai" },
         ...(isMac
           ? [{ id: "import" as const, title: "Import", desc: "Bring in your Apple Stickies as notes.", keywords: "stickies apple migrate" }]
@@ -94,6 +87,7 @@
       entries: [
         { id: "about", title: "About", desc: "Version, platform, and project links.", keywords: "version license github" },
         { id: "feedback", title: "Feedback", desc: "Report a bug or send an idea.", keywords: "bug issue idea report" },
+        { id: "diagnostics", title: "Diagnostics", desc: "Crash reports and a report you can send.", keywords: "crash error log problem report debug" },
       ],
     },
     ] as Group[]
@@ -120,12 +114,15 @@
   });
 
   const searching = $derived(filter.trim() !== "");
+  let overview = $state(false);
+  const navPane = $derived(page === "home" && !overview);
   const results = $derived(
     shownGroups.flatMap((g) => g.entries.map((e) => ({ ...e, group: g.label }))),
   );
 
   function openPage(id: Page) {
-    page = id;
+    shell.settingsPage = id;
+    overview = id === "home";
     filter = "";
   }
 
@@ -149,7 +146,8 @@
           return;
         }
         e.preventDefault();
-        if (page !== "home") page = "home";
+        if (page !== "home") shell.settingsPage = "home";
+        else if (overview && layout.phone) overview = false;
         else onBack();
       }
     }
@@ -167,7 +165,7 @@
   const ACCESS_LABEL = { off: "Off", read: "Read only", write: "Read & write" } as const;
 </script>
 
-<div class="settings-root">
+<div class="settings-root" class:phone={layout.phone} data-pane={navPane ? "nav" : "main"}>
   <nav class="settings-nav" aria-label="Settings pages">
     <div class="pane-header" data-tauri-drag-region></div>
     <div class="nav-top">
@@ -192,7 +190,7 @@
           {#each group.entries as entry (entry.id)}
             <button
               class="nav-item"
-              class:active={page === entry.id}
+              class:active={!layout.phone && page === entry.id}
               aria-current={page === entry.id ? "page" : undefined}
               title={entry.desc}
               onclick={() => openPage(entry.id)}
@@ -228,7 +226,13 @@
         {/each}
       </section>
     {:else if page === "home"}
-      <div class="pane-header" data-tauri-drag-region></div>
+      <div class="pane-header" data-tauri-drag-region>
+        {#if layout.phone}
+          <button class="back-btn" aria-label="Back to Settings" onclick={() => (overview = false)}>
+            <span class="back-arrow" aria-hidden="true">&#8592;</span> Settings
+          </button>
+        {/if}
+      </div>
       <div class="settings-home">
         <header class="home-head">
           <h2 class="home-title">Overview</h2>
@@ -309,8 +313,13 @@
       </div>
     {:else}
       <header class="pane-header page-head" data-tauri-drag-region>
+        {#if layout.phone}
+          <button class="back-btn" aria-label="Back to Settings" onclick={() => (shell.settingsPage = "home")}>
+            <span class="back-arrow" aria-hidden="true">&#8592;</span> Settings
+          </button>
+        {/if}
         <nav class="crumb" aria-label="Breadcrumb">
-          <button class="crumb-link" onclick={() => (page = "home")}>Settings</button>
+          <button class="crumb-link" onclick={() => (shell.settingsPage = "home")}>Settings</button>
           <span class="crumb-sep" aria-hidden="true">&rsaquo;</span>
           <span class="crumb-current">{TITLES[page]}</span>
         </nav>
@@ -330,12 +339,16 @@
           <SettingsLinks />
         {:else if page === "vault"}
           <SettingsSync />
+        {:else if page === "backups"}
+          <SettingsBackups />
         {:else if page === "agents"}
           <SettingsAgents />
         {:else if page === "import"}
           <SettingsImport {onShowSpace} />
         {:else if page === "feedback"}
           <SettingsFeedback {appVersion} />
+        {:else if page === "diagnostics"}
+          <SettingsDiagnostics />
         {/if}
       </main>
     {/if}
@@ -347,10 +360,37 @@
     display: grid;
     grid-template-columns: 228px minmax(0, 1fr);
     height: 100vh;
+    height: var(--app-height, 100dvh);
     overflow: hidden;
     background: var(--bg);
   }
 
+  .settings-root.phone {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .phone[data-pane="nav"] .settings-main,
+  .phone[data-pane="main"] .settings-nav {
+    display: none;
+  }
+  .phone .settings-nav {
+    border-right: none;
+  }
+  .phone .page-head {
+    padding: 0 16px;
+  }
+  .phone .crumb {
+    display: none;
+  }
+  .phone .pane-header .back-btn {
+    align-self: center;
+    margin-left: 0;
+  }
+  .phone .settings-content {
+    padding: 16px 16px calc(40px + env(safe-area-inset-bottom));
+  }
+  .phone .settings-home {
+    padding: 4px 16px calc(40px + env(safe-area-inset-bottom));
+  }
   .settings-nav {
     display: flex;
     flex-direction: column;

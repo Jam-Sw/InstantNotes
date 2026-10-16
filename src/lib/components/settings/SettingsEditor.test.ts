@@ -14,6 +14,7 @@ afterEach(cleanup);
 beforeEach(() => {
   editorPrefs.showExactTime = false;
   editorPrefs.toolbarOpen = false;
+  editorPrefs.sourceMode = false;
   vi.mocked(setSetting).mockClear();
 });
 
@@ -41,9 +42,13 @@ describe("SettingsEditor", () => {
 
   it("toggling the formatting toolbar default persists separately from the timestamp toggle", async () => {
     const { findByRole } = render(SettingsEditor);
-    const sw = await findByRole("switch", { name: "Open the formatting toolbar by default" });
+    const sw = await findByRole("switch", { name: "Show the formatting toolbar" });
     await fireEvent.click(sw);
     expect(vi.mocked(setSetting)).toHaveBeenCalledWith("editor.toolbarOpen", true);
+    const source = await findByRole("switch", { name: "Show Markdown source" });
+    expect(source.getAttribute("aria-checked")).toBe("false");
+    await fireEvent.click(source);
+    expect(vi.mocked(setSetting)).toHaveBeenCalledWith("editor.sourceMode", true);
     expect(
       (await findByRole("switch", { name: "Show exact save time" })).getAttribute(
         "aria-checked",

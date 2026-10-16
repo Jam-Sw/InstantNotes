@@ -1,7 +1,7 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { isWeb } from "./runtime";
-import { callLibrary, saveLibraryAttachment } from "$lib/web/library";
+import { callLibrary, exportLibraryArchive, saveLibraryAttachment } from "$lib/web/library";
 import type { DownloadEvent } from "@tauri-apps/plugin-updater";
 import { ERROR_CODES, isErrorCode, type ErrorCode } from "./error-codes";
 import type {
@@ -13,6 +13,9 @@ import type {
 } from "$lib/agent-activity";
 import type {
   AttachmentCleanup,
+  BackupInspection,
+  BackupList,
+  CrashReport,
   LibraryGraph,
   CaptureLatencySummary,
   CreateNoteInput,
@@ -155,6 +158,8 @@ export const deleteSetting = (key: string) =>
 
 export const hideCapture = () => call<void>("hide_capture");
 export const openLibrary = () => call<void>("open_library");
+export const openDataFolder = () => call<void>("open_data_folder");
+export const requestQuit = () => call<void>("request_quit");
 export const openUrl = async (url: string): Promise<void> => {
   if (isWeb) {
     window.open(url, "_blank", "noopener");
@@ -222,6 +227,22 @@ export const removeUnusedAttachments = () =>
   call<AttachmentCleanup>("remove_unused_attachments");
 
 export const exportVault = (dest: string) => call<void>("export_vault", { dest });
+export const exportArchive = () => exportLibraryArchive();
+export const listBackups = () => call<BackupList>("list_backups");
+export const backupNow = () => call<BackupList>("backup_now");
+export const setBackupsAutomatic = (on: boolean) =>
+  call<void>("set_backups_automatic", { on });
+export const inspectBackup = (path: string) =>
+  call<BackupInspection>("inspect_backup", { path });
+export const restoreBackup = (path: string) => call<void>("restore_backup", { path });
+export const openBackupsFolder = () => call<void>("open_backups_folder");
+
+export const reportFrontendError = (message: string, stack: string | null, where: string) =>
+  call<void>("report_frontend_error", { message, stack, where });
+export const listCrashReports = () => call<CrashReport[]>("list_crash_reports");
+export const readCrashReport = (name: string) => call<string>("read_crash_report", { name });
+export const deleteCrashReport = (name: string) => call<void>("delete_crash_report", { name });
+export const diagnosticsReport = () => call<string>("diagnostics_report");
 
 export const getVaultStatus = () => call<VaultStatus>("get_vault_status");
 export const setVaultFolder = (path: string | null) =>

@@ -252,7 +252,7 @@ length.
 
 | Place | Where |
 | --- | --- |
-| Desktop | System keychain (`keyring`: macOS Keychain, Windows Credential Manager, Secret Service on Linux), beside the device token. No keychain answering: Sync server cannot start, and Settings says why. |
+| Desktop | System keychain (`keyring`: macOS Keychain, Windows Credential Manager, Secret Service on Linux), beside the device token. On macOS and Windows, a keychain that refuses stops Sync server, and Settings says why. On Linux with no Secret Service answering (a container, a server), the token and key go to `secrets.json` next to the library: written to a fresh temporary file created owner-only (`0600`), then renamed into place, so no copy is ever readable by others. Its protection is the account and the disk, as for the library itself. |
 | Browser | IndexedDB, wrapped by a non-extractable WebCrypto AES-GCM key kept beside it. "Sign out of this browser" removes it with the browser's copy of the notes (§9), which serves a shared computer; there is no separate "remember" switch. A new key is written there (in a second slot) before the server is told about it, so an interrupted switch never leaves the only copy in memory. |
 | iOS (later) | iOS Keychain through a small Swift plugin. |
 | Server | Never. It stores the library's public recipient only, so a typed recovery key can be checked. |
@@ -395,7 +395,32 @@ person's identity provider, as in 0.9.5 (decision D2).
    **<person>**?" Allow redirects to the loopback address with a one-time code
    (60 s, bound to the challenge and the redirect).
 6. The app exchanges the code with its verifier for a device token and stores
-   it in the keychain.
+   it in the keychain (§4.4).
+
+**With no browser on the app's computer** (a container shown through a remote
+desktop, or `INSTANTNOTES_SIGN_IN=code` in the app's environment), the same
+sign-in finishes on another device, in the shape of the OAuth device grant
+(RFC 8628) and still bound to the app's PKCE challenge:
+
+1. The app sends its challenge and device name to `POST device/code` and gets
+   `{ deviceCode, userCode, verificationUri, verificationUriComplete,
+   expiresIn, interval }`. `userCode` is eight characters from an alphabet of
+   32 without look-alikes (`0`, `O`, `1`, `I`), shown as `ABCD-2345`: 40 bits,
+   behind the sign-in rate limit. `deviceCode` is a 256-bit random secret the
+   app keeps; it never appears in a page, a redirect or a link, which carry a
+   separate request id. The request lasts 10 minutes.
+2. The app shows the code and `verificationUri`. On any other device the
+   person opens `GET device/link`, types the code (any case, spaces or dashes),
+   signs in if needed (step 4 above), and sees the confirm page of step 5,
+   which also shows the code to check against the app's. A link someone else
+   sent therefore cannot connect their device without the person noticing.
+3. The app polls `POST device/poll` with `deviceCode` and its verifier every
+   `interval` (5 s): `202 PENDING` until the person answers, then once the
+   device token as in step 6, or `400 ACCESS_DENIED` after Cancel. The answer
+   is collected once and kept for 60 s; afterwards, or for an unknown or
+   expired code, `400 EXPIRED`. A wrong verifier gets `400 INVALID_GRANT` and
+   burns the answer. Too many polls get `429` with `Retry-After`, which the app
+   waits out.
 
 ### 5.2 Browser and phone
 
@@ -605,6 +630,7 @@ cookie with the `X-InstantNotes` header.
 | --- | --- |
 | `GET info` | `{ app: "instantnotes", api: 1, version, maxObjectBytes }`. No auth. |
 | `GET device/authorize`, `GET device/confirm`, `POST device/allow`, `POST device/token` | Desktop sign-in (§5.1). |
+| `POST device/code`, `GET device/link`, `POST device/poll` | Desktop sign-in finished on another device with a short code (§5.1). No auth; `device/poll` takes the app's verifier. |
 | `GET keys` | `{ libraryId, mode, recipient, epoch, head }`; mode and recipient none yet on a new library. |
 | `PUT keys` | First device only: sets the mode and, encrypted, the public recipient; refused when set. |
 | `POST keys/requests` | A new device's join request: temporary public key, device name. |
@@ -855,11 +881,11 @@ was read back after it, from OPFS.
 | Device tokens and sessions | Random, hashed at rest, revocable, expiring unused (§5.5); revoked when the identity provider refuses the person, checked hourly (§5.6). |
 | Keys | On devices only (§4.4); handed over encrypted, with six words to compare (§5.3). |
 | Isolation | §7, with tests; and ciphertext without a key even if it failed. |
-| Rate limits | `governor`: sign-in pages 30 a minute per address; `device/token` 10; join requests 5 a minute per person; sync API 600 a minute per device; more than 20 refused tokens a minute from one address gets `429`. Client address from the socket, or the last `X-Forwarded-For` hop (the one the trusted proxy appended; earlier hops are the client's to write) with `INSTANTNOTES_TRUST_PROXY=true`. Idle entries are dropped every minute. |
+| Rate limits | `governor`: sign-in pages (including `device/code` and `device/link`) 30 a minute per address; `device/token` 10; `device/poll` 30; join requests 5 a minute per person; sync API 600 a minute per device; more than 20 refused tokens a minute from one address gets `429`. Client address from the socket, or the last `X-Forwarded-For` hop (the one the trusted proxy appended; earlier hops are the client's to write) with `INSTANTNOTES_TRUST_PROXY=true`. Idle entries are dropped every minute. |
 | Cross-site requests | Cookie routes require the `X-InstantNotes` header (0.9.5). Bearer routes take no cookie. |
 | Logs | Person folder, device id, counts and byte totals; never content, names or titles. |
 | Stolen device, unlocked | The thief reads that device's library, as with any app. Revoke it from another device; it can then fetch nothing new. |
-| Stolen device, off | Protected by the device's disk encryption; the key is in the system keychain. |
+| Stolen device, off | Protected by the device's disk encryption; the key is in the system keychain, or on Linux without one in the owner-only `secrets.json` (§4.4). |
 | Stolen server or backups | Ciphertext, padded sizes, timings, device names, hashed tokens, and the OIDC client secret (it can impersonate the server to the identity provider, not read notes). |
 | A malicious server | Cannot read stored notes. Cannot turn encryption off or swap the key for devices that hold it (§4.10 marker and recipient check). Could withhold data, roll back the whole library (detected as §3.7, recovered by keep-both) or single objects (not detected; the device keeps its newer copy and sends it again only when edited), refuse service, or, for the browser only, send altered code (§4.8). Cannot swap in its own key during a join, or invent an approval, without the words differing (§5.3). Cannot tell a device that holds the key from one that only signed in; a signed-in device without the key can still delete objects, which the removal guard (§3.6) holds for confirmation, and a switch-over must carry every live object (§4.10). |
 | Harvest now, decrypt later | X25519 is not post-quantum. age's post-quantum recipient rests on an IETF draft; switching to it later means changing the library key (§4.6). |

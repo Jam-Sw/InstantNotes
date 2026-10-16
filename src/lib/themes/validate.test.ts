@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { parseTheme, validateTheme } from "./validate";
 import { manuscript } from "./builtin/manuscript";
+import { BUILTIN_THEMES, DEFAULT_THEME_ID } from "./builtin";
 
 const validJson = JSON.stringify(manuscript);
 
 describe("validateTheme", () => {
+  it("accepts every built-in theme, Night console among them, with Manuscript the default", () => {
+    for (const t of BUILTIN_THEMES) expect(validateTheme(JSON.parse(JSON.stringify(t))).ok, t.id).toBe(true);
+    expect(BUILTIN_THEMES.map((t) => t.id)).toContain("night-console");
+    expect(DEFAULT_THEME_ID).toBe("manuscript");
+  });
+
   it("accepts a serialized built-in theme", () => {
     const r = parseTheme(validJson);
     expect(r.ok).toBe(true);

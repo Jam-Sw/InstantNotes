@@ -61,12 +61,10 @@ pub fn collect_from_store(store: &Store) -> Result<(Vec<VaultNote>, Manifest)> {
     Ok((vault_notes, manifest))
 }
 
-pub fn export_vault(notes: &[VaultNote], manifest: &Manifest, dest: &Path) -> io::Result<()> {
-    let trash_dir = dest.join("trash");
-    fs::create_dir_all(&trash_dir)?;
-
+pub fn export_entries(notes: &[VaultNote], manifest: &Manifest) -> Vec<(String, String)> {
     let mut taken_root: HashSet<String> = HashSet::new();
     let mut taken_trash: HashSet<String> = HashSet::new();
+    let mut entries = Vec::new();
 
     for note in notes {
         let display_title = note
@@ -82,19 +80,43 @@ pub fn export_vault(notes: &[VaultNote], manifest: &Manifest, dest: &Path) -> io
         let filename = note_filename(&display_title, &note.id, taken);
         taken.insert(collision_key(&filename));
 
-        let dir = if is_trashed { &trash_dir } else { dest };
-        atomic_write(&dir.join(&filename), serialize_note(note).as_bytes())?;
+        let prefix = if is_trashed { "trash/" } else { "" };
+        entries.push((format!("{prefix}{filename}"), serialize_note(note)));
         if let (Some(surface), Some(ext)) = (&note.surface, surface_ext(&note.kind)) {
-            atomic_write(&dir.join(surface_rel(&filename, ext)), surface.as_bytes())?;
+            entries.push((
+                format!("{prefix}{}", surface_rel(&filename, ext)),
+                surface.clone(),
+            ));
         }
     }
 
-    atomic_write(
-        &dest.join("instantnotes.yaml"),
-        serialize_manifest(manifest).as_bytes(),
-    )?;
+    entries.push((
+        "instantnotes.yaml".to_string(),
+        serialize_manifest(manifest),
+    ));
+    entries
+}
 
+pub fn export_vault(notes: &[VaultNote], manifest: &Manifest, dest: &Path) -> io::Result<()> {
+    fs::create_dir_all(dest.join("trash"))?;
+    for (rel, content) in export_entries(notes, manifest) {
+        atomic_write(&dest.join(rel), content.as_bytes())?;
+    }
     Ok(())
+}
+
+pub fn export_archive(store: &Store) -> Result<Vec<u8>> {
+    let (notes, manifest) = collect_from_store(store)?;
+    let mut archive = super::archive::Writer::new();
+    for (rel, content) in export_entries(&notes, &manifest) {
+        archive.add(&rel, content.as_bytes());
+    }
+    for (name, _) in store.attachment_file_sizes(None)? {
+        if let Some(bytes) = store.attachment_file(&name)? {
+            archive.add(&format!("attachments/{name}"), &bytes);
+        }
+    }
+    Ok(archive.finish())
 }
 
 #[cfg(test)]
@@ -216,5 +238,29 @@ mod tests {
         let dest = dir.path().join("fresh-vault");
         export_vault(&[], &Manifest::default(), &dest).unwrap();
         assert!(dest.join("instantnotes.yaml").exists());
+    }
+
+    #[test]
+    fn the_archive_holds_the_same_files_plus_the_attachments() {
+        let mut store = Store::open_in_memory().unwrap();
+        store
+            .create_note(crate::types::CreateNoteInput {
+                title: Some("Café".into()),
+                body: Some("body ![](attachments/a.png)".into()),
+                tags: vec!["t".into()],
+            })
+            .unwrap();
+        store.save_attachment_file("a.png", &[1, 2, 3]).unwrap();
+        let bytes = export_archive(&store).unwrap();
+        let entries = crate::vault::archive::read(&bytes);
+        let names: Vec<&str> = entries.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(
+            names,
+            vec!["Café.md", "instantnotes.yaml", "attachments/a.png"]
+        );
+        assert_eq!(entries[2].1, vec![1, 2, 3]);
+        assert!(String::from_utf8(entries[0].1.clone())
+            .unwrap()
+            .ends_with("body ![](attachments/a.png)"));
     }
 }

@@ -65,7 +65,13 @@ pub(crate) fn start_vault_sync(app: &AppHandle) -> VaultSync {
                 }
                 Some(Engine::Folder(s)) => {
                     let report = s.cycle(&handle.state::<AppState>().store);
-                    announce(&handle, &report.notes, report.labels_changed);
+                    if let Some(error) = report.errors.first() {
+                        crate::shell::log::log(
+                            "sync.failed",
+                            &[("transport", "folder"), ("error", error)],
+                        );
+                    }
+                    announce(&handle, &report.notes, report.labels_changed, false);
                 }
                 Some(Engine::Server(server, stop)) => {
                     let link = handle.state::<ServerLink>();
@@ -81,7 +87,12 @@ pub(crate) fn start_vault_sync(app: &AppHandle) -> VaultSync {
                     finish_legacy(&handle, &server.sync.remote.client, &report);
                     record_report(&handle, &report);
                     report_legacy(&handle, legacy.err());
-                    announce(&handle, &report.notes, report.labels_changed || imported);
+                    announce(
+                        &handle,
+                        &report.notes,
+                        report.labels_changed || imported,
+                        report.settings_changed,
+                    );
                     if imported {
                         let _ = handle.emit(events::NOTES_CHANGED, ());
                     }
@@ -154,7 +165,7 @@ fn current_syncer(app: &AppHandle, previous: Option<Syncer>) -> Option<Syncer> {
     }
 }
 
-fn announce(app: &AppHandle, notes: &[String], labels_changed: bool) {
+fn announce(app: &AppHandle, notes: &[String], labels_changed: bool, settings_changed: bool) {
     if !notes.is_empty() {
         let _ = app.emit(events::NOTES_CHANGED, ());
         let _ = app.emit(events::VAULT_SYNCED, VaultSynced { note_ids: notes });
@@ -162,6 +173,9 @@ fn announce(app: &AppHandle, notes: &[String], labels_changed: bool) {
     if labels_changed {
         let _ = app.emit(events::TAGS_CHANGED, ());
         let _ = app.emit(events::WORKSPACES_CHANGED, ());
+    }
+    if settings_changed {
+        let _ = app.emit(events::SETTINGS_CHANGED, ());
     }
     let _ = app.emit(events::VAULT_STATUS, ());
 }
@@ -192,6 +206,9 @@ pub(crate) fn flush_vault_now(app: &AppHandle, max_chunks: Option<usize>) {
             }
             store.flush_vault(chunk)
         };
+        if let Err(e) = &outcome {
+            crate::shell::log::log("vault.flush_failed", &[("error", &e.to_string())]);
+        }
         chunks += 1;
         let more = matches!(&outcome, Ok(out)
             if out.errors.is_empty() && out.written > 0 && out.remaining > 0);

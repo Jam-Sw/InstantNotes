@@ -2,7 +2,15 @@
   import { onMount } from "svelte";
   import { EditorView, keymap, placeholder as cmPlaceholder } from "@codemirror/view";
   import { EditorState, type Extension, type StateEffect } from "@codemirror/state";
-  import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
+  import {
+    history,
+    defaultKeymap,
+    historyKeymap,
+    redo as cmRedo,
+    redoDepth,
+    undo as cmUndo,
+    undoDepth,
+  } from "@codemirror/commands";
   import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
   import { languages } from "@codemirror/language-data";
   import { syntaxHighlighting } from "@codemirror/language";
@@ -35,6 +43,7 @@
     previewMode = false,
     onchange,
     onactive,
+    onhistory,
   }: {
     value?: string;
     docKey?: string;
@@ -42,7 +51,10 @@
     previewMode?: boolean;
     onchange?: (v: string) => void;
     onactive?: (marks: ActiveMarks) => void;
+    onhistory?: (h: EditHistory) => void;
   } = $props();
+
+  export type EditHistory = { undo: boolean; redo: boolean };
 
   let container: HTMLDivElement;
   let view: EditorView | undefined;
@@ -86,6 +98,7 @@
             if (u.docChanged || u.selectionSet) {
               onactive?.(activeMarks(u.state));
             }
+            if (u.docChanged) onhistory?.(historyState(u.state));
           }),
     ];
     view = new EditorView({
@@ -94,6 +107,7 @@
     });
     loadedKey = docKey;
     onactive?.(activeMarks(view.state));
+    onhistory?.(historyState(view.state));
     void getAttachmentsDir()
       .then((dir) => {
         attachmentsBase = dir;
@@ -129,6 +143,7 @@
       loadedKey = key;
       view.dispatch({ effects: seedEffects() });
       onactive?.(activeMarks(view.state));
+      onhistory?.(historyState(view.state));
     } finally {
       applyingExternal = false;
     }
@@ -166,8 +181,32 @@
     }
   });
 
+  function historyState(state: EditorState): EditHistory {
+    return { undo: undoDepth(state) > 0, redo: redoDepth(state) > 0 };
+  }
+
   export function focus() {
     view?.focus();
+  }
+
+  export function undo() {
+    if (!view) return;
+    cmUndo(view);
+    view.focus();
+  }
+
+  export function redo() {
+    if (!view) return;
+    cmRedo(view);
+    view.focus();
+  }
+
+  export function canUndo(): boolean {
+    return view ? undoDepth(view.state) > 0 : false;
+  }
+
+  export function canRedo(): boolean {
+    return view ? redoDepth(view.state) > 0 : false;
   }
 
   export function insertText(text: string) {

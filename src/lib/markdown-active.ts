@@ -9,6 +9,7 @@ export interface ActiveMarks {
   quote: boolean;
   list: boolean;
   task: boolean;
+  heading: number;
 }
 
 export const NO_MARKS: ActiveMarks = {
@@ -19,6 +20,7 @@ export const NO_MARKS: ActiveMarks = {
   quote: false,
   list: false,
   task: false,
+  heading: 0,
 };
 
 function mark(name: string, marks: ActiveMarks): void {
@@ -46,6 +48,10 @@ function mark(name: string, marks: ActiveMarks): void {
     case "Task":
       marks.task = true;
       break;
+    default: {
+      const heading = /^(?:ATX|Setext)Heading(\d)$/.exec(name);
+      if (heading) marks.heading = Number(heading[1]);
+    }
   }
 }
 

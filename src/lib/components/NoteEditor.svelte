@@ -11,6 +11,7 @@
   import { editorPrefs } from "$lib/stores/editor.svelte";
   import { imagePrefs } from "$lib/stores/images.svelte";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
+  import { openElsewhere } from "$lib/stores/open-elsewhere.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
   import { importImageFile, allowImageFile, openUrl, popOutNote, tagSuggestion } from "$lib/api/client";
   import { isWeb } from "$lib/api/runtime";
@@ -32,8 +33,11 @@
     applyFormat: (k: FormatKind) => void;
     focus: () => void;
     insertText: (t: string) => void;
+    undo: () => void;
+    redo: () => void;
   }>();
   let active = $state<ActiveMarks>({ ...NO_MARKS });
+  let history = $state({ undo: false, redo: false });
 
   const isBoard = $derived(library.selected?.contentKind === "whiteboard");
   const isSheet = $derived(library.selected?.contentKind === "sheet");
@@ -153,16 +157,6 @@
       {:else}
         {#if !isSurface}
           <div class="icon-group">
-            {#if !isWeb}
-              <button
-                class="icon-btn"
-                title="Insert image from a file"
-                aria-label="Insert image"
-                onclick={insertImage}
-              >
-                <Icon name="image" />
-              </button>
-            {/if}
             <button
               class="icon-btn"
               title="Formatting tools"
@@ -175,6 +169,14 @@
           </div>
         {/if}
         <div class="icon-group">
+          <button
+            class="icon-btn"
+            title="Open on another device"
+            aria-label="Open on another device"
+            onclick={() => void openElsewhere.show(library.selected!.id)}
+          >
+            <Icon name="devices" />
+          </button>
           {#if !isWeb}
             <button
               class="icon-btn"
@@ -215,8 +217,17 @@
       {/if}
     {/if}
   </header>
-  {#if !isSurface && editorPrefs.toolbarOpen}
-    <FormatToolbar {active} onFormat={(k) => editorRef?.applyFormat(k)} />
+  {#if !isSurface && editorPrefs.toolbarOpen && !library.selected.isDeleted}
+    <FormatToolbar
+      {active}
+      {history}
+      sourceMode={editorPrefs.sourceMode}
+      onFormat={(k) => editorRef?.applyFormat(k)}
+      onUndo={() => editorRef?.undo()}
+      onRedo={() => editorRef?.redo()}
+      onImage={isWeb || isVirtual ? undefined : insertImage}
+      onToggleSource={() => editorPrefs.toggleSourceMode()}
+    />
   {/if}
   <div
     class="doc"
@@ -343,9 +354,10 @@
         value={library.selected.body}
         docKey={library.selected.id}
         placeholder="Start writing… use #tags to organize"
-        previewMode={!editorPrefs.toolbarOpen}
+        previewMode={!editorPrefs.sourceMode}
         onchange={(v) => library.editBody(v)}
         onactive={(a) => (active = a)}
+        onhistory={(h) => (history = h)}
       />
     </div>
   {/if}
@@ -421,6 +433,35 @@
   .editor-header {
     justify-content: flex-end;
     gap: 0;
+    padding-left: calc(16px * var(--density));
+  }
+  .editor-header .icon-btn {
+    color: var(--text-tertiary);
+  }
+  .editor-header .icon-btn:hover {
+    color: var(--text);
+  }
+  .editor-header .icon-btn[aria-pressed="true"] {
+    background: transparent;
+    color: var(--accent-text);
+  }
+  .editor-header .icon-btn[aria-pressed="true"]:hover {
+    background: var(--bg-hover);
+  }
+  .editor-header .icon-btn.danger:hover {
+    color: var(--danger);
+  }
+  .editor-header .icon-group + .icon-group {
+    margin-left: 0;
+    padding-left: 0;
+    border-left: none;
+  }
+  .editor-header .icon-group + .icon-group::before {
+    content: "";
+    width: 1px;
+    height: 16px;
+    margin: 0 5px;
+    background: var(--border);
   }
   .header-title {
     flex: 1;
@@ -445,7 +486,7 @@
     width: 100%;
     max-width: calc(var(--measure) + 32px * var(--density));
     margin: 0 auto;
-    padding: 8px calc(16px * var(--density)) 0;
+    padding: 12px calc(16px * var(--density)) 0;
     container-type: inline-size;
   }
   .doc.wide .doc-head {
@@ -510,7 +551,7 @@
     gap: 6px;
     align-items: center;
     margin-top: 6px;
-    padding-bottom: 10px;
+    padding: 2px 0 8px;
     border-bottom: 1px solid var(--border);
     font-family: var(--font-ui);
   }

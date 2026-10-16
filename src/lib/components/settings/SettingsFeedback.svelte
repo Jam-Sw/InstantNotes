@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { getLibraryStats, submitFeedback, openFeedbackLog, openUrl } from "$lib/api/client";
-  import { isMac } from "$lib/platform";
+  import { platformName } from "$lib/platform";
   import { toasts } from "$lib/stores/toasts.svelte";
   import {
     FEEDBACK_CATEGORIES,
@@ -22,7 +22,7 @@
   let notes = $state(0);
   let attachments = $state(0);
 
-  const platform = isMac ? "macOS" : "Windows / Linux";
+  const platform = platformName();
 
   const diagnostics = $derived<FeedbackDiagnostics>({
     appVersion,
