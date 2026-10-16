@@ -213,6 +213,8 @@ impl Store {
         for w in self.list_workspaces()? {
             manifest.spaces.push(ManifestSpace {
                 name: w.workspace.name,
+                color: w.workspace.color,
+                flag: w.workspace.flag,
                 created: w.workspace.created_at,
             });
         }

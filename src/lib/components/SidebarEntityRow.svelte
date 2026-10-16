@@ -5,6 +5,8 @@
     name,
     count,
     prefix = "",
+    prefixColor = null,
+    marker,
     suffix,
     normalize,
     noun,
@@ -21,6 +23,8 @@
     name: string;
     count: number;
     prefix?: string;
+    prefixColor?: string | null;
+    marker?: Snippet;
     suffix?: Snippet;
     normalize: (raw: string) => string | null;
     noun: string;
@@ -107,7 +111,8 @@
 
 {#if editing}
   <div class="entity-edit">
-    {#if prefix}<span class="entity-prefix">{prefix}</span>{/if}
+    {#if marker}<span class="entity-marker">{@render marker()}</span>{/if}
+    {#if prefix}<span class="entity-prefix" style:color={prefixColor}>{prefix}</span>{/if}
     <input
       class="entity-rename-input"
       class:invalid={!!editError}
@@ -135,7 +140,8 @@
     oncontextmenu={readonly ? undefined : onContextMenu}
     onkeydown={readonly ? undefined : onRowKeydown}
   >
-    <span class="entity-name">{prefix}{name}{#if suffix}{@render suffix()}{/if}</span>
+    {#if marker}<span class="entity-marker">{@render marker()}</span>{/if}
+    <span class="entity-name">{#if prefix}<span class="entity-hash" class:colored={!!prefixColor} style:color={prefixColor}>{prefix}</span>{/if}{name}{#if suffix}{@render suffix()}{/if}</span>
     <span class="entity-count">{count}</span>
   </button>
 {/if}
@@ -159,9 +165,19 @@
     font-weight: 600;
   }
   .entity-name {
+    flex: 1;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .entity-marker {
+    display: inline-flex;
+    align-items: center;
+    margin-right: 8px;
+  }
+  .entity-hash.colored {
+    font-weight: 700;
   }
   .entity-count {
     color: var(--text-tertiary);

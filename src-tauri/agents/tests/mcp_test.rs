@@ -292,6 +292,45 @@ fn a_result_carries_its_json_structured_and_as_text() {
 }
 
 #[test]
+fn list_tags_and_list_spaces_carry_the_colour_and_the_spaces_their_flag() {
+    let mut store = store_with("read");
+    let tag = store.get_or_create_tag("work").unwrap();
+    store.get_or_create_tag("plain").unwrap();
+    store.set_tag_color(&tag.id, Some("blue".into())).unwrap();
+    let flagged = store.get_or_create_workspace("Flagged").unwrap();
+    store
+        .set_workspace_color(&flagged.id, Some("#aa00bb".into()))
+        .unwrap();
+    store.set_workspace_flag(&flagged.id, true).unwrap();
+    store.get_or_create_workspace("Bare").unwrap();
+
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(1, "list_tags", json!({})),
+            call(2, "list_spaces", json!({})),
+        ],
+    );
+    let (_, _, tags) = result_of(&replies[1]);
+    assert_eq!(
+        tags["tags"],
+        json!([
+            { "name": "plain", "notes": 0, "color": null },
+            { "name": "work", "notes": 0, "color": "blue" },
+        ])
+    );
+    let (_, _, spaces) = result_of(&replies[2]);
+    assert_eq!(
+        spaces["spaces"],
+        json!([
+            { "name": "Bare", "notes": 0, "color": null, "flag": false },
+            { "name": "Flagged", "notes": 0, "color": "#aa00bb", "flag": true },
+        ])
+    );
+}
+
+#[test]
 fn access_off_refuses_everything_and_leaves_no_trace() {
     let mut store = store_with("off");
     let replies = session(&mut store, &[init(), call(1, "list_notes", json!({}))]);
@@ -1945,4 +1984,57 @@ fn search_reaches_the_trash_and_pinned_notes() {
     assert_eq!(ids(3), vec![pinned.clone()]);
     assert_eq!(ids(4), vec![gone.clone()]);
     assert_eq!(ids(5), sorted(vec![live, pinned, archived]));
+}
+
+// Copy context ends each note with "id <Note.id>", the id the app's get_note
+// command returns from Store::get_note. An agent handed that id must read the
+// same note, from the Trash too, and find it under the same id in search.
+#[test]
+fn the_id_a_copied_context_names_is_the_one_agents_read() {
+    let mut store = store_with("read");
+    let live = store
+        .create_note(CreateNoteInput {
+            body: Some("Road trip plan\nPack the #maps".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    let gone = store
+        .create_note(CreateNoteInput {
+            body: Some("Old road notes".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    store.soft_delete_note(&gone.id).unwrap();
+    let copied_live = store.get_note(&live.id, true).unwrap();
+    let copied_gone = store.get_note(&gone.id, false).unwrap();
+
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(1, "get_note", json!({ "id": copied_live.id })),
+            call(2, "get_note", json!({ "id": copied_gone.id })),
+            call(3, "search_notes", json!({ "query": "trip" })),
+            call(
+                4,
+                "get_notes",
+                json!({ "ids": [copied_live.id, copied_gone.id] }),
+            ),
+        ],
+    );
+    let (is_error, text, read) = result_of(&replies[1]);
+    assert!(!is_error, "{text}");
+    assert_eq!(read["id"], json!(copied_live.id));
+    assert_eq!(read["title"], json!(copied_live.title));
+    assert_eq!(read["body"], json!(copied_live.body));
+    let (is_error, text, read) = result_of(&replies[2]);
+    assert!(!is_error, "{text}");
+    assert_eq!(read["id"], json!(copied_gone.id));
+    assert_eq!(read["isDeleted"], json!(true));
+    let (_, _, found) = result_of(&replies[3]);
+    assert_eq!(found["results"][0]["id"], json!(copied_live.id));
+    let (_, _, both) = result_of(&replies[4]);
+    assert_eq!(both["notes"][0]["id"], json!(copied_live.id));
+    assert_eq!(both["notes"][1]["id"], json!(copied_gone.id));
+    assert_eq!(both["missing"], json!([]));
 }

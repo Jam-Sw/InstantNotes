@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { renderTemplate, applyImageMode, DEFAULT_TEMPLATE } from "./contexting-format";
+import { renderTemplate, applyImageMode, DEFAULT_TEMPLATE, renderContext, sourceLine, joinContexts } from "./contexting-format";
 
-const note = { title: "Groceries", body: "milk\neggs", updatedAt: "2026-06-18T10:00:00.000Z" };
+const note = { id: "01J9ZK4Q6V7W8X9Y0A1B2C3D4E", title: "Groceries", body: "milk\neggs", updatedAt: "2026-06-18T10:00:00.000Z" };
 
 describe("renderTemplate", () => {
   it("fills title and content", () => {
@@ -93,5 +93,36 @@ describe("applyImageMode", () => {
 
   it("a note with both a linked and a copied image: strip mode removes both", () => {
     expect(applyImageMode(both, "strip", null)).toBe(" and ");
+  });
+});
+
+describe("provenance", () => {
+  const at = new Date(2026, 9, 15, 14, 30);
+
+  it("fills {id} with the note id and {copied} with the copy time", () => {
+    expect(renderTemplate("{id}|{copied}", note, [], { copiedAt: at })).toBe(
+      `${note.id}|${at.toLocaleString()}`,
+    );
+  });
+
+  it("appends the source line by default, carrying exactly Note.id", () => {
+    const out = renderContext("{title}", note, [], { copiedAt: at });
+    expect(out).toBe(`Groceries\n\nFrom InstantNotes ${at.toLocaleString()} · id ${note.id}`);
+    const footerId = out.split("\n").at(-1)!.split(" · id ")[1];
+    expect(footerId).toBe(note.id);
+  });
+
+  it("leaves the source line off when the setting is off", () => {
+    expect(renderContext("{title}", note, [], { copiedAt: at, addSourceLine: false })).toBe(
+      "Groceries",
+    );
+  });
+
+  it("starts with From InstantNotes, then the time, then the id", () => {
+    expect(sourceLine({ id: "abc" }, at)).toBe(`From InstantNotes ${at.toLocaleString()} · id abc`);
+  });
+
+  it("joins several notes as separate blocks in order", () => {
+    expect(joinContexts(["a", "b"])).toBe("a\n\nb");
   });
 });

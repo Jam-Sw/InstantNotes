@@ -1,4 +1,5 @@
 import type { Theme } from "../types";
+import { GRAPHITE_SWATCHES } from "./swatches";
 import { SANS_STACK, MONO_STACK } from "../fonts";
 
 export const graphite: Theme = {
@@ -33,6 +34,7 @@ export const graphite: Theme = {
     tag: "#4d9fff",
     success: "#32d74b",
     warning: "#ffd60a",
+    swatches: GRAPHITE_SWATCHES.dark,
   },
   light: {
     bg: "#ffffff",
@@ -51,5 +53,6 @@ export const graphite: Theme = {
     tag: "#0062cc",
     success: "#248a3d",
     warning: "#b25000",
+    swatches: GRAPHITE_SWATCHES.light,
   },
 };

@@ -1,4 +1,5 @@
 import type { Theme } from "../types";
+import { EMBER_SWATCHES } from "./swatches";
 import { MONO_STACK, SANS_STACK } from "../fonts";
 
 export const ember: Theme = {
@@ -34,6 +35,7 @@ export const ember: Theme = {
     tag: "#f6b878",
     success: "#9cc77a",
     warning: "#f0cf6a",
+    swatches: EMBER_SWATCHES.dark,
     selection: "rgba(240, 163, 90, 0.24)",
     codeBg: "#221d1a",
   },
@@ -54,6 +56,7 @@ export const ember: Theme = {
     tag: "#a45a14",
     success: "#5d8b3a",
     warning: "#b8891a",
+    swatches: EMBER_SWATCHES.light,
     selection: "rgba(200, 111, 31, 0.22)",
     codeBg: "#f3ebe0",
   },

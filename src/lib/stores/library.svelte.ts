@@ -24,9 +24,13 @@ import {
   softDeleteNotes,
   restoreNotes,
   setNotesFlags,
+  setTagColor,
+  setWorkspaceColor,
+  setWorkspaceFlag,
   destroyNotes as destroyNotesCmd,
   tagsForNote,
   updateNote,
+  workspaceTagSlices,
   workspacesForNote,
 } from "$lib/api/client";
 import type {
@@ -34,6 +38,7 @@ import type {
   SearchResult,
   SpaceSuggestion,
   Tag,
+  TagSlice,
   TagWithCount,
   Workspace,
   WorkspaceWithCount,
@@ -62,6 +67,7 @@ import { boardFromText } from "$lib/whiteboard/excalidraw";
 import { appendRows, parseSheet, serializeSheet } from "$lib/sheet/model";
 import { isWeb } from "$lib/api/runtime";
 import { linkedNoteId } from "$lib/qr";
+import { groupSlices } from "$lib/space-colors";
 
 export type { StatusFilter } from "$lib/stores/library/navigation.svelte";
 
@@ -69,6 +75,7 @@ const SEARCH_DEBOUNCE_MS = 150;
 const SUGGESTION_COUNT_DEBOUNCE_MS = 1500;
 const LIST_BODY_CHARS = 2048;
 const LINKED_NOTE_WAIT_MS = 60_000;
+const TAG_SLICES_DEBOUNCE_MS = 400;
 
 class LibraryStore {
   #nav = new NavigationModel();
@@ -118,6 +125,8 @@ class LibraryStore {
   searchResults = $state<SearchResult[] | null>(null);
   tags = $state<TagWithCount[]>([]);
   workspaces = $state<WorkspaceWithCount[]>([]);
+  tagSlices = $state<TagSlice[]>([]);
+  slicesByWorkspace = $derived(groupSlices(this.tagSlices));
   selected = $state<Note | null>(null);
   selectedTags = $state<Tag[]>([]);
   selectedWorkspaces = $state<Workspace[]>([]);
@@ -166,6 +175,7 @@ class LibraryStore {
     () => void this.refreshSuggestionCount(),
     SUGGESTION_COUNT_DEBOUNCE_MS,
   );
+  #tagSlicesDebounced = debounce(() => void this.refreshTagSlices(), TAG_SLICES_DEBOUNCE_MS);
   #searchRefresh = debounce(() => void this.refresh(), SEARCH_DEBOUNCE_MS);
 
   get saveState(): SaveState {
@@ -180,13 +190,16 @@ class LibraryStore {
         this.#refreshDebounced();
         this.#revisitCountDebounced();
         this.#suggestionCountDebounced();
+        this.#tagSlicesDebounced();
       }),
       listen(EVENTS.TAGS_CHANGED, () => {
         void this.refreshTags();
+        this.#tagSlicesDebounced();
         this.#suggestionCountDebounced();
       }),
       listen(EVENTS.WORKSPACES_CHANGED, () => {
         void this.refreshWorkspaces();
+        this.#tagSlicesDebounced();
         this.#suggestionCountDebounced();
       }),
       listen(EVENTS.STICKIES_CHANGED, () => void this.refreshStickies()),
@@ -202,6 +215,7 @@ class LibraryStore {
       this.refresh(),
       this.refreshTags(),
       this.refreshWorkspaces(),
+      this.refreshTagSlices(),
       this.#refreshRevisitCount(),
       this.refreshSuggestionCount(),
       this.refreshStickies(),
@@ -310,6 +324,41 @@ class LibraryStore {
   async refreshTags(): Promise<void> {
     try {
       this.tags = await listTags();
+    } catch (e) {
+      this.#fail(e);
+    }
+  }
+
+  async refreshTagSlices(): Promise<void> {
+    try {
+      this.tagSlices = await workspaceTagSlices();
+    } catch (e) {
+      this.#fail(e);
+    }
+  }
+
+  async colorTag(id: string, color: string | null): Promise<void> {
+    try {
+      await setTagColor(id, color);
+      await Promise.all([this.refreshTags(), this.refreshTagSlices()]);
+    } catch (e) {
+      this.#fail(e);
+    }
+  }
+
+  async colorWorkspace(id: string, color: string | null): Promise<void> {
+    try {
+      await setWorkspaceColor(id, color);
+      await this.refreshWorkspaces();
+    } catch (e) {
+      this.#fail(e);
+    }
+  }
+
+  async flagWorkspace(id: string, flag: boolean): Promise<void> {
+    try {
+      await setWorkspaceFlag(id, flag);
+      await this.refreshWorkspaces();
     } catch (e) {
       this.#fail(e);
     }
@@ -617,8 +666,23 @@ class LibraryStore {
   }
 
   async bulkRestore(): Promise<void> {
-    await this.#bulk((ids) => restoreNotes(ids));
-    this.clearMultiSelect();
+    await this.restoreIds([...this.multiSelected]);
+  }
+
+  // Restores trashed notes by id. They leave the Trash, so a selection holding
+  // any of them closes; a selection elsewhere stays open.
+  async restoreIds(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    try {
+      await restoreNotes(ids);
+      this.error = null;
+    } catch (e) {
+      this.#fail(e);
+      return;
+    }
+    if (ids.some((id) => this.multiSelected.has(id) || this.selected?.id === id)) {
+      this.clearMultiSelect();
+    }
   }
 
   async bulkDestroy(): Promise<void> {

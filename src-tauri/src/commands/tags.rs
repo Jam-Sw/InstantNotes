@@ -19,6 +19,18 @@ pub fn update_tag(
 }
 
 #[tauri::command(async)]
+pub fn set_tag_color(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    id: String,
+    color: Option<String>,
+) -> CmdResult<Tag> {
+    let tag = locked(&state)?.set_tag_color(&id, color)?;
+    emit_tags_changed(&app);
+    Ok(tag)
+}
+
+#[tauri::command(async)]
 pub fn delete_tag(state: State<'_, AppState>, app: AppHandle, id: String) -> CmdResult<()> {
     locked(&state)?.delete_tag(&id)?;
     emit_tags_changed(&app);

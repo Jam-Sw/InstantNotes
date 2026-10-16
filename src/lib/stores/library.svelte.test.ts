@@ -10,6 +10,7 @@ import {
   getOrCreateWorkspace,
   listNotes,
   listTags,
+  restoreNotes,
   listWorkspaces,
   listStickies,
   listWorkspaceTags,
@@ -17,6 +18,10 @@ import {
   popOutNote,
   renameWorkspace,
   searchNotes,
+  setTagColor,
+  setWorkspaceColor,
+  setWorkspaceFlag,
+  workspaceTagSlices,
   softDeleteNote,
   softDeleteNotes,
   tagsForNote,
@@ -72,6 +77,10 @@ vi.mock("$lib/api/client", () => {
     listStickies: vi.fn(),
     popOutNote: vi.fn(),
     popInNote: vi.fn(),
+    setTagColor: vi.fn(),
+    setWorkspaceColor: vi.fn(),
+    setWorkspaceFlag: vi.fn(),
+    workspaceTagSlices: vi.fn().mockResolvedValue([]),
   };
 });
 
@@ -107,6 +116,10 @@ const mockListen = vi.mocked(listen);
 const mockListStickies = vi.mocked(listStickies);
 const mockPopOutNote = vi.mocked(popOutNote);
 const mockPopInNote = vi.mocked(popInNote);
+const mockSetTagColor = vi.mocked(setTagColor);
+const mockSetWorkspaceColor = vi.mocked(setWorkspaceColor);
+const mockSetWorkspaceFlag = vi.mocked(setWorkspaceFlag);
+const mockTagSlices = vi.mocked(workspaceTagSlices);
 
 function mkNote(id: string, overrides: Partial<Note> = {}): Note {
   return {
@@ -184,6 +197,10 @@ beforeEach(() => {
   mockListStickies.mockReset().mockResolvedValue([]);
   mockPopOutNote.mockReset().mockResolvedValue(undefined);
   mockPopInNote.mockReset().mockResolvedValue(undefined);
+  mockSetTagColor.mockReset();
+  mockSetWorkspaceColor.mockReset();
+  mockSetWorkspaceFlag.mockReset();
+  mockTagSlices.mockReset().mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -424,6 +441,35 @@ describe("soft delete flushes queued edits (Undo restores the last keystrokes)",
   });
 });
 
+describe("restoring from the Trash by id", () => {
+  it("restores the given notes and closes the open one when it is among them", async () => {
+    const library = await load();
+    await selectNote(library, "n1", { isDeleted: true });
+    const mockRestoreNotes = vi.mocked(restoreNotes);
+    mockRestoreNotes.mockResolvedValue(undefined);
+
+    await library.restoreIds(["n2", "n1"]);
+
+    expect(mockRestoreNotes).toHaveBeenCalledWith(["n2", "n1"]);
+    expect(library.selected).toBeNull();
+    expect(library.error).toBeNull();
+  });
+
+  it("keeps the open note when it is not among them, and surfaces a failure", async () => {
+    const library = await load();
+    await selectNote(library, "n1", { isDeleted: true });
+    const mockRestoreNotes = vi.mocked(restoreNotes);
+    mockRestoreNotes.mockResolvedValueOnce(undefined);
+    await library.restoreIds(["n2"]);
+    expect(library.selected?.id).toBe("n1");
+
+    mockRestoreNotes.mockRejectedValueOnce(new ApiError("NOT_FOUND", "gone"));
+    await library.restoreIds(["n1"]);
+    expect(library.selected?.id).toBe("n1");
+    expect(library.error).toBeTruthy();
+  });
+});
+
 describe("refresh race token", () => {
   it("a slow older list refresh cannot clobber a newer one", async () => {
     const library = await load();
@@ -576,6 +622,8 @@ function mkWorkspace(id: string, name: string): WorkspaceWithCount {
   return {
     id,
     name,
+    color: null,
+    flag: false,
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
     noteCount: 0,
@@ -1365,5 +1413,77 @@ describe("openLinked", () => {
     expect(unlisten).toHaveBeenCalledTimes(1);
     const { toasts } = await import("$lib/stores/toasts.svelte");
     expect(toasts.items.at(-1)?.message).toBe("That note isn't on this device yet.");
+  });
+});
+
+describe("space and tag colours", () => {
+  it("loads the tag slices once at init and groups them by space", async () => {
+    const library = await load();
+    mockTagSlices.mockResolvedValue([
+      { workspaceId: "w1", tagId: "t1", color: "red", noteCount: 2 },
+      { workspaceId: "w1", tagId: "t2", color: "#00ff00", noteCount: 1 },
+      { workspaceId: "w2", tagId: "t1", color: "red", noteCount: 4 },
+    ]);
+    await library.init();
+    expect(mockTagSlices).toHaveBeenCalledTimes(1);
+    expect(library.slicesByWorkspace.get("w1")).toHaveLength(2);
+    expect(library.slicesByWorkspace.get("w2")).toHaveLength(1);
+    expect(library.slicesByWorkspace.get("w3")).toBeUndefined();
+  });
+
+  it("refreshes the slices, debounced, when notes change", async () => {
+    const library = await load();
+    await library.init();
+    mockTagSlices.mockClear();
+    const handler = mockListen.mock.calls.find((c) => c[0] === EVENTS.NOTES_CHANGED)?.[1] as () => void;
+    handler();
+    handler();
+    expect(mockTagSlices).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(mockTagSlices).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes the slices when tags change", async () => {
+    const library = await load();
+    await library.init();
+    mockTagSlices.mockClear();
+    const handler = mockListen.mock.calls.find((c) => c[0] === EVENTS.TAGS_CHANGED)?.[1] as () => void;
+    handler();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(mockTagSlices).toHaveBeenCalledTimes(1);
+  });
+
+  it("sets a tag colour, then reloads the tags and the slices", async () => {
+    const library = await load();
+    mockSetTagColor.mockResolvedValue(mkTagWithCount("t1", "idea"));
+    await library.colorTag("t1", "blue");
+    expect(mockSetTagColor).toHaveBeenCalledWith("t1", "blue");
+    expect(mockListTags).toHaveBeenCalledTimes(1);
+    expect(mockTagSlices).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears a tag colour with null", async () => {
+    const library = await load();
+    mockSetTagColor.mockResolvedValue(mkTagWithCount("t1", "idea"));
+    await library.colorTag("t1", null);
+    expect(mockSetTagColor).toHaveBeenCalledWith("t1", null);
+  });
+
+  it("sets a space colour and its flag, then reloads the spaces", async () => {
+    const library = await load();
+    mockSetWorkspaceColor.mockResolvedValue(mkWorkspace("w1", "Movies"));
+    mockSetWorkspaceFlag.mockResolvedValue(mkWorkspace("w1", "Movies"));
+    await library.colorWorkspace("w1", "#112233");
+    await library.flagWorkspace("w1", true);
+    expect(mockSetWorkspaceColor).toHaveBeenCalledWith("w1", "#112233");
+    expect(mockSetWorkspaceFlag).toHaveBeenCalledWith("w1", true);
+    expect(mockListWorkspaces).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports a failed colour change instead of throwing", async () => {
+    const library = await load();
+    mockSetWorkspaceColor.mockRejectedValue(new ApiError("VALIDATION_ERROR", "bad colour"));
+    await library.colorWorkspace("w1", "blue");
+    expect(library.error).not.toBeNull();
   });
 });

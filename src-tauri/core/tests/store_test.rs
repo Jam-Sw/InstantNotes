@@ -1240,3 +1240,190 @@ mod vault_export {
         assert_eq!(notes.len(), 520);
     }
 }
+
+#[test]
+fn colors_accept_a_swatch_name_or_a_hex_value_and_refuse_everything_else() {
+    let mut s = store();
+    let tag = s.get_or_create_tag("work").unwrap();
+    let ws = s.get_or_create_workspace("Home").unwrap();
+    for ok in ["blue", " Teal ", "#FF8800", "#0a1b2c"] {
+        s.set_tag_color(&tag.id, Some(ok.into())).unwrap();
+        s.set_workspace_color(&ws.id, Some(ok.into())).unwrap();
+    }
+    assert_eq!(
+        s.set_tag_color(&tag.id, Some(" Teal ".into()))
+            .unwrap()
+            .color
+            .as_deref(),
+        Some("teal")
+    );
+    assert_eq!(
+        s.set_workspace_color(&ws.id, Some("#FF8800".into()))
+            .unwrap()
+            .color
+            .as_deref(),
+        Some("#ff8800")
+    );
+    for bad in [
+        "",
+        "   ",
+        "chartreuse",
+        "#fff",
+        "#12345",
+        "#1234567",
+        "#gg0000",
+        "ff0000",
+        "rgb(1,2,3)",
+    ] {
+        let err = s.set_tag_color(&tag.id, Some(bad.into())).unwrap_err();
+        assert!(matches!(err, AppError::Validation(_)), "{bad:?}: {err:?}");
+        let err = s.set_workspace_color(&ws.id, Some(bad.into())).unwrap_err();
+        assert!(matches!(err, AppError::Validation(_)), "{bad:?}: {err:?}");
+        let err = s.update_tag(&tag.id, None, Some(bad.into())).unwrap_err();
+        assert!(matches!(err, AppError::Validation(_)), "{bad:?}: {err:?}");
+    }
+    assert_eq!(
+        s.find_tag("work").unwrap().unwrap().color.as_deref(),
+        Some("teal"),
+        "a refused colour changes nothing"
+    );
+}
+
+#[test]
+fn a_tag_colour_is_set_cleared_and_survives_a_rename() {
+    let mut s = store();
+    let tag = s.get_or_create_tag("work").unwrap();
+    assert_eq!(tag.color, None);
+    let set = s.set_tag_color(&tag.id, Some("red".into())).unwrap();
+    assert_eq!(set.color.as_deref(), Some("red"));
+    assert!(set.updated_at >= tag.updated_at);
+    let renamed = s.update_tag(&tag.id, Some("job".into()), None).unwrap();
+    assert_eq!(renamed.color.as_deref(), Some("red"));
+    let cleared = s.set_tag_color(&tag.id, None).unwrap();
+    assert_eq!(cleared.color, None);
+    assert_eq!(s.find_tag("job").unwrap().unwrap().color, None);
+    let err = s.set_tag_color("missing", Some("red".into())).unwrap_err();
+    assert!(matches!(err, AppError::NotFound(_)));
+    let err = s.set_tag_color("missing", None).unwrap_err();
+    assert!(matches!(err, AppError::NotFound(_)));
+}
+
+#[test]
+fn a_space_colour_and_flag_are_set_cleared_and_listed() {
+    let mut s = store();
+    let ws = s.get_or_create_workspace("Home").unwrap();
+    assert_eq!((ws.color.as_deref(), ws.flag), (None, false));
+
+    let coloured = s.set_workspace_color(&ws.id, Some("green".into())).unwrap();
+    assert_eq!(coloured.color.as_deref(), Some("green"));
+    assert!(!coloured.flag, "colour leaves the flag alone");
+    let flagged = s.set_workspace_flag(&ws.id, true).unwrap();
+    assert!(flagged.flag);
+    assert_eq!(
+        flagged.color.as_deref(),
+        Some("green"),
+        "flag leaves the colour alone"
+    );
+
+    let listed = s.list_workspaces().unwrap();
+    assert_eq!(listed[0].workspace.color.as_deref(), Some("green"));
+    assert!(listed[0].workspace.flag);
+    let n = create(&mut s, "a note");
+    s.add_note_to_workspace(&n.id, &ws.id).unwrap();
+    let for_note = s.workspaces_for_note(&n.id).unwrap();
+    assert_eq!(for_note[0].color.as_deref(), Some("green"));
+    assert!(for_note[0].flag);
+    let renamed = s.rename_workspace(&ws.id, "House").unwrap();
+    assert_eq!(renamed.color.as_deref(), Some("green"));
+    assert!(renamed.flag);
+
+    let unflagged = s.set_workspace_flag(&ws.id, false).unwrap();
+    assert!(!unflagged.flag);
+    let cleared = s.set_workspace_color(&ws.id, None).unwrap();
+    assert_eq!(cleared.color, None);
+
+    let err = s.set_workspace_color("missing", None).unwrap_err();
+    assert!(matches!(err, AppError::NotFound(_)));
+    let err = s.set_workspace_flag("missing", true).unwrap_err();
+    assert!(matches!(err, AppError::NotFound(_)));
+}
+
+#[test]
+fn slices_count_each_coloured_tag_per_space_and_skip_the_rest() {
+    let mut s = store();
+    let home = s.get_or_create_workspace("Home").unwrap();
+    let work = s.get_or_create_workspace("Work").unwrap();
+    let empty = s.get_or_create_workspace("Empty").unwrap();
+
+    let a = create(&mut s, "one #red-tag #plain");
+    let b = create(&mut s, "two #red-tag #blue-tag");
+    let c = create(&mut s, "three #blue-tag");
+    let gone = create(&mut s, "four #red-tag");
+    let outside = create(&mut s, "five #red-tag");
+    let archived = create(&mut s, "six #blue-tag");
+    for n in [&a, &b, &gone, &archived] {
+        s.add_note_to_workspace(&n.id, &home.id).unwrap();
+    }
+    s.add_note_to_workspace(&c.id, &work.id).unwrap();
+    s.add_note_to_workspace(&b.id, &work.id).unwrap();
+    s.set_notes_flags(std::slice::from_ref(&archived.id), None, Some(true))
+        .unwrap();
+    s.soft_delete_note(&gone.id).unwrap();
+    let _ = outside;
+
+    let red = s.find_tag("red-tag").unwrap().unwrap();
+    let blue = s.find_tag("blue-tag").unwrap().unwrap();
+    s.set_tag_color(&red.id, Some("red".into())).unwrap();
+    s.set_tag_color(&blue.id, Some("#0000ff".into())).unwrap();
+
+    let slices = s.workspace_tag_slices().unwrap();
+    let mut got: Vec<(String, String, String, i64)> = slices
+        .iter()
+        .map(|x| {
+            (
+                x.workspace_id.clone(),
+                x.tag_id.clone(),
+                x.color.clone(),
+                x.note_count,
+            )
+        })
+        .collect();
+    got.sort();
+    let mut want = vec![
+        (home.id.clone(), red.id.clone(), "red".to_string(), 2),
+        (home.id.clone(), blue.id.clone(), "#0000ff".to_string(), 2),
+        (work.id.clone(), red.id.clone(), "red".to_string(), 1),
+        (work.id.clone(), blue.id.clone(), "#0000ff".to_string(), 2),
+    ];
+    want.sort();
+    assert_eq!(
+        got, want,
+        "plain tag, trashed note and non-members are left out"
+    );
+    assert!(slices.iter().all(|x| x.workspace_id != empty.id));
+
+    s.set_tag_color(&red.id, None).unwrap();
+    let slices = s.workspace_tag_slices().unwrap();
+    assert!(slices.iter().all(|x| x.tag_id != red.id));
+    assert_eq!(slices.len(), 2);
+}
+
+#[test]
+fn slices_serialize_with_the_names_the_frontend_reads() {
+    let mut s = store();
+    let ws = s.get_or_create_workspace("Home").unwrap();
+    let n = create(&mut s, "a #tag");
+    s.add_note_to_workspace(&n.id, &ws.id).unwrap();
+    let tag = s.find_tag("tag").unwrap().unwrap();
+    s.set_tag_color(&tag.id, Some("pink".into())).unwrap();
+    let json = serde_json::to_value(s.workspace_tag_slices().unwrap()).unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!([{
+            "workspaceId": ws.id, "tagId": tag.id, "color": "pink", "noteCount": 1
+        }])
+    );
+    let ws_json = serde_json::to_value(s.set_workspace_flag(&ws.id, true).unwrap()).unwrap();
+    assert_eq!(ws_json["flag"], true);
+    assert!(ws_json["color"].is_null());
+}

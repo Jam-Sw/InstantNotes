@@ -31,6 +31,7 @@ import type {
   StickiesScan,
   TagSuggestion,
   Tag,
+  TagSlice,
   TagWithCount,
   UpdateNotePatch,
   MergeReview,
@@ -119,6 +120,8 @@ export const destroyNotes = (ids: string[], confirm: boolean) =>
 export const listTags = () => call<TagWithCount[]>("list_tags");
 export const updateTag = (id: string, name?: string, color?: string) =>
   call<Tag>("update_tag", { id, name, color });
+export const setTagColor = (id: string, color: string | null) =>
+  call<Tag>("set_tag_color", { id, color });
 export const deleteTag = (id: string) => call<void>("delete_tag", { id });
 export const addTagToNote = (noteId: string, name: string) =>
   call<Tag>("add_tag_to_note", { noteId, name });
@@ -133,6 +136,12 @@ export const getOrCreateWorkspace = (name: string) =>
   call<Workspace>("get_or_create_workspace", { name });
 export const renameWorkspace = (id: string, name: string) =>
   call<Workspace>("rename_workspace", { id, name });
+export const setWorkspaceColor = (id: string, color: string | null) =>
+  call<Workspace>("set_workspace_color", { id, color });
+export const setWorkspaceFlag = (id: string, flag: boolean) =>
+  call<Workspace>("set_workspace_flag", { id, flag });
+export const workspaceTagSlices = () =>
+  call<TagSlice[]>("workspace_tag_slices");
 export const deleteWorkspace = (id: string) =>
   call<string[]>("delete_workspace", { id });
 export const listWorkspaceTags = (workspaceId: string) =>

@@ -628,6 +628,33 @@ fn tags_and_spaces_made_on_either_side_reach_both() {
 }
 
 #[test]
+fn tag_and_space_colors_and_flags_reach_the_other_device_and_clearing_travels() {
+    let (_server, mut a, mut b, _) = encrypted_pair();
+    let tag = a.s().get_or_create_tag("work").unwrap();
+    a.s().set_tag_color(&tag.id, Some("red".into())).unwrap();
+    let space = a.s().get_or_create_workspace("Garden").unwrap();
+    a.s()
+        .set_workspace_color(&space.id, Some("#aabbcc".into()))
+        .unwrap();
+    a.s().set_workspace_flag(&space.id, true).unwrap();
+    settle(&mut [&mut a, &mut b]);
+    let seen_tag = b.s().find_tag("work").unwrap().unwrap();
+    let seen_space = b.s().find_workspace("Garden").unwrap().unwrap();
+    assert_eq!(seen_tag.color.as_deref(), Some("red"));
+    assert_eq!(seen_space.color.as_deref(), Some("#aabbcc"));
+    assert!(seen_space.flag);
+
+    b.s().set_tag_color(&seen_tag.id, None).unwrap();
+    b.s().set_workspace_color(&seen_space.id, None).unwrap();
+    b.s().set_workspace_flag(&seen_space.id, false).unwrap();
+    settle(&mut [&mut a, &mut b]);
+    assert_eq!(a.s().find_tag("work").unwrap().unwrap().color, None);
+    let back = a.s().find_workspace("Garden").unwrap().unwrap();
+    assert_eq!(back.color, None);
+    assert!(!back.flag);
+}
+
+#[test]
 fn the_look_and_editor_settings_follow_the_library_and_device_settings_stay() {
     let (server, mut a, mut b, _) = encrypted_pair();
     a.s()

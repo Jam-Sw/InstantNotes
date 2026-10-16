@@ -1,13 +1,13 @@
 <script lang="ts">
   import { library, type StatusFilter } from "$lib/stores/library.svelte";
   import { agents } from "$lib/stores/agents.svelte";
-  import { clientLabel } from "$lib/agent-activity";
   import { formatDate, formatExact, preview, sheetPreview } from "$lib/format";
   import { captureShortcut, modKey, shiftKey } from "$lib/platform";
   import { isWeb } from "$lib/api/runtime";
   import { parseHighlightSegments } from "$lib/highlight";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
+  import SearchField from "$lib/components/SearchField.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { groupNotes } from "$lib/note-groups";
   import { updateSpace } from "$lib/stores/update-space";
@@ -20,6 +20,8 @@
   import { agreements } from "$lib/agreements.svelte";
   import { licenseSpace } from "$lib/stores/license-space.svelte";
   import { layout } from "$lib/stores/layout.svelte";
+  import { contexting } from "$lib/stores/contexting.svelte";
+  import { toasts } from "$lib/stores/toasts.svelte";
 
   const statusFilters: { id: StatusFilter; label: string }[] = [
     { id: "active", label: "Active" },
@@ -41,17 +43,51 @@
           : null,
   );
 
-  const agentSearch = $derived(library.searchText ? null : agents.currentSearch);
-
   let newMenu = $state<{ x: number; y: number } | null>(null);
   let newControl = $state<HTMLDivElement>();
 
-  let rowMenu = $state<{ x: number; y: number; id: string } | null>(null);
+  let rowMenu = $state<{ x: number; y: number; id: string; trashed: boolean } | null>(null);
 
   function openNewMenu() {
     const rect = newControl?.getBoundingClientRect();
     if (!rect) return;
     newMenu = { x: rect.left, y: rect.bottom + 4 };
+  }
+
+  /** The right-clicked note, or the whole selection when it is part of one, in list order. */
+  function contextTargets(id: string): string[] {
+    const sel = library.multiSelected;
+    if (sel.size > 1 && sel.has(id)) return library.visibleIds.filter((n) => sel.has(n));
+    return [id];
+  }
+
+  async function copyContext(id: string) {
+    await library.flushPendingEdits();
+    try {
+      await contexting.copyIds(contextTargets(id));
+    } catch {
+      toasts.show("Couldn't copy the context. Try again, or open the note and copy it.");
+    }
+  }
+
+  function rowMenuItems(id: string, trashed: boolean) {
+    const count = contextTargets(id).length;
+    const items = [
+      { label: count > 1 ? `Copy context (${count} notes)` : "Copy context", run: () => void copyContext(id) },
+    ];
+    if (trashed) {
+      items.push({
+        label: count > 1 ? `Restore ${count} notes` : "Restore",
+        run: () => void library.restoreIds(contextTargets(id)),
+      });
+    } else if (!isWeb) {
+      items.push(
+        library.isSticky(id)
+          ? { label: "Bring back from sticky", run: () => void library.popIn(id) }
+          : { label: "Open as sticky", run: () => void library.popOut(id) },
+      );
+    }
+    return items;
   }
 
   function rowClick(e: MouseEvent, id: string) {
@@ -96,27 +132,7 @@
     </div>
   {:else}
   <div class="pane-header list-toolbar" data-tauri-drag-region>
-    <div class="search-wrap" data-agent={agentSearch ? "search" : null}>
-      <input
-        class="search"
-        type="search"
-        placeholder={agentSearch
-          ? `${clientLabel(agentSearch.client)} searched “${agentSearch.query}”`
-          : "Search notes…"}
-        value={library.searchText}
-        oninput={(e) => library.setSearch(e.currentTarget.value)}
-      />
-      {#if agentSearch}
-        {@const search = agentSearch}
-        <button
-          class="agent-search-run"
-          title="Run this search yourself"
-          onclick={() => library.setSearch(search.query ?? "")}
-        >
-          {search.noteCount} hit{search.noteCount === 1 ? "" : "s"}
-        </button>
-      {/if}
-    </div>
+    <SearchField />
     <div
       class="new-control"
       bind:this={newControl}
@@ -227,9 +243,9 @@
           class:selected={library.isSelected(note.id)}
           onclick={(e) => rowClick(e, note.id)}
           oncontextmenu={(e) => {
-            if (note.isDeleted || isSyntheticSpaceId(library.activeWorkspaceId)) return;
+            if (isSyntheticSpaceId(library.activeWorkspaceId)) return;
             e.preventDefault();
-            rowMenu = { x: e.clientX, y: e.clientY, id: note.id };
+            rowMenu = { x: e.clientX, y: e.clientY, id: note.id, trashed: note.isDeleted };
           }}
         >
           <div class="row-head">
@@ -320,14 +336,11 @@
   />
 {/if}
 
-{#if rowMenu && !isWeb}
-  {@const id = rowMenu.id}
+{#if rowMenu}
   <ContextMenu
     x={rowMenu.x}
     y={rowMenu.y}
-    items={library.isSticky(id)
-      ? [{ label: "Bring back from sticky", run: () => void library.popIn(id) }]
-      : [{ label: "Open as sticky", run: () => void library.popOut(id) }]}
+    items={rowMenuItems(rowMenu.id, rowMenu.trashed)}
     onclose={() => (rowMenu = null)}
   />
 {/if}
@@ -344,18 +357,6 @@
   .list-toolbar {
     gap: 6px;
     padding-right: 10px;
-  }
-  .search {
-    flex: 1;
-    min-width: 0;
-    padding: 5px 9px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--bg-input);
-    outline: none;
-  }
-  .search:focus {
-    border-color: var(--accent);
   }
   .new-control {
     display: flex;
@@ -550,26 +551,5 @@
   }
   .action.danger {
     color: var(--danger);
-  }
-  .search-wrap {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    position: relative;
-  }
-  .search-wrap[data-agent] .search {
-    padding-right: 68px;
-  }
-  .agent-search-run {
-    position: absolute;
-    right: 4px;
-    top: 50%;
-    transform: translateY(-50%);
-    padding: 1px 8px;
-    border-radius: 99px;
-    background: var(--select-bg);
-    color: var(--accent-text);
-    font-family: var(--font-meta);
-    font-size: 11px;
   }
 </style>
