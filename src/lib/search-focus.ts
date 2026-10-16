@@ -7,13 +7,6 @@ import { sidebar } from "$lib/stores/sidebar.svelte";
 // become focusable, so the field is retried each frame for about half a second.
 const FRAMES = 30;
 
-type ShortcutKey = Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey">;
-
-// Cmd or Ctrl+Shift+F. The web build leaves it to the browser.
-export function isSearchShortcut(e: ShortcutKey): boolean {
-  return (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "f";
-}
-
 function nextFrame(win: Window): Promise<void> {
   return new Promise((resolve) => win.requestAnimationFrame(() => resolve()));
 }

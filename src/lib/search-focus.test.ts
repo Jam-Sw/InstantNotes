@@ -14,7 +14,7 @@ vi.mock("$lib/stores/layout.svelte", () => ({ layout: stores.layout }));
 vi.mock("$lib/stores/shell.svelte", () => ({ shell: stores.shell }));
 vi.mock("$lib/stores/sidebar.svelte", () => ({ sidebar: stores.sidebar }));
 
-import { focusSearch, isSearchShortcut } from "./search-focus";
+import { focusSearch } from "./search-focus";
 
 function mountList(query: string, inert = false): HTMLInputElement {
   document.body.innerHTML = `<div class="list-slot"${inert ? " inert" : ""}><section class="list-pane"><input class="search" type="search"></section></div>`;
@@ -31,19 +31,6 @@ beforeEach(() => {
 afterEach(() => {
   document.body.innerHTML = "";
   vi.clearAllMocks();
-});
-
-describe("the search shortcut", () => {
-  const key = (k: string, mods: Partial<KeyboardEventInit> = {}) =>
-    ({ key: k, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, ...mods });
-
-  it("is Cmd or Ctrl+Shift+F and nothing near it", () => {
-    expect(isSearchShortcut(key("F", { metaKey: true, shiftKey: true }))).toBe(true);
-    expect(isSearchShortcut(key("f", { ctrlKey: true, shiftKey: true }))).toBe(true);
-    expect(isSearchShortcut(key("f", { metaKey: true }))).toBe(false);
-    expect(isSearchShortcut(key("f", { metaKey: true, shiftKey: true, altKey: true }))).toBe(false);
-    expect(isSearchShortcut(key("f", { shiftKey: true }))).toBe(false);
-  });
 });
 
 describe("focusing search", () => {
