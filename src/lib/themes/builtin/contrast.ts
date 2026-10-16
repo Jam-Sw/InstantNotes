@@ -1,4 +1,5 @@
 import type { Theme } from "../types";
+import { CONTRAST_SWATCHES } from "./swatches";
 import { MONO_STACK, SANS_STACK } from "../fonts";
 
 export const contrast: Theme = {
@@ -35,6 +36,7 @@ export const contrast: Theme = {
     tag: "#6fd3ff",
     success: "#7ee787",
     warning: "#ffb347",
+    swatches: CONTRAST_SWATCHES.dark,
     selection: "rgba(255, 214, 10, 0.4)",
     codeBg: "#141414",
     focus: "#ffffff",
@@ -56,6 +58,7 @@ export const contrast: Theme = {
     tag: "#005f99",
     success: "#1a6b1a",
     warning: "#8a5a00",
+    swatches: CONTRAST_SWATCHES.light,
     selection: "rgba(0, 51, 204, 0.25)",
     codeBg: "#f2f2f2",
     focus: "#000000",

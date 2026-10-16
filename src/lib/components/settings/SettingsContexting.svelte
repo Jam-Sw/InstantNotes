@@ -2,14 +2,12 @@
   import { onMount } from "svelte";
   import { modKey } from "$lib/platform";
   import { contexting } from "$lib/stores/contexting.svelte";
-  import {
-    renderTemplate,
-    TEMPLATE_VARS,
-    type ContextImageMode,
-  } from "$lib/contexting-format";
+  import { renderContext, type ContextImageMode } from "$lib/contexting-format";
   import { library } from "$lib/stores/library.svelte";
+  import { shell } from "$lib/stores/shell.svelte";
   import type { Note, Tag } from "$lib/api/types";
   import SegmentedRow from "$lib/components/settings/SegmentedRow.svelte";
+  import ToggleRow from "$lib/components/settings/ToggleRow.svelte";
 
   onMount(() => void contexting.init());
 
@@ -19,28 +17,47 @@
     { value: "strip", label: "Remove" },
   ];
 
-  const SAMPLE_NOTE: Pick<Note, "title" | "body" | "updatedAt"> = {
+  const VAR_HELP: { code: string; meaning: string }[] = [
+    { code: "{title}", meaning: "the note's title" },
+    { code: "{tags}", meaning: "its tags as hashtags" },
+    { code: "{date}", meaning: "the date it was last edited" },
+    { code: "{content}", meaning: "the note body" },
+    { code: "{id}", meaning: "the note's id" },
+    { code: "{copied}", meaning: "the time you copy it" },
+  ];
+
+  const SAMPLE_NOTE: Pick<Note, "id" | "title" | "body" | "updatedAt"> = {
+    id: "sample-note-id",
     title: "Sample note",
     body: "The quick brown fox.\n![diagram](attachments/example.png)",
     updatedAt: new Date().toISOString(),
   };
   const SAMPLE_TAGS: Pick<Tag, "name">[] = [{ name: "example" }];
 
-  const preview = $derived.by(() => {
-    const note = library.selected;
-    const tags = note ? library.selectedTags : SAMPLE_TAGS;
-    return renderTemplate(contexting.copyTemplate, note ?? SAMPLE_NOTE, tags, {
-      imageMode: contexting.imageMode,
-      attachmentsDir: contexting.attachmentsDir,
-    });
-  });
+  const previewNote = $derived(library.selected ?? SAMPLE_NOTE);
+  const previewLabel = $derived(
+    library.selected ? `Preview: ${library.selected.title || "Untitled"}` : "Preview: sample note",
+  );
+  const preview = $derived(
+    renderContext(
+      contexting.copyTemplate,
+      previewNote,
+      library.selected ? library.selectedTags : SAMPLE_TAGS,
+      {
+        imageMode: contexting.imageMode,
+        attachmentsDir: contexting.attachmentsDir,
+        addSourceLine: contexting.addSourceLine,
+      },
+    ),
+  );
 </script>
 
 <div class="contexting-pane">
   <h2>Contexting</h2>
   <p class="section-hint">
-    The template behind "Copy note as context" in the {modKey}K palette. Wrap the note
-    however a tool or model expects; this is the seed for InstantNotes' AI features.
+    The template behind "Copy note as context" in the {modKey}K palette and "Copy context" in
+    the note list's right-click menu, which works on several selected notes at once. Wrap the
+    note however a tool or model expects; this is the seed for InstantNotes' AI features.
   </p>
 
   <label class="field-label" for="ctx-template">Template</label>
@@ -52,11 +69,28 @@
     oninput={(e) => contexting.setTemplate(e.currentTarget.value)}
   ></textarea>
 
-  <div class="ctx-vars">
-    {#each TEMPLATE_VARS as v}
-      <code class="ctx-var">{v}</code>
+  <dl class="ctx-vars">
+    {#each VAR_HELP as v (v.code)}
+      <div class="ctx-var-row">
+        <dt><code class="ctx-var">{v.code}</code></dt>
+        <dd>{v.meaning}</dd>
+      </div>
     {/each}
-  </div>
+  </dl>
+
+  <span class="field-label">Source</span>
+  <ToggleRow
+    label="Add source line"
+    sub="Appends &quot;From InstantNotes&quot;, the copy time and the note id after each copied note."
+    checked={contexting.addSourceLine}
+    onchange={(v) => contexting.setAddSourceLine(v)}
+  />
+  <p class="ctx-agent-note">
+    An agent connected over MCP can fetch the full note by that id with get_note.
+    <button type="button" class="ctx-link" onclick={() => shell.openSettings("agents")}>
+      Agents settings
+    </button>
+  </p>
 
   <span class="field-label">Images</span>
   <SegmentedRow
@@ -67,7 +101,7 @@
     onchange={(v) => contexting.setImageMode(v)}
   />
 
-  <span class="field-label">Preview</span>
+  <span class="field-label">{previewLabel}</span>
   <pre class="ctx-preview">{preview}</pre>
 </div>
 
@@ -114,10 +148,33 @@
     border-color: var(--accent);
   }
   .ctx-vars {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 8px;
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 4px 12px;
+    margin: 8px 0 0;
+  }
+  .ctx-var-row {
+    display: contents;
+  }
+  .ctx-vars dt,
+  .ctx-vars dd {
+    margin: 0;
+  }
+  .ctx-vars dd {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+  }
+  .ctx-agent-note {
+    margin: 6px 0 0;
+    font-size: 12.5px;
+    color: var(--text-secondary);
+  }
+  .ctx-link {
+    color: var(--accent);
+    font-size: 12.5px;
+  }
+  .ctx-link:hover {
+    text-decoration: underline;
   }
   .ctx-var {
     padding: 2px 6px;

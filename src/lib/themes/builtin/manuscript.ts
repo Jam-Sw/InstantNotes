@@ -1,4 +1,5 @@
 import type { Theme } from "../types";
+import { MANUSCRIPT_SWATCHES } from "./swatches";
 import { MONO_STACK, SANS_STACK } from "../fonts";
 
 export const manuscript: Theme = {
@@ -34,6 +35,7 @@ export const manuscript: Theme = {
     tag: "#9ccdb8",
     success: "#86b8a3",
     warning: "#d4b27c",
+    swatches: MANUSCRIPT_SWATCHES.dark,
   },
   light: {
     bg: "#faf9f6",
@@ -52,5 +54,6 @@ export const manuscript: Theme = {
     tag: "#4a7461",
     success: "#4f8268",
     warning: "#a8782a",
+    swatches: MANUSCRIPT_SWATCHES.light,
   },
 };

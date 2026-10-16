@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { library } from "$lib/stores/library.svelte";
   import { agents } from "$lib/stores/agents.svelte";
   import { agentName } from "$lib/agent-activity";
@@ -18,6 +19,13 @@
   import { LICENSE_SPACE_NAME, licenseSpace } from "$lib/stores/license-space.svelte";
   import type { TagWithCount, WorkspaceWithCount } from "$lib/api/types";
   import { spacesShown } from "$lib/spaces-shown";
+  import SpaceMarker from "$lib/components/SpaceMarker.svelte";
+  import { markerPrefs } from "$lib/stores/markers.svelte";
+  import { cssColor } from "$lib/space-colors";
+
+  onMount(() => {
+    void markerPrefs.init();
+  });
 
   let newSpaceInput = $state("");
   let allSpaces = $state(false);
@@ -112,7 +120,9 @@
         onRename={async () => ({ ok: true as const })}
         onDoneRename={() => {}}
         onMenu={() => {}}
-      />
+      >
+        {#snippet marker()}<SpaceMarker mode={markerPrefs.mode} />{/snippet}
+      </SidebarEntityRow>
     </nav>
   {/if}
   <div class="lockable" class:locked={licenseSpace.locked} inert={licenseSpace.locked}>
@@ -172,6 +182,7 @@
         onDoneRename={() => {}}
         onMenu={() => {}}
       >
+        {#snippet marker()}<SpaceMarker mode={markerPrefs.mode} />{/snippet}
         {#snippet suffix()}<span class="update-star" aria-hidden="true">*</span>{/snippet}
       </SidebarEntityRow>
     {/if}
@@ -192,7 +203,9 @@
         onRename={async () => ({ ok: true as const })}
         onDoneRename={() => {}}
         onMenu={() => {}}
-      />
+      >
+        {#snippet marker()}<SpaceMarker mode={markerPrefs.mode} />{/snippet}
+      </SidebarEntityRow>
     {/if}
     {#if agentsSpace.visible}
       <SidebarEntityRow
@@ -212,6 +225,7 @@
         onDoneRename={() => {}}
         onMenu={() => {}}
       >
+        {#snippet marker()}<SpaceMarker mode={markerPrefs.mode} />{/snippet}
         {#snippet suffix()}{#if agents.connectedCount > 0}<span
               class="agents-live"
               title={connectedTitle}
@@ -235,7 +249,16 @@
         onRename={(name) => library.renameWorkspace(ws.id, name)}
         onDoneRename={() => (renamingSpaceId = null)}
         onMenu={(x, y) => (spaceMenu = { x, y, ws })}
-      />
+      >
+        {#snippet marker()}
+          <SpaceMarker
+            color={ws.color}
+            flag={ws.flag}
+            slices={library.slicesByWorkspace.get(ws.id) ?? []}
+            mode={markerPrefs.mode}
+          />
+        {/snippet}
+      </SidebarEntityRow>
     {:else}
       <div class="empty-hint">A place for one project or topic</div>
     {/each}
@@ -259,6 +282,7 @@
         name={tag.name}
         count={tag.usageCount}
         prefix="#"
+        prefixColor={cssColor(tag.color)}
         normalize={normalizeTagInput}
         noun="Tag"
         active={library.activeTagId === tag.id}
@@ -286,6 +310,18 @@
     y={spaceMenu.y}
     items={[
       { label: "Rename Space", run: () => (renamingSpaceId = menuWs.id) },
+      {
+        label: "Color",
+        color: {
+          value: menuWs.color ?? null,
+          onpick: (c) => void library.colorWorkspace(menuWs.id, c),
+        },
+      },
+      {
+        label: "Show flag",
+        checked: menuWs.flag,
+        run: () => void library.flagWorkspace(menuWs.id, !menuWs.flag),
+      },
       { label: "Delete Space", danger: true, run: () => void deleteSpace(menuWs) },
     ]}
     onclose={() => (spaceMenu = null)}
@@ -299,6 +335,13 @@
     y={tagMenu.y}
     items={[
       { label: "Rename Tag", run: () => (renamingTagId = menuTag.id) },
+      {
+        label: "Color",
+        color: {
+          value: menuTag.color ?? null,
+          onpick: (c) => void library.colorTag(menuTag.id, c),
+        },
+      },
       { label: "Delete Tag", danger: true, run: () => void confirmDeleteTag(menuTag) },
     ]}
     onclose={() => (tagMenu = null)}

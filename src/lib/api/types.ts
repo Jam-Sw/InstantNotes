@@ -35,11 +35,20 @@ export interface TagWithCount extends Tag {
 export interface Workspace {
   id: string;
   name: string;
+  color: string | null;
+  flag: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface WorkspaceWithCount extends Workspace {
+  noteCount: number;
+}
+
+export interface TagSlice {
+  workspaceId: string;
+  tagId: string;
+  color: string;
   noteCount: number;
 }
 

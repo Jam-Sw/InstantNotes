@@ -1,8 +1,9 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
   import { fade, fly } from "svelte/transition";
+  import { cubicOut } from "svelte/easing";
   import Icon from "$lib/components/Icon.svelte";
-  import { layout } from "$lib/stores/layout.svelte";
+  import { LIST_PANE, NAV_PANE, layout, layoutShortcut } from "$lib/stores/layout.svelte";
   import { appVersion as fetchAppVersion, getSyncServerStatus, quitApp } from "$lib/api/client";
   import type { SyncStage } from "$lib/api/types";
   import { EVENTS, listen } from "$lib/api/events";
@@ -40,7 +41,7 @@
   import { licenseSpace } from "$lib/stores/license-space.svelte";
   import { agreements } from "$lib/agreements.svelte";
   import LicenseNote from "$lib/components/LicenseNote.svelte";
-  import { isMac } from "$lib/platform";
+  import { isMac, modKey, shiftKey } from "$lib/platform";
   import { startDiagnostics } from "$lib/stores/diagnostics";
   import {
     isUpdateNoteId,
@@ -107,15 +108,25 @@
   });
 
   $effect(() => {
-    sidebar.setNarrow(layout.mode !== "desktop");
+    const widthClass = layout.widthClass;
+    const width = layout.width;
+    untrack(() => sidebar.setViewport(widthClass, width));
+  });
+  $effect(() => {
+    if (selectedId !== null) untrack(() => sidebar.noteOpened());
   });
 
   const view = $derived(
     `${library.graphMode}|${library.revisitMode}|${library.activeTagId}|${library.activeWorkspaceId}|${shell.settingsOpen}`,
   );
+  let lastView: string | undefined;
   $effect(() => {
-    void view;
-    untrack(() => (sidebar.narrowOpen = false));
+    const now = view;
+    untrack(() => {
+      sidebar.narrowOpen = false;
+      if (lastView !== undefined && lastView !== now && sidebar.listOverlay) sidebar.revealList();
+      lastView = now;
+    });
   });
 
   const drawer = $derived(sidebar.narrow);
@@ -123,15 +134,28 @@
   const showList = $derived(!onePane || layout.pane === "list");
   const showEditor = $derived(!onePane || layout.pane === "note");
   const backButton = $derived(onePane && layout.pane === "note");
+  const listOverlay = $derived(sidebar.listOverlay);
+  const listHidden = $derived(sidebar.listHidden);
+  const navTrack = $derived(sidebar.navTrack);
+  const listTrack = $derived(library.graphMode ? 0 : sidebar.listTrack);
   const columns = $derived(
-    layout.phone
-      ? "minmax(0, 1fr)"
-      : drawer
-        ? "320px 1fr"
-        : sidebar.hidden
-          ? "280px 1fr"
-          : `${sidebar.width}px 280px 1fr`,
+    layout.phone ? "minmax(0, 1fr)" : `${navTrack}px ${listTrack}px minmax(0, 1fr)`,
   );
+  const listToggleShown = $derived(!layout.phone && !library.graphMode);
+  const editorEdge = $derived(listToggleShown && !sidebar.navInline && !sidebar.listInline);
+  const listX = $derived(navTrack + listTrack);
+  let animate = $state(false);
+  let dragging = $state<"nav" | "list" | null>(null);
+
+  const reducedMotion = () =>
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const motion = (ms: number) => (reducedMotion() || layout.resizing ? 0 : ms);
+
+  function onListClick(e: MouseEvent) {
+    if (!listOverlay || e.shiftKey || e.metaKey || e.ctrlKey) return;
+    if (e.target instanceof Element && e.target.closest(".note-row")) sidebar.closeList();
+  }
 
   function openUpdate() {
     shell.closeSettings();
@@ -146,7 +170,9 @@
     void library.init().then(() => library.openLinked(location.hash));
     void editorPrefs.init();
     void imagePrefs.init();
-    void sidebar.init();
+    void sidebar.init().then(() => {
+      requestAnimationFrame(() => requestAnimationFrame(() => (animate = true)));
+    });
     void linkPrefsStore.init();
     void contexting.init();
     void agents.init();
@@ -244,12 +270,25 @@
       else agents.show();
       return;
     }
-    if (mod && e.key === "\\") {
+    // On the desktop the View menu owns Cmd/Ctrl+\, Cmd/Ctrl+Shift+L and
+    // Cmd/Ctrl+Shift+F; the page keeps them for the web, and Ctrl+Cmd+S.
+    const toggled = layoutShortcut(e, isMac);
+    if (toggled && (isWeb || (e.metaKey && e.ctrlKey))) {
       e.preventDefault();
-      sidebar.toggle();
+      if (toggled === "nav") sidebar.toggle();
+      else sidebar.toggleList();
       return;
     }
     if (isWhiteboardTarget(e.target)) return;
+    if (
+      e.key === "Escape" &&
+      !shell.paletteOpen &&
+      !(e.target instanceof HTMLInputElement && e.target.type === "search" && e.target.value) &&
+      sidebar.closeOverlay()
+    ) {
+      e.preventDefault();
+      return;
+    }
     if (mod && (e.key === "=" || e.key === "+")) {
       e.preventDefault();
       editorPrefs.zoomIn();
@@ -299,8 +338,7 @@
         }
         break;
       case "Escape":
-        if (sidebar.narrow && sidebar.narrowOpen) sidebar.narrowOpen = false;
-        else if (backButton) layout.back();
+        if (backButton) layout.back();
         else if (!shell.settingsOpen) library.clearMultiSelect();
         break;
     }
@@ -322,32 +360,35 @@
     }
   }
 
-  let draggingSidebar = $state(false);
-
-  function startSidebarDrag(e: PointerEvent) {
+  function startDrag(e: PointerEvent, pane: "nav" | "list") {
     if (e.button !== 0) return;
     e.preventDefault();
     const handle = e.currentTarget as HTMLElement;
     handle.setPointerCapture(e.pointerId);
-    draggingSidebar = true;
+    dragging = pane;
     const startX = e.clientX;
-    const startWidth = sidebar.width;
-    const move = (ev: PointerEvent) => sidebar.setWidth(startWidth + ev.clientX - startX);
+    const startWidth = pane === "nav" ? sidebar.navWidth : sidebar.listWidth;
+    const move = (ev: PointerEvent) => {
+      const raw = startWidth + ev.clientX - startX;
+      if (pane === "nav") sidebar.resizeNav(raw);
+      else sidebar.resizeList(raw);
+    };
     const up = () => {
       handle.removeEventListener("pointermove", move);
       handle.removeEventListener("pointerup", up);
-      draggingSidebar = false;
-      sidebar.commitWidth();
+      handle.removeEventListener("pointercancel", up);
+      dragging = null;
+      sidebar.commitDrag(pane);
     };
     handle.addEventListener("pointermove", move);
     handle.addEventListener("pointerup", up);
+    handle.addEventListener("pointercancel", up);
   }
 
-  function onHandleKeydown(e: KeyboardEvent) {
+  function onHandleKeydown(e: KeyboardEvent, pane: "nav" | "list") {
     if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
       e.preventDefault();
-      sidebar.setWidth(sidebar.width + (e.key === "ArrowLeft" ? -10 : 10));
-      sidebar.commitWidth();
+      sidebar.stepPane(pane, e.key === "ArrowLeft" ? -1 : 1);
     }
   }
 
@@ -381,24 +422,20 @@
   <div
     class="layout"
     class:phone={layout.phone}
+    class:animate
+    class:resizing={dragging !== null || layout.resizing}
     data-nav={drawer ? "" : undefined}
+    data-list-overlay={listOverlay ? "" : undefined}
+    data-edge={editorEdge ? "" : undefined}
+    style:--list-x="{listX}px"
+    style:--nav-w="{sidebar.navWidth}px"
+    style:--list-w="{sidebar.listWidth}px"
     style:grid-template-columns={columns}
   >
-    {#if !drawer && !sidebar.hidden}
-      <Sidebar />
-      <div
-        class="sidebar-handle"
-        class:dragging={draggingSidebar}
-        style:left="{sidebar.width - 3}px"
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize sidebar"
-        aria-valuenow={sidebar.width}
-        tabindex="0"
-        onpointerdown={startSidebarDrag}
-        ondblclick={() => sidebar.resetWidth()}
-        onkeydown={onHandleKeydown}
-      ></div>
+    {#if layout.widthClass === "large" || layout.widthClass === "expanded"}
+      <div class="nav-slot" class:hidden={!sidebar.navInline} inert={!sidebar.navInline}>
+        <Sidebar />
+      </div>
     {/if}
     {#if library.graphMode && !licenseSpace.locked}
       <section class="graph-span">
@@ -408,7 +445,15 @@
       </section>
     {:else}
       {#if showList}
-        <NoteList />
+        <div
+          class="list-slot"
+          class:hidden={listHidden}
+          inert={listHidden}
+          role="presentation"
+          onclick={onListClick}
+        >
+          <NoteList />
+        </div>
       {/if}
       {#if showEditor}
         <section class="editor-pane">
@@ -437,6 +482,61 @@
         </section>
       {/if}
     {/if}
+    {#if sidebar.navInline}
+      <div
+        class="divider"
+        class:dragging={dragging === "nav"}
+        class:snapping={sidebar.snapping === "nav"}
+        style:left="{navTrack - 5}px"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize sidebar"
+        aria-valuenow={sidebar.navWidth}
+        aria-valuemin={NAV_PANE.min}
+        aria-valuemax={NAV_PANE.max}
+        tabindex="0"
+        onpointerdown={(e) => startDrag(e, "nav")}
+        ondblclick={() => sidebar.resetWidth("nav")}
+        onkeydown={(e) => onHandleKeydown(e, "nav")}
+      ></div>
+    {/if}
+    {#if sidebar.listInline && !library.graphMode && showList}
+      <div
+        class="divider"
+        class:dragging={dragging === "list"}
+        class:snapping={sidebar.snapping === "list"}
+        style:left="{listX - 5}px"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize note list"
+        aria-valuenow={sidebar.listWidth}
+        aria-valuemin={LIST_PANE.min}
+        aria-valuemax={LIST_PANE.max}
+        tabindex="0"
+        onpointerdown={(e) => startDrag(e, "list")}
+        ondblclick={() => sidebar.resetWidth("list")}
+        onkeydown={(e) => onHandleKeydown(e, "list")}
+      ></div>
+    {/if}
+    {#if listToggleShown}
+      <button
+        class="pane-nav list-toggle"
+        aria-label="Toggle note list"
+        aria-expanded={!listHidden}
+        title={`${listHidden ? "Show" : "Hide"} Note List (${modKey}${shiftKey}L)`}
+        onclick={() => sidebar.toggleList()}
+      >
+        <Icon name="list" size={20} />
+      </button>
+    {/if}
+    {#if listOverlay && showList && sidebar.listOpen && !library.graphMode}
+      <div
+        class="drawer-scrim list-scrim"
+        role="presentation"
+        transition:fade={{ duration: motion(160) }}
+        onclick={() => sidebar.closeList()}
+      ></div>
+    {/if}
     {#if drawer}
       {#if backButton}
         <button class="pane-nav" aria-label="Back to the notes" onclick={() => layout.back()}>
@@ -448,6 +548,7 @@
           aria-label="Show the sidebar"
           aria-expanded={sidebar.narrowOpen}
           onclick={() => sidebar.toggle()}
+          in:fade={{ duration: motion(160), delay: motion(80) }}
         >
           <Icon name="menu" size={20} />
         </button>
@@ -456,10 +557,10 @@
         <div
           class="drawer-scrim"
           role="presentation"
-          transition:fade={{ duration: 160 }}
+          transition:fade={{ duration: motion(160) }}
           onclick={() => (sidebar.narrowOpen = false)}
         ></div>
-        <div class="drawer" transition:fly={{ x: -300, duration: 220, opacity: 1 }}>
+        <div class="drawer" transition:fly={{ x: -300, duration: motion(220), opacity: 1, easing: cubicOut }}>
           <Sidebar />
           <button class="drawer-settings" onclick={() => shell.openSettings()}>Settings</button>
         </div>
@@ -484,6 +585,8 @@
 
 <style>
   .layout {
+    --pane-ms: 240ms;
+    --pane-ease: cubic-bezier(0.2, 0, 0, 1);
     display: grid;
     grid-template-rows: minmax(0, 1fr);
     height: 100vh;
@@ -491,14 +594,107 @@
     overflow: hidden;
     position: relative;
   }
-  .layout[data-nav] > :global(:first-child .pane-header) {
-    padding-left: calc(max(12px, var(--chrome-inset)) + 40px);
+  .layout.animate:not(.resizing) {
+    transition: grid-template-columns var(--pane-ms) var(--pane-ease);
   }
-  .layout.phone .graph-span {
+
+  /* The dividers draw the line between panes, so the panes drop their own. */
+  .layout :global(.list-pane),
+  .layout :global(.sidebar) {
+    border-right: none;
+  }
+
+  /* A pane keeps its width and rides the closing edge, so it slides away under
+     its neighbour instead of being wiped. It hides once the close has run, and
+     shows the moment an open starts. */
+  .nav-slot,
+  .list-slot {
+    display: flex;
+    justify-content: flex-end;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    transition: visibility 0s linear var(--pane-ms);
+  }
+  .nav-slot:not(.hidden),
+  .list-slot:not(.hidden) {
+    transition: none;
+  }
+  .nav-slot {
+    grid-column: 1;
+  }
+  .nav-slot > :global(.sidebar) {
+    flex: none;
+    width: var(--nav-w);
+  }
+  .list-slot {
+    grid-column: 2;
+  }
+  /* Not on the compact stack: there the slot is `display: contents`, so the
+     pane is the grid item itself and fills the window. */
+  .layout:not(.phone) > .list-slot > :global(.list-pane) {
+    flex: none;
+    width: var(--list-w);
+  }
+  .nav-slot.hidden,
+  .list-slot.hidden {
+    visibility: hidden;
+  }
+  .layout.phone > .list-slot {
+    display: contents;
+  }
+  .layout.phone > .nav-slot,
+  .layout.phone > .editor-pane,
+  .layout.phone > .graph-span {
     grid-column: auto;
   }
-  .layout.phone > :global(.list-pane) {
-    border-right: none;
+  .layout[data-list-overlay] > .list-slot {
+    grid-column: auto;
+    justify-content: flex-start;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 29;
+    width: min(320px, 84vw);
+    overflow: visible;
+    box-shadow: var(--shadow-lg);
+    transform: translateX(-100%);
+    transition:
+      transform var(--pane-ms) var(--pane-ease),
+      visibility 0s linear var(--pane-ms);
+  }
+  .layout[data-list-overlay] > .list-slot:not(.hidden) {
+    transform: none;
+    transition: transform var(--pane-ms) var(--pane-ease);
+  }
+  .layout[data-list-overlay] > .list-slot > :global(.list-pane) {
+    flex: 1;
+    width: auto;
+    padding-left: env(safe-area-inset-left);
+  }
+  .list-scrim {
+    z-index: 28;
+  }
+
+  /* With the nav in its drawer, the menu button covers the left edge of the first pane. */
+  .layout[data-nav] > .list-slot :global(.pane-header),
+  .layout[data-nav] > .graph-span :global(.pane-header),
+  .layout[data-nav].phone > .editor-pane :global(.pane-header) {
+    padding-left: calc(max(12px, var(--chrome-inset)) + 40px);
+  }
+  .layout[data-list-overlay] > .list-slot :global(.pane-header) {
+    padding-left: 12px;
+  }
+
+  .layout:not(.phone) > .editor-pane > :global(.pane-header) {
+    padding-left: 46px;
+  }
+  .layout.animate:not(.resizing) > .editor-pane > :global(.pane-header) {
+    transition: padding-left var(--pane-ms) var(--pane-ease);
+  }
+  .layout[data-edge][data-nav] > .editor-pane > :global(.pane-header) {
+    padding-left: calc(max(6px, var(--chrome-inset)) + env(safe-area-inset-left) + 80px);
   }
 
   .pane-nav {
@@ -520,6 +716,18 @@
   .pane-nav:hover {
     background: var(--bg-hover);
     color: var(--text);
+  }
+  .list-toggle {
+    left: calc(var(--list-x) + 6px);
+  }
+  .layout.animate:not(.resizing) .list-toggle {
+    transition: left var(--pane-ms) var(--pane-ease);
+  }
+  .layout[data-edge] .list-toggle {
+    left: calc(max(6px, var(--chrome-inset)) + env(safe-area-inset-left));
+  }
+  .layout[data-edge][data-nav] .list-toggle {
+    left: calc(max(6px, var(--chrome-inset)) + env(safe-area-inset-left) + 40px);
   }
 
   .drawer-scrim {
@@ -577,22 +785,37 @@
     transform: scale(0.94);
   }
 
-  .sidebar-handle {
+  .divider {
     position: absolute;
     top: 0;
     bottom: 0;
-    width: 6px;
-    cursor: col-resize;
     z-index: 10;
-  }
-  .sidebar-handle:hover,
-  .sidebar-handle.dragging,
-  .sidebar-handle:focus-visible {
-    background: var(--accent-soft);
+    width: 8px;
+    cursor: col-resize;
+    touch-action: none;
     outline: none;
+  }
+  .divider::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 4px;
+    width: 1px;
+    background: var(--divider);
+  }
+  .divider:hover::after,
+  .divider.dragging::after,
+  .divider:focus-visible::after {
+    background: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent-soft);
+  }
+  .divider.snapping::after {
+    background: var(--danger);
   }
 
   .editor-pane {
+    grid-column: 3;
     display: flex;
     flex-direction: column;
     min-width: 0;
@@ -600,8 +823,24 @@
     background: var(--bg);
   }
   .graph-span {
-    grid-column: span 2;
+    grid-column: 2 / 4;
     min-width: 0;
     min-height: 0;
+  }
+
+  .layout.resizing > .list-slot,
+  .layout.resizing .list-toggle {
+    transition: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .layout.animate:not(.resizing),
+    .layout.animate:not(.resizing) .list-toggle,
+    .nav-slot,
+    .list-slot,
+    .layout[data-list-overlay] > .list-slot,
+    .layout[data-list-overlay] > .list-slot:not(.hidden) {
+      transition: none;
+    }
   }
 </style>

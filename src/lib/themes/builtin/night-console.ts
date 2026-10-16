@@ -1,4 +1,5 @@
 import type { Theme } from "../types";
+import { NIGHT_CONSOLE_SWATCHES } from "./swatches";
 import { SANS_STACK, MONO_STACK } from "../fonts";
 
 export const nightConsole: Theme = {
@@ -34,6 +35,7 @@ export const nightConsole: Theme = {
     tag: "#f5c583",
     success: "#2e6b4a",
     warning: "#e27d3a",
+    swatches: NIGHT_CONSOLE_SWATCHES.dark,
   },
   light: {
     bg: "#f7f6f3",
@@ -52,6 +54,7 @@ export const nightConsole: Theme = {
     tag: "#8a520b",
     success: "#2e6b4a",
     warning: "#b5541b",
+    swatches: NIGHT_CONSOLE_SWATCHES.light,
     focus: "#1f5f8a",
   },
 };

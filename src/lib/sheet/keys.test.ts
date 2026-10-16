@@ -123,6 +123,8 @@ describe("select mode", () => {
     }
     expect(selectIntent(cmd("A", { shiftKey: true }))).toBeNull();
     expect(selectIntent(cmd("N", { shiftKey: true }))).toBeNull();
+    expect(selectIntent(cmd("L", { shiftKey: true }))).toBeNull();
+    expect(selectIntent(cmd("F", { shiftKey: true }))).toBeNull();
   });
 });
 

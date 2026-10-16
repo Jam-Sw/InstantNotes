@@ -41,8 +41,21 @@ const FILE_NOTE: &[Item] = &[
 const VIEW: &[Item] = &[
     Item::new("view.palette", "Command Palette", None),
     Item::new("view.graph", "Show Graph", None),
-    Item::new("view.sidebar", "Show or Hide Sidebar", None),
     Item::new("view.agents", "Show Agents", None),
+];
+// The page leaves these chords to the menu on the desktop, so one press runs once.
+const VIEW_PANES: &[Item] = &[
+    Item::new(
+        "view.sidebar",
+        "Show or Hide Sidebar",
+        Some("CmdOrCtrl+Backslash"),
+    ),
+    Item::new(
+        "view.noteList",
+        "Show or Hide Note List",
+        Some("CmdOrCtrl+Shift+L"),
+    ),
+    Item::new("note.search", "Search Notes", Some("CmdOrCtrl+Shift+F")),
 ];
 const VIEW_ZOOM: &[Item] = &[
     Item::new("view.zoomIn", "Zoom In", None),
@@ -154,7 +167,7 @@ pub(crate) fn install(app: &tauri::App) -> tauri::Result<()> {
         .paste()
         .select_all()
         .build()?;
-    let view = submenu(app, "View", &[VIEW, VIEW_ZOOM])?.build()?;
+    let view = submenu(app, "View", &[VIEW, VIEW_PANES, VIEW_ZOOM])?.build()?;
     let help = {
         let builder = submenu(app, "Help", &[HELP, HELP_LINKS])?;
         #[cfg(not(target_os = "macos"))]
@@ -210,7 +223,7 @@ mod tests {
 
     fn every_item() -> Vec<&'static Item> {
         [
-            FILE_NEW, FILE_NOTE, VIEW, VIEW_ZOOM, HELP, HELP_LINKS, TRAY, TRAY_TAIL,
+            FILE_NEW, FILE_NOTE, VIEW, VIEW_PANES, VIEW_ZOOM, HELP, HELP_LINKS, TRAY, TRAY_TAIL,
         ]
         .iter()
         .flat_map(|section| section.iter())
@@ -232,6 +245,16 @@ mod tests {
         let ids: Vec<&str> = every_item().iter().map(|item| item.id).collect();
         for id in SHELL_ONLY {
             assert!(ids.contains(id), "{id}");
+        }
+    }
+
+    #[test]
+    fn no_two_items_share_an_accelerator() {
+        let mut seen = std::collections::HashSet::new();
+        for item in every_item() {
+            if let Some(accel) = item.accel {
+                assert!(seen.insert(accel), "{accel} on {}", item.id);
+            }
         }
     }
 }

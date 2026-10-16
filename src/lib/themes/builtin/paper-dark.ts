@@ -1,4 +1,5 @@
 import type { Theme } from "../types";
+import { PAPER_DARK_SWATCHES } from "./swatches";
 import { SANS_STACK, MONO_STACK } from "../fonts";
 
 export const paperDark: Theme = {
@@ -33,6 +34,7 @@ export const paperDark: Theme = {
     tag: "#e0a878",
     success: "#a3b86c",
     warning: "#e0b85f",
+    swatches: PAPER_DARK_SWATCHES.dark,
   },
   light: {
     bg: "#f7f2e9",
@@ -51,5 +53,6 @@ export const paperDark: Theme = {
     tag: "#9c5c2e",
     success: "#6b8a3a",
     warning: "#a87a1e",
+    swatches: PAPER_DARK_SWATCHES.light,
   },
 };
