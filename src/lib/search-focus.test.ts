@@ -45,6 +45,12 @@ describe("focusing search", () => {
     expect([input.selectionStart, input.selectionEnd]).toEqual([0, 5]);
   });
 
+  it("puts the cursor at the end when typing carries over", async () => {
+    const input = mountList("trip");
+    expect(await focusSearch(document, { select: false })).toBe(true);
+    expect([input.selectionStart, input.selectionEnd]).toEqual([4, 4]);
+  });
+
   it("waits for a hidden list to become focusable", async () => {
     const input = mountList("", true);
     const pending = focusSearch();

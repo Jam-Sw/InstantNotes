@@ -1,18 +1,54 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import { getShortcutFailure } from "$lib/api/client";
+  import { onMount, untrack } from "svelte";
+  import { getShortcutFailure, listNotes } from "$lib/api/client";
   import { library } from "$lib/stores/library.svelte";
   import { updater } from "$lib/stores/updater.svelte";
   import { captureShortcut, modKey } from "$lib/platform";
   import { isWeb } from "$lib/api/runtime";
   import { layout } from "$lib/stores/layout.svelte";
-  import type { ShortcutFailure } from "$lib/api/types";
+  import { sidebar } from "$lib/stores/sidebar.svelte";
+  import { formatDate, formatExact } from "$lib/format";
+  import { focusSearch } from "$lib/search-focus";
+  import SearchField from "$lib/components/SearchField.svelte";
+  import type { Note, ShortcutFailure } from "$lib/api/types";
+
+  const RECENT = 5;
 
   let { appVersion, onOpenUpdate }: { appVersion: string; onOpenUpdate: () => void } =
     $props();
 
   let shortcutConflict = $state<ShortcutFailure | null>(null);
   let conflictDismissed = $state(false);
+
+  // With the list hidden, the welcome screen carries its search and the notes
+  // last opened, so a narrow window can still find and resume a note.
+  const listAway = $derived(sidebar.listHidden && !layout.phone);
+  let recent = $state<Note[]>([]);
+
+  async function loadRecent() {
+    try {
+      const notes = await listNotes({
+        sortBy: "lastOpenedAt",
+        sortOrder: "desc",
+        limit: RECENT * 2,
+        bodyChars: 0,
+      });
+      recent = notes.filter((n) => n.lastOpenedAt).slice(0, RECENT);
+    } catch {
+      recent = [];
+    }
+  }
+
+  $effect(() => {
+    if (!listAway) return;
+    void library.notes;
+    untrack(() => void loadRecent());
+  });
+
+  // Typing here opens the list on the results; the cursor follows into its field.
+  function carryOver(query: string) {
+    if (query.trim()) void focusSearch(document, { select: false });
+  }
 
   onMount(() => {
     getShortcutFailure()
@@ -79,6 +115,22 @@
         </button>
       </p>
     {/if}
+    {#if listAway}
+      <div class="welcome-search">
+        <SearchField onsearch={carryOver} />
+      </div>
+      {#if recent.length > 0}
+        <section class="recent" aria-label="Continue">
+          <div class="section-label">Continue</div>
+          {#each recent as note (note.id)}
+            <button class="recent-row" onclick={() => void library.select(note.id)}>
+              <span class="recent-title">{note.title || "Untitled"}</span>
+              <span class="recent-date" title={formatExact(note.lastOpenedAt!)}>{formatDate(note.lastOpenedAt!)}</span>
+            </button>
+          {/each}
+        </section>
+      {/if}
+    {/if}
     {#if library.error}<p class="error">{library.error}</p>{/if}
   </div>
 </div>
@@ -92,6 +144,50 @@
   }
   .no-selection-inner {
     text-align: center;
+    color: var(--text-tertiary);
+  }
+  .welcome-search,
+  .recent {
+    width: min(380px, calc(100vw - 48px));
+    margin-inline: auto;
+  }
+  .welcome-search {
+    display: flex;
+    margin-top: 22px;
+  }
+  .recent {
+    display: flex;
+    flex-direction: column;
+    margin-top: 18px;
+    text-align: left;
+  }
+  .recent .section-label {
+    padding: 0 10px 4px;
+  }
+  .recent-row {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 7px 10px;
+    border-radius: var(--radius);
+    color: var(--text);
+    text-align: left;
+  }
+  .recent-row:hover,
+  .recent-row:focus-visible {
+    background: var(--bg-hover);
+  }
+  .recent-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .recent-date {
+    flex: none;
+    font-family: var(--font-meta);
+    font-size: 11px;
     color: var(--text-tertiary);
   }
   .no-selection-inner h2 {

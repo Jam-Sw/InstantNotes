@@ -12,8 +12,12 @@ function nextFrame(win: Window): Promise<void> {
 }
 
 // Brings the note list into view, wherever the layout keeps it, and puts the
-// cursor in its search field with the current query selected.
-export async function focusSearch(doc: Document = document): Promise<boolean> {
+// cursor in its search field: with the query selected, or, when typing carries
+// over from the welcome screen's field, at the end of it.
+export async function focusSearch(
+  doc: Document = document,
+  { select = true }: { select?: boolean } = {},
+): Promise<boolean> {
   shell.closeSettings();
   library.graphMode = false;
   if (layout.phone) layout.back();
@@ -25,7 +29,8 @@ export async function focusSearch(doc: Document = document): Promise<boolean> {
     if (!input || input.closest("[inert]")) continue;
     input.focus();
     if (doc.activeElement !== input) continue;
-    input.select();
+    if (select) input.select();
+    else input.setSelectionRange(input.value.length, input.value.length);
     return true;
   }
   return false;
