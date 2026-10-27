@@ -363,6 +363,7 @@ pub fn run() {
             save_sticky_geometry,
             agent_connection,
             list_agent_activity,
+            list_agent_scratch,
             agent_activity_before,
             agent_activity_wire,
             list_agent_sessions,

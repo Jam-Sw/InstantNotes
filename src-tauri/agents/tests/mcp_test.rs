@@ -1986,9 +1986,6 @@ fn search_reaches_the_trash_and_pinned_notes() {
     assert_eq!(ids(5), sorted(vec![live, pinned, archived]));
 }
 
-// Copy context ends each note with "id <Note.id>", the id the app's get_note
-// command returns from Store::get_note. An agent handed that id must read the
-// same note, from the Trash too, and find it under the same id in search.
 #[test]
 fn the_id_a_copied_context_names_is_the_one_agents_read() {
     let mut store = store_with("read");
@@ -2037,4 +2034,159 @@ fn the_id_a_copied_context_names_is_the_one_agents_read() {
     assert_eq!(both["notes"][0]["id"], json!(copied_live.id));
     assert_eq!(both["notes"][1]["id"], json!(copied_gone.id));
     assert_eq!(both["missing"], json!([]));
+}
+
+fn session_as(store: &mut Store, id: &str, messages: &[Value]) -> Vec<Value> {
+    use instantnotes_agents::serve_as;
+    let input: String = messages.iter().map(|m| format!("{m}\n")).collect();
+    let mut output = Vec::new();
+    serve_as(
+        store,
+        None,
+        id.to_string(),
+        Cursor::new(input.into_bytes()),
+        &mut output,
+    )
+    .unwrap();
+    String::from_utf8(output)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect()
+}
+
+#[test]
+fn the_scratchpad_takes_notes_without_a_trace() {
+    let mut store = store_with("read");
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(
+                1,
+                "scratchpad_write",
+                json!({ "kind": "plan", "text": "  Check the sync tests first  " }),
+            ),
+            call(2, "scratchpad_write", json!({ "text": "Second thought" })),
+            call(3, "scratchpad_read", json!({ "limit": 1 })),
+            call(4, "scratchpad_read", json!({})),
+        ],
+    );
+    let (is_error, text, written) = result_of(&replies[1]);
+    assert!(!is_error, "{text}");
+    assert_eq!(written["kind"], "plan");
+    assert_eq!(written["entries"], 1);
+    let (_, _, second) = result_of(&replies[2]);
+    assert_eq!(second["kind"], "note");
+    assert_eq!(second["entries"], 2);
+    let (_, _, newest) = result_of(&replies[3]);
+    assert_eq!(newest["total"], 2);
+    assert_eq!(newest["entries"].as_array().unwrap().len(), 1);
+    assert_eq!(newest["entries"][0]["text"], "Second thought");
+    let (_, _, all) = result_of(&replies[4]);
+    let texts: Vec<&str> = all["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["text"].as_str().unwrap())
+        .collect();
+    assert_eq!(texts, ["Check the sync tests first", "Second thought"]);
+    assert!(trace(&store).is_empty(), "the scratchpad is no activity");
+}
+
+#[test]
+fn the_scratchpad_is_closed_when_access_is_off_or_the_agent_is_blocked() {
+    let mut store = store_with("off");
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(1, "scratchpad_write", json!({ "text": "x" })),
+            call(2, "scratchpad_read", json!({})),
+        ],
+    );
+    for reply in &replies[1..] {
+        let (is_error, text, _) = result_of(reply);
+        assert!(is_error);
+        assert!(text.contains("Settings > Agents"), "{text}");
+    }
+    assert_eq!(store.latest_scratch_seq().unwrap(), 0);
+
+    let mut store = store_with("write");
+    store
+        .set_setting(BLOCKED_KEY, json!(["claude-code"]))
+        .unwrap();
+    let replies = session(
+        &mut store,
+        &[init(), call(1, "scratchpad_write", json!({ "text": "x" }))],
+    );
+    let (is_error, text, _) = result_of(&replies[1]);
+    assert!(is_error);
+    assert!(text.contains("blocked"), "{text}");
+    assert_eq!(store.latest_scratch_seq().unwrap(), 0);
+    assert!(trace(&store).is_empty());
+}
+
+#[test]
+fn a_scratchpad_kind_outside_the_four_names_them() {
+    let mut store = store_with("read");
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(
+                1,
+                "scratchpad_write",
+                json!({ "kind": "todo", "text": "x" }),
+            ),
+            call(2, "scratchpad_write", json!({ "text": "   " })),
+        ],
+    );
+    let (is_error, text, _) = result_of(&replies[1]);
+    assert!(is_error);
+    assert!(text.contains("note, plan, memory, decision"), "{text}");
+    let (is_error, text, _) = result_of(&replies[2]);
+    assert!(is_error);
+    assert!(text.contains("no text"), "{text}");
+    assert_eq!(store.latest_scratch_seq().unwrap(), 0);
+}
+
+#[test]
+fn a_reconnected_client_reads_its_earlier_scratchpad() {
+    use instantnotes_core::store::activity::ClientSession;
+    let mut store = store_with("read");
+    let same = ClientSession {
+        client_session: Some("ec23c3e6".into()),
+        ..Default::default()
+    };
+    for id in ["first", "second"] {
+        store.open_agent_session(id, "claude-code").unwrap();
+        store.describe_agent_session(id, &same).unwrap();
+    }
+    let replies = session_as(
+        &mut store,
+        "first",
+        &[
+            init(),
+            call(
+                1,
+                "scratchpad_write",
+                json!({ "kind": "memory", "text": "The sync bug lives in the merge step" }),
+            ),
+        ],
+    );
+    let (is_error, text, _) = result_of(&replies[1]);
+    assert!(!is_error, "{text}");
+
+    let replies = session_as(
+        &mut store,
+        "second",
+        &[init(), call(1, "scratchpad_read", json!({}))],
+    );
+    let (_, _, read) = result_of(&replies[1]);
+    assert_eq!(read["total"], 1);
+    assert_eq!(
+        read["entries"][0]["text"],
+        "The sync bug lives in the merge step"
+    );
 }

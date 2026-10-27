@@ -3,6 +3,9 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 pub const ACTIVITY_KEEP: i64 = 2000;
+pub const SCRATCH_KINDS: [&str; 4] = ["note", "plan", "memory", "decision"];
+pub const SCRATCH_KEEP: i64 = 5000;
+pub const SCRATCH_CHARS: usize = 20_000;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -26,6 +29,17 @@ pub struct AgentActivity {
     pub revertable: bool,
     pub reverted_at: Option<i64>,
     pub reverts: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ScratchEntry {
+    pub seq: i64,
+    pub at: i64,
+    pub session: String,
+    pub client: String,
+    pub kind: String,
+    pub text: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -465,6 +479,7 @@ impl Store {
 
     pub fn clear_activity(&mut self) -> Result<()> {
         self.conn.execute("DELETE FROM agent_activity", [])?;
+        self.conn.execute("DELETE FROM agent_scratch", [])?;
         self.conn.execute(
             "DELETE FROM agent_sessions WHERE disconnected_at IS NOT NULL",
             [],
@@ -475,8 +490,10 @@ impl Store {
     pub fn open_agent_session(&mut self, session: &str, client: &str) -> Result<()> {
         let now = now_ms();
         self.conn.execute(
-            "INSERT OR REPLACE INTO agent_sessions (session, client, connected_at, disconnected_at) \
-             VALUES (?1, ?2, ?3, NULL)",
+            "INSERT INTO agent_sessions (session, client, connected_at, disconnected_at) \
+             VALUES (?1, ?2, ?3, NULL) \
+             ON CONFLICT(session) DO UPDATE SET client = excluded.client, \
+             connected_at = excluded.connected_at, disconnected_at = NULL",
             params![session, client, now],
         )?;
         self.conn.execute(
@@ -541,5 +558,133 @@ impl Store {
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+}
+
+const SCRATCH_COLUMNS: &str = "seq, at, session, client, kind, text";
+
+const CONVERSATION_SESSIONS: &str = "SELECT session FROM agent_sessions WHERE session = ?1 \
+     OR (client_session IS NOT NULL AND client_session = \
+         (SELECT client_session FROM agent_sessions WHERE session = ?1))";
+
+fn row_to_scratch(row: &rusqlite::Row<'_>) -> rusqlite::Result<ScratchEntry> {
+    Ok(ScratchEntry {
+        seq: row.get(0)?,
+        at: row.get(1)?,
+        session: row.get(2)?,
+        client: row.get(3)?,
+        kind: row.get(4)?,
+        text: row.get(5)?,
+    })
+}
+
+fn scratch_rows(
+    conn: &Connection,
+    sql: &str,
+    params: &[&dyn rusqlite::ToSql],
+) -> Result<Vec<ScratchEntry>> {
+    let mut stmt = conn.prepare(sql)?;
+    let rows = stmt.query_map(params, row_to_scratch)?;
+    let mut entries = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+    entries.sort_by_key(|e| e.seq);
+    Ok(entries)
+}
+
+impl Store {
+    pub fn write_scratch(
+        &mut self,
+        session: &str,
+        client: &str,
+        kind: &str,
+        text: &str,
+    ) -> Result<ScratchEntry> {
+        if !SCRATCH_KINDS.contains(&kind) {
+            return Err(AppError::Validation(format!(
+                "kind must be one of {}",
+                SCRATCH_KINDS.join(", ")
+            )));
+        }
+        let text = text.trim();
+        if text.is_empty() {
+            return Err(AppError::Validation("there is no text to write".into()));
+        }
+        if text.chars().count() > SCRATCH_CHARS {
+            return Err(AppError::Validation(format!(
+                "text is longer than {SCRATCH_CHARS} characters"
+            )));
+        }
+        let at = now_ms();
+        let tx = self.conn.transaction()?;
+        tx.execute(
+            "INSERT INTO agent_scratch (at, session, client, kind, text) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![at, session, client, kind, text],
+        )?;
+        let seq = tx.last_insert_rowid();
+        tx.execute(
+            "DELETE FROM agent_scratch WHERE seq <= ?1",
+            params![seq - SCRATCH_KEEP],
+        )?;
+        tx.commit()?;
+        Ok(ScratchEntry {
+            seq,
+            at,
+            session: session.to_string(),
+            client: client.to_string(),
+            kind: kind.to_string(),
+            text: text.to_string(),
+        })
+    }
+
+    pub fn read_scratch(&self, session: &str, limit: i64) -> Result<Vec<ScratchEntry>> {
+        scratch_rows(
+            &self.conn,
+            &format!(
+                "SELECT {SCRATCH_COLUMNS} FROM agent_scratch \
+                 WHERE session = ?1 OR session IN ({CONVERSATION_SESSIONS}) \
+                 ORDER BY seq DESC LIMIT ?2"
+            ),
+            &[&session, &limit.clamp(1, 500)],
+        )
+    }
+
+    pub fn count_scratch(&self, session: &str) -> Result<i64> {
+        Ok(self.conn.query_row(
+            &format!(
+                "SELECT COUNT(*) FROM agent_scratch \
+                 WHERE session = ?1 OR session IN ({CONVERSATION_SESSIONS})"
+            ),
+            params![session],
+            |r| r.get(0),
+        )?)
+    }
+
+    pub fn list_scratch(&self, session: &str, limit: i64) -> Result<Vec<ScratchEntry>> {
+        scratch_rows(
+            &self.conn,
+            &format!(
+                "SELECT {SCRATCH_COLUMNS} FROM agent_scratch WHERE session = ?1 \
+                 ORDER BY seq DESC LIMIT ?2"
+            ),
+            &[&session, &limit.clamp(1, 5000)],
+        )
+    }
+
+    pub fn scratch_since(&self, after_seq: i64, limit: i64) -> Result<Vec<ScratchEntry>> {
+        scratch_rows(
+            &self.conn,
+            &format!(
+                "SELECT {SCRATCH_COLUMNS} FROM agent_scratch WHERE seq > ?1 \
+                 ORDER BY seq ASC LIMIT ?2"
+            ),
+            &[&after_seq, &limit.clamp(1, 5000)],
+        )
+    }
+
+    pub fn latest_scratch_seq(&self) -> Result<i64> {
+        Ok(self
+            .conn
+            .query_row("SELECT COALESCE(MAX(seq), 0) FROM agent_scratch", [], |r| {
+                r.get(0)
+            })?)
     }
 }

@@ -276,6 +276,17 @@ CREATE TABLE attachment_files (
 ALTER TABLE workspaces ADD COLUMN color TEXT;
 ALTER TABLE workspaces ADD COLUMN flag INTEGER NOT NULL DEFAULT 0;
 "#,
+    r#"
+CREATE TABLE agent_scratch (
+  seq     INTEGER PRIMARY KEY,
+  at      INTEGER NOT NULL,
+  session TEXT NOT NULL,
+  client  TEXT NOT NULL,
+  kind    TEXT NOT NULL,
+  text    TEXT NOT NULL
+);
+CREATE INDEX idx_agent_scratch_session ON agent_scratch(session, seq);
+"#,
 ];
 
 const NOTE_COLUMNS: &str = "id, title, body, created_at, updated_at, last_opened_at, \

@@ -90,7 +90,7 @@ export function parseActivityLog(value: unknown): AgentActivity[] {
   );
 }
 
-export const SCRATCH_KINDS = ["note", "plan", "memory", "decision"] as const;
+const SCRATCH_KINDS = ["note", "plan", "memory", "decision"] as const;
 
 export type ScratchKind = (typeof SCRATCH_KINDS)[number];
 

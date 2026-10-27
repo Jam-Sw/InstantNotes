@@ -16,7 +16,6 @@ import {
   parseNotify,
   parseScratch,
   parseTags,
-  SCRATCH_KINDS,
   scratchKindLabel,
   timeAgo,
   type AgentActivity,
@@ -197,7 +196,12 @@ describe("the agent scratchpad", () => {
   });
 
   it("labels each kind of entry", () => {
-    expect(SCRATCH_KINDS.map(scratchKindLabel)).toEqual(["Note to self", "Plan", "Memory", "Decision"]);
+    expect((["note", "plan", "memory", "decision"] as const).map(scratchKindLabel)).toEqual([
+      "Note to self",
+      "Plan",
+      "Memory",
+      "Decision",
+    ]);
   });
 });
 

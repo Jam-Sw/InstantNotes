@@ -4,6 +4,7 @@ use crate::fail;
 use instantnotes_core::clients::{identify, parent_process, Client, ClientProcess};
 use instantnotes_core::domain::{normalize_tag_name, normalize_workspace_name};
 use instantnotes_core::sheet::Sheet;
+use instantnotes_core::store::activity::{SCRATCH_CHARS, SCRATCH_KINDS};
 use instantnotes_core::store::now_ms;
 use instantnotes_core::types::NoteSearch;
 use instantnotes_core::types::{
@@ -31,6 +32,8 @@ const MAX_NOTE_CHARS: usize = 100_000;
 const MIN_NOTE_CHARS: usize = 1_000;
 const READ_BUDGET_CHARS: usize = 60_000;
 const HEADER_CELL_CHARS: usize = 60;
+const SCRATCH_READ_LIMIT: i64 = 50;
+const SCRATCH_READ_MAX: i64 = 500;
 
 type ToolResult = Result<Value, String>;
 
@@ -47,6 +50,8 @@ struct ToolDef {
     name: &'static str,
     title: &'static str,
     level: Access,
+    read_only: bool,
+    traced: bool,
     destructive: bool,
     idempotent: bool,
     description: &'static str,
@@ -58,6 +63,8 @@ const TOOLS: &[ToolDef] = &[
         name: "search_notes",
         title: "Search notes",
         level: Access::Read,
+        read_only: true,
+        traced: true,
         destructive: false,
         idempotent: true,
         description: "Full-text search over note titles and bodies. Use two or three keywords, not a sentence; a word also matches words that begin with it. match \"any\" casts wide; space, tag, status, updatedAfter, and updatedBefore narrow. Each result has id, title, kind, spaces, and updatedAt. With detail \"passages\" (the default) a result also has tags, createdAt, and up to three passages: a matching line with its line number and the lines around it (a long line is clipped with …), plus matchingLines, the count of every matching line. Pass updatedAt to update_note as expectedUpdatedAt. A search with no match returns a hint saying what to loosen. Paged: total, hasMore, nextOffset, limit (default 10). Trashed notes are searched only with status \"trash\".",
@@ -93,6 +100,8 @@ const TOOLS: &[ToolDef] = &[
         name: "list_notes",
         title: "List notes",
         level: Access::Read,
+        read_only: true,
+        traced: true,
         destructive: false,
         idempotent: true,
         description: "List notes. Pinned notes come first (except in the Trash), then the most recently updated; with status \"revisit\", captures never opened in the app and older than three days, oldest first. Filter by space, tag, updatedAfter, and updatedBefore. Space and tag names come from list_spaces and list_tags. Each note has id, title, kind, a snippet of the body, createdAt, updatedAt, isPinned, isArchived, and isDeleted; read whole bodies with get_notes. Paged: total, hasMore, nextOffset, limit (default 50).",
@@ -115,6 +124,8 @@ const TOOLS: &[ToolDef] = &[
         name: "get_note",
         title: "Read a note",
         level: Access::Read,
+        read_only: true,
+        traced: true,
         destructive: false,
         idempotent: true,
         description: "Read one note by id (from search_notes or list_notes): body, kind, tags, spaces, and updatedAt (pass it to update_note as expectedUpdatedAt). A body longer than maxChars (default 12,000) comes back cut, with truncated true, totalChars, and nextBodyOffset: call again with bodyOffset set to nextBodyOffset to read on. A sheet also returns sheet: cols (its column count), rows (rows holding data), and, once a row holds data, header (its first row, each cell cut at 60 characters). Reading leaves the note unopened, so it stays in Revisit.",
@@ -128,6 +139,8 @@ const TOOLS: &[ToolDef] = &[
         name: "get_notes",
         title: "Read several notes",
         level: Access::Read,
+        read_only: true,
+        traced: true,
         destructive: false,
         idempotent: true,
         description: "Read several notes in one call (ids from search_notes or list_notes), in the order asked: what get_note returns, for each id. The bodies share one budget of 60,000 characters, so the more ids, the shorter each body (never under 1,000). A cut note says truncated true: read on with get_note and bodyOffset. Ids that name no note are listed in missing; the other notes still come back. Reading leaves the notes unopened, so they stay in Revisit.",
@@ -146,6 +159,8 @@ const TOOLS: &[ToolDef] = &[
         name: "list_tags",
         title: "List tags",
         level: Access::Read,
+        read_only: true,
+        traced: true,
         destructive: false,
         idempotent: true,
         description: "Every tag, each with name, notes (how many notes outside the Trash use it) and color (a swatch name such as blue, a #rrggbb value, or null).",
@@ -155,6 +170,8 @@ const TOOLS: &[ToolDef] = &[
         name: "list_spaces",
         title: "List Spaces",
         level: Access::Read,
+        read_only: true,
+        traced: true,
         destructive: false,
         idempotent: true,
         description: "Every Space, each with name, notes (how many notes outside the Trash it holds), color (a swatch name such as blue, a #rrggbb value, or null) and flag (whether it shows a flag). Call this before create_note and add_to_space, and pass one of these names, so the note is filed in an existing Space.",
@@ -164,6 +181,8 @@ const TOOLS: &[ToolDef] = &[
         name: "suggest_space",
         title: "Where a note belongs",
         level: Access::Read,
+        read_only: true,
+        traced: true,
         destructive: false,
         idempotent: true,
         description: "Suggests a Space for notes that are in none, from the same model as the app's Graph; it files nothing. Pass id for one note, or no id for every unfiled note, newest first. Each suggestion has id, title, space, probability, and up to three reasons. A note is listed only when the evidence clearly favours a Space, and a suggestion the user dismissed is not listed again. The list stays empty until at least two Spaces hold notes; otherwise an empty list means the library does not say. To file a suggestion you agree with, call add_to_space. Paged: total, hasMore, nextOffset, limit (default 50).",
@@ -177,6 +196,8 @@ const TOOLS: &[ToolDef] = &[
         name: "create_note",
         title: "Create a note",
         level: Access::Write,
+        read_only: false,
+        traced: true,
         destructive: false,
         idempotent: false,
         description: "Create a document note. The title is its first line unless title is given; #words in the body become tags, and the user may have set tags that are added to every note this agent creates. File it: set space to the existing Space it belongs in, a name from list_spaces. While the library has any Space, a call without space is refused and saves nothing; the refusal lists the Spaces. Returns the note without its body; createdSpace is true when space named a new Space.",
@@ -191,6 +212,8 @@ const TOOLS: &[ToolDef] = &[
         name: "update_note",
         title: "Rewrite a note",
         level: Access::Write,
+        read_only: false,
+        traced: true,
         destructive: true,
         idempotent: true,
         description: "Replace a document's title, its whole body, or both; to change one passage use edit_note, to add at the end use append_to_note. Set expectedUpdatedAt to the updatedAt from search_notes, list_notes, or get_note; there is no need to read the note first. A CONFLICT means the note changed since then and carries the current note (body cut at 12,000 characters): apply your change to that text and call once more with its updatedAt; on a second CONFLICT, tell the user. That body may be cut (truncated true): before passing body, read the rest with get_note and bodyOffset, since body replaces the whole text. A sheet's or whiteboard's body is refused: for a sheet use append_sheet_rows; a whiteboard is edited by the user in the app. Returns the note without its body.",
@@ -205,6 +228,8 @@ const TOOLS: &[ToolDef] = &[
         name: "edit_note",
         title: "Edit part of a note",
         level: Access::Write,
+        read_only: false,
+        traced: true,
         destructive: true,
         idempotent: false,
         description: "Replace one exact passage of a document's body and leave the rest as it is. Copy oldText from get_note, or from a search passage without its … marks, with enough surrounding text that it appears exactly once. If it appears 0 times, nothing changes: read the note with get_note and copy the exact text. If it appears several times, nothing changes and the error says how many: add surrounding text. Use this for any change smaller than the whole note. Example: oldText \"Known issue: the fan curve resets after every reboot.\" with newText \"Known issue: fixed in firmware 2.1.\" changes that line only. A sheet's or whiteboard's body is refused: for a sheet use append_sheet_rows; a whiteboard is edited by the user in the app. Returns the note without its body.",
@@ -218,6 +243,8 @@ const TOOLS: &[ToolDef] = &[
         name: "append_to_note",
         title: "Add to a note",
         level: Access::Write,
+        read_only: false,
+        traced: true,
         destructive: false,
         idempotent: false,
         description: "Add text to the end of a document, on a new line, keeping what is there. For a sheet use append_sheet_rows; a whiteboard is refused, since the user edits it in the app. Returns the note without its body.",
@@ -230,6 +257,8 @@ const TOOLS: &[ToolDef] = &[
         name: "append_sheet_rows",
         title: "Add rows to a sheet",
         level: Access::Write,
+        read_only: false,
+        traced: true,
         destructive: false,
         idempotent: false,
         description: "Add rows to the bottom of a sheet (a note whose kind is \"sheet\"), after its last row holding data. Each row is a list of cell strings in column order; a shorter row is padded, a row wider than the sheet, a cell over 10,000 characters, or rows past 5,000 are refused. Call get_note first: its sheet.cols is the column count and sheet.header, when a row holds data, names the columns. Returns the note without its body, plus appended: firstRow (as the app numbers rows) and count.",
@@ -247,6 +276,8 @@ const TOOLS: &[ToolDef] = &[
         name: "tag_note",
         title: "Tag a note",
         level: Access::Write,
+        read_only: false,
+        traced: true,
         destructive: false,
         idempotent: true,
         description: "Add a tag to a note. A tag that does not exist yet is created. Returns the note without its body.",
@@ -256,6 +287,8 @@ const TOOLS: &[ToolDef] = &[
         name: "untag_note",
         title: "Untag a note",
         level: Access::Write,
+        read_only: false,
+        traced: true,
         destructive: true,
         idempotent: true,
         description: "Remove a tag from a note. A #word written in the body adds the tag back on the next edit, so also remove that #word with edit_note. Returns the note without its body.",
@@ -265,6 +298,8 @@ const TOOLS: &[ToolDef] = &[
         name: "add_to_space",
         title: "Add a note to a Space",
         level: Access::Write,
+        read_only: false,
+        traced: true,
         destructive: false,
         idempotent: true,
         description: "Add an existing note to a Space: to file a note that is in none, or one suggest_space matched. Pass a name from list_spaces. A name that matches no Space creates one, and the result then has createdSpace true; create one only when the user asks for it or no existing Space covers the note. Returns the note without its body.",
@@ -274,6 +309,8 @@ const TOOLS: &[ToolDef] = &[
         name: "remove_from_space",
         title: "Take a note out of a Space",
         level: Access::Write,
+        read_only: false,
+        traced: true,
         destructive: true,
         idempotent: true,
         description: "Take a note out of a Space. The note itself is kept, along with its other Spaces. Returns the note without its body.",
@@ -283,6 +320,8 @@ const TOOLS: &[ToolDef] = &[
         name: "trash_note",
         title: "Move a note to the Trash",
         level: Access::Write,
+        read_only: false,
+        traced: true,
         destructive: true,
         idempotent: true,
         description: "Move a note to the Trash, the only way to remove one. The user can restore it, and so can restore_note; no tool deletes a note for good. Returns the note without its body.",
@@ -292,10 +331,44 @@ const TOOLS: &[ToolDef] = &[
         name: "restore_note",
         title: "Restore a note from the Trash",
         level: Access::Write,
+        read_only: false,
+        traced: true,
         destructive: false,
         idempotent: true,
         description: "Bring a note back from the Trash (find its id with search_notes or list_notes and status \"trash\"). Returns the note without its body.",
         schema: || object(json!({ "id": id_param() }), &["id"]),
+    },
+    ToolDef {
+        name: "scratchpad_write",
+        title: "Write to your scratchpad",
+        level: Access::Read,
+        read_only: false,
+        traced: false,
+        destructive: false,
+        idempotent: false,
+        description: "Your working scratchpad for this session, shown live to the user in InstantNotes beside your activity, so they always know what you are doing and why. Write a note to yourself, a plan or what you are tracking, a change you made to your memory, or a decision. Never put this in the user's notes: a deliverable the user asked for is a note (create_note); your own working notes, plans and memory go here. Returns seq, at, kind and entries (how many this conversation holds).",
+        schema: || object(json!({
+            "kind": {
+                "type": "string",
+                "enum": SCRATCH_KINDS,
+                "default": "note",
+                "description": "note: a note to yourself. plan: what you are about to do or are tracking. memory: a change you made to your memory. decision: a choice you made and why."
+            },
+            "text": { "type": "string", "minLength": 1, "maxLength": SCRATCH_CHARS, "description": "Markdown." }
+        }), &["text"]),
+    },
+    ToolDef {
+        name: "scratchpad_read",
+        title: "Read your scratchpad",
+        level: Access::Read,
+        read_only: true,
+        traced: false,
+        destructive: false,
+        idempotent: true,
+        description: "Read back your scratchpad for this conversation, oldest first, including what you wrote before a reconnect: use it after a restart or a context reset to pick up where you left off. Returns entries (seq, at, kind, text) and total.",
+        schema: || object(json!({
+            "limit": { "type": "integer", "minimum": 1, "maximum": SCRATCH_READ_MAX, "default": SCRATCH_READ_LIMIT, "description": "How many of the newest entries to return." }
+        }), &[]),
     },
 ];
 
@@ -406,7 +479,7 @@ impl<'a> Tools<'a> {
                     "inputSchema": (t.schema)(),
                     "annotations": {
                         "title": t.title,
-                        "readOnlyHint": t.level == Access::Read,
+                        "readOnlyHint": t.read_only,
                         "destructiveHint": t.destructive,
                         "idempotentHint": t.idempotent,
                         "openWorldHint": false,
@@ -426,6 +499,9 @@ impl<'a> Tools<'a> {
             None => Err(format!(
                 "Unknown tool: {name}. tools/list names every tool this server has."
             )),
+            Some(def) if !def.traced => self
+                .check(def.level)
+                .and_then(|()| self.dispatch(name, args)),
             Some(def) => self.check(def.level).and_then(|()| {
                 let kind = match (def.level, def.name) {
                     (Access::Write, _) => Kind::Write,
@@ -515,6 +591,8 @@ impl<'a> Tools<'a> {
                 self.store.restore_note(&a.id).map_err(fail)?;
                 self.note_view(&a.id, None)
             }
+            "scratchpad_write" => self.scratchpad_write(parse(args)?),
+            "scratchpad_read" => self.scratchpad_read(parse(args)?),
             _ => Err(format!("Unknown tool: {name}")),
         }
     }
@@ -762,6 +840,39 @@ impl<'a> Tools<'a> {
             view["createdSpace"] = json!(true);
         }
         Ok(view)
+    }
+
+    fn scratchpad_write(&mut self, a: ScratchWriteArgs) -> ToolResult {
+        let kind = a.kind.as_deref().unwrap_or("note");
+        let entry = self
+            .store
+            .write_scratch(&self.session, &self.client, kind, &a.text)
+            .map_err(fail)?;
+        let entries = self.store.count_scratch(&self.session).map_err(fail)?;
+        Ok(json!({
+            "seq": entry.seq,
+            "at": entry.at,
+            "kind": entry.kind,
+            "entries": entries,
+        }))
+    }
+
+    fn scratchpad_read(&mut self, a: ScratchReadArgs) -> ToolResult {
+        let limit = a
+            .limit
+            .unwrap_or(SCRATCH_READ_LIMIT)
+            .clamp(1, SCRATCH_READ_MAX);
+        let entries = self
+            .store
+            .read_scratch(&self.session, limit)
+            .map_err(fail)?;
+        let total = self.store.count_scratch(&self.session).map_err(fail)?;
+        Ok(json!({
+            "entries": entries.iter().map(|e| json!({
+                "seq": e.seq, "at": e.at, "kind": e.kind, "text": e.text
+            })).collect::<Vec<_>>(),
+            "total": total,
+        }))
     }
 
     fn kind(&self) -> String {
@@ -1255,6 +1366,19 @@ struct SuggestArgs {
 #[serde(deny_unknown_fields)]
 struct IdArgs {
     id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ScratchWriteArgs {
+    kind: Option<String>,
+    text: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ScratchReadArgs {
+    limit: Option<i64>,
 }
 
 #[derive(Deserialize)]
