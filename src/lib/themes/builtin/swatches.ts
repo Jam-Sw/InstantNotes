@@ -13,14 +13,14 @@ export const MANUSCRIPT_SWATCHES = {
   light: set(["#c2553f", "#c47a35", "#a8782a", "#4f8268", "#3f8a86", "#4a7aa8", "#7d63a8", "#b45f7e", "#6b6960"]),
 };
 
-export const PAPER_DARK_SWATCHES = {
-  dark: set(["#e07a5f", "#e0955a", "#e0b85f", "#a3b86c", "#7fb09a", "#7f9fbf", "#a58fb5", "#d4879b", "#9d9384"]),
-  light: set(["#c2553f", "#b5703f", "#a87a1e", "#6b8a3a", "#3f8a78", "#4a73a0", "#7a5f98", "#b45f78", "#766c5e"]),
+export const FOLIO_SWATCHES = {
+  dark: set(["#e07a68", "#e09a62", "#d9bb72", "#9cbf84", "#7fbdb0", "#8fb2d6", "#b09ad6", "#d99ab4", "#a09688"]),
+  light: set(["#b9402c", "#b96a2a", "#a4801e", "#4a7a3d", "#2f7f76", "#2f5d8a", "#6f54a0", "#b24f78", "#7a7268"]),
 };
 
-export const EMBER_SWATCHES = {
-  dark: set(["#ec6f5e", "#f0a35a", "#f0cf6a", "#9cc77a", "#6fc2a8", "#78a9d9", "#b295d9", "#ee8aa5", "#a39a90"]),
-  light: set(["#c7472f", "#c86f1f", "#b8891a", "#5d8b3a", "#2f8a74", "#3f76b0", "#7a58b0", "#c24f78", "#7a7066"]),
+export const PEONY_SWATCHES = {
+  dark: set(["#ff7a6b", "#f5a066", "#f2c879", "#8fd1b0", "#7fcfcf", "#8fb6f0", "#b89cf0", "#f28bb0", "#a0909a"]),
+  light: set(["#c8372d", "#bf6a1f", "#a8761a", "#2f8a5f", "#1f8a8a", "#3b6fc0", "#7752c4", "#c73d74", "#7d6c76"]),
 };
 
 export const GRAPHITE_SWATCHES = {

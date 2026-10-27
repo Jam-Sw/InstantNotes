@@ -39,6 +39,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   nothing.
 - Empty lists say what belongs there and offer the next step: New note in an empty library, space or
   tag, Show the whole space when a tag slice inside a space is empty.
+- Two themes: Folio (book paper, serif type, a vermilion mark) and Peony (plum and peony pink, soft
+  round corners, with glass).
 
 ### Changed
 - A new note, from the + button, Cmd or Ctrl+N, the menu or the palette, opens with the cursor in its
@@ -49,6 +51,10 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   as a native split view does.
 - The library schema is version 16 (space colour and flag). Once 0.11 opens a library, 0.10 refuses it
   as too new.
+
+### Removed
+- The Ember and Paper Dark themes. If one was your theme, the app opens in Manuscript; pick any
+  theme in Settings > Appearance.
 
 ## [0.10.1] - 2026-10-15
 ### Added
