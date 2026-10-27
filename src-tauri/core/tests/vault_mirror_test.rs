@@ -269,6 +269,28 @@ fn a_tag_color_change_touches_only_the_manifest() {
 }
 
 #[test]
+fn a_space_color_or_flag_change_touches_only_the_manifest() {
+    let (mut s, dir) = mirrored();
+    let n = create_titled(&mut s, "Plan", "body");
+    let ws = s.get_or_create_workspace("Engineering").unwrap();
+    s.add_note_to_workspace(&n.id, &ws.id).unwrap();
+    flush(&mut s);
+    s.set_workspace_color(&ws.id, Some("purple".into()))
+        .unwrap();
+    s.set_workspace_flag(&ws.id, true).unwrap();
+    assert_eq!(
+        pending(&s),
+        0,
+        "a colour or flag change must not dirty notes"
+    );
+    flush(&mut s);
+    let manifest =
+        parse_manifest(&fs::read_to_string(dir.path().join("instantnotes.yaml")).unwrap()).unwrap();
+    assert_eq!(manifest.spaces[0].color.as_deref(), Some("purple"));
+    assert!(manifest.spaces[0].flag);
+}
+
+#[test]
 fn space_changes_rewrite_the_frontmatter_of_every_member_note() {
     let (mut s, dir) = mirrored();
     let n = create_titled(&mut s, "Plan", "body");

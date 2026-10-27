@@ -11,7 +11,15 @@ pub struct ManifestTag {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ManifestSpace {
     pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub color: Option<String>,
+    #[serde(skip_serializing_if = "is_false", default)]
+    pub flag: bool,
     pub created: String,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -69,7 +77,21 @@ pub fn merge_manifest(base: Option<&Manifest>, ours: &Manifest, theirs: &Manifes
         }
         let known = base.is_some_and(|b| find(&b.spaces, &k).is_some());
         let kept = match (find(&ours.spaces, &k), find(&theirs.spaces, &k)) {
-            (Some(o), Some(_)) => Some(o),
+            (Some(o), Some(t)) => {
+                let base = base.and_then(|b| find(&b.spaces, &k));
+                let (color, flag) = match base {
+                    Some(b) => (
+                        if o.color == b.color {
+                            t.color
+                        } else {
+                            o.color.clone()
+                        },
+                        if o.flag == b.flag { t.flag } else { o.flag },
+                    ),
+                    None => (o.color.clone().or(t.color), o.flag || t.flag),
+                };
+                Some(ManifestSpace { color, flag, ..o })
+            }
             (Some(o), None) => (!known).then_some(o),
             (None, Some(t)) => (!known).then_some(t),
             (None, None) => None,
@@ -97,6 +119,8 @@ mod tests {
                 .iter()
                 .map(|n| ManifestSpace {
                     name: n.to_string(),
+                    color: None,
+                    flag: false,
                     created: "2026-01-01T00:00:00.000000Z".to_string(),
                 })
                 .collect(),
@@ -155,6 +179,56 @@ mod tests {
         assert_eq!(merged.tags["u"].color.as_deref(), Some("#0f0"));
     }
 
+    fn coloured(name: &str, color: Option<&str>, flag: bool) -> Manifest {
+        Manifest {
+            tags: BTreeMap::new(),
+            spaces: vec![ManifestSpace {
+                name: name.to_string(),
+                color: color.map(str::to_string),
+                flag,
+                created: "2026-01-01T00:00:00.000000Z".to_string(),
+            }],
+        }
+    }
+
+    #[test]
+    fn a_space_color_and_flag_changed_on_one_side_win_and_a_local_change_beats_a_remote_one() {
+        let base = coloured("S", Some("red"), false);
+        let ours = coloured("S", Some("red"), true);
+        let theirs = coloured("S", Some("blue"), false);
+        let merged = merge_manifest(Some(&base), &ours, &theirs);
+        assert_eq!(merged.spaces[0].color.as_deref(), Some("blue"));
+        assert!(merged.spaces[0].flag);
+
+        let ours = coloured("S", Some("green"), false);
+        let theirs = coloured("S", Some("blue"), false);
+        let merged = merge_manifest(Some(&base), &ours, &theirs);
+        assert_eq!(merged.spaces[0].color.as_deref(), Some("green"));
+
+        let ours = coloured("S", None, false);
+        let theirs = coloured("S", Some("red"), false);
+        let merged = merge_manifest(Some(&base), &ours, &theirs);
+        assert_eq!(merged.spaces[0].color, None, "clearing locally is a change");
+    }
+
+    #[test]
+    fn a_first_merge_of_a_space_keeps_any_color_and_flag() {
+        let ours = coloured("S", None, false);
+        let theirs = coloured("S", Some("teal"), true);
+        let merged = merge_manifest(None, &ours, &theirs);
+        assert_eq!(merged.spaces[0].color.as_deref(), Some("teal"));
+        assert!(merged.spaces[0].flag);
+    }
+
+    #[test]
+    fn a_manifest_written_before_space_colors_still_reads() {
+        let m = parse_manifest("spaces:\n- name: Old\n  created: 2026-01-01T00:00:00.000000Z\n")
+            .unwrap();
+        assert_eq!(m.spaces[0].color, None);
+        assert!(!m.spaces[0].flag);
+        assert!(!serialize_manifest(&m).contains("flag"));
+    }
+
     #[test]
     fn spaces_match_without_regard_to_case() {
         let ours = manifest(&[], &["Work"]);
@@ -189,7 +263,15 @@ mod tests {
         );
         m.spaces.push(ManifestSpace {
             name: "Engineering".to_string(),
+            color: Some("blue".to_string()),
+            flag: true,
             created: "2026-07-02T09:10:00.000000Z".to_string(),
+        });
+        m.spaces.push(ManifestSpace {
+            name: "Plain".to_string(),
+            color: None,
+            flag: false,
+            created: "2026-07-02T09:11:00.000000Z".to_string(),
         });
         let text = serialize_manifest(&m);
         assert_eq!(parse_manifest(&text).unwrap(), m);
@@ -219,6 +301,8 @@ mod tests {
         let mut m = Manifest::default();
         m.spaces.push(ManifestSpace {
             name: "Someday".to_string(),
+            color: None,
+            flag: false,
             created: "2026-01-01T00:00:00.000000Z".to_string(),
         });
         let text = serialize_manifest(&m);
