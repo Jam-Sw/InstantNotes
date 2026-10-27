@@ -272,6 +272,10 @@ CREATE TABLE attachment_files (
   created_at INTEGER NOT NULL
 );
 "#,
+    r#"
+ALTER TABLE workspaces ADD COLUMN color TEXT;
+ALTER TABLE workspaces ADD COLUMN flag INTEGER NOT NULL DEFAULT 0;
+"#,
 ];
 
 const NOTE_COLUMNS: &str = "id, title, body, created_at, updated_at, last_opened_at, \
@@ -332,12 +336,23 @@ fn row_to_workspace(row: &rusqlite::Row<'_>) -> rusqlite::Result<Workspace> {
     Ok(Workspace {
         id: row.get(0)?,
         name: row.get(1)?,
-        created_at: row.get(2)?,
-        updated_at: row.get(3)?,
+        color: row.get(2)?,
+        flag: row.get::<_, i64>(3)? != 0,
+        created_at: row.get(4)?,
+        updated_at: row.get(5)?,
     })
 }
 
-const WORKSPACE_COLUMNS: &str = "id, name, created_at, updated_at";
+const WORKSPACE_COLUMNS: &str = "id, name, color, flag, created_at, updated_at";
+
+fn validated_color(raw: &str) -> Result<String> {
+    domain::normalize_color(raw).ok_or_else(|| {
+        AppError::Validation(format!(
+            "color must be one of {} or a #rrggbb value",
+            domain::SWATCH_NAMES.join(", ")
+        ))
+    })
+}
 
 fn tag_get_or_create(conn: &Connection, raw_name: &str) -> Result<Tag> {
     let name = domain::normalize_tag_name(raw_name)
@@ -389,6 +404,8 @@ fn workspace_get_or_create(conn: &Connection, raw_name: &str) -> Result<Workspac
     Ok(Workspace {
         id,
         name,
+        color: None,
+        flag: false,
         created_at: now.clone(),
         updated_at: now,
     })
