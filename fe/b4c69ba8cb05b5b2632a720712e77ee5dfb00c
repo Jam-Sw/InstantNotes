@@ -1,0 +1,21 @@
+openspec/changes/fix-linked-image-scope/tasks.md
+  s_7b96e4316ebe9a::t_f3651a0986beb2 23
+openspec/changes/feat-agent-scratchpad/tasks.md
+  s_7b96e4316ebe9a::t_b5d12743836fbc 38-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "feb4c69ba8cb05b5b2632a720712e77ee5dfb00c",
+  "prompts": {},
+  "sessions": {
+    "s_7b96e4316ebe9a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f2b5ccdd-70a6-4131-9efa-e317e549912a",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
