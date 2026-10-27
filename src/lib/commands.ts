@@ -120,7 +120,6 @@ export function buildCommands(): Command[] {
       shortcut: `${modKey}\\`,
       run: () => sidebar.toggle(),
     },
-    // The compact stack has no list to show or hide: it is a pane you navigate to.
     ...(sidebar.listToggleable
       ? [
           {

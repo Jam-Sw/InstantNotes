@@ -270,8 +270,6 @@
       else agents.show();
       return;
     }
-    // On the desktop the View menu owns Cmd/Ctrl+\, Cmd/Ctrl+Shift+L and
-    // Cmd/Ctrl+Shift+F; the page keeps them for the web, and Ctrl+Cmd+S.
     const toggled = layoutShortcut(e, isMac);
     if (toggled && (isWeb || (e.metaKey && e.ctrlKey))) {
       e.preventDefault();
@@ -598,15 +596,11 @@
     transition: grid-template-columns var(--pane-ms) var(--pane-ease);
   }
 
-  /* The dividers draw the line between panes, so the panes drop their own. */
   .layout :global(.list-pane),
   .layout :global(.sidebar) {
     border-right: none;
   }
 
-  /* A pane keeps its width and rides the closing edge, so it slides away under
-     its neighbour instead of being wiped. It hides once the close has run, and
-     shows the moment an open starts. */
   .nav-slot,
   .list-slot {
     display: flex;
@@ -630,8 +624,6 @@
   .list-slot {
     grid-column: 2;
   }
-  /* Not on the compact stack: there the slot is `display: contents`, so the
-     pane is the grid item itself and fills the window. */
   .layout:not(.phone) > .list-slot > :global(.list-pane) {
     flex: none;
     width: var(--list-w);
@@ -677,7 +669,6 @@
     z-index: 28;
   }
 
-  /* With the nav in its drawer, the menu button covers the left edge of the first pane. */
   .layout[data-nav] > .list-slot :global(.pane-header),
   .layout[data-nav] > .graph-span :global(.pane-header),
   .layout[data-nav].phone > .editor-pane :global(.pane-header) {

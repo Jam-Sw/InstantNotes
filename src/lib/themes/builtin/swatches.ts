@@ -1,8 +1,5 @@
 import type { SwatchSet } from "../types";
 
-// Swatch palettes for the built-in themes, tuned by hand for each theme's
-// character and for its light and dark grounds. Order: red orange yellow green
-// teal blue purple pink grey.
 function set(c: [string, string, string, string, string, string, string, string, string]): SwatchSet {
   const [red, orange, yellow, green, teal, blue, purple, pink, grey] = c;
   return { red, orange, yellow, green, teal, blue, purple, pink, grey };

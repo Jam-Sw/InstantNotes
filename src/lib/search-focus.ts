@@ -3,8 +3,6 @@ import { layout } from "$lib/stores/layout.svelte";
 import { shell } from "$lib/stores/shell.svelte";
 import { sidebar } from "$lib/stores/sidebar.svelte";
 
-// The list can take a pane transition, or a history step on the phone, to
-// become focusable, so the field is retried each frame for about half a second.
 const FRAMES = 30;
 
 function nextFrame(win: Window): Promise<void> {
@@ -19,9 +17,6 @@ function take(doc: Document, input: HTMLInputElement | null): boolean {
   return true;
 }
 
-// Puts the cursor in the note search with the query selected: the welcome
-// screen's finder when it is showing (the list is hidden and no note is open),
-// otherwise the list's own field, brought into view wherever the layout keeps it.
 export async function focusSearch(doc: Document = document): Promise<boolean> {
   shell.closeSettings();
   if (take(doc, doc.querySelector<HTMLInputElement>(".welcome-search input.search"))) return true;

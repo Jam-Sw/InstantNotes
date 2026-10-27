@@ -1,6 +1,4 @@
 export type WidthClass = "large" | "expanded" | "medium" | "compact";
-// Which panes the user wants beside the editor: "all" is the nav and the list,
-// "double" the list alone, "nav" the nav alone, "detail" neither.
 export type PaneState = "all" | "double" | "nav" | "detail";
 type LayoutMode = "phone" | "tablet" | "desktop";
 type Pane = "list" | "note";
@@ -11,8 +9,6 @@ export const NAV_PANE: PaneSpec = { min: 180, def: 220, max: 300 };
 export const LIST_PANE: PaneSpec = { min: 240, def: 300, max: 420 };
 export const EDITOR_MIN = 420;
 const KEY_STEP = 16;
-// A live window resize holds the panes still: they snap across breakpoints, as
-// a native split view does, instead of animating behind the window edge.
 const RESIZE_SETTLE_MS = 160;
 
 const COMPACT = "(max-width: 599px)";
@@ -29,9 +25,6 @@ export function clampPane(spec: PaneSpec, width: number): number {
   return Math.min(spec.max, Math.max(spec.min, Math.round(width)));
 }
 
-// A drag that ends below half the pane's minimum collapses the pane instead of
-// resizing it. `room` is what the window leaves the pane while the editor keeps
-// its own minimum.
 export function dragWidth(
   spec: PaneSpec,
   raw: number,
@@ -58,10 +51,6 @@ export function paneState(nav: boolean, list: boolean): PaneState {
   return nav ? (list ? "all" : "nav") : list ? "double" : "detail";
 }
 
-// Which panes sit beside the editor. Large and expanded windows follow the
-// chosen state; medium and compact ones keep both panes in drawers or a stack.
-// When the window is too narrow for the editor to keep its minimum the nav
-// yields to its drawer first, then the list to its overlay.
 export function resolveLayout(
   cls: WidthClass,
   state: PaneState,
@@ -79,8 +68,6 @@ export function resolveLayout(
 
 type ShortcutKey = Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey">;
 
-// Cmd or Ctrl+\ and Ctrl+Cmd+S (macOS only) toggle the nav, Cmd or Ctrl+Shift+L
-// the note list.
 export function layoutShortcut(e: ShortcutKey, mac: boolean): "nav" | "list" | null {
   const key = e.key.toLowerCase();
   if (mac && e.metaKey && e.ctrlKey && !e.altKey && !e.shiftKey && key === "s") return "nav";
@@ -93,7 +80,6 @@ export function layoutShortcut(e: ShortcutKey, mac: boolean): "nav" | "list" | n
 class LayoutState {
   widthClass = $state<WidthClass>("large");
   width = $state(1440);
-  // Kept for the code that still asks for phone, tablet or desktop.
   mode = $state<LayoutMode>("desktop");
   touch = $state(false);
   pane = $state<Pane>("list");

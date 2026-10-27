@@ -257,8 +257,6 @@ pub fn escape(text: &str) -> String {
 
 const PAGE_STYLE: &str = ":root{color-scheme:light dark;font-family:system-ui,sans-serif}body{margin:0;min-height:100vh;display:grid;place-items:center}main{text-align:center;padding:2rem;max-width:28rem}button{font:inherit;padding:.6rem 1.4rem;margin:.3rem;border-radius:.5rem;border:1px solid currentColor;background:none;color:inherit;cursor:pointer}button.primary{background:#2f6fde;border-color:#2f6fde;color:#fff}";
 
-/// `code` is set for a pairing: the person checks it against the code the app
-/// shows, so a link someone else sent cannot connect their device unnoticed.
 pub fn device_confirm(
     device: &str,
     person: &str,

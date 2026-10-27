@@ -21,8 +21,6 @@
     ],
   };
 
-  // Preview with the person's own space when there is one, so the choice is
-  // judged on real colors; an example stands in until a space has a color.
   const subject = $derived.by(() => {
     const own =
       library.workspaces.find((w) => w.color) ??

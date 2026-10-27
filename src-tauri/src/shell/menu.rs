@@ -43,7 +43,6 @@ const VIEW: &[Item] = &[
     Item::new("view.graph", "Show Graph", None),
     Item::new("view.agents", "Show Agents", None),
 ];
-// The page leaves these chords to the menu on the desktop, so one press runs once.
 const VIEW_PANES: &[Item] = &[
     Item::new(
         "view.sidebar",

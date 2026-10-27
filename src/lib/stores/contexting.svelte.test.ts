@@ -19,8 +19,6 @@ vi.mock("$lib/api/client", () => ({
   getSetting: vi.fn(async () => null),
   setSetting: vi.fn(async () => {}),
   getAttachmentsDir: vi.fn(async () => null),
-  // The same get_note command the app opens notes with; its Note.id is the
-  // notes.id an agent gets from get_note/search_notes over MCP.
   getNote: vi.fn(async (id: string) => notes[id]),
   tagsForNote: vi.fn(async () => [{ name: "work" }]),
 }));

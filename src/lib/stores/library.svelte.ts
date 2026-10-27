@@ -680,8 +680,6 @@ class LibraryStore {
     await this.restoreIds([...this.multiSelected]);
   }
 
-  // Restores trashed notes by id. They leave the Trash, so a selection holding
-  // any of them closes; a selection elsewhere stays open.
   async restoreIds(ids: string[]): Promise<void> {
     if (ids.length === 0) return;
     try {

@@ -13,7 +13,6 @@ class MarkerPrefs {
     if (this.#loaded) return;
     this.#loaded = true;
     await this.reload();
-    // Another window (Settings) or a synced device changed the setting.
     void listen(EVENTS.SETTINGS_CHANGED, () => void this.reload()).catch(() => {});
   }
 
@@ -21,7 +20,6 @@ class MarkerPrefs {
     try {
       this.mode = parseMarkerMode(await getSetting<unknown>(MARKER_MODE_KEY));
     } catch {
-      // keep the current mode
     }
   }
 

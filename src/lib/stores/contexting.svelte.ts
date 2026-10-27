@@ -63,7 +63,6 @@ class ContextingStore {
     });
   }
 
-  /** Full notes (the list holds trimmed bodies), rendered in the order given and joined. */
   async renderIds(ids: string[]): Promise<string> {
     await this.init();
     const copiedAt = new Date();

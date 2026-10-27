@@ -23,9 +23,6 @@
   let shortcutConflict = $state<ShortcutFailure | null>(null);
   let conflictDismissed = $state(false);
 
-  // With the list not beside the editor, the welcome screen becomes a small
-  // finder: the one search, its first results, or the notes last opened when
-  // nothing is typed. It stays put under the list's overlay.
   const listAway = $derived(!sidebar.listInline && !layout.phone);
   let recent = $state<Note[]>([]);
   let active = $state(0);
@@ -88,7 +85,6 @@
     (typeof window.matchMedia === "function" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches);
 
-  // The finder grows open, so the heading above it glides up rather than jumps.
   function reveal(node: Element) {
     const grow = slide(node, { duration: still() ? 0 : 240, easing: cubicOut });
     return { ...grow, css: (t: number, u: number) => `${grow.css?.(t, u) ?? ""}opacity: ${t};` };
@@ -216,7 +212,6 @@
     text-align: center;
     color: var(--text-tertiary);
   }
-  /* A fixed height, so typing never moves the heading: results scroll inside. */
   .finder {
     display: flex;
     flex-direction: column;
@@ -251,8 +246,6 @@
     text-align: left;
     transition: background-color 120ms ease-out;
   }
-  /* The keyboard's row shows only while the search has the cursor; otherwise
-     the pointer picks. */
   .recent-row:hover,
   .finder:has(:global(.search:focus)) .recent-row.active {
     background: var(--bg-hover);

@@ -85,7 +85,6 @@
     newMenu = { x: rect.left, y: rect.bottom + 4 };
   }
 
-  /** The right-clicked note, or the whole selection when it is part of one, in list order. */
   function contextTargets(id: string): string[] {
     const sel = library.multiSelected;
     if (sel.size > 1 && sel.has(id)) return library.visibleIds.filter((n) => sel.has(n));

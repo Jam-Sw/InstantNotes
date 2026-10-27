@@ -45,16 +45,12 @@ class SidebarState {
   states = $state<Record<InlineClass, PaneState>>({ ...DEFAULTS });
   widthClass = $state<WidthClass>("large");
   viewport = $state(1440);
-  // Overlay state is never saved: both drawers start closed once a note is open.
   narrowOpen = $state(false);
   listOpen = $state(false);
-  // The pane a drag is about to collapse, so the page can preview it.
   snapping = $state<Pane | null>(null);
 
   #loaded = false;
 
-  // The chosen state of the current width class. Medium and compact windows
-  // show the editor alone; their panes are drawers or a stack.
   get state(): PaneState {
     return isInline(this.widthClass) ? this.states[this.widthClass] : "detail";
   }
@@ -71,7 +67,6 @@ class SidebarState {
     return this.resolved().list;
   }
 
-  // The nav lives in its drawer whenever it is not beside the editor.
   get narrow(): boolean {
     return !this.navInline;
   }
@@ -80,14 +75,10 @@ class SidebarState {
     return this.narrow ? !this.narrowOpen : false;
   }
 
-  // On the compact stack the list is a pane you navigate to, not one you show
-  // or hide, so nothing offers the choice there.
   get listToggleable(): boolean {
     return this.widthClass !== "compact";
   }
 
-  // The list is an overlay on medium windows, and on larger ones that have no
-  // room for it beside the editor.
   get listOverlay(): boolean {
     if (this.widthClass === "compact") return false;
     if (this.widthClass === "medium") return true;
@@ -139,8 +130,6 @@ class SidebarState {
     }
   }
 
-  // Crossing into or out of a drawer layout closes the drawer: with no note
-  // open, the welcome screen carries the search and the recent notes instead.
   setViewport(cls: WidthClass, width: number): void {
     const wasNarrow = this.narrow;
     const wasOverlay = this.listOverlay;
@@ -161,13 +150,10 @@ class SidebarState {
     void setSetting(KEYS[cls], state);
   }
 
-  // The nav and the list are chosen apart: hiding one never hides the other.
   #setPanes(cls: InlineClass, nav: boolean, list: boolean): void {
     this.#setState(cls, paneState(nav, list));
   }
 
-  // An inline nav hides; a hidden one comes back inline when the window has
-  // room for it, and opens as a drawer when it has not.
   toggle(): void {
     const cls = this.widthClass;
     if (isInline(cls)) {
@@ -208,7 +194,6 @@ class SidebarState {
     return true;
   }
 
-  // Escape: the nav drawer sits above the list overlay, so it closes first.
   closeOverlay(): boolean {
     if (this.narrow && this.narrowOpen) {
       this.narrowOpen = false;
@@ -240,7 +225,6 @@ class SidebarState {
     if (!result.collapsed) this.listWidth = result.width;
   }
 
-  // The drag ended: a pane dragged to nothing collapses, anything else keeps its width.
   commitDrag(pane: Pane): void {
     const collapse = this.snapping === pane;
     this.snapping = null;

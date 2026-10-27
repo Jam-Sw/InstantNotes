@@ -1,18 +1,10 @@
-//! A file of last resort for the sign-in token and library key when the system
-//! keychain is not there (a container or a server with no Secret Service). The
-//! file sits next to the library, readable by its owner only.
-
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 const FILE: &str = "secrets.json";
 
-/// macOS and Windows always have a keychain, so a refusal there (a locked
-/// keychain, a denied prompt) stays an error instead of becoming a file.
 const USED: bool = cfg!(not(any(target_os = "macos", target_os = "windows")));
 
-/// Where the file lives: next to the library database. `None` where the file
-/// is never used.
 pub(crate) fn default_path() -> Option<PathBuf> {
     if !USED {
         return None;
@@ -34,8 +26,6 @@ fn write(path: &Path, map: &BTreeMap<String, String>) -> Result<(), String> {
     use std::io::Write;
     let text = serde_json::to_string_pretty(map).map_err(|e| e.to_string())?;
     let temp = path.with_extension("tmp");
-    // A temp file left behind keeps its own permissions if reused, so start a
-    // new one; `create_new` also refuses a link planted in its place.
     match std::fs::remove_file(&temp) {
         Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}

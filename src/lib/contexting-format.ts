@@ -40,11 +40,9 @@ export function applyImageMode(
 interface RenderOptions {
   imageMode?: ContextImageMode;
   attachmentsDir?: string | null;
-  /** When the copy happens; fills {copied}. Defaults to now. */
   copiedAt?: Date;
 }
 
-/** The note id an agent passes to get_note over MCP: the same notes.id the app holds. */
 export function sourceLine(note: Pick<Note, "id">, copiedAt: Date): string {
   return `From InstantNotes ${copiedAt.toLocaleString()} · id ${note.id}`;
 }
@@ -75,7 +73,6 @@ interface ContextOptions extends RenderOptions {
   addSourceLine?: boolean;
 }
 
-/** The rendered template, then the provenance footer when it is on. */
 export function renderContext(
   template: string,
   note: Pick<Note, "id" | "title" | "body" | "updatedAt">,
@@ -89,7 +86,6 @@ export function renderContext(
     : out;
 }
 
-/** Several notes copied at once, each its own block, in the order given. */
 export function joinContexts(blocks: string[]): string {
   return blocks.join("\n\n");
 }

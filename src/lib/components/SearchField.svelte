@@ -3,8 +3,6 @@
   import { agents } from "$lib/stores/agents.svelte";
   import { clientLabel } from "$lib/agent-activity";
 
-  // The note search, wherever it shows: the list header, or the welcome screen
-  // while the list is hidden. Both edit the one query in library.searchText.
   let { onkeydown }: { onkeydown?: (e: KeyboardEvent) => void } = $props();
 
   const agentSearch = $derived(library.searchText ? null : agents.currentSearch);

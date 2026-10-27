@@ -11,8 +11,6 @@ export function parseMarkerMode(value: unknown): MarkerMode {
   return value === "flag" || value === "both" || value === "color" ? value : MARKER_MODE_DEFAULT;
 }
 
-// What a marker draws for one space. A space's own flag switch adds the flag
-// whatever the global mode is.
 export function markerParts(mode: MarkerMode, spaceFlag: boolean): { disc: boolean; flag: boolean } {
   return { disc: mode !== "flag", flag: mode !== "color" || spaceFlag };
 }
@@ -20,8 +18,6 @@ export function markerParts(mode: MarkerMode, spaceFlag: boolean): { disc: boole
 const HEX_RE = /^#[0-9a-f]{6}$/;
 const HEX_LOOSE_RE = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i;
 
-// Reads what a person typed into the Custom field: "#3a7", "3A7BFF" and
-// "#3a7bff" all become the stored form "#rrggbb", anything else is null.
 export function normalizeHex(input: string): string | null {
   const m = HEX_LOOSE_RE.exec(input.trim());
   if (!m) return null;
@@ -30,9 +26,6 @@ export function normalizeHex(input: string): string | null {
   return `#${full}`;
 }
 
-// A stored colour (a swatch name or "#rrggbb") as a CSS value. A swatch name
-// resolves through the theme's --swatch-<name> variable, so switching theme
-// recolours it; a custom hex stays as it is. Null for none or anything invalid.
 export function cssColor(stored: string | null | undefined): string | null {
   if (!stored) return null;
   if (isSwatchName(stored)) return `var(${SWATCH_VAR[stored]})`;
@@ -62,9 +55,6 @@ export interface Arc {
   end: number;
 }
 
-// Slice angles in degrees, clockwise from twelve o'clock. Each slice is sized
-// by its note count; the biggest comes first so the pie reads the same every
-// time. Slices of one colour merge.
 export function sliceArcs(slices: readonly { color: string; noteCount: number }[]): Arc[] {
   const byColor = new Map<string, number>();
   for (const s of slices) {
@@ -93,8 +83,6 @@ function point(cx: number, cy: number, r: number, deg: number): [number, number]
 
 const fix = (n: number) => String(Math.round(n * 100) / 100);
 
-// SVG path for a pie sector. A full turn is two half arcs, since one arc
-// cannot start and end on the same point.
 export function sectorPath(cx: number, cy: number, r: number, start: number, end: number): string {
   if (end - start >= 359.999) {
     const [x0, y0] = point(cx, cy, r, 0);

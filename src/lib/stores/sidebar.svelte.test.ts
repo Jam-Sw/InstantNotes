@@ -23,7 +23,6 @@ beforeEach(() => {
 
 type Store = Awaited<ReturnType<typeof load>>;
 
-// A window of the given width, with no note open unless asked.
 function at(sidebar: Store, width: number) {
   const cls = width >= 1200 ? "large" : width >= 840 ? "expanded" : width >= 600 ? "medium" : "compact";
   sidebar.setViewport(cls, width);
