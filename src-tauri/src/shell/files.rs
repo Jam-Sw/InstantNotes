@@ -186,20 +186,213 @@ pub fn import_image_file(app: AppHandle, path: String) -> CmdResult<String> {
     Ok(name)
 }
 
-#[tauri::command(async)]
-pub fn allow_image_file(app: AppHandle, path: String) -> CmdResult<()> {
-    let p = std::path::Path::new(&path);
-    if !p.is_absolute() {
-        return Err(CmdError::validation("image path must be absolute"));
+pub const LINKED_FOLDERS_KEY: &str = "images.linkedFolders";
+const FOLDERS_SHOWN: usize = 5;
+
+#[derive(Default)]
+pub struct LinkedImageState {
+    declined: Mutex<std::collections::HashSet<std::path::PathBuf>>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum LinkedImage {
+    Allow,
+    Ask(std::path::PathBuf),
+    Skip,
+}
+
+pub(crate) fn linked_image_decision(
+    canonical: &std::path::Path,
+    roots: &[std::path::PathBuf],
+    allowed: &[std::path::PathBuf],
+    declined: &std::collections::HashSet<std::path::PathBuf>,
+) -> LinkedImage {
+    if roots
+        .iter()
+        .chain(allowed)
+        .any(|dir| canonical.starts_with(dir))
+    {
+        return LinkedImage::Allow;
     }
-    image_ext(p)?;
-    if !p.is_file() {
-        return Err(CmdError::storage("image file not found"));
+    match canonical.parent() {
+        Some(folder) if declined.contains(folder) => LinkedImage::Skip,
+        Some(folder) => LinkedImage::Ask(folder.to_path_buf()),
+        None => LinkedImage::Skip,
     }
-    app.asset_protocol_scope()
-        .allow_file(p)
-        .map_err(|e| CmdError::storage(format!("could not allow image: {e}")))?;
+}
+
+fn linked_folders(store: &Store) -> Vec<std::path::PathBuf> {
+    match store.get_setting(LINKED_FOLDERS_KEY) {
+        Ok(Some(serde_json::Value::Array(items))) => items
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .map(std::path::PathBuf::from)
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn remember_folders(store: &mut Store, folders: &[std::path::PathBuf]) -> CmdResult<bool> {
+    let mut known = linked_folders(store);
+    let before = known.len();
+    for folder in folders {
+        if !known.contains(folder) {
+            known.push(folder.clone());
+        }
+    }
+    if known.len() == before {
+        return Ok(false);
+    }
+    let listed: Vec<String> = known
+        .iter()
+        .map(|f| f.to_string_lossy().into_owned())
+        .collect();
+    store.set_setting(LINKED_FOLDERS_KEY, serde_json::json!(listed))?;
+    Ok(true)
+}
+
+fn settled(dir: &std::path::Path) -> std::path::PathBuf {
+    std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf())
+}
+
+pub(crate) fn canonical_image(path: &str) -> Option<std::path::PathBuf> {
+    let p = std::path::Path::new(path);
+    if !p.is_absolute() || image_ext(p).is_err() {
+        return None;
+    }
+    let canonical = std::fs::canonicalize(p).ok()?;
+    canonical.is_file().then_some(canonical)
+}
+
+fn allow_asset(
+    app: &AppHandle,
+    shown: &std::path::Path,
+    canonical: &std::path::Path,
+) -> CmdResult<()> {
+    let scope = app.asset_protocol_scope();
+    for p in [shown, canonical] {
+        scope
+            .allow_file(p)
+            .map_err(|e| CmdError::storage(format!("could not allow image: {e}")))?;
+    }
     Ok(())
+}
+
+pub(crate) fn folder_lines(folders: &[std::path::PathBuf]) -> String {
+    let mut lines: Vec<String> = folders
+        .iter()
+        .take(FOLDERS_SHOWN)
+        .map(|f| f.to_string_lossy().into_owned())
+        .collect();
+    if folders.len() > FOLDERS_SHOWN {
+        lines.push(format!("+{} more", folders.len() - FOLDERS_SHOWN));
+    }
+    lines.join("\n")
+}
+
+fn ask_about_folders(app: &AppHandle, folders: &[std::path::PathBuf]) -> bool {
+    app.dialog()
+        .message(format!(
+            "This note links to images in:\n{}\n\nInstantNotes loads images only from its attachments, your vault folder and folders you allow. Allowing a folder lets any note show images from it, now and later. Settings > Images lists them.",
+            folder_lines(folders)
+        ))
+        .title("Show images from outside your library?")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "Allow".into(),
+            "Keep hidden".into(),
+        ))
+        .blocking_show()
+}
+
+#[tauri::command(async)]
+pub fn allow_linked_images(
+    state: State<'_, AppState>,
+    linked: State<'_, LinkedImageState>,
+    app: AppHandle,
+    paths: Vec<String>,
+) -> CmdResult<Vec<String>> {
+    let (roots, allowed) = {
+        let store = locked(&state)?;
+        let roots: Vec<_> = store.vault_root().map(settled).into_iter().collect();
+        let allowed: Vec<_> = linked_folders(&store).iter().map(|f| settled(f)).collect();
+        (roots, allowed)
+    };
+    let mut granted = Vec::new();
+    let mut asking: Vec<std::path::PathBuf> = Vec::new();
+    let mut waiting: Vec<(String, std::path::PathBuf)> = Vec::new();
+    {
+        let declined = linked
+            .declined
+            .lock()
+            .map_err(|_| CmdError::storage("linked image state lock poisoned"))?;
+        for path in paths {
+            let Some(canonical) = canonical_image(&path) else {
+                continue;
+            };
+            match linked_image_decision(&canonical, &roots, &allowed, &declined) {
+                LinkedImage::Allow => {
+                    allow_asset(&app, std::path::Path::new(&path), &canonical)?;
+                    granted.push(path);
+                }
+                LinkedImage::Ask(folder) => {
+                    if !asking.contains(&folder) {
+                        asking.push(folder);
+                    }
+                    waiting.push((path, canonical));
+                }
+                LinkedImage::Skip => {}
+            }
+        }
+    }
+    if asking.is_empty() {
+        return Ok(granted);
+    }
+    if ask_about_folders(&app, &asking) {
+        let changed = {
+            let mut store = locked(&state)?;
+            remember_folders(&mut store, &asking)?
+        };
+        if changed {
+            let _ = app.emit(events::SETTINGS_CHANGED, ());
+        }
+        for (path, canonical) in waiting {
+            allow_asset(&app, std::path::Path::new(&path), &canonical)?;
+            granted.push(path);
+        }
+    } else if let Ok(mut declined) = linked.declined.lock() {
+        declined.extend(asking);
+    }
+    Ok(granted)
+}
+
+#[tauri::command(async)]
+pub fn pick_linked_image(state: State<'_, AppState>, app: AppHandle) -> CmdResult<Option<String>> {
+    let Some(picked) = app
+        .dialog()
+        .file()
+        .add_filter("Images", ATTACHMENT_EXTS)
+        .blocking_pick_file()
+    else {
+        return Ok(None);
+    };
+    let path = picked
+        .into_path()
+        .map_err(|e| CmdError::storage(format!("could not use the picked file: {e}")))?;
+    let shown = path.to_string_lossy().into_owned();
+    let canonical = canonical_image(&shown)
+        .ok_or_else(|| CmdError::validation("not an image this app can show"))?;
+    allow_asset(&app, &path, &canonical)?;
+    if let Some(folder) = canonical.parent() {
+        let changed = {
+            let mut store = locked(&state)?;
+            remember_folders(&mut store, &[folder.to_path_buf()])?
+        };
+        if changed {
+            let _ = app.emit(events::SETTINGS_CHANGED, ());
+        }
+    }
+    Ok(Some(shown))
 }
 
 #[tauri::command(async)]
@@ -276,8 +469,71 @@ pub fn attachments_stats(app: &AppHandle) -> (i64, i64) {
 #[cfg(test)]
 mod tests {
     use super::{
-        export_theme_file, import_theme_file, sniff_image, store_image, validate_export_path,
+        canonical_image, export_theme_file, folder_lines, import_theme_file, linked_image_decision,
+        sniff_image, store_image, validate_export_path, LinkedImage,
     };
+    use std::collections::HashSet;
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn a_linked_image_loads_from_the_vault_or_an_allowed_folder_and_asks_elsewhere() {
+        let roots = [PathBuf::from("/home/me/vault")];
+        let allowed = [PathBuf::from("/home/me/Pictures")];
+        let mut declined = HashSet::new();
+        let decide = |path: &str, declined: &HashSet<PathBuf>| {
+            linked_image_decision(Path::new(path), &roots, &allowed, declined)
+        };
+        assert_eq!(
+            decide("/home/me/vault/img/a.png", &declined),
+            LinkedImage::Allow
+        );
+        assert_eq!(
+            decide("/home/me/Pictures/2026/b.jpg", &declined),
+            LinkedImage::Allow
+        );
+        assert_eq!(
+            decide("/home/me/vaulted/c.png", &declined),
+            LinkedImage::Ask(PathBuf::from("/home/me/vaulted"))
+        );
+        assert_eq!(decide("/", &declined), LinkedImage::Skip);
+        declined.insert(PathBuf::from("/home/me/vaulted"));
+        assert_eq!(
+            decide("/home/me/vaulted/c.png", &declined),
+            LinkedImage::Skip
+        );
+        assert_eq!(
+            decide("/home/me/vaulted/deeper/d.png", &declined),
+            LinkedImage::Ask(PathBuf::from("/home/me/vaulted/deeper"))
+        );
+    }
+
+    #[test]
+    fn the_dialog_lists_five_folders_and_counts_the_rest() {
+        let folders: Vec<PathBuf> = (1..=7).map(|i| PathBuf::from(format!("/f{i}"))).collect();
+        assert_eq!(folder_lines(&folders[..2]), "/f1\n/f2");
+        assert_eq!(folder_lines(&folders), "/f1\n/f2\n/f3\n/f4\n/f5\n+2 more");
+    }
+
+    #[test]
+    fn only_an_existing_absolute_image_file_resolves() {
+        let dir =
+            std::env::temp_dir().join(format!("instantnotes-linked-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let png = dir.join("a.png");
+        std::fs::write(&png, PNG).unwrap();
+        std::fs::write(dir.join("b.txt"), b"text").unwrap();
+        let shown = |name: &str| dir.join(name).to_string_lossy().into_owned();
+
+        assert_eq!(
+            canonical_image(&shown("a.png")),
+            Some(std::fs::canonicalize(&png).unwrap())
+        );
+        assert_eq!(canonical_image(&shown("b.txt")), None);
+        assert_eq!(canonical_image(&shown("missing.png")), None);
+        assert_eq!(canonical_image("relative/a.png"), None);
+        assert_eq!(canonical_image(&dir.to_string_lossy()), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     const PNG: &[u8] = include_bytes!(
         "../../core/tests/fixtures/stickies/6E2F9C31-8B4A-4D7E-A1C5-2D9E7F3B8A64.rtfd/Attachment.png"

@@ -269,6 +269,10 @@
     color: var(--accent);
     font-size: 13px;
   }
+  .attach-row .folder-btn {
+    margin-top: 0;
+    flex-shrink: 0;
+  }
   .folder-btn:hover:not(:disabled) {
     background: var(--bg-hover);
   }

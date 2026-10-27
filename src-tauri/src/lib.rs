@@ -182,6 +182,7 @@ pub fn run() {
                 analyst: Mutex::new(analyst),
             });
             app.manage(CaptureMetrics::default());
+            app.manage(LinkedImageState::default());
             app.manage(ServerLink::default());
             app.manage(start_vault_sync(app.handle()));
             app.manage(start_agent_watcher(app.handle(), db_path.clone()));
@@ -293,7 +294,8 @@ pub fn run() {
             save_attachment,
             get_attachments_dir,
             import_image_file,
-            allow_image_file,
+            allow_linked_images,
+            pick_linked_image,
             open_attachments_folder,
             library_graph,
             space_suggestions,
