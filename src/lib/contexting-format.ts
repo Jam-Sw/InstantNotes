@@ -2,7 +2,16 @@ import type { Note, Tag } from "$lib/api/types";
 
 export const DEFAULT_TEMPLATE = `<note title="{title}">\ntags: {tags}\n{content}\n</note>`;
 
-export const TEMPLATE_VARS = ["{title}", "{tags}", "{date}", "{content}"] as const;
+export const TEMPLATE_VARS = [
+  "{title}",
+  "{tags}",
+  "{date}",
+  "{content}",
+  "{id}",
+  "{copied}",
+] as const;
+
+export const DEFAULT_SOURCE_LINE = true;
 
 export type ContextImageMode = "keep" | "absolute" | "strip";
 
@@ -31,11 +40,18 @@ export function applyImageMode(
 export interface RenderOptions {
   imageMode?: ContextImageMode;
   attachmentsDir?: string | null;
+  /** When the copy happens; fills {copied}. Defaults to now. */
+  copiedAt?: Date;
+}
+
+/** The note id an agent passes to get_note over MCP: the same notes.id the app holds. */
+export function sourceLine(note: Pick<Note, "id">, copiedAt: Date): string {
+  return `From InstantNotes ${copiedAt.toLocaleString()} · id ${note.id}`;
 }
 
 export function renderTemplate(
   template: string,
-  note: Pick<Note, "title" | "body" | "updatedAt">,
+  note: Pick<Note, "id" | "title" | "body" | "updatedAt">,
   tags: Pick<Tag, "name">[],
   opts: RenderOptions = {},
 ): string {
@@ -49,6 +65,31 @@ export function renderTemplate(
     tags: tags.map((t) => `#${t.name}`).join(" "),
     date: new Date(note.updatedAt).toLocaleDateString(),
     content: body,
+    id: note.id,
+    copied: (opts.copiedAt ?? new Date()).toLocaleString(),
   };
-  return template.replace(/\{(title|tags|date|content)\}/g, (_, key: string) => values[key] ?? "");
+  return template.replace(/\{(title|tags|date|content|id|copied)\}/g, (_, key: string) => values[key] ?? "");
+}
+
+export interface ContextOptions extends RenderOptions {
+  addSourceLine?: boolean;
+}
+
+/** The rendered template, then the provenance footer when it is on. */
+export function renderContext(
+  template: string,
+  note: Pick<Note, "id" | "title" | "body" | "updatedAt">,
+  tags: Pick<Tag, "name">[],
+  opts: ContextOptions = {},
+): string {
+  const copiedAt = opts.copiedAt ?? new Date();
+  const out = renderTemplate(template, note, tags, { ...opts, copiedAt });
+  return opts.addSourceLine ?? DEFAULT_SOURCE_LINE
+    ? `${out}\n\n${sourceLine(note, copiedAt)}`
+    : out;
+}
+
+/** Several notes copied at once, each its own block, in the order given. */
+export function joinContexts(blocks: string[]): string {
+  return blocks.join("\n\n");
 }
