@@ -610,12 +610,15 @@ traced as `resources/list` or `resources/read` (kind `read`).
 | `append_sheet_rows` | write | `update_note` with `expectedUpdatedAt`, on a sheet's grid (`sheet.rs`): rows land after the last row holding data, a short row is padded, a wider one is refused, and the store derives the body. Retries on conflict like `append_to_note`. Returns the note view without its body plus `appended: { firstRow, count }` (spreadsheet numbering). |
 | `tag_note`, `untag_note`, `add_to_space`, `remove_from_space` | write | the tag and workspace membership calls |
 | `trash_note`, `restore_note` | write | `soft_delete_note`, `restore_note` |
+| `scratchpad_write`, `scratchpad_read` | read | `write_scratch`, `read_scratch`: the agent's own scratchpad, not traced |
 
 Every tool declares a `title`, an input schema that rejects unknown
 properties, and annotations: `readOnlyHint` for reads, `destructiveHint` for
 the writes that remove or replace (`update_note`, `edit_note`, `untag_note`,
 `remove_from_space`, `trash_note`), `idempotentHint`, and `openWorldHint:
 false`, since a tool only ever touches this library.
+
+The scratchpad is an agent's own working log, kept apart from the notes and shown on the agent's page in the app. `scratchpad_write` appends an entry: `kind` (`note`, `plan`, `memory` or `decision`, default `note`) and `text` (Markdown, 1 to 20,000 characters). `scratchpad_read` returns the newest entries (`limit`, 1 to 500, default 50), oldest first, and includes what the same conversation wrote before a reconnect. Entries belong to one agent conversation, and the table keeps the newest 5000 entries across all agents, deleting the oldest on write. Neither tool is traced in `agent_activity`, and `agents.access` `off` refuses both.
 
 An agent is meant to search, then read only what matters. `search_notes`
 takes `query` (at least one word; an empty one is refused), `match` (`all` or
@@ -676,6 +679,7 @@ stores "no note", and reverting it trashes the note.
 | `list_agent_activity` | The trace, newest first (`limit`, `offset`). |
 | `agent_activity_before` | The snapshot a write row holds, or `null` for a create. |
 | `list_agent_sessions` | Every known agent connection, newest first: `session`, `client`, `connectedAt`, `disconnectedAt`, `label`, `clientSession`, `cwd`, `matched` (`exact` or `inferred`), and `connected` (the process holds its lock right now). The same list arrives as the `agents:sessions` event whenever it changes. |
+| `list_agent_scratch` | The scratchpad of one agent conversation (`session`, `limit`, default 200): the newest entries, returned oldest to newest. |
 | `agent_activity_wire` | The raw exchange a row holds: `request` and `response`, each the whole JSON-RPC message as JSON text, or `null` where none was kept. |
 | `end_agent_session` | End a connected agent's server process (`session`). The pid comes from the session id alone, never from the client's own pid, and the process must still hold the session's lock (on Linux, it must also be running `mcp`), so a pid the system has since reused is never signalled. `VALIDATION_ERROR` for an ended or unknown session. The client may start a new server, which arrives as a new connection; Block stops that. |
 | `revert_agent_activity` | Put the note back as the row's snapshot has it (or trash a created note), mark the row reverted, and record the revert as a row of its own (client `instantnotes`, tool `revert`) with the state it replaced, so it can be reverted in turn. Returns that row; `CONFLICT` for a row already reverted. |
@@ -686,7 +690,7 @@ read every 400 ms by `shell/agents.rs`. When it moves, the rows newer than
 the last `seq` announced go to the webview as `library:external-change`
 (oldest first); if any was a successful write, or none describes the change,
 the three change events fire and the vault mirror flushes, as after the app's
-own writes. A revert made in the app is emitted the same way. Write
+own writes. A revert made in the app is emitted the same way. Scratchpad entries another process writes go to the webview as `agents:scratch` (the entries newer than the last one announced, oldest first, at most 200 at a time). Write
 transactions begin `IMMEDIATE` so two processes queue on the busy timeout
 instead of failing on a lock upgrade.
 
