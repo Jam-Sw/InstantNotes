@@ -40,7 +40,7 @@
   import { licenseSpace } from "$lib/stores/license-space.svelte";
   import { agreements } from "$lib/agreements.svelte";
   import LicenseNote from "$lib/components/LicenseNote.svelte";
-  import { isMac } from "$lib/platform";
+  import { isMac, modKey, shiftKey } from "$lib/platform";
   import { startDiagnostics } from "$lib/stores/diagnostics";
   import {
     isUpdateNoteId,
@@ -110,12 +110,29 @@
     sidebar.setNarrow(layout.mode !== "desktop");
   });
 
+  const listOverlay = $derived(layout.mode === "tablet");
+  $effect(() => {
+    const overlay = listOverlay;
+    untrack(() => sidebar.setListDrawer(overlay, selectedId !== null));
+  });
+  $effect(() => {
+    if (selectedId !== null) untrack(() => sidebar.noteOpened());
+  });
+  $effect(() => {
+    if (library.searchText.trim() && !layout.phone) untrack(() => sidebar.revealList());
+  });
+
   const view = $derived(
     `${library.graphMode}|${library.revisitMode}|${library.activeTagId}|${library.activeWorkspaceId}|${shell.settingsOpen}`,
   );
+  let lastView: string | undefined;
   $effect(() => {
-    void view;
-    untrack(() => (sidebar.narrowOpen = false));
+    const now = view;
+    untrack(() => {
+      sidebar.narrowOpen = false;
+      if (lastView !== undefined && lastView !== now && sidebar.listDrawer) sidebar.revealList();
+      lastView = now;
+    });
   });
 
   const drawer = $derived(sidebar.narrow);
@@ -123,15 +140,30 @@
   const showList = $derived(!onePane || layout.pane === "list");
   const showEditor = $derived(!onePane || layout.pane === "note");
   const backButton = $derived(onePane && layout.pane === "note");
+  const listHidden = $derived(!layout.phone && sidebar.listHidden);
+  const listColumn = $derived(sidebar.listCollapsed && !library.graphMode ? "0px" : "280px");
   const columns = $derived(
     layout.phone
       ? "minmax(0, 1fr)"
       : drawer
-        ? "320px 1fr"
+        ? "minmax(0, 1fr)"
         : sidebar.hidden
-          ? "280px 1fr"
-          : `${sidebar.width}px 280px 1fr`,
+          ? `${listColumn} 1fr`
+          : `${sidebar.width}px ${listColumn} 1fr`,
   );
+  const listToggleShown = $derived(!layout.phone && !library.graphMode);
+  const editorEdge = $derived(
+    listToggleShown && (drawer || (sidebar.hidden && sidebar.listCollapsed)),
+  );
+  const listX = $derived(
+    (sidebar.hidden ? 0 : sidebar.width) + (sidebar.listCollapsed ? 0 : 280),
+  );
+  let animate = $state(false);
+
+  function onListClick(e: MouseEvent) {
+    if (!listOverlay || e.shiftKey || e.metaKey || e.ctrlKey) return;
+    if (e.target instanceof Element && e.target.closest(".note-row")) sidebar.closeList();
+  }
 
   function openUpdate() {
     shell.closeSettings();
@@ -146,7 +178,9 @@
     void library.init().then(() => library.openLinked(location.hash));
     void editorPrefs.init();
     void imagePrefs.init();
-    void sidebar.init();
+    void sidebar.init().then(() => {
+      requestAnimationFrame(() => requestAnimationFrame(() => (animate = true)));
+    });
     void linkPrefsStore.init();
     void contexting.init();
     void agents.init();
@@ -249,6 +283,11 @@
       sidebar.toggle();
       return;
     }
+    if (mod && e.shiftKey && (e.key === "l" || e.key === "L")) {
+      e.preventDefault();
+      if (!layout.phone) sidebar.toggleList();
+      return;
+    }
     if (isWhiteboardTarget(e.target)) return;
     if (mod && (e.key === "=" || e.key === "+")) {
       e.preventDefault();
@@ -300,6 +339,7 @@
         break;
       case "Escape":
         if (sidebar.narrow && sidebar.narrowOpen) sidebar.narrowOpen = false;
+        else if (sidebar.closeList()) break;
         else if (backButton) layout.back();
         else if (!shell.settingsOpen) library.clearMultiSelect();
         break;
@@ -381,7 +421,12 @@
   <div
     class="layout"
     class:phone={layout.phone}
+    class:animate
+    class:resizing={draggingSidebar}
     data-nav={drawer ? "" : undefined}
+    data-list-overlay={listOverlay ? "" : undefined}
+    data-edge={editorEdge ? "" : undefined}
+    style:--list-x="{listX}px"
     style:grid-template-columns={columns}
   >
     {#if !drawer && !sidebar.hidden}
@@ -408,7 +453,15 @@
       </section>
     {:else}
       {#if showList}
-        <NoteList />
+        <div
+          class="list-slot"
+          class:hidden={listHidden}
+          inert={listHidden}
+          role="presentation"
+          onclick={onListClick}
+        >
+          <NoteList />
+        </div>
       {/if}
       {#if showEditor}
         <section class="editor-pane">
@@ -436,6 +489,25 @@
           {/if}
         </section>
       {/if}
+    {/if}
+    {#if listToggleShown}
+      <button
+        class="pane-nav list-toggle"
+        aria-label="Toggle note list"
+        aria-expanded={!listHidden}
+        title={`Toggle note list (${modKey}${shiftKey}L)`}
+        onclick={() => sidebar.toggleList()}
+      >
+        <Icon name="list" size={20} />
+      </button>
+    {/if}
+    {#if listOverlay && showList && sidebar.listOpen}
+      <div
+        class="drawer-scrim list-scrim"
+        role="presentation"
+        transition:fade={{ duration: 160 }}
+        onclick={() => sidebar.closeList()}
+      ></div>
     {/if}
     {#if drawer}
       {#if backButton}
@@ -497,8 +569,68 @@
   .layout.phone .graph-span {
     grid-column: auto;
   }
-  .layout.phone > :global(.list-pane) {
+  .layout.phone :global(.list-pane) {
     border-right: none;
+  }
+  .layout.animate:not(.resizing) {
+    transition: grid-template-columns 200ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .list-slot {
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    transition: visibility 0s linear 200ms;
+  }
+  .list-slot > :global(.list-pane) {
+    flex: none;
+    width: 280px;
+  }
+  .list-slot.hidden {
+    visibility: hidden;
+  }
+  .layout.phone > .list-slot {
+    display: contents;
+  }
+  .layout[data-list-overlay] > .list-slot {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 29;
+    width: min(320px, 84vw);
+    overflow: visible;
+    box-shadow: var(--shadow-lg);
+    transform: translateX(-100%);
+    transition:
+      transform 220ms cubic-bezier(0.2, 0, 0, 1),
+      visibility 0s linear 220ms;
+  }
+  .layout[data-list-overlay] > .list-slot:not(.hidden) {
+    transform: none;
+    transition: transform 220ms cubic-bezier(0.2, 0, 0, 1);
+  }
+  .layout[data-list-overlay] > .list-slot > :global(.list-pane) {
+    flex: 1;
+    width: auto;
+    padding-left: env(safe-area-inset-left);
+  }
+  .layout[data-list-overlay] > .list-slot :global(.pane-header) {
+    padding-left: 12px;
+  }
+  .list-scrim {
+    z-index: 28;
+  }
+
+  .layout:not(.phone) > .editor-pane > :global(.pane-header) {
+    padding-left: 46px;
+  }
+  .layout[data-edge]:not([data-nav]) > .editor-pane > :global(.pane-header) {
+    padding-left: calc(max(6px, var(--chrome-inset)) + 40px);
+  }
+  .layout[data-edge][data-nav] > .editor-pane > :global(.pane-header) {
+    padding-left: calc(max(6px, var(--chrome-inset)) + env(safe-area-inset-left) + 80px);
   }
 
   .pane-nav {
@@ -520,6 +652,18 @@
   .pane-nav:hover {
     background: var(--bg-hover);
     color: var(--text);
+  }
+  .list-toggle {
+    left: calc(var(--list-x) + 6px);
+  }
+  .layout.animate:not(.resizing) .list-toggle {
+    transition: left 200ms cubic-bezier(0.2, 0, 0, 1);
+  }
+  .layout[data-edge] .list-toggle {
+    left: calc(max(6px, var(--chrome-inset)) + env(safe-area-inset-left));
+  }
+  .layout[data-nav] .list-toggle {
+    left: calc(max(6px, var(--chrome-inset)) + env(safe-area-inset-left) + 40px);
   }
 
   .drawer-scrim {
@@ -603,5 +747,13 @@
     grid-column: span 2;
     min-width: 0;
     min-height: 0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .layout.animate:not(.resizing),
+    .layout.animate:not(.resizing) .list-toggle,
+    .layout[data-list-overlay] > .list-slot {
+      transition: none;
+    }
   }
 </style>
