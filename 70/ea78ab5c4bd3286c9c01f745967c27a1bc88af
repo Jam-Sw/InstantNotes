@@ -1,0 +1,43 @@
+src-tauri/src/lib.rs
+  s_7b96e4316ebe9a::t_d818868901b904 366
+src-tauri/agents/tests/mcp_test.rs
+  s_7b96e4316ebe9a::t_9f3a5f3c4626cf 2137-2141
+  s_7b96e4316ebe9a::t_4e5a646d65b5d2 2038-2136,2142-2192
+src-tauri/src/shell/agents.rs
+  s_7b96e4316ebe9a::t_d818868901b904 5,17,122,126,136,138-141,149-162,173,178-179,188-193,243-249
+  s_7b96e4316ebe9a::t_ee3ffebddf8f79 250-251
+src/lib/agent-activity.test.ts
+  s_7b96e4316ebe9a::t_64319490336fe5 199-204
+src-tauri/core/src/store.rs
+  s_7b96e4316ebe9a::t_d818868901b904 279-288
+  s_7b96e4316ebe9a::t_0fc3dbce43cabf 278
+src-tauri/core/src/store/activity.rs
+  s_7b96e4316ebe9a::t_d818868901b904 6-8,34-44,482,563-683,689-690
+  s_7b96e4316ebe9a::t_9f3a5f3c4626cf 684-688
+  s_7b96e4316ebe9a::t_93eb301a575099 493-496
+src-tauri/agents/src/tools.rs
+  s_7b96e4316ebe9a::t_d818868901b904 7,35-36,53-54,66-67,103-104,127-128,142-143,162-163,173-174,184-185,199-200,215-216,231-232,246-247,260-261,279-280,290-291,301-302,312-313,323-324,334-335,341-372,482,502-504,594-595,845-877,1371-1382
+  s_7b96e4316ebe9a::t_b2ec9a01cf03e6 1383
+src-tauri/core/tests/scratch_test.rs
+  s_7b96e4316ebe9a::t_2c166882b7d99a 103-114
+  s_7b96e4316ebe9a::t_8bb38a479cc044 1-20,24-71,74-102,115-125
+  s_7b96e4316ebe9a::t_9f3a5f3c4626cf 21-23,72-73
+src/lib/agent-activity.ts
+  s_7b96e4316ebe9a::t_040545fa6c95ff 93
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "70ea78ab5c4bd3286c9c01f745967c27a1bc88af",
+  "prompts": {},
+  "sessions": {
+    "s_7b96e4316ebe9a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f2b5ccdd-70a6-4131-9efa-e317e549912a",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}

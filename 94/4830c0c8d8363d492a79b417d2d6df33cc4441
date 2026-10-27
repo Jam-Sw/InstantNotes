@@ -1,0 +1,48 @@
+openspec/changes/fix-linked-image-scope/design.md
+  s_7b96e4316ebe9a::t_05b7ab2c3b8d0e 1-64
+openspec/changes/fix-linked-image-scope/tasks.md
+  s_7b96e4316ebe9a::t_29ba2326c4f683 1-23
+CHANGELOG.md
+  s_7b96e4316ebe9a::t_362a5781a43597 44-48
+  s_7b96e4316ebe9a::t_17ceb3d3208df3 57-66
+README.md
+  s_7b96e4316ebe9a::t_1135573111b5a6 80
+  s_7b96e4316ebe9a::t_a460dc1eafa7c9 18,20-23,25-26,30-42
+  s_f029ed386c5677::t_d9d8832df920c5 43
+openspec/changes/feat-agent-scratchpad/proposal.md
+  s_7b96e4316ebe9a::t_b6c7e95691fa4a 1-72
+openspec/changes/feat-agent-scratchpad/design.md
+  s_7b96e4316ebe9a::t_e3a4b47af703a1 1-114
+openspec/changes/fix-linked-image-scope/proposal.md
+  s_7b96e4316ebe9a::t_4b4d6cb77abdfe 1-74
+openspec/SEQUENCE.md
+  s_7b96e4316ebe9a::t_adfcc5c1f47cca 400-420
+openspec/changes/feat-agent-scratchpad/tasks.md
+  s_7b96e4316ebe9a::t_a037ea667625d1 1-39
+docs/DATA_MODEL.md
+  s_7b96e4316ebe9a::t_7d90f3b161e1f3 197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "944830c0c8d8363d492a79b417d2d6df33cc4441",
+  "prompts": {},
+  "sessions": {
+    "s_7b96e4316ebe9a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f2b5ccdd-70a6-4131-9efa-e317e549912a",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    },
+    "s_f029ed386c5677": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "026982f1-ff1f-4549-b84f-10fb27c7086a",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
