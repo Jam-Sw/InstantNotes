@@ -1,7 +1,7 @@
 import { SWATCH_NAMES, SWATCH_VAR, type SwatchName, type SwatchSet, type Variant } from "./types";
 
 // The palette a theme falls back to for any swatch it does not define.
-export const DEFAULT_SWATCHES: Record<Variant, SwatchSet> = {
+const DEFAULT_SWATCHES: Record<Variant, SwatchSet> = {
   dark: {
     red: "#ec6a5e",
     orange: "#f0a35a",
