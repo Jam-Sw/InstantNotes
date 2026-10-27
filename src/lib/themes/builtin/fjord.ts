@@ -1,4 +1,5 @@
 import type { Theme } from "../types";
+import { FJORD_SWATCHES } from "./swatches";
 import { MONO_STACK, SANS_STACK } from "../fonts";
 
 export const fjord: Theme = {
@@ -33,6 +34,7 @@ export const fjord: Theme = {
     tag: "#8fbcbb",
     success: "#9ccf96",
     warning: "#e6c27a",
+    swatches: FJORD_SWATCHES.dark,
     selection: "rgba(127, 179, 213, 0.22)",
     codeBg: "#262c36",
   },
@@ -53,6 +55,7 @@ export const fjord: Theme = {
     tag: "#3b8f8d",
     success: "#4d8d4a",
     warning: "#b58a2d",
+    swatches: FJORD_SWATCHES.light,
     selection: "rgba(62, 127, 168, 0.2)",
     codeBg: "#eceff4",
   },

@@ -2,6 +2,9 @@ import {
   OPTIONAL_TOKEN_KEYS,
   TOKEN_KEYS,
   MATERIAL_KEYS,
+  SWATCH_NAMES,
+  type SwatchName,
+  type SwatchSet,
   type Theme,
   type TokenSet,
   type FontSlot,
@@ -74,6 +77,24 @@ function validateTokenSet(input: unknown, label: string): TokenSet | string {
     if (v === undefined) continue;
     if (!isColor(v)) return `${label}.${key} is not a valid color`;
     out[key] = (v as string).trim();
+  }
+  const sw = rec.swatches;
+  if (sw !== undefined) {
+    if (!sw || typeof sw !== "object" || Array.isArray(sw)) {
+      return `${label}.swatches is not an object`;
+    }
+    const swRec = sw as Record<string, unknown>;
+    for (const key of Object.keys(swRec)) {
+      if (!SWATCH_NAMES.includes(key as SwatchName)) return `${label}.swatches.${key} is not a swatch name`;
+    }
+    const swOut: Partial<SwatchSet> = {};
+    for (const name of SWATCH_NAMES) {
+      const v = swRec[name];
+      if (v === undefined) continue;
+      if (!isColor(v)) return `${label}.swatches.${name} is not a valid color`;
+      swOut[name] = (v as string).trim();
+    }
+    out.swatches = swOut;
   }
   return out;
 }

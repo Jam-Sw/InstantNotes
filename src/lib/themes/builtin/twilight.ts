@@ -1,4 +1,5 @@
 import type { Theme } from "../types";
+import { TWILIGHT_SWATCHES } from "./swatches";
 import { SANS_STACK, MONO_STACK } from "../fonts";
 
 export const twilight: Theme = {
@@ -35,6 +36,7 @@ export const twilight: Theme = {
     tag: "#bca6ff",
     success: "#7fd6a6",
     warning: "#f2c46d",
+    swatches: TWILIGHT_SWATCHES.dark,
   },
   light: {
     bg: "#f9f8fc",
@@ -53,5 +55,6 @@ export const twilight: Theme = {
     tag: "#4f2ec2",
     success: "#2f8f5b",
     warning: "#a9781a",
+    swatches: TWILIGHT_SWATCHES.light,
   },
 };
