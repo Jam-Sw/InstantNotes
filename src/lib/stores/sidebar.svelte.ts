@@ -80,6 +80,12 @@ class SidebarState {
     return this.narrow ? !this.narrowOpen : false;
   }
 
+  // On the compact stack the list is a pane you navigate to, not one you show
+  // or hide, so nothing offers the choice there.
+  get listToggleable(): boolean {
+    return this.widthClass !== "compact";
+  }
+
   // The list is an overlay on medium windows, and on larger ones that have no
   // room for it beside the editor.
   get listOverlay(): boolean {
@@ -180,7 +186,7 @@ class SidebarState {
 
   toggleList(): void {
     const cls = this.widthClass;
-    if (cls === "compact") return;
+    if (!this.listToggleable) return;
     if (this.listOverlay) {
       this.listOpen = !this.listOpen;
       return;
@@ -191,7 +197,7 @@ class SidebarState {
 
   revealList(): void {
     const cls = this.widthClass;
-    if (cls === "compact") return;
+    if (!this.listToggleable) return;
     if (this.listOverlay) this.listOpen = true;
     else if (isInline(cls) && !hasList(this.state)) this.#setPanes(cls, hasNav(this.state), true);
   }

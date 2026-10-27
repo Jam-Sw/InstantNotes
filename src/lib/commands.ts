@@ -120,13 +120,18 @@ export function buildCommands(): Command[] {
       shortcut: `${modKey}\\`,
       run: () => sidebar.toggle(),
     },
-    {
-      id: "view.noteList",
-      title: sidebar.listHidden ? "Show Note List" : "Hide Note List",
-      group: "View",
-      shortcut: `${modKey}${shiftKey}L`,
-      run: () => sidebar.toggleList(),
-    },
+    // The compact stack has no list to show or hide: it is a pane you navigate to.
+    ...(sidebar.listToggleable
+      ? [
+          {
+            id: "view.noteList",
+            title: sidebar.listHidden ? "Show Note List" : "Hide Note List",
+            group: "View",
+            shortcut: `${modKey}${shiftKey}L`,
+            run: () => sidebar.toggleList(),
+          },
+        ]
+      : []),
     {
       id: "note.search",
       title: "Search notes",

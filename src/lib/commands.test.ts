@@ -17,7 +17,14 @@ const stores = vi.hoisted(() => ({
     flushPendingEdits: vi.fn(),
     toggleSticky: vi.fn(),
   },
-  sidebar: { collapsed: false, hidden: false, listHidden: false, toggle: vi.fn(), toggleList: vi.fn() },
+  sidebar: {
+    collapsed: false,
+    hidden: false,
+    listHidden: false,
+    listToggleable: true,
+    toggle: vi.fn(),
+    toggleList: vi.fn(),
+  },
   theme: {
     allThemes: [
       { id: "manuscript", name: "Manuscript" },
@@ -135,6 +142,7 @@ beforeEach(() => {
   stores.sidebar.collapsed = false;
   stores.sidebar.hidden = false;
   stores.sidebar.listHidden = false;
+  stores.sidebar.listToggleable = true;
   stores.theme.activeId = "manuscript";
   stores.theme.bodyFontId = null;
   stores.theme.resolvedVariant = "dark";
@@ -202,6 +210,11 @@ describe("buildCommands with no note open", () => {
     expect(find(buildCommands(), "view.noteList").title).toBe("Show Note List");
     void find(buildCommands(), "view.noteList").run();
     expect(stores.sidebar.toggleList).toHaveBeenCalledOnce();
+  });
+
+  it("leaves the note list command out where there is no list to hide", () => {
+    stores.sidebar.listToggleable = false;
+    expect(buildCommands().some((c) => c.id === "view.noteList")).toBe(false);
   });
 
   it("runs the global commands against their stores", () => {
