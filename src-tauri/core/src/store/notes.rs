@@ -1,6 +1,17 @@
 use super::*;
 use crate::sheet::{self, Sheet};
 
+const APPEND_ATTEMPTS: usize = 3;
+
+fn with_paragraph(body: &str, text: &str) -> String {
+    let kept = body.trim_end();
+    if kept.trim().is_empty() {
+        text.to_string()
+    } else {
+        format!("{kept}\n\n{text}")
+    }
+}
+
 pub(super) struct NewNote<'a> {
     pub body: &'a str,
     pub title: Option<String>,
@@ -308,6 +319,48 @@ impl Store {
         self.conn
             .execute("DELETE FROM notes WHERE id = ?1", params![id])?;
         Ok(())
+    }
+
+    pub fn recent_documents(&self, limit: i64) -> Result<Vec<NoteTitle>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT id, title FROM notes \
+             WHERE is_deleted = 0 AND is_archived = 0 AND last_opened_at IS NOT NULL \
+               AND content_kind = ?1 \
+             ORDER BY last_opened_at DESC, id ASC LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![CONTENT_KIND_DOCUMENT, limit.clamp(1, 50)], |r| {
+            Ok(NoteTitle {
+                id: r.get(0)?,
+                title: r.get(1)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn append_paragraph(&mut self, id: &str, text: &str) -> Result<Note> {
+        let text = text.trim();
+        if text.is_empty() {
+            return Err(AppError::Validation("there is no text to add".into()));
+        }
+        let mut last = None;
+        for _ in 0..APPEND_ATTEMPTS {
+            let current = self.fetch_note(id)?;
+            if current.is_deleted || current.content_kind != CONTENT_KIND_DOCUMENT {
+                return Err(AppError::Validation(
+                    "text can only be added to a document in the library".into(),
+                ));
+            }
+            let patch = UpdateNotePatch {
+                body: Some(with_paragraph(&current.body, text)),
+                expected_updated_at: Some(current.updated_at),
+                ..Default::default()
+            };
+            match self.update_note(id, patch) {
+                Err(AppError::Conflict(m)) => last = Some(m),
+                other => return other,
+            }
+        }
+        Err(AppError::Conflict(last.unwrap_or_default()))
     }
 
     pub fn list_notes(&self, filter: NoteFilter) -> Result<Vec<Note>> {

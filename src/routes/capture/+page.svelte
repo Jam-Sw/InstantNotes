@@ -1,21 +1,20 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { EVENTS } from "$lib/api/events";
   import {
+    captureAppend,
     captureInputReady,
+    captureTargets,
     createNote,
     deleteSetting,
-    getNote,
     getSetting,
     hideCapture,
-    listNotes,
     openLibrary,
     setSetting,
-    updateNote,
   } from "$lib/api/client";
-  import type { Note } from "$lib/api/types";
+  import type { NoteTitle } from "$lib/api/types";
   import { debounce } from "$lib/debounce";
   import { modKey } from "$lib/platform";
   import { theme } from "$lib/stores/theme.svelte";
@@ -24,14 +23,13 @@
 
   const DRAFT_KEY = "capture.draft";
   const SAVED_HINT_MS = 300;
-  const RECENT = 3;
 
   let text = $state("");
   let saving = $state(false);
   let saved = $state(false);
   let errorMsg = $state<string | null>(null);
-  let recent = $state<Note[]>([]);
-  let target = $state<Note | null>(null);
+  let recent = $state<NoteTitle[]>([]);
+  let target = $state<NoteTitle | null>(null);
   let textarea = $state<HTMLTextAreaElement>();
   let hiding = false;
 
@@ -52,7 +50,6 @@
     void loadRecent();
     const unlisten = listen(EVENTS.CAPTURE_SHOWN, () => {
       void theme.init();
-      void restoreDraft();
       target = null;
       void loadRecent();
       textarea?.focus();
@@ -64,7 +61,7 @@
         return;
       }
       if (saving || hiding) return;
-      void dismiss(false);
+      void dismiss(false, false);
     });
     const unlistenQuit = listen(EVENTS.APP_QUIT_REQUESTED, () => {
       persistDraft.flush();
@@ -88,29 +85,21 @@
 
   async function loadRecent() {
     try {
-      const notes = await listNotes({ sortBy: "lastOpenedAt", sortOrder: "desc", bodyChars: 0 });
-      recent = notes.filter((n) => n.lastOpenedAt && n.contentKind === "document").slice(0, RECENT);
+      recent = await captureTargets();
     } catch {
       recent = [];
     }
   }
 
-  function pick(note: Note | null) {
+  function pick(note: NoteTitle | null) {
     target = note;
     textarea?.focus();
   }
 
-  function nextTarget() {
+  function stepTarget(by: 1 | -1) {
+    const slots = recent.length + 1;
     const at = target ? recent.findIndex((n) => n.id === target?.id) : -1;
-    pick(recent[at + 1] ?? null);
-  }
-
-  async function addTo(id: string, body: string) {
-    const note = await getNote(id);
-    await updateNote(id, {
-      body: note.body.trim() ? `${note.body.trimEnd()}\n\n${body}` : body,
-      expectedUpdatedAt: note.updatedAt,
-    });
+    pick(recent[((at + 1 + by + slots) % slots) - 1] ?? null);
   }
 
   function onInput() {
@@ -123,12 +112,12 @@
     if (!body) {
       hiding = true;
       if (openLibraryAfter) await openLibrary();
-      await dismiss(true);
+      await dismiss(true, !openLibraryAfter);
       return;
     }
     saving = true;
     try {
-      if (target) await addTo(target.id, body);
+      if (target) await captureAppend(target.id, body);
       else await createNote({ body });
       text = "";
       target = null;
@@ -137,40 +126,45 @@
       saved = true;
       await new Promise<void>((resolve) => setTimeout(resolve, SAVED_HINT_MS));
       if (openLibraryAfter) await openLibrary();
-      await hidePanel();
+      await hidePanel(!openLibraryAfter);
     } catch {
       errorMsg = "Couldn't save — your text is kept here.";
     } finally {
       saving = false;
       saved = false;
     }
+    if (errorMsg) {
+      await tick();
+      textarea?.focus();
+    }
   }
 
-  async function hidePanel() {
+  async function hidePanel(restoreFocus: boolean) {
     hiding = true;
-    await hideCapture();
+    await hideCapture(restoreFocus);
   }
 
-  async function dismiss(clearDraft = false) {
+  async function dismiss(clearDraft: boolean, restoreFocus: boolean) {
     persistDraft.flush();
     if (clearDraft) {
       persistDraft.cancel();
       void deleteSetting(DRAFT_KEY);
       text = "";
     }
-    await hidePanel();
+    await hidePanel(restoreFocus);
   }
 
   function onKeydown(e: KeyboardEvent) {
+    if (e.isComposing || e.keyCode === 229) return;
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void save(e.metaKey || e.ctrlKey);
-    } else if (e.key === "Tab" && !e.shiftKey && recent.length > 0) {
+    } else if (e.key === "Tab" && recent.length > 0) {
       e.preventDefault();
-      nextTarget();
+      stepTarget(e.shiftKey ? -1 : 1);
     } else if (e.key === "Escape") {
       e.preventDefault();
-      void dismiss(false);
+      void dismiss(false, true);
     }
   }
 </script>

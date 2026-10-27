@@ -24,6 +24,7 @@ import type {
   ImportOutcome,
   Note,
   NoteFilter,
+  NoteTitle,
   SearchResult,
   ShortcutFailure,
   SpaceSuggestion,
@@ -157,6 +158,9 @@ export const captureInputReady = () =>
   call<number | null>("capture_input_ready");
 export const getCaptureLatency = () =>
   call<CaptureLatencySummary>("get_capture_latency");
+export const captureTargets = () => call<NoteTitle[]>("capture_targets");
+export const captureAppend = (id: string, text: string) =>
+  call<void>("capture_append", { id, text });
 
 export const getSetting = <T>(key: string) =>
   call<T | null>("get_setting", { key });
@@ -165,7 +169,8 @@ export const setSetting = (key: string, value: unknown) =>
 export const deleteSetting = (key: string) =>
   call<void>("delete_setting", { key });
 
-export const hideCapture = () => call<void>("hide_capture");
+export const hideCapture = (restoreFocus: boolean) =>
+  call<void>("hide_capture", { restoreFocus });
 export const openLibrary = () => call<void>("open_library");
 export const openDataFolder = () => call<void>("open_data_folder");
 export const requestQuit = () => call<void>("request_quit");

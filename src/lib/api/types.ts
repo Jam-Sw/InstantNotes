@@ -93,6 +93,11 @@ export interface SearchResult {
   updatedAt: string;
 }
 
+export interface NoteTitle {
+  id: string;
+  title: string;
+}
+
 export interface CaptureLatencySummary {
   lastMs: number | null;
   medianMs: number | null;
