@@ -1,0 +1,29 @@
+src/lib/components/settings/SettingsImages.svelte
+  s_7b96e4316ebe9a::t_a9621b237c2bf4 272-275
+src-tauri/src/shell/files.rs
+  s_7b96e4316ebe9a::t_765a1bbd65a9db 387-390
+  s_7b96e4316ebe9a::t_5c6be2dbf1a9be 475-486,495-499,504-518,521-536
+  s_7b96e4316ebe9a::t_1a83d7b37a3fc6 472-473,487-494,500-503,519-520
+  s_7b96e4316ebe9a::t_05fd8a97c0f4a0 352-355
+  s_7b96e4316ebe9a::t_65fc0c9c2780f8 189-261,263-276,281-351,356-386,391-396
+  s_7b96e4316ebe9a::t_a7995ae085ef39 397
+src-tauri/src/lib.rs
+  s_7b96e4316ebe9a::t_41d79fc4d2b83b 185
+  s_7b96e4316ebe9a::t_878137e86ef5ef 297-298
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "532bdf699b311fd998779e3ccdabd91ecc8b3d83",
+  "prompts": {},
+  "sessions": {
+    "s_7b96e4316ebe9a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f2b5ccdd-70a6-4131-9efa-e317e549912a",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
