@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, fireEvent, cleanup } from "@testing-library/svelte";
-import { clockTime, type AgentActivity } from "$lib/agent-activity";
+import { clockTime, type AgentActivity, type AgentScratch } from "$lib/agent-activity";
 
-const { select, selectWorkspace, setBlocked, show, overrides, blocked, ask, endAgentSession } = vi.hoisted(() => ({
+const { select, selectWorkspace, setBlocked, show, overrides, blocked, ask, endAgentSession, scratch } = vi.hoisted(() => ({
   ask: vi.fn(),
   endAgentSession: vi.fn(),
   select: vi.fn(),
@@ -11,6 +11,7 @@ const { select, selectWorkspace, setBlocked, show, overrides, blocked, ask, endA
   show: vi.fn(),
   overrides: { value: {} as Record<string, unknown> },
   blocked: { value: false },
+  scratch: { value: [] as AgentScratch[] },
 }));
 
 function entry(seq: number, noteIds: string[]): AgentActivity {
@@ -73,6 +74,8 @@ vi.mock("$lib/stores/agents.svelte", () => ({
     revert: vi.fn(),
     loadMore: vi.fn(),
     clear: vi.fn(),
+    scratchFor: () => scratch.value,
+    loadScratch: vi.fn(),
   },
 }));
 vi.mock("$lib/stores/toasts.svelte", () => ({ toasts: { show } }));
@@ -90,7 +93,12 @@ afterEach(() => {
   vi.clearAllMocks();
   overrides.value = {};
   blocked.value = false;
+  scratch.value = [];
 });
+
+function note(seq: number, kind: AgentScratch["kind"], text: string): AgentScratch {
+  return { seq, at: 1_700_000_000_000 + seq, session: "s1", client: "claude-code", kind, text };
+}
 
 describe("AgentNote", () => {
   it("opens the note a row touched from the row itself, without unfolding it", async () => {
@@ -162,5 +170,31 @@ describe("AgentNote", () => {
     overrides.value = { connected: false };
     const { queryByRole } = render(AgentNote);
     expect(queryByRole("button", { name: "End session" })).toBeNull();
+  });
+
+  it("lists the scratchpad entries with their kind labels", async () => {
+    scratch.value = [
+      note(1, "note", "Checking the sync log"),
+      note(2, "plan", "Tag the three drafts first"),
+      note(3, "memory", "The user prefers Folio"),
+      note(4, "decision", "Keep the old export"),
+    ];
+    const { getByRole, getByText } = render(AgentNote);
+    await fireEvent.click(getByRole("button", { name: /Scratchpad/ }));
+    expect(getByText("Note to self")).toBeTruthy();
+    expect(getByText("Plan")).toBeTruthy();
+    expect(getByText("Memory")).toBeTruthy();
+    expect(getByText("Decision")).toBeTruthy();
+    expect(getByText("Tag the three drafts first")).toBeTruthy();
+  });
+
+  it("says so when the agent has written nothing to its scratchpad", async () => {
+    const { getByRole, getByText } = render(AgentNote);
+    await fireEvent.click(getByRole("button", { name: /Scratchpad/ }));
+    expect(
+      getByText(
+        "It has written nothing to its scratchpad. An agent's working notes, plans and memory land here, never in your notes.",
+      ),
+    ).toBeTruthy();
   });
 });

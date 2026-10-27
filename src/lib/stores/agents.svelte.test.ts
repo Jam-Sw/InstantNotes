@@ -10,12 +10,14 @@ vi.mock("$lib/api/client", () => ({
   listAgentSessions: vi.fn(async () => []),
   revertAgentActivity: vi.fn(),
   clearAgentActivity: vi.fn(async () => {}),
+  listAgentScratch: vi.fn(async () => []),
 }));
 
+import { listen } from "@tauri-apps/api/event";
 import { revertAgentActivity } from "$lib/api/client";
 import { toasts } from "$lib/stores/toasts.svelte";
 import { agents, PRESENCE_MS } from "./agents.svelte";
-import type { AgentActivity } from "$lib/agent-activity";
+import type { AgentActivity, AgentScratch } from "$lib/agent-activity";
 
 let seq = 0;
 const entry = (over: Partial<AgentActivity>): AgentActivity => ({
@@ -158,5 +160,33 @@ describe("agents presence", () => {
     vi.mocked(revertAgentActivity).mockRejectedValueOnce(new Error("nope"));
     expect(await agents.revert(12345)).toBe(false);
     expect(toasts.items.at(-1)?.message).toMatch(/^Couldn't revert/);
+  });
+});
+
+describe("agents scratchpad", () => {
+  const scratch = (over: Partial<AgentScratch>): AgentScratch => ({
+    seq: 0,
+    at: 1,
+    session: "s1",
+    client: "claude-code",
+    kind: "note",
+    text: "x",
+    ...over,
+  });
+
+  it("appends scratch entries as they arrive, once per seq", async () => {
+    await agents.init();
+    const onScratch = vi
+      .mocked(listen)
+      .mock.calls.find(([name]) => name === "agents:scratch")?.[1] as unknown as (e: { payload: unknown }) => void;
+    onScratch({ payload: [scratch({ seq: 901, text: "a" })] });
+    onScratch({ payload: [scratch({ seq: 901, text: "a" }), scratch({ seq: 902, kind: "plan", text: "b" })] });
+    expect(agents.scratchFor(["s1"]).map((e) => e.seq)).toEqual([901, 902]);
+  });
+
+  it("empties the scratchpad on clear", async () => {
+    agents.scratch = new Map([["s1", [scratch({ seq: 903 })]]]);
+    await agents.clear();
+    expect(agents.scratch.size).toBe(0);
   });
 });

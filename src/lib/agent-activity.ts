@@ -90,6 +90,45 @@ export function parseActivityLog(value: unknown): AgentActivity[] {
   );
 }
 
+export const SCRATCH_KINDS = ["note", "plan", "memory", "decision"] as const;
+
+export type ScratchKind = (typeof SCRATCH_KINDS)[number];
+
+export interface AgentScratch {
+  seq: number;
+  at: number;
+  session: string;
+  client: string;
+  kind: ScratchKind;
+  text: string;
+}
+
+export function parseScratch(value: unknown): AgentScratch[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (e): e is AgentScratch =>
+      !!e &&
+      typeof e === "object" &&
+      typeof e.seq === "number" &&
+      typeof e.at === "number" &&
+      typeof e.session === "string" &&
+      typeof e.client === "string" &&
+      typeof e.text === "string" &&
+      SCRATCH_KINDS.includes(e.kind),
+  );
+}
+
+const SCRATCH_LABELS: Record<ScratchKind, string> = {
+  note: "Note to self",
+  plan: "Plan",
+  memory: "Memory",
+  decision: "Decision",
+};
+
+export function scratchKindLabel(kind: ScratchKind): string {
+  return SCRATCH_LABELS[kind];
+}
+
 export interface AgentPresence {
   session: string;
   client: string;

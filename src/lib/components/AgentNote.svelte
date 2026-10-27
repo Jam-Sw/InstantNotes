@@ -15,6 +15,7 @@
     formatDuration,
     kindLabel,
     prettyWire,
+    scratchKindLabel,
     timeAgo,
     type AgentActivity,
     type AgentWire,
@@ -26,9 +27,26 @@
   let before = $state<NoteSnapshot | null | undefined>(undefined);
   let beforeFor = $state<number | null>(null);
   let wire = $state<AgentWire | null | undefined>(undefined);
+  let scratchEl = $state<HTMLElement | null>(null);
 
   const session = $derived(agentsSpace.sessionFor(library.selected?.id));
   const doing = $derived(session ? agents.doing(session.session) : null);
+  const scratchEntries = $derived(
+    session ? agents.scratchFor(session.clocks.map((c) => c.session)) : [],
+  );
+  const planLine = $derived.by(() => {
+    const last = scratchEntries.at(-1);
+    return session?.connected && last?.kind === "plan" ? (last.text.trim().split("\n")[0] ?? "") : "";
+  });
+
+  $effect(() => {
+    if (session) void agents.loadScratch(session.clocks.map((c) => c.session));
+  });
+
+  $effect(() => {
+    scratchEntries.length;
+    if (filter === "scratch" && scratchEl) scratchEl.scrollTop = scratchEl.scrollHeight;
+  });
   const punchLabel = $derived(
     (session?.clocks ?? [])
       .flatMap((c) => [
@@ -39,11 +57,11 @@
       .join(", "),
   );
 
-  type Filter = "all" | "changes" | "failed";
+  type Filter = "all" | "changes" | "failed" | "scratch";
   let filter = $state<Filter>("all");
   const isChange = (e: AgentActivity) => e.kind === "write" && e.status === "ok";
   const shown = $derived(
-    !session
+    !session || filter === "scratch"
       ? []
       : filter === "changes"
         ? session.entries.filter(isChange)
@@ -155,6 +173,7 @@
       <p class="status" role="status" aria-live="polite">
         <span class="live-dot" data-state={!session.connected ? "off" : doing ? "working" : "connected"}></span>
         {#if session.connected && doing}<span class="status-main">{describeActivity(doing)}</span>{/if}
+        {#if planLine}<span class="status-plan">{planLine}</span>{/if}
         {#if punchLabel}
           <span class="punch" role="img" aria-label={punchLabel} title={punchLabel}>
             {#each session.clocks as c (c.session)}
@@ -208,8 +227,26 @@
         <button class="filter" aria-pressed={filter === "failed"} onclick={() => (filter = "failed")}>
           Failed <span class="n">{session.errors}</span>
         </button>
+        <button class="filter" aria-pressed={filter === "scratch"} onclick={() => (filter = "scratch")}>
+          Scratchpad <span class="n">{scratchEntries.length}</span>
+        </button>
       </div>
-      {#if shown.length === 0}
+      {#if filter === "scratch"}
+        {#if scratchEntries.length === 0}
+          <p class="lead">It has written nothing to its scratchpad. An agent's working notes, plans and memory land here, never in your notes.</p>
+        {/if}
+        <ol class="rows scratch" class:empty={scratchEntries.length === 0} bind:this={scratchEl}>
+          {#each scratchEntries as s (s.seq)}
+            <li class="scratch-item">
+              <div class="scratch-head">
+                <span class="time">{clockTime(s.at)}</span>
+                <span class="kind-badge">{scratchKindLabel(s.kind)}</span>
+              </div>
+              <p class="scratch-text">{s.text}</p>
+            </li>
+          {/each}
+        </ol>
+      {:else if shown.length === 0}
         <p class="lead">
           {#if session.entries.length === 0}
             Connected, and it has not asked for anything yet. Every call will be listed here as it happens.
@@ -446,6 +483,39 @@
   }
   .rows.empty {
     display: none;
+  }
+  .rows.scratch {
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+  .scratch-item {
+    padding: 8px 10px;
+  }
+  .scratch-item + .scratch-item {
+    border-top: 1px solid var(--border);
+  }
+  .scratch-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .kind-badge {
+    padding: 0 6px;
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    font-family: var(--font-meta);
+    font-size: 10px;
+    color: var(--text-secondary);
+  }
+  .scratch-text {
+    margin: 4px 0 0;
+    font-size: 13px;
+    color: var(--text);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .status-plan {
+    color: var(--text-secondary);
   }
   .row + .row {
     border-top: 1px solid var(--border);

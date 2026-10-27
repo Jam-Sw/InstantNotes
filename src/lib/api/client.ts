@@ -8,6 +8,7 @@ import type {
   AgentActivity,
   AgentConnection,
   AgentPresence,
+  AgentScratch,
   AgentWire,
   NoteSnapshot,
 } from "$lib/agent-activity";
@@ -321,3 +322,5 @@ export const agentActivityWire = (seq: number) =>
 export const revertAgentActivity = (seq: number) =>
   call<AgentActivity>("revert_agent_activity", { seq });
 export const clearAgentActivity = () => call<void>("clear_agent_activity");
+export const listAgentScratch = (session: string, limit?: number) =>
+  call<AgentScratch[]>("list_agent_scratch", { session, limit });
