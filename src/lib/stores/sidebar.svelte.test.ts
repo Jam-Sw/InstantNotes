@@ -59,14 +59,17 @@ describe("a large window", () => {
     expect(mockSetSetting).toHaveBeenLastCalledWith("layout.large", "all");
   });
 
-  it("collapses the list to the editor alone, and brings back what it hid", async () => {
+  it("hides the list and keeps the nav beside the editor", async () => {
     const sidebar = await load();
     at(sidebar, 1440);
     sidebar.toggleList();
-    expect(sidebar.state).toBe("detail");
+    expect(sidebar.state).toBe("nav");
     expect(sidebar.listHidden).toBe(true);
     expect(sidebar.listOverlay).toBe(false);
-    expect(mockSetSetting).toHaveBeenLastCalledWith("layout.large", "detail");
+    expect(sidebar.navInline).toBe(true);
+    expect(sidebar.navTrack).toBe(220);
+    expect(sidebar.listTrack).toBe(0);
+    expect(mockSetSetting).toHaveBeenLastCalledWith("layout.large", "nav");
     sidebar.toggleList();
     expect(sidebar.state).toBe("all");
     expect(mockSetSetting).toHaveBeenLastCalledWith("layout.large", "all");
@@ -81,16 +84,17 @@ describe("a large window", () => {
     expect(sidebar.state).toBe("double");
   });
 
-  it("opens the nav as a drawer when only the editor shows", async () => {
+  it("hides the nav and the list apart, down to the editor alone", async () => {
     const sidebar = await load();
     at(sidebar, 1440);
     sidebar.toggleList();
-    mockSetSetting.mockClear();
     sidebar.toggle();
-    expect(sidebar.narrowOpen).toBe(true);
-    expect(sidebar.hidden).toBe(false);
     expect(sidebar.state).toBe("detail");
-    expect(mockSetSetting).not.toHaveBeenCalled();
+    expect(sidebar.navTrack + sidebar.listTrack).toBe(0);
+    sidebar.toggle();
+    expect(sidebar.state).toBe("nav");
+    expect(sidebar.narrowOpen).toBe(false);
+    expect(mockSetSetting).toHaveBeenLastCalledWith("layout.large", "nav");
   });
 
   it("opens the list again, and saves it, when a search needs it", async () => {
@@ -101,6 +105,10 @@ describe("a large window", () => {
     sidebar.revealList();
     expect(sidebar.listHidden).toBe(false);
     expect(mockSetSetting).toHaveBeenCalledWith("layout.large", "all");
+    sidebar.toggle();
+    sidebar.toggleList();
+    sidebar.revealList();
+    expect(sidebar.state).toBe("double");
   });
 
   it("saves nothing when the list is already open", async () => {
@@ -120,35 +128,48 @@ describe("a large window", () => {
 });
 
 describe("an expanded window", () => {
-  it("shows the list and keeps the nav in its drawer", async () => {
+  it("keeps the nav inline while all three panes fit, and in its drawer below that", async () => {
     const sidebar = await load();
     at(sidebar, 1000);
-    expect(sidebar.state).toBe("double");
+    expect(sidebar.state).toBe("all");
+    expect(sidebar.navInline).toBe(true);
+    expect(sidebar.listInline).toBe(true);
+    expect(sidebar.navTrack).toBe(220);
+    at(sidebar, 900);
     expect(sidebar.navInline).toBe(false);
     expect(sidebar.listInline).toBe(true);
     expect(sidebar.hidden).toBe(true);
     expect(sidebar.navTrack).toBe(0);
   });
 
-  it("peeks the nav open on toggle without saving anything", async () => {
+  it("peeks the nav open on toggle without saving anything when it has no room", async () => {
     const sidebar = await load();
-    at(sidebar, 1000);
+    at(sidebar, 900);
     sidebar.toggle();
     expect(sidebar.hidden).toBe(false);
-    expect(sidebar.state).toBe("double");
+    expect(sidebar.state).toBe("all");
     expect(mockSetSetting).not.toHaveBeenCalled();
     sidebar.toggle();
     expect(sidebar.hidden).toBe(true);
+  });
+
+  it("brings the nav inline once the list is hidden, since the two then fit", async () => {
+    const sidebar = await load();
+    at(sidebar, 900);
+    sidebar.toggleList();
+    expect(sidebar.state).toBe("nav");
+    expect(sidebar.navInline).toBe(true);
+    expect(sidebar.listHidden).toBe(true);
   });
 
   it("saves its own list choice", async () => {
     const sidebar = await load();
     at(sidebar, 1000);
     sidebar.toggleList();
-    expect(sidebar.state).toBe("detail");
-    expect(mockSetSetting).toHaveBeenLastCalledWith("layout.expanded", "detail");
+    expect(sidebar.state).toBe("nav");
+    expect(mockSetSetting).toHaveBeenLastCalledWith("layout.expanded", "nav");
     sidebar.toggleList();
-    expect(sidebar.state).toBe("double");
+    expect(sidebar.state).toBe("all");
   });
 });
 
@@ -233,9 +254,9 @@ describe("one state for each width class", () => {
     const sidebar = await load();
     at(sidebar, 1440);
     sidebar.toggleList();
-    expect(sidebar.state).toBe("detail");
+    expect(sidebar.state).toBe("nav");
     at(sidebar, 1000);
-    expect(sidebar.state).toBe("double");
+    expect(sidebar.state).toBe("all");
     sidebar.toggle();
     at(sidebar, 700);
     expect(sidebar.state).toBe("detail");
@@ -243,13 +264,13 @@ describe("one state for each width class", () => {
     at(sidebar, 1000);
     expect(sidebar.state).toBe("double");
     at(sidebar, 1440);
-    expect(sidebar.state).toBe("detail");
+    expect(sidebar.state).toBe("nav");
     expect(sidebar.listHidden).toBe(true);
   });
 
   it("closes the nav drawer when the window crosses a breakpoint", async () => {
     const sidebar = await load();
-    at(sidebar, 1000);
+    at(sidebar, 900);
     sidebar.toggle();
     expect(sidebar.narrowOpen).toBe(true);
     at(sidebar, 700);
@@ -270,7 +291,7 @@ describe("one state for each width class", () => {
     sidebar.closeList();
     expect(mockSetSetting).not.toHaveBeenCalled();
     at(sidebar, 1440);
-    expect(sidebar.state).toBe("detail");
+    expect(sidebar.state).toBe("nav");
   });
 
   it("starts the drawers closed when a note is open, whatever was open before", async () => {
@@ -304,15 +325,17 @@ describe("what is saved", () => {
     expect(sidebar.state).toBe("all");
     expect([sidebar.navWidth, sidebar.listWidth]).toEqual([220, 300]);
     at(sidebar, 1000);
-    expect(sidebar.state).toBe("double");
+    expect(sidebar.state).toBe("all");
   });
 
-  it("never lets the expanded class keep the nav inline", async () => {
-    saved({ "layout.expanded": "all" });
+  it("restores the nav-only state", async () => {
+    saved({ "layout.large": "nav", "layout.expanded": "nav" });
     const sidebar = await load();
     await sidebar.init();
-    at(sidebar, 1000);
-    expect(sidebar.state).toBe("double");
+    at(sidebar, 1440);
+    expect(sidebar.resolved()).toEqual({ nav: true, list: false });
+    at(sidebar, 900);
+    expect(sidebar.resolved()).toEqual({ nav: true, list: false });
   });
 
   it("moves the old note list flag into the large and expanded states", async () => {
@@ -320,9 +343,9 @@ describe("what is saved", () => {
     const sidebar = await load();
     await sidebar.init();
     at(sidebar, 1440);
-    expect(sidebar.state).toBe("detail");
+    expect(sidebar.state).toBe("nav");
     at(sidebar, 1000);
-    expect(sidebar.state).toBe("detail");
+    expect(sidebar.state).toBe("nav");
     expect(mockSetSetting).not.toHaveBeenCalled();
   });
 
@@ -406,9 +429,9 @@ describe("resizing the panes", () => {
     expect(sidebar.listTrack).toBe(260);
     sidebar.resizeList(100);
     sidebar.commitDrag("list");
-    expect(sidebar.state).toBe("detail");
+    expect(sidebar.state).toBe("nav");
     expect(sidebar.listWidth).toBe(260);
-    expect(mockSetSetting).toHaveBeenCalledWith("layout.large", "detail");
+    expect(mockSetSetting).toHaveBeenCalledWith("layout.large", "nav");
   });
 
   it("resets a pane to its default on a double click", async () => {
