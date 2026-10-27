@@ -11,9 +11,6 @@
     "static/sw.js",
     "static/web/worker.js"
   ],
-  "ignoreDependencies": [
-    "@types/d3-force"
-  ],
   "ignoreIssues": {
     "src/lib/agents/space.ts": ["exports"],
     "src/lib/command-filter.ts": ["exports"],
