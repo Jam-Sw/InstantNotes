@@ -12,7 +12,6 @@ const { panes, lib } = vi.hoisted(() => ({
     searchResults: null as unknown[] | null,
     write: vi.fn(),
     newNote: vi.fn(async () => null),
-    searchNow: vi.fn(async () => {}),
     setSearch: vi.fn(),
   },
 }));
@@ -121,7 +120,7 @@ describe("WelcomeScreen with the note list hidden", () => {
     expect(lib.setSearch).toHaveBeenCalledWith("trips");
   });
 
-  it("says so when nothing matches, and starts a note with the words on Enter", async () => {
+  it("says so when nothing matches, creates nothing on Enter, and starts a note only from the row", async () => {
     panes.listInline = false;
     vi.mocked(listNotes).mockResolvedValue([]);
     lib.searchText = "zzz";
@@ -131,7 +130,8 @@ describe("WelcomeScreen with the note list hidden", () => {
     expect(getByText("Start a note called “zzz”")).toBeTruthy();
     const input = container.querySelector<HTMLInputElement>("input.search")!;
     await fireEvent.keyDown(input, { key: "Enter" });
-    await waitFor(() => expect(lib.newNote).toHaveBeenCalledWith("zzz\n"));
-    expect(lib.searchNow).toHaveBeenCalled();
+    expect(lib.newNote).not.toHaveBeenCalled();
+    await fireEvent.click(getByText("Start a note called “zzz”"));
+    expect(lib.newNote).toHaveBeenCalledWith("zzz\n");
   });
 });

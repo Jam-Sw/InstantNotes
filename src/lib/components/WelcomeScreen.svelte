@@ -68,15 +68,8 @@
     void library.write(id);
   }
 
-  async function onSearchKey(e: KeyboardEvent) {
-    if (rows.length === 0) {
-      if (e.key !== "Enter" || e.isComposing || !query) return;
-      e.preventDefault();
-      const text = query;
-      await library.searchNow();
-      if (library.searchResults?.length === 0) await library.newNote(`${text}\n`);
-      return;
-    }
+  function onSearchKey(e: KeyboardEvent) {
+    if (rows.length === 0) return;
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
       const step = e.key === "ArrowDown" ? 1 : -1;
@@ -193,7 +186,7 @@
               </button>
             {/each}
             {#if query && library.searchResults !== null && hits.length === 0}
-              <button class="recent-row active" onclick={() => void library.newNote(`${query}\n`)}>
+              <button class="recent-row" onclick={() => void library.newNote(`${query}\n`)}>
                 <span class="recent-title">Start a note called “{query}”</span>
               </button>
             {/if}

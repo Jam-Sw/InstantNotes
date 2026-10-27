@@ -34,8 +34,9 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Sidebar (Cmd or Ctrl+\). Ctrl+Cmd+S also toggles the sidebar on a Mac, and Escape closes an open drawer.
 - Restore on a trashed note's right-click menu, for the note or the whole selection.
 - Search to write: in the note list's search field the arrow keys move through the notes, and Enter
-  opens the first result (or the open note) with the cursor in its body. When nothing matches, Enter or
-  Start a note starts one whose first line is the search; the welcome finder does the same.
+  opens the first result (or the open note) with the cursor in its body. When nothing matches, Start a
+  note starts one whose first line is the search, in the list and the welcome finder; Enter creates
+  nothing.
 - Empty lists say what belongs there and offer the next step: New note in an empty library, space or
   tag, Show the whole space when a tag slice inside a space is empty.
 
