@@ -47,7 +47,7 @@
   let newMenu = $state<{ x: number; y: number } | null>(null);
   let newControl = $state<HTMLDivElement>();
 
-  let rowMenu = $state<{ x: number; y: number; id: string } | null>(null);
+  let rowMenu = $state<{ x: number; y: number; id: string; trashed: boolean } | null>(null);
 
   function openNewMenu() {
     const rect = newControl?.getBoundingClientRect();
@@ -67,12 +67,17 @@
     await contexting.copyIds(contextTargets(id));
   }
 
-  function rowMenuItems(id: string) {
+  function rowMenuItems(id: string, trashed: boolean) {
     const count = contextTargets(id).length;
     const items = [
       { label: count > 1 ? `Copy context (${count} notes)` : "Copy context", run: () => void copyContext(id) },
     ];
-    if (!isWeb) {
+    if (trashed) {
+      items.push({
+        label: count > 1 ? `Restore ${count} notes` : "Restore",
+        run: () => void library.restoreIds(contextTargets(id)),
+      });
+    } else if (!isWeb) {
       items.push(
         library.isSticky(id)
           ? { label: "Bring back from sticky", run: () => void library.popIn(id) }
@@ -255,9 +260,9 @@
           class:selected={library.isSelected(note.id)}
           onclick={(e) => rowClick(e, note.id)}
           oncontextmenu={(e) => {
-            if (note.isDeleted || isSyntheticSpaceId(library.activeWorkspaceId)) return;
+            if (isSyntheticSpaceId(library.activeWorkspaceId)) return;
             e.preventDefault();
-            rowMenu = { x: e.clientX, y: e.clientY, id: note.id };
+            rowMenu = { x: e.clientX, y: e.clientY, id: note.id, trashed: note.isDeleted };
           }}
         >
           <div class="row-head">
@@ -352,7 +357,7 @@
   <ContextMenu
     x={rowMenu.x}
     y={rowMenu.y}
-    items={rowMenuItems(rowMenu.id)}
+    items={rowMenuItems(rowMenu.id, rowMenu.trashed)}
     onclose={() => (rowMenu = null)}
   />
 {/if}
