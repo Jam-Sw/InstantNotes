@@ -9,6 +9,7 @@
   import { EVENTS, listen } from "$lib/api/events";
   import { isWeb } from "$lib/api/runtime";
   import { runCommand } from "$lib/commands";
+  import { isSearchShortcut } from "$lib/search-focus";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import NoteList from "$lib/components/NoteList.svelte";
   import UpdateNote from "$lib/components/UpdateNote.svelte";
@@ -278,6 +279,11 @@
       e.preventDefault();
       if (toggled === "nav") sidebar.toggle();
       else sidebar.toggleList();
+      return;
+    }
+    if (!isWeb && isSearchShortcut(e)) {
+      e.preventDefault();
+      void runCommand("note.search");
       return;
     }
     if (isWhiteboardTarget(e.target)) return;
