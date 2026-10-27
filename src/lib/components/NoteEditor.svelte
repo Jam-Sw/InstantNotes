@@ -31,7 +31,7 @@
   let workspaceInput = $state("");
   let editorRef = $state<{
     applyFormat: (k: FormatKind) => void;
-    focus: () => void;
+    focus: (key?: string, atEnd?: boolean) => void;
     insertText: (t: string) => void;
     undo: () => void;
     redo: () => void;
@@ -70,6 +70,19 @@
       () => {},
     );
   });
+  $effect(() => {
+    const want = library.focusRequest;
+    const note = library.selected;
+    if (!want) return;
+    if (want.id !== note?.id || isSurface || library.isSticky(want.id)) {
+      library.focusRequest = null;
+      return;
+    }
+    if (!editorRef) return;
+    library.focusRequest = null;
+    editorRef.focus(want.id, want.atEnd);
+  });
+
   const boardTheme = $derived(effectiveVariant(theme.activeTheme, theme.resolvedVariant));
 
   async function insertImage() {
@@ -249,6 +262,7 @@
         if (e.key === "Enter" && !e.isComposing) {
           e.preventDefault();
           library.editTitle(e.currentTarget.value);
+          if (!isVirtual) editorRef?.focus();
         }
       }}
       onchange={(e) => library.editTitle(e.currentTarget.value)}

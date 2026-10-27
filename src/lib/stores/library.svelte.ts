@@ -128,6 +128,7 @@ class LibraryStore {
   tagSlices = $state<TagSlice[]>([]);
   slicesByWorkspace = $derived(groupSlices(this.tagSlices));
   selected = $state<Note | null>(null);
+  focusRequest = $state<{ id: string; atEnd: boolean } | null>(null);
   selectedTags = $state<Tag[]>([]);
   selectedWorkspaces = $state<Workspace[]>([]);
   error = $state<string | null>(null);
@@ -499,6 +500,16 @@ class LibraryStore {
     }
   }
 
+  async searchNow(): Promise<void> {
+    this.#searchRefresh.cancel();
+    await this.refresh();
+  }
+
+  async write(id: string): Promise<void> {
+    if (this.selected?.id !== id) await this.select(id);
+    if (this.selected?.id === id) this.focusRequest = { id, atEnd: false };
+  }
+
   async openLinked(hash: string): Promise<void> {
     const id = linkedNoteId(hash);
     if (!id) return;
@@ -728,7 +739,7 @@ class LibraryStore {
     }
   }
 
-  async newNote(): Promise<string | null> {
+  async newNote(body?: string): Promise<string | null> {
     try {
       const activeTag = this.activeTagId
         ? this.tags.find((t) => t.id === this.activeTagId)
@@ -738,9 +749,10 @@ class LibraryStore {
         this.activeWorkspaceId = null;
       }
 
-      const note = await createNote(
-        activeTag ? { tags: [activeTag.name] } : {},
-      );
+      const note = await createNote({
+        ...(activeTag ? { tags: [activeTag.name] } : {}),
+        ...(body ? { body } : {}),
+      });
       if (this.activeWorkspaceId) {
         await addNoteToWorkspace(note.id, this.activeWorkspaceId);
       }
@@ -750,6 +762,7 @@ class LibraryStore {
       this.searchText = "";
       void this.refresh();
       await this.select(note.id);
+      if (this.selected?.id === note.id) this.focusRequest = { id: note.id, atEnd: true };
       return note.id;
     } catch (e) {
       this.#fail(e);
