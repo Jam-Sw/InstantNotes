@@ -21,6 +21,7 @@
   import { licenseSpace } from "$lib/stores/license-space.svelte";
   import { layout } from "$lib/stores/layout.svelte";
   import { contexting } from "$lib/stores/contexting.svelte";
+  import { toasts } from "$lib/stores/toasts.svelte";
 
   const statusFilters: { id: StatusFilter; label: string }[] = [
     { id: "active", label: "Active" },
@@ -62,7 +63,11 @@
 
   async function copyContext(id: string) {
     await library.flushPendingEdits();
-    await contexting.copyIds(contextTargets(id));
+    try {
+      await contexting.copyIds(contextTargets(id));
+    } catch {
+      toasts.show("Couldn't copy the context. Try again, or open the note and copy it.");
+    }
   }
 
   function rowMenuItems(id: string, trashed: boolean) {
