@@ -110,13 +110,10 @@
   $effect(() => {
     const widthClass = layout.widthClass;
     const width = layout.width;
-    untrack(() => sidebar.setViewport(widthClass, width, selectedId !== null));
+    untrack(() => sidebar.setViewport(widthClass, width));
   });
   $effect(() => {
     if (selectedId !== null) untrack(() => sidebar.noteOpened());
-  });
-  $effect(() => {
-    if (library.searchText.trim() && !layout.phone) untrack(() => sidebar.revealList());
   });
 
   const view = $derived(
@@ -153,7 +150,7 @@
   const reducedMotion = () =>
     typeof window.matchMedia === "function" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const motion = (ms: number) => (reducedMotion() ? 0 : ms);
+  const motion = (ms: number) => (reducedMotion() || layout.resizing ? 0 : ms);
 
   function onListClick(e: MouseEvent) {
     if (!listOverlay || e.shiftKey || e.metaKey || e.ctrlKey) return;
@@ -426,7 +423,7 @@
     class="layout"
     class:phone={layout.phone}
     class:animate
-    class:resizing={dragging !== null}
+    class:resizing={dragging !== null || layout.resizing}
     data-nav={drawer ? "" : undefined}
     data-list-overlay={listOverlay ? "" : undefined}
     data-edge={editorEdge ? "" : undefined}
@@ -551,6 +548,7 @@
           aria-label="Show the sidebar"
           aria-expanded={sidebar.narrowOpen}
           onclick={() => sidebar.toggle()}
+          in:fade={{ duration: motion(160), delay: motion(80) }}
         >
           <Icon name="menu" size={20} />
         </button>
@@ -587,8 +585,8 @@
 
 <style>
   .layout {
-    --pane-ms: 220ms;
-    --pane-ease: cubic-bezier(0, 0, 0.2, 1);
+    --pane-ms: 240ms;
+    --pane-ease: cubic-bezier(0.2, 0, 0, 1);
     display: grid;
     grid-template-rows: minmax(0, 1fr);
     height: 100vh;
@@ -606,13 +604,21 @@
     border-right: none;
   }
 
+  /* A pane keeps its width and rides the closing edge, so it slides away under
+     its neighbour instead of being wiped. It hides once the close has run, and
+     shows the moment an open starts. */
   .nav-slot,
   .list-slot {
     display: flex;
+    justify-content: flex-end;
     min-width: 0;
     min-height: 0;
     overflow: hidden;
     transition: visibility 0s linear var(--pane-ms);
+  }
+  .nav-slot:not(.hidden),
+  .list-slot:not(.hidden) {
+    transition: none;
   }
   .nav-slot {
     grid-column: 1;
@@ -642,6 +648,7 @@
   }
   .layout[data-list-overlay] > .list-slot {
     grid-column: auto;
+    justify-content: flex-start;
     position: absolute;
     top: 0;
     bottom: 0;
@@ -680,6 +687,9 @@
 
   .layout:not(.phone) > .editor-pane > :global(.pane-header) {
     padding-left: 46px;
+  }
+  .layout.animate:not(.resizing) > .editor-pane > :global(.pane-header) {
+    transition: padding-left var(--pane-ms) var(--pane-ease);
   }
   .layout[data-edge][data-nav] > .editor-pane > :global(.pane-header) {
     padding-left: calc(max(6px, var(--chrome-inset)) + env(safe-area-inset-left) + 80px);
@@ -814,6 +824,11 @@
     grid-column: 2 / 4;
     min-width: 0;
     min-height: 0;
+  }
+
+  .layout.resizing > .list-slot,
+  .layout.resizing .list-toggle {
+    transition: none;
   }
 
   @media (prefers-reduced-motion: reduce) {

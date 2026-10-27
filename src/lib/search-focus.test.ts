@@ -45,10 +45,14 @@ describe("focusing search", () => {
     expect([input.selectionStart, input.selectionEnd]).toEqual([0, 5]);
   });
 
-  it("puts the cursor at the end when typing carries over", async () => {
-    const input = mountList("trip");
-    expect(await focusSearch(document, { select: false })).toBe(true);
-    expect([input.selectionStart, input.selectionEnd]).toEqual([4, 4]);
+  it("uses the welcome screen's finder, without opening the list, when it shows", async () => {
+    document.body.innerHTML = `<div class="welcome-search"><input class="search" type="search"></div>`;
+    const input = document.querySelector<HTMLInputElement>("input.search")!;
+    input.value = "trip";
+    expect(await focusSearch()).toBe(true);
+    expect(document.activeElement).toBe(input);
+    expect(stores.sidebar.revealList).not.toHaveBeenCalled();
+    expect(stores.library.graphMode).toBe(true);
   });
 
   it("waits for a hidden list to become focusable", async () => {

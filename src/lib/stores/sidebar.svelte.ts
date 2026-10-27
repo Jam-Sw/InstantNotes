@@ -133,14 +133,15 @@ class SidebarState {
     }
   }
 
-  setViewport(cls: WidthClass, width: number, noteOpen: boolean): void {
+  // Crossing into or out of a drawer layout closes the drawer: with no note
+  // open, the welcome screen carries the search and the recent notes instead.
+  setViewport(cls: WidthClass, width: number): void {
     const wasNarrow = this.narrow;
     const wasOverlay = this.listOverlay;
     this.widthClass = cls;
     this.viewport = width;
     if (this.narrow !== wasNarrow) this.narrowOpen = false;
-    if (!this.listOverlay) this.listOpen = false;
-    else if (!wasOverlay) this.listOpen = !noteOpen;
+    if (this.listOverlay !== wasOverlay) this.listOpen = false;
   }
 
   noteOpened(): void {
