@@ -151,6 +151,8 @@ A simple key/value store for UI preferences. `get_setting`, `set_setting`,
 `delete_setting`. Values are JSON-encoded; reads are best-effort and fall back
 to defaults when a key is absent or malformed. `updates.lastCheckedAt` holds the
 ISO time of the last finished update check, shown in Settings > About.
+`images.linkedFolders` holds a JSON array of absolute folder paths whose images
+notes may show; Settings > Images lists them with a Remove button each.
 
 ## 8. Attachments
 
@@ -159,7 +161,8 @@ ISO time of the last finished update check, shown in Settings > About.
 | `save_attachment` | Store one pasted/dropped image; raw bytes in the body, extension in `x-attachment-ext`. Returns the generated filename. |
 | `get_attachments_dir` | Absolute path of the attachments directory. |
 | `import_image_file` | Copy an image picked through a file dialog into the attachments directory (the "copy in" storage mode). Takes an absolute `path`; returns the generated filename. |
-| `allow_image_file` | Allow one existing local image file to load through the asset protocol (the "link the original file" storage mode). Takes an absolute `path` to a file that must already exist; widens the asset scope to that single file only, never a directory. Idempotent. |
+| `allow_linked_images` | Allow images a note body names to load through the asset protocol (the "link the original file" storage mode). Takes `paths`, absolute image paths; returns the paths that may now load. Each path must be absolute, have an extension in `png`, `jpg`, `jpeg`, `gif`, `webp`, and exist; symlinks are resolved and the final location decides. A path under the vault folder or under a folder in `images.linkedFolders` loads without a question. The rest are grouped by folder, and one native dialog, "Show images from outside your library?", with the buttons Allow and Keep hidden, asks for all of them at once. Allow adds those folders to `images.linkedFolders` and allows the files; Keep hidden skips those folders for the rest of the app run. A path that fails a check is skipped, never an error. |
+| `pick_linked_image` | Open the native image file picker on the Rust side and return the chosen absolute path, or `null` when cancelled. The chosen file is allowed at once and its folder joins `images.linkedFolders`, so nothing is asked. |
 | `open_attachments_folder` | Reveal the attachments folder in the OS file manager. |
 | `unused_attachments` | `{ count, bytes }` of stored images no note references, older than an hour. |
 | `remove_unused_attachments` | Remove those images, and their unchanged copies in the live vault's `attachments/`. Returns what it removed as `{ count, bytes }`. |
@@ -173,14 +176,17 @@ directory with the same `<uuid>.<ext>` naming; the former is for the toolbar's
 "Insert image..." action (an existing file on disk), the latter for paste and
 drop (bytes already in memory).
 
-Link mode (`allow_image_file`) references the original file by its absolute
-path instead of copying it, so the note body carries that path directly
-(`![](/abs/path/to/file.png)`), not an `attachments/<name>` reference. Both
-`import_image_file` and `allow_image_file` reject a path whose extension is
-outside `png`, `jpg`, `jpeg`, `gif`, `webp` with a `VALIDATION` error naming the
-rejected extension; `allow_image_file` additionally requires the file to exist.
-Cancelling the file picker never calls either command — the frontend checks the
-dialog result before invoking.
+Link mode references the original file by its absolute path instead of copying
+it. `pick_linked_image` inserts `![](/abs/path/to/file.png)` into the note body,
+not an `attachments/<name>` reference. When a note is opened, the editor calls
+`allow_linked_images` once with every absolute image path in the body. The asset
+scope in `tauri.conf.json` stays `$APPDATA/attachments/**`, so an image outside
+the attachments folder loads only after one of these two commands allowed it.
+`import_image_file` rejects a path whose extension is outside `png`, `jpg`,
+`jpeg`, `gif`, `webp` with a `VALIDATION` error naming the rejected extension.
+Cancelling the file picker does not call `import_image_file`: the frontend
+checks the dialog result before invoking. `pick_linked_image` returns `null` on
+cancel.
 
 Cleanup. `destroy_notes` (the one permanent delete, for one note or many)
 also removes the copied images only the destroyed notes referenced. An image
