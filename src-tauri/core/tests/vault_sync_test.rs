@@ -317,6 +317,52 @@ fn tags_and_spaces_merge_by_name_and_removals_travel() {
 }
 
 #[test]
+fn space_colors_and_flags_round_trip_between_devices_and_clearing_travels() {
+    let (share, mut a, mut b) = pair();
+    let ws = a.s().get_or_create_workspace("Garden").unwrap();
+    a.s()
+        .set_workspace_color(&ws.id, Some("green".into()))
+        .unwrap();
+    a.s().set_workspace_flag(&ws.id, true).unwrap();
+    settle(&mut a, &mut b);
+    let seen = b.s().find_workspace("Garden").unwrap().unwrap();
+    assert_eq!(seen.color.as_deref(), Some("green"));
+    assert!(seen.flag);
+    let manifest = fs::read_to_string(share.path().join("instantnotes.yaml")).unwrap();
+    assert!(manifest.contains("color: green"), "{manifest}");
+    assert!(manifest.contains("flag: true"), "{manifest}");
+
+    b.s()
+        .set_workspace_color(&seen.id, Some("#336699".into()))
+        .unwrap();
+    b.s().set_workspace_flag(&seen.id, false).unwrap();
+    settle(&mut a, &mut b);
+    let back = a.s().find_workspace("Garden").unwrap().unwrap();
+    assert_eq!(back.color.as_deref(), Some("#336699"));
+    assert!(!back.flag);
+
+    a.s().set_workspace_color(&back.id, None).unwrap();
+    settle(&mut a, &mut b);
+    let cleared = b.s().find_workspace("Garden").unwrap().unwrap();
+    assert_eq!(cleared.color, None);
+    let manifest = fs::read_to_string(share.path().join("instantnotes.yaml")).unwrap();
+    assert!(!manifest.contains("color"), "{manifest}");
+}
+
+#[test]
+fn a_tag_color_cleared_on_one_device_clears_on_the_other() {
+    let (_share, mut a, mut b) = pair();
+    let tag = a.s().get_or_create_tag("work").unwrap();
+    a.s().set_tag_color(&tag.id, Some("orange".into())).unwrap();
+    settle(&mut a, &mut b);
+    let theirs = b.s().find_tag("work").unwrap().unwrap();
+    assert_eq!(theirs.color.as_deref(), Some("orange"));
+    b.s().set_tag_color(&theirs.id, None).unwrap();
+    settle(&mut a, &mut b);
+    assert_eq!(a.s().find_tag("work").unwrap().unwrap().color, None);
+}
+
+#[test]
 fn an_unmounted_share_changes_nothing_and_edits_wait_for_it() {
     let parent = tempfile::tempdir().unwrap();
     let share = parent.path().join("share");

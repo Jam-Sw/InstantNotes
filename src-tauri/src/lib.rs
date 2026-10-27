@@ -182,6 +182,7 @@ pub fn run() {
                 analyst: Mutex::new(analyst),
             });
             app.manage(CaptureMetrics::default());
+            app.manage(LinkedImageState::default());
             app.manage(ServerLink::default());
             app.manage(start_vault_sync(app.handle()));
             app.manage(start_agent_watcher(app.handle(), db_path.clone()));
@@ -209,46 +210,7 @@ pub fn run() {
 
             install_menus(app)?;
 
-            use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
-            let shortcut = if cfg!(target_os = "macos") {
-                if cfg!(debug_assertions) {
-                    Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::Space)
-                } else {
-                    Shortcut::new(Some(Modifiers::ALT), Code::Space)
-                }
-            } else if cfg!(debug_assertions) {
-                Shortcut::new(
-                    Some(Modifiers::CONTROL | Modifiers::SHIFT | Modifiers::ALT),
-                    Code::Space,
-                )
-            } else {
-                Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Space)
-            };
-            let shortcut_label = if cfg!(target_os = "macos") {
-                if cfg!(debug_assertions) {
-                    "⌥⇧Space"
-                } else {
-                    "⌥Space"
-                }
-            } else if cfg!(debug_assertions) {
-                "Ctrl+Shift+Alt+Space"
-            } else {
-                "Ctrl+Shift+Space"
-            };
-            let wayland =
-                cfg!(target_os = "linux") && std::env::var_os("WAYLAND_DISPLAY").is_some();
-            let shortcut_failure = match app.global_shortcut().register(shortcut) {
-                Err(e) => {
-                    eprintln!("global shortcut registration failed: {e}");
-                    Some(false)
-                }
-                Ok(()) if wayland => Some(true),
-                Ok(()) => None,
-            }
-            .map(|wayland| ShortcutFailure {
-                label: shortcut_label.to_string(),
-                wayland,
-            });
+            let shortcut_failure = register_shortcut(app);
             if let Some(failure) = &shortcut_failure {
                 let _ = app.emit(events::SHORTCUT_FAILED, failure.clone());
             }
@@ -300,6 +262,7 @@ pub fn run() {
             destroy_notes,
             list_tags,
             update_tag,
+            set_tag_color,
             delete_tag,
             add_tag_to_note,
             remove_tag_from_note,
@@ -307,6 +270,9 @@ pub fn run() {
             list_workspaces,
             get_or_create_workspace,
             rename_workspace,
+            set_workspace_color,
+            set_workspace_flag,
+            workspace_tag_slices,
             delete_workspace,
             list_workspace_tags,
             add_note_to_workspace,
@@ -328,7 +294,8 @@ pub fn run() {
             save_attachment,
             get_attachments_dir,
             import_image_file,
-            allow_image_file,
+            allow_linked_images,
+            pick_linked_image,
             open_attachments_folder,
             library_graph,
             space_suggestions,
@@ -385,6 +352,8 @@ pub fn run() {
             restart_app,
             capture_input_ready,
             get_capture_latency,
+            capture_targets,
+            capture_append,
             get_shortcut_failure,
             pop_out_note,
             pop_in_note,
@@ -396,6 +365,7 @@ pub fn run() {
             save_sticky_geometry,
             agent_connection,
             list_agent_activity,
+            list_agent_scratch,
             agent_activity_before,
             agent_activity_wire,
             list_agent_sessions,

@@ -140,8 +140,6 @@ pub(crate) fn keychain_get(settings: &ServerSettings, what: &str) -> Option<Stri
     })
 }
 
-/// The system keychain when there is one, a private file next to the library
-/// when there is not (a container without a Secret Service).
 fn keychain_set(settings: &ServerSettings, what: &str, secret: &str) -> Result<(), String> {
     let kept = entry(settings, what).and_then(|e| {
         e.set_password(secret)
@@ -261,9 +259,6 @@ fn backup_library(app: &AppHandle, store: &Store) -> CmdResult<std::path::PathBu
     Ok(path)
 }
 
-/// Sign-in through the browser on this computer. `Ok(None)` means there is no
-/// browser to open here (or `INSTANTNOTES_SIGN_IN=code` asks for the code way),
-/// so the caller falls back to `pairing_sign_in`.
 async fn loopback_sign_in(
     app: &AppHandle,
     client: &Client,
@@ -301,8 +296,6 @@ async fn loopback_sign_in(
     Ok(Some(issued))
 }
 
-/// Sign-in finished in a browser on another device: the app shows a short code
-/// and an address, then polls until the person has allowed it there.
 async fn pairing_sign_in(
     app: &AppHandle,
     client: &Client,

@@ -6,7 +6,13 @@ export const modKey = isMac ? "⌘" : "Ctrl+";
 
 export const shiftKey = isMac ? "⇧" : "Shift+";
 
-export const captureShortcut = isMac ? "⌥Space" : "Ctrl+Shift+Space";
+export const captureShortcut = isMac
+  ? import.meta.env.DEV
+    ? "⌥⇧Space"
+    : "⌥Space"
+  : import.meta.env.DEV
+    ? "Ctrl+Shift+Alt+Space"
+    : "Ctrl+Shift+Space";
 
 export function platformName(ua = navigator.userAgent, touchPoints = navigator.maxTouchPoints): string {
   if (/iPhone|iPod/.test(ua)) return "iOS";

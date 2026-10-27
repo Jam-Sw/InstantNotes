@@ -48,8 +48,19 @@ pub struct TagWithCount {
 pub struct Workspace {
     pub id: String,
     pub name: String,
+    pub color: Option<String>,
+    pub flag: bool,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TagSlice {
+    pub workspace_id: String,
+    pub tag_id: String,
+    pub color: String,
+    pub note_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -115,6 +126,13 @@ pub struct NoteFilter {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
     pub body_chars: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteTitle {
+    pub id: String,
+    pub title: String,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]

@@ -31,7 +31,7 @@
     getAttachmentsDir,
     openUrl,
     saveAttachment,
-    allowImageFile,
+    allowLinkedImages,
   } from "$lib/api/client";
   import { toasts } from "$lib/stores/toasts.svelte";
   import { applyExternalEdit, externalEdit, minimalChange } from "$lib/external-edit";
@@ -60,6 +60,7 @@
   let view: EditorView | undefined;
   let applyingExternal = false;
   let loadedKey: string | undefined;
+  let focusWanted: { key: string; atEnd: boolean } | null = null;
   let extensions: Extension[] = [];
   let attachmentsBase: string | null = null;
 
@@ -133,7 +134,7 @@
     try {
       const linked = linkedImagePaths(next);
       if (linked.length > 0) {
-        await Promise.all(linked.map((p) => allowImageFile(p).catch(() => {})));
+        await allowLinkedImages(linked).catch(() => {});
         if (value !== next) return;
       }
       if (!view) return;
@@ -144,6 +145,11 @@
       view.dispatch({ effects: seedEffects() });
       onactive?.(activeMarks(view.state));
       onhistory?.(historyState(view.state));
+      const wanted = focusWanted;
+      if (wanted && wanted.key === key) {
+        focusWanted = null;
+        place(wanted.atEnd);
+      }
     } finally {
       applyingExternal = false;
     }
@@ -185,8 +191,18 @@
     return { undo: undoDepth(state) > 0, redo: redoDepth(state) > 0 };
   }
 
-  export function focus() {
-    view?.focus();
+  export function focus(key?: string, atEnd = false) {
+    if (key !== undefined && key !== loadedKey) {
+      focusWanted = { key, atEnd };
+      return;
+    }
+    place(atEnd);
+  }
+
+  function place(atEnd: boolean) {
+    if (!view) return;
+    if (atEnd) view.dispatch({ selection: { anchor: view.state.doc.length }, scrollIntoView: true });
+    view.focus();
   }
 
   export function undo() {

@@ -636,8 +636,18 @@ impl Store {
             .map(|s| s.name.to_lowercase())
             .collect();
         for space in &merged.spaces {
-            if self.find_workspace(&space.name)?.is_none() {
-                workspace_get_or_create(&self.conn, &space.name)?;
+            let existing = match self.find_workspace(&space.name)? {
+                Some(existing) => existing,
+                None => {
+                    changed = true;
+                    workspace_get_or_create(&self.conn, &space.name)?
+                }
+            };
+            if existing.color != space.color || existing.flag != space.flag {
+                self.conn.execute(
+                    "UPDATE workspaces SET color = ?1, flag = ?2, updated_at = ?3 WHERE id = ?4",
+                    params![space.color, space.flag as i64, now, existing.id],
+                )?;
                 changed = true;
             }
         }

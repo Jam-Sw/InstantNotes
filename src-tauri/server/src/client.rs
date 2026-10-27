@@ -283,7 +283,6 @@ impl Client {
         )
     }
 
-    /// Starts a sign-in finished on another device with a short code.
     pub async fn start_pairing(
         &self,
         challenge: &str,
@@ -294,7 +293,6 @@ impl Client {
             .await
     }
 
-    /// `Ok(None)` while the person has not answered yet.
     pub async fn poll_pairing(
         &self,
         device_code: &str,

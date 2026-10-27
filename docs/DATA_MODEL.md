@@ -194,6 +194,8 @@ public so tests can build fixtures at a historical schema version.
 | v13 | `idx_notes_list` (the note list's own sort order, so listing never sorts) and `idx_notes_revisit` (never-opened notes) replace `idx_notes_flags`. No column. |
 | v14 | `notes_fts` rebuilt with a prefix index for one, two and three letters (section 7). Search results and their order are unchanged. |
 | v15 | `sync_objects` and `attachment_files` for the sync server (section 10.2). |
+| v16 | `workspaces.color` and `workspaces.flag`: a space's colour and whether it shows its flag (section 5). |
+| v17 | `agent_scratch`: an agent's scratchpad, one row per entry (section 11). |
 
 v4 exists because pre-release builds that carried the whiteboard already
 migrated some libraries to it before the whiteboard was lifted off the 0.9.0
@@ -368,6 +370,8 @@ Space that has since gone), or trashes the created note; it sets
 `reverted_at` on the row and inserts a `revert` row of its own carrying the
 state it replaced. Reads carry no snapshot. The table keeps the newest 2000
 rows; older ones are pruned on insert. Clearing it never touches a note.
+
+`agent_scratch` is an agent's scratchpad, the entries its `scratchpad_write` tool appends (API.md section 15): `seq` (the cursor), `at`, `session`, `client`, `kind` (`note`, `plan`, `memory` or `decision`) and `text`. It is kept apart from the notes. Its rows belong to one agent conversation, and `read_scratch` follows every session that shares the same `client_session`, so a reconnect reads back what was written before it. Scratchpad calls are not traced in `agent_activity`. The table keeps the newest 5000 entries across all agents and deletes the oldest on each write. Clearing the activity history empties it too.
 
 ## 12. Files beside the library
 

@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, cleanup } from "@testing-library/svelte";
+import { render, cleanup, fireEvent } from "@testing-library/svelte";
 
 const { library } = vi.hoisted(() => ({
   library: {
     selected: null as Record<string, unknown> | null,
+    focusRequest: null as { id: string; atEnd: boolean } | null,
     suggestions: [] as unknown[],
     selectedTags: [] as unknown[],
     selectedWorkspaces: [] as unknown[],
@@ -41,7 +42,7 @@ vi.mock("$lib/api/client", () => ({
   getAttachmentsDir: vi.fn().mockResolvedValue("/data/attachments"),
   openUrl: vi.fn().mockResolvedValue(undefined),
   saveAttachment: vi.fn().mockResolvedValue("x.png"),
-  allowImageFile: vi.fn().mockResolvedValue(undefined),
+  pickLinkedImage: vi.fn().mockResolvedValue(null),
   importImageFile: vi.fn().mockResolvedValue("x.png"),
   popOutNote: vi.fn(),
   tagSuggestion: vi.fn().mockResolvedValue(null),
@@ -70,6 +71,7 @@ function note(overrides: Record<string, unknown>) {
 afterEach(() => {
   cleanup();
   library.selected = null;
+  library.focusRequest = null;
 });
 
 describe("NoteEditor header", () => {
@@ -97,5 +99,34 @@ describe("NoteEditor header", () => {
     const { getByRole } = render(NoteEditor);
     expect(getByRole("button", { name: "Restore from Trash" })).toBeTruthy();
     expect(getByRole("button", { name: "Delete forever" })).toBeTruthy();
+  });
+});
+
+describe("NoteEditor cursor handoff", () => {
+  it("takes the cursor into the body when the open note asks for it", () => {
+    library.selected = note({ id: "n1", body: "pear tart\n" });
+    library.focusRequest = { id: "n1", atEnd: true };
+    const { container } = render(NoteEditor);
+    const content = container.querySelector(".cm-content");
+    expect(content?.contains(document.activeElement)).toBe(true);
+    expect(library.focusRequest).toBeNull();
+  });
+
+  it("drops a request meant for another note", () => {
+    library.selected = note({ id: "n1" });
+    library.focusRequest = { id: "n2", atEnd: false };
+    const { container } = render(NoteEditor);
+    expect(container.querySelector(".cm-content")?.contains(document.activeElement)).toBe(false);
+    expect(library.focusRequest).toBeNull();
+  });
+
+  it("moves from the title to the body on Enter", async () => {
+    library.selected = note({});
+    const { container, getByLabelText } = render(NoteEditor);
+    const title = getByLabelText("Note title");
+    title.focus();
+    await fireEvent.keyDown(title, { key: "Enter" });
+    expect(library.editTitle).toHaveBeenCalled();
+    expect(container.querySelector(".cm-content")?.contains(document.activeElement)).toBe(true);
   });
 });

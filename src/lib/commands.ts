@@ -19,6 +19,7 @@ import { modKey, shiftKey } from "$lib/platform";
 import { isWeb } from "$lib/api/runtime";
 import { isSyntheticNoteId } from "$lib/synthetic";
 import { findCommand, type Command } from "$lib/command-filter";
+import { focusSearch } from "$lib/search-focus";
 
 const REPO_URL = "https://github.com/Jam-Sw/InstantNotes";
 
@@ -114,10 +115,28 @@ export function buildCommands(): Command[] {
     },
     {
       id: "view.sidebar",
-      title: sidebar.hidden ? "Show sidebar" : "Hide sidebar",
+      title: sidebar.hidden ? "Show Sidebar" : "Hide Sidebar",
       group: "View",
       shortcut: `${modKey}\\`,
       run: () => sidebar.toggle(),
+    },
+    ...(sidebar.listToggleable
+      ? [
+          {
+            id: "view.noteList",
+            title: sidebar.listHidden ? "Show Note List" : "Hide Note List",
+            group: "View",
+            shortcut: `${modKey}${shiftKey}L`,
+            run: () => sidebar.toggleList(),
+          },
+        ]
+      : []),
+    {
+      id: "note.search",
+      title: "Search notes",
+      group: "Notes",
+      shortcut: isWeb ? undefined : `${modKey}${shiftKey}F`,
+      run: () => void focusSearch(),
     },
     {
       id: "view.agents",

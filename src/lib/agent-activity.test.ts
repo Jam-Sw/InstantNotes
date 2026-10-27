@@ -14,7 +14,9 @@ import {
   parseActivityLog,
   parseBlocked,
   parseNotify,
+  parseScratch,
   parseTags,
+  scratchKindLabel,
   timeAgo,
   type AgentActivity,
 } from "./agent-activity";
@@ -183,6 +185,23 @@ describe("the raw exchange", () => {
     expect(JSON.parse(shown)).toEqual(JSON.parse(raw));
     expect(shown).toContain('\n  "id": 1,');
     expect(prettyWire("not json")).toBe("not json");
+  });
+});
+
+describe("the agent scratchpad", () => {
+  it("keeps the rows it can read and drops the rest", () => {
+    const row = { seq: 1, at: 2, session: "s", client: "claude-code", kind: "plan", text: "p" };
+    expect(parseScratch([row, { ...row, seq: 2, kind: "chat" }, null, "x"])).toEqual([row]);
+    expect(parseScratch("nope")).toEqual([]);
+  });
+
+  it("labels each kind of entry", () => {
+    expect((["note", "plan", "memory", "decision"] as const).map(scratchKindLabel)).toEqual([
+      "Note to self",
+      "Plan",
+      "Memory",
+      "Decision",
+    ]);
   });
 });
 

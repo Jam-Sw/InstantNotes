@@ -1,9 +1,13 @@
 <script lang="ts">
+  import ColorPicker from "$lib/components/ColorPicker.svelte";
+
   interface MenuItem {
     label: string;
     hint?: string;
     danger?: boolean;
-    run: () => void;
+    checked?: boolean;
+    color?: { value: string | null; onpick: (color: string | null) => void };
+    run?: () => void;
   }
 
   let {
@@ -34,9 +38,13 @@
   $effect(() => {
     const invoker =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    menuEl?.querySelector("button")?.focus();
+    navButtons()[0]?.focus();
     return () => invoker?.focus();
   });
+
+  function navButtons(): HTMLButtonElement[] {
+    return [...(menuEl?.querySelectorAll<HTMLButtonElement>("button:not([tabindex=\"-1\"])") ?? [])];
+  }
 
   function onWindowEvent(e: Event) {
     if (!(e.target instanceof Node)) return onclose();
@@ -46,8 +54,9 @@
 
   function onKeydown(e: KeyboardEvent) {
     e.stopPropagation();
-    const buttons = [...(menuEl?.querySelectorAll("button") ?? [])];
+    const buttons = navButtons();
     const idx = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    if (e.target instanceof HTMLInputElement && e.key !== "Escape" && e.key !== "Tab") return;
     if (e.key === "Escape" || e.key === "Tab") {
       e.preventDefault();
       onclose();
@@ -84,18 +93,35 @@
   onkeydown={onKeydown}
 >
   {#each items as item (item.label)}
-    <button
-      class="item"
-      class:danger={item.danger}
-      role="menuitem"
-      onclick={() => {
-        onclose();
-        queueMicrotask(item.run);
-      }}
-    >
-      <span class="label">{item.label}</span>
-      {#if item.hint}<span class="hint">{item.hint}</span>{/if}
-    </button>
+    {#if item.color}
+      {@const picker = item.color}
+      <div class="color-item" role="group" aria-label={item.label}>
+        <span class="color-label">{item.label}</span>
+        <ColorPicker
+          value={picker.value}
+          label={item.label}
+          onpick={(c) => {
+            onclose();
+            queueMicrotask(() => picker.onpick(c));
+          }}
+        />
+      </div>
+    {:else}
+      <button
+        class="item"
+        class:danger={item.danger}
+        role={item.checked === undefined ? "menuitem" : "menuitemcheckbox"}
+        aria-checked={item.checked}
+        onclick={() => {
+          onclose();
+          if (item.run) queueMicrotask(item.run);
+        }}
+      >
+        <span class="label">{item.label}</span>
+        {#if item.hint}<span class="hint">{item.hint}</span>{/if}
+        {#if item.checked}<span class="check" aria-hidden="true">{"\u2713"}</span>{/if}
+      </button>
+    {/if}
   {/each}
 </div>
 
@@ -129,6 +155,27 @@
   }
   .label {
     flex: 1;
+  }
+  .check {
+    font-size: 12px;
+    color: var(--accent-text);
+  }
+  .color-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 6px 12px 8px;
+    border-top: 1px solid var(--border);
+    margin-top: 2px;
+  }
+  .color-item:first-child {
+    border-top: none;
+    margin-top: 0;
+  }
+  .color-label {
+    color: var(--text-tertiary);
+    font-size: 11px;
+    font-family: var(--font-meta);
   }
   .hint {
     color: var(--text-tertiary);

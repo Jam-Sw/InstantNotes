@@ -7,7 +7,69 @@ in-app updater, written for users. Newest first.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.10.1]
+## [0.11.0] - 2026-10-26
+### Added
+- Space and tag colours: right-click a space or tag to pick a swatch from the theme's palette (every
+  theme carries one) or any `#rrggbb` colour, and right-click a space to show its flag. Settings >
+  Appearance chooses how a space is marked (Color, Flag or Both) with live previews, and a space's marker shows the
+  share of its tags as slices. Colours and flags travel through folder sync and the sync server.
+  Commands `set_tag_color`, `set_workspace_color`, `set_workspace_flag` and `workspace_tag_slices`; MCP
+  `list_tags` and `list_spaces` report the colour, `list_spaces` the flag.
+- Copy context: right-click a note, or a selection of notes, to copy it for an agent, including from the
+  Trash. A source line names the copy time and the note id that MCP `get_note` reads, live or trashed;
+  Settings > Contexting previews it on the selected note and explains every template variable
+  (`contexting.sourceLine` turns it off). A refused clipboard write says so.
+- Layouts for every window width: large from 1200 px shows the sidebar, the note list and the editor;
+  expanded from 840 px keeps the sidebar inline while the editor keeps 420 px and drops it into a drawer
+  below about 940 px; medium from 600 px shows the editor with the list as a drawer; compact stacks the
+  list and the editor behind a back button. Large and expanded remember their own choice
+  (`layout.large`, `layout.expanded`), and the sidebar and the list hide separately.
+- Drag dividers for the sidebar and the note list: double-click resets, arrow keys move 16 px, and a drag
+  past half the minimum hides the pane. Widths are saved (`layout.navWidth`, `layout.listWidth`).
+- With the note list hidden, the welcome screen is a finder: the same search field, the first six
+  results in place, the five notes opened last when nothing is typed, arrow keys and Enter, and Show all
+  in the note list.
+- Cmd or Ctrl+Shift+F (Search notes) puts the cursor in search, showing the list if it is hidden; the
+  View menu gains Show or Hide Note List (Cmd or Ctrl+Shift+L) and Search Notes beside Show or Hide
+  Sidebar (Cmd or Ctrl+\). Ctrl+Cmd+S also toggles the sidebar on a Mac, and Escape closes an open drawer.
+- Restore on a trashed note's right-click menu, for the note or the whole selection.
+- Search to write: in the note list's search field the arrow keys move through the notes, and Enter
+  opens the first result (or the open note) with the cursor in its body. When nothing matches, Start a
+  note starts one whose first line is the search, in the list and the welcome finder; Enter creates
+  nothing.
+- Empty lists say what belongs there and offer the next step: New note in an empty library, space or
+  tag, Show the whole space when a tag slice inside a space is empty.
+- Two themes: Folio (book paper, serif type, a vermilion mark) and Peony (plum and peony pink, soft
+  round corners, with glass).
+- An agent's scratchpad: MCP `scratchpad_write` (kinds `note`, `plan`, `memory`, `decision`) and
+  `scratchpad_read` keep an agent's working notes outside your notes, per conversation and across a
+  reconnect, never traced as activity. The agent's page shows them live beside its trace, with a
+  Scratchpad filter (`list_agent_scratch`, event `agents:scratch`); the newest 5000 entries are kept
+  and Clear history clears them too.
+
+### Changed
+- A new note, from the + button, Cmd or Ctrl+N, the menu or the palette, opens with the cursor in its
+  body, and Enter in a note's title moves the cursor to the body.
+- Search results open with a count, and the first result is marked while the search field has the
+  cursor. The search field is the height of the + control beside it.
+- Panes slide with their content when they show or hide, and snap while the window is being resized,
+  as a native split view does.
+- The library schema is version 17 (space colour and flag, the agent scratchpad). Once 0.11 opens a
+  library, 0.10 refuses it as too new.
+- Dependencies: the Cargo group (12 crates) and the npm patch releases; SvelteKit stays on 2 and
+  TypeScript on 6.
+
+### Security
+- Images linked from outside the library load only from the vault folder and folders you allowed; a
+  note linking elsewhere asks once per folder, and Settings > Images lists the allowed folders with
+  Remove. Link original picks the file on the Rust side. Commands `allow_linked_images` and
+  `pick_linked_image` replace `allow_image_file`; setting `images.linkedFolders`. Reported as issue #82.
+
+### Removed
+- The Ember and Paper Dark themes. If one was your theme, the app opens in Manuscript; pick any
+  theme in Settings > Appearance.
+
+## [0.10.1] - 2026-10-15
 ### Added
 - Settings > About: the real platform, the last update check (`updates.lastCheckedAt`), Check for updates
   and Show update; the web app shows its server's version.

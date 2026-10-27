@@ -17,7 +17,14 @@ const stores = vi.hoisted(() => ({
     flushPendingEdits: vi.fn(),
     toggleSticky: vi.fn(),
   },
-  sidebar: { collapsed: false, hidden: false, toggle: vi.fn() },
+  sidebar: {
+    collapsed: false,
+    hidden: false,
+    listHidden: false,
+    listToggleable: true,
+    toggle: vi.fn(),
+    toggleList: vi.fn(),
+  },
   theme: {
     allThemes: [
       { id: "manuscript", name: "Manuscript" },
@@ -134,6 +141,8 @@ beforeEach(() => {
   stores.library.isSticky.mockImplementation(() => false);
   stores.sidebar.collapsed = false;
   stores.sidebar.hidden = false;
+  stores.sidebar.listHidden = false;
+  stores.sidebar.listToggleable = true;
   stores.theme.activeId = "manuscript";
   stores.theme.bodyFontId = null;
   stores.theme.resolvedVariant = "dark";
@@ -190,9 +199,22 @@ describe("buildCommands with no note open", () => {
   });
 
   it("names the sidebar command for what it will do", () => {
-    expect(find(buildCommands(), "view.sidebar").title).toBe("Hide sidebar");
+    expect(find(buildCommands(), "view.sidebar").title).toBe("Hide Sidebar");
     stores.sidebar.hidden = true;
-    expect(find(buildCommands(), "view.sidebar").title).toBe("Show sidebar");
+    expect(find(buildCommands(), "view.sidebar").title).toBe("Show Sidebar");
+  });
+
+  it("names the note list command for what it will do, and toggles the list", () => {
+    expect(find(buildCommands(), "view.noteList").title).toBe("Hide Note List");
+    stores.sidebar.listHidden = true;
+    expect(find(buildCommands(), "view.noteList").title).toBe("Show Note List");
+    void find(buildCommands(), "view.noteList").run();
+    expect(stores.sidebar.toggleList).toHaveBeenCalledOnce();
+  });
+
+  it("leaves the note list command out where there is no list to hide", () => {
+    stores.sidebar.listToggleable = false;
+    expect(buildCommands().some((c) => c.id === "view.noteList")).toBe(false);
   });
 
   it("runs the global commands against their stores", () => {

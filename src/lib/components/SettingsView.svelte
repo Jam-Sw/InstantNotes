@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import SettingsAbout from "$lib/components/settings/SettingsAbout.svelte";
   import SettingsAppearance from "$lib/components/settings/SettingsAppearance.svelte";
+  import SettingsMarkers from "$lib/components/settings/SettingsMarkers.svelte";
   import SettingsEditor from "$lib/components/settings/SettingsEditor.svelte";
   import SettingsImages from "$lib/components/settings/SettingsImages.svelte";
   import SettingsContexting from "$lib/components/settings/SettingsContexting.svelte";
@@ -327,6 +328,7 @@
       <main class="settings-content">
         {#if page === "appearance"}
           <SettingsAppearance />
+          <SettingsMarkers />
         {:else if page === "about"}
           <SettingsAbout {appVersion} />
         {:else if page === "editor"}

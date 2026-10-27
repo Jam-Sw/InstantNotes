@@ -1,6 +1,6 @@
 [package]
 name = "instantnotes-server"
-version = "0.10.1"
+version = "0.11.0"
 description = "InstantNotes sync server: per-person encrypted sync and the web app. No Tauri."
 edition = "2021"
 

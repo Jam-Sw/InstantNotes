@@ -28,17 +28,12 @@ struct Request {
     device_name: String,
     csrf: String,
     created: Instant,
-    /// Set when the app cannot receive a loopback redirect (no browser on its
-    /// own computer).
     pairing: Option<Pairing>,
 }
 
 #[derive(Clone)]
 struct Pairing {
-    /// The short code the person types on another device.
     user_code: String,
-    /// The app's secret for `device/poll`. Never sent to a browser, unlike the
-    /// request id the sign-in pages carry.
     device_code: String,
     answer: Option<(Decision, Instant)>,
 }
@@ -67,7 +62,6 @@ pub struct Devices {
     codes: Mutex<HashMap<String, Issued>>,
 }
 
-/// Compares two secrets in time that depends only on their length.
 fn same(a: &str, b: &str) -> bool {
     a.len() == b.len()
         && a.bytes()
@@ -76,13 +70,10 @@ fn same(a: &str, b: &str) -> bool {
             == 0
 }
 
-/// A request the person can still open and answer.
 fn waiting(r: &Request) -> bool {
     r.created.elapsed() < REQUEST_TTL && r.pairing.as_ref().is_none_or(|p| p.answer.is_none())
 }
 
-/// A request worth keeping: still waiting, or answered and not yet collected
-/// by the app's poll.
 fn live(r: &Request) -> bool {
     match r.pairing.as_ref().and_then(|p| p.answer.as_ref()) {
         Some((_, at)) => at.elapsed() < CODE_TTL,
@@ -171,8 +162,6 @@ impl Devices {
         requests.get(id).filter(|r| waiting(r)).cloned()
     }
 
-    /// Takes a loopback request once, with its page's CSRF token. A pairing
-    /// is answered with `answer_pairing` instead.
     fn take(&self, id: &str, csrf: &str) -> Option<Request> {
         let mut requests = self.requests.lock().unwrap_or_else(|e| e.into_inner());
         if requests
@@ -184,9 +173,6 @@ impl Devices {
         requests.remove(id).filter(waiting)
     }
 
-    /// Records the person's answer to a pairing, once, with its page's CSRF
-    /// token. The answer is written under the same lock a poll reads, so a
-    /// poll never finds the request answered but the answer missing.
     fn answer_pairing(&self, id: &str, csrf: &str, person: &Person, allowed: bool) -> bool {
         let mut requests = self.requests.lock().unwrap_or_else(|e| e.into_inner());
         let Some(request) = requests
@@ -206,7 +192,6 @@ impl Devices {
         true
     }
 
-    /// The app's poll: the answer, once, when there is one.
     fn poll(&self, device_code: &str) -> Polled {
         let mut requests = self.requests.lock().unwrap_or_else(|e| e.into_inner());
         requests.retain(|_, r| live(r));
@@ -503,9 +488,6 @@ struct CodeBody {
     device_name: String,
 }
 
-/// Starts a sign-in for an app that cannot open a browser on its own computer
-/// (RFC 8628 shape): the app shows `userCode` and `verificationUri`, the person
-/// finishes in any browser, and the app polls `device/poll` with its verifier.
 async fn code(
     State(state): State<AppState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
@@ -570,8 +552,6 @@ struct LinkQuery {
     code: Option<String>,
 }
 
-/// The page the person opens on another device: type the code (or arrive with
-/// it in the link), sign in, then allow.
 async fn link(
     State(state): State<AppState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,

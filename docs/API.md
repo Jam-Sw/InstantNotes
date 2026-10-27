@@ -114,7 +114,8 @@ word, and the frontend's one-tap accept is `add_note_to_workspace`.
 | Command | Purpose |
 | --- | --- |
 | `list_tags` | All tags with usage counts. |
-| `update_tag` | Rename or recolor a tag. |
+| `update_tag` | Rename or recolor a tag (`color` is validated; omitting it keeps the colour). |
+| `set_tag_color` | `{ id, color }` sets a tag's colour, `color: null` clears it. Returns the tag. |
 | `delete_tag` | Remove a tag and its note associations. |
 | `add_tag_to_note` / `remove_tag_from_note` | Attach or detach a tag. |
 | `tags_for_note` | Tags on one note. |
@@ -129,10 +130,20 @@ them "Spaces"; the command and storage names keep `workspace`.
 | `list_workspaces` | All workspaces with note counts. |
 | `get_or_create_workspace` | Resolve a name to a workspace, creating it if new. |
 | `rename_workspace` | Rename a workspace (duplicate names rejected as `CONFLICT`). |
+| `set_workspace_color` | `{ id, color }` sets a workspace's colour, `color: null` clears it. Returns the workspace. |
+| `set_workspace_flag` | `{ id, flag }` turns the workspace's flag marker on or off. Returns the workspace. |
+| `workspace_tag_slices` | One row per workspace and coloured tag, `{ workspaceId, tagId, color, noteCount }`, counting notes outside the Trash. Uncoloured tags are left out. |
 | `delete_workspace` | Delete a workspace; member notes are untouched. |
 | `list_workspace_tags` | Tags used by notes in one workspace. |
 | `add_note_to_workspace` / `remove_note_from_workspace` | Manage membership. |
 | `workspaces_for_note` | Workspaces a note belongs to. |
+
+Colours, for tags and workspaces alike, are stored as one of the swatch names
+`red orange yellow green teal blue purple pink grey`, or a lowercase `#rrggbb`
+value, or null. Anything else is a `VALIDATION_ERROR`; swatch names and hex
+digits are accepted in any case and stored lowercase. A workspace also carries
+`flag` (boolean, default false). Colours and flags sync through the vault and
+server manifest the way a tag colour does.
 
 ## 7. Settings
 
@@ -140,6 +151,8 @@ A simple key/value store for UI preferences. `get_setting`, `set_setting`,
 `delete_setting`. Values are JSON-encoded; reads are best-effort and fall back
 to defaults when a key is absent or malformed. `updates.lastCheckedAt` holds the
 ISO time of the last finished update check, shown in Settings > About.
+`images.linkedFolders` holds a JSON array of absolute folder paths whose images
+notes may show; Settings > Images lists them with a Remove button each.
 
 ## 8. Attachments
 
@@ -148,7 +161,8 @@ ISO time of the last finished update check, shown in Settings > About.
 | `save_attachment` | Store one pasted/dropped image; raw bytes in the body, extension in `x-attachment-ext`. Returns the generated filename. |
 | `get_attachments_dir` | Absolute path of the attachments directory. |
 | `import_image_file` | Copy an image picked through a file dialog into the attachments directory (the "copy in" storage mode). Takes an absolute `path`; returns the generated filename. |
-| `allow_image_file` | Allow one existing local image file to load through the asset protocol (the "link the original file" storage mode). Takes an absolute `path` to a file that must already exist; widens the asset scope to that single file only, never a directory. Idempotent. |
+| `allow_linked_images` | Allow images a note body names to load through the asset protocol (the "link the original file" storage mode). Takes `paths`, absolute image paths; returns the paths that may now load. Each path must be absolute, have an extension in `png`, `jpg`, `jpeg`, `gif`, `webp`, and exist; symlinks are resolved and the final location decides. A path under the vault folder or under a folder in `images.linkedFolders` loads without a question. The rest are grouped by folder, and one native dialog, "Show images from outside your library?", with the buttons Allow and Keep hidden, asks for all of them at once. Allow adds those folders to `images.linkedFolders` and allows the files; Keep hidden skips those folders for the rest of the app run. A path that fails a check is skipped, never an error. |
+| `pick_linked_image` | Open the native image file picker on the Rust side and return the chosen absolute path, or `null` when cancelled. The chosen file is allowed at once and its folder joins `images.linkedFolders`, so nothing is asked. |
 | `open_attachments_folder` | Reveal the attachments folder in the OS file manager. |
 | `unused_attachments` | `{ count, bytes }` of stored images no note references, older than an hour. |
 | `remove_unused_attachments` | Remove those images, and their unchanged copies in the live vault's `attachments/`. Returns what it removed as `{ count, bytes }`. |
@@ -162,14 +176,17 @@ directory with the same `<uuid>.<ext>` naming; the former is for the toolbar's
 "Insert image..." action (an existing file on disk), the latter for paste and
 drop (bytes already in memory).
 
-Link mode (`allow_image_file`) references the original file by its absolute
-path instead of copying it, so the note body carries that path directly
-(`![](/abs/path/to/file.png)`), not an `attachments/<name>` reference. Both
-`import_image_file` and `allow_image_file` reject a path whose extension is
-outside `png`, `jpg`, `jpeg`, `gif`, `webp` with a `VALIDATION` error naming the
-rejected extension; `allow_image_file` additionally requires the file to exist.
-Cancelling the file picker never calls either command — the frontend checks the
-dialog result before invoking.
+Link mode references the original file by its absolute path instead of copying
+it. `pick_linked_image` inserts `![](/abs/path/to/file.png)` into the note body,
+not an `attachments/<name>` reference. When a note is opened, the editor calls
+`allow_linked_images` once with every absolute image path in the body. The asset
+scope in `tauri.conf.json` stays `$APPDATA/attachments/**`, so an image outside
+the attachments folder loads only after one of these two commands allowed it.
+`import_image_file` rejects a path whose extension is outside `png`, `jpg`,
+`jpeg`, `gif`, `webp` with a `VALIDATION` error naming the rejected extension.
+Cancelling the file picker does not call `import_image_file`: the frontend
+checks the dialog result before invoking. `pick_linked_image` returns `null` on
+cancel.
 
 Cleanup. `destroy_notes` (the one permanent delete, for one note or many)
 also removes the copied images only the destroyed notes referenced. An image
@@ -593,12 +610,15 @@ traced as `resources/list` or `resources/read` (kind `read`).
 | `append_sheet_rows` | write | `update_note` with `expectedUpdatedAt`, on a sheet's grid (`sheet.rs`): rows land after the last row holding data, a short row is padded, a wider one is refused, and the store derives the body. Retries on conflict like `append_to_note`. Returns the note view without its body plus `appended: { firstRow, count }` (spreadsheet numbering). |
 | `tag_note`, `untag_note`, `add_to_space`, `remove_from_space` | write | the tag and workspace membership calls |
 | `trash_note`, `restore_note` | write | `soft_delete_note`, `restore_note` |
+| `scratchpad_write`, `scratchpad_read` | read | `write_scratch`, `read_scratch`: the agent's own scratchpad, not traced |
 
 Every tool declares a `title`, an input schema that rejects unknown
 properties, and annotations: `readOnlyHint` for reads, `destructiveHint` for
 the writes that remove or replace (`update_note`, `edit_note`, `untag_note`,
 `remove_from_space`, `trash_note`), `idempotentHint`, and `openWorldHint:
 false`, since a tool only ever touches this library.
+
+The scratchpad is an agent's own working log, kept apart from the notes and shown on the agent's page in the app. `scratchpad_write` appends an entry: `kind` (`note`, `plan`, `memory` or `decision`, default `note`) and `text` (Markdown, 1 to 20,000 characters). `scratchpad_read` returns the newest entries (`limit`, 1 to 500, default 50), oldest first, and includes what the same conversation wrote before a reconnect. Entries belong to one agent conversation, and the table keeps the newest 5000 entries across all agents, deleting the oldest on write. Neither tool is traced in `agent_activity`, and `agents.access` `off` refuses both.
 
 An agent is meant to search, then read only what matters. `search_notes`
 takes `query` (at least one word; an empty one is refused), `match` (`all` or
@@ -659,6 +679,7 @@ stores "no note", and reverting it trashes the note.
 | `list_agent_activity` | The trace, newest first (`limit`, `offset`). |
 | `agent_activity_before` | The snapshot a write row holds, or `null` for a create. |
 | `list_agent_sessions` | Every known agent connection, newest first: `session`, `client`, `connectedAt`, `disconnectedAt`, `label`, `clientSession`, `cwd`, `matched` (`exact` or `inferred`), and `connected` (the process holds its lock right now). The same list arrives as the `agents:sessions` event whenever it changes. |
+| `list_agent_scratch` | The scratchpad of one agent conversation (`session`, `limit`, default 200): the newest entries, returned oldest to newest. |
 | `agent_activity_wire` | The raw exchange a row holds: `request` and `response`, each the whole JSON-RPC message as JSON text, or `null` where none was kept. |
 | `end_agent_session` | End a connected agent's server process (`session`). The pid comes from the session id alone, never from the client's own pid, and the process must still hold the session's lock (on Linux, it must also be running `mcp`), so a pid the system has since reused is never signalled. `VALIDATION_ERROR` for an ended or unknown session. The client may start a new server, which arrives as a new connection; Block stops that. |
 | `revert_agent_activity` | Put the note back as the row's snapshot has it (or trash a created note), mark the row reverted, and record the revert as a row of its own (client `instantnotes`, tool `revert`) with the state it replaced, so it can be reverted in turn. Returns that row; `CONFLICT` for a row already reverted. |
@@ -669,7 +690,7 @@ read every 400 ms by `shell/agents.rs`. When it moves, the rows newer than
 the last `seq` announced go to the webview as `library:external-change`
 (oldest first); if any was a successful write, or none describes the change,
 the three change events fire and the vault mirror flushes, as after the app's
-own writes. A revert made in the app is emitted the same way. Write
+own writes. A revert made in the app is emitted the same way. Scratchpad entries another process writes go to the webview as `agents:scratch` (the entries newer than the last one announced, oldest first, at most 200 at a time). Write
 transactions begin `IMMEDIATE` so two processes queue on the busy timeout
 instead of failing on a lock upgrade.
 

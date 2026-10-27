@@ -1,4 +1,5 @@
 import type { Theme } from "../types";
+import { TERMINAL_SWATCHES } from "./swatches";
 import { SANS_STACK, MONO_STACK } from "../fonts";
 
 export const terminal: Theme = {
@@ -35,6 +36,7 @@ export const terminal: Theme = {
     tag: "#5fe3a1",
     success: "#5fe3a1",
     warning: "#ffbd2e",
+    swatches: TERMINAL_SWATCHES.dark,
     codeBg: "#0c0c0e",
   },
   light: {
@@ -54,5 +56,6 @@ export const terminal: Theme = {
     tag: "#0b7a44",
     success: "#0f9d58",
     warning: "#b07a00",
+    swatches: TERMINAL_SWATCHES.light,
   },
 };

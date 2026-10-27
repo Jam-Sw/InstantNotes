@@ -292,6 +292,45 @@ fn a_result_carries_its_json_structured_and_as_text() {
 }
 
 #[test]
+fn list_tags_and_list_spaces_carry_the_colour_and_the_spaces_their_flag() {
+    let mut store = store_with("read");
+    let tag = store.get_or_create_tag("work").unwrap();
+    store.get_or_create_tag("plain").unwrap();
+    store.set_tag_color(&tag.id, Some("blue".into())).unwrap();
+    let flagged = store.get_or_create_workspace("Flagged").unwrap();
+    store
+        .set_workspace_color(&flagged.id, Some("#aa00bb".into()))
+        .unwrap();
+    store.set_workspace_flag(&flagged.id, true).unwrap();
+    store.get_or_create_workspace("Bare").unwrap();
+
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(1, "list_tags", json!({})),
+            call(2, "list_spaces", json!({})),
+        ],
+    );
+    let (_, _, tags) = result_of(&replies[1]);
+    assert_eq!(
+        tags["tags"],
+        json!([
+            { "name": "plain", "notes": 0, "color": null },
+            { "name": "work", "notes": 0, "color": "blue" },
+        ])
+    );
+    let (_, _, spaces) = result_of(&replies[2]);
+    assert_eq!(
+        spaces["spaces"],
+        json!([
+            { "name": "Bare", "notes": 0, "color": null, "flag": false },
+            { "name": "Flagged", "notes": 0, "color": "#aa00bb", "flag": true },
+        ])
+    );
+}
+
+#[test]
 fn access_off_refuses_everything_and_leaves_no_trace() {
     let mut store = store_with("off");
     let replies = session(&mut store, &[init(), call(1, "list_notes", json!({}))]);
@@ -1945,4 +1984,209 @@ fn search_reaches_the_trash_and_pinned_notes() {
     assert_eq!(ids(3), vec![pinned.clone()]);
     assert_eq!(ids(4), vec![gone.clone()]);
     assert_eq!(ids(5), sorted(vec![live, pinned, archived]));
+}
+
+#[test]
+fn the_id_a_copied_context_names_is_the_one_agents_read() {
+    let mut store = store_with("read");
+    let live = store
+        .create_note(CreateNoteInput {
+            body: Some("Road trip plan\nPack the #maps".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    let gone = store
+        .create_note(CreateNoteInput {
+            body: Some("Old road notes".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    store.soft_delete_note(&gone.id).unwrap();
+    let copied_live = store.get_note(&live.id, true).unwrap();
+    let copied_gone = store.get_note(&gone.id, false).unwrap();
+
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(1, "get_note", json!({ "id": copied_live.id })),
+            call(2, "get_note", json!({ "id": copied_gone.id })),
+            call(3, "search_notes", json!({ "query": "trip" })),
+            call(
+                4,
+                "get_notes",
+                json!({ "ids": [copied_live.id, copied_gone.id] }),
+            ),
+        ],
+    );
+    let (is_error, text, read) = result_of(&replies[1]);
+    assert!(!is_error, "{text}");
+    assert_eq!(read["id"], json!(copied_live.id));
+    assert_eq!(read["title"], json!(copied_live.title));
+    assert_eq!(read["body"], json!(copied_live.body));
+    let (is_error, text, read) = result_of(&replies[2]);
+    assert!(!is_error, "{text}");
+    assert_eq!(read["id"], json!(copied_gone.id));
+    assert_eq!(read["isDeleted"], json!(true));
+    let (_, _, found) = result_of(&replies[3]);
+    assert_eq!(found["results"][0]["id"], json!(copied_live.id));
+    let (_, _, both) = result_of(&replies[4]);
+    assert_eq!(both["notes"][0]["id"], json!(copied_live.id));
+    assert_eq!(both["notes"][1]["id"], json!(copied_gone.id));
+    assert_eq!(both["missing"], json!([]));
+}
+
+fn session_as(store: &mut Store, id: &str, messages: &[Value]) -> Vec<Value> {
+    use instantnotes_agents::serve_as;
+    let input: String = messages.iter().map(|m| format!("{m}\n")).collect();
+    let mut output = Vec::new();
+    serve_as(
+        store,
+        None,
+        id.to_string(),
+        Cursor::new(input.into_bytes()),
+        &mut output,
+    )
+    .unwrap();
+    String::from_utf8(output)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect()
+}
+
+#[test]
+fn the_scratchpad_takes_notes_without_a_trace() {
+    let mut store = store_with("read");
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(
+                1,
+                "scratchpad_write",
+                json!({ "kind": "plan", "text": "  Check the sync tests first  " }),
+            ),
+            call(2, "scratchpad_write", json!({ "text": "Second thought" })),
+            call(3, "scratchpad_read", json!({ "limit": 1 })),
+            call(4, "scratchpad_read", json!({})),
+        ],
+    );
+    let (is_error, text, written) = result_of(&replies[1]);
+    assert!(!is_error, "{text}");
+    assert_eq!(written["kind"], "plan");
+    assert_eq!(written["entries"], 1);
+    let (_, _, second) = result_of(&replies[2]);
+    assert_eq!(second["kind"], "note");
+    assert_eq!(second["entries"], 2);
+    let (_, _, newest) = result_of(&replies[3]);
+    assert_eq!(newest["total"], 2);
+    assert_eq!(newest["entries"].as_array().unwrap().len(), 1);
+    assert_eq!(newest["entries"][0]["text"], "Second thought");
+    let (_, _, all) = result_of(&replies[4]);
+    let texts: Vec<&str> = all["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["text"].as_str().unwrap())
+        .collect();
+    assert_eq!(texts, ["Check the sync tests first", "Second thought"]);
+    assert!(trace(&store).is_empty(), "the scratchpad is no activity");
+}
+
+#[test]
+fn the_scratchpad_is_closed_when_access_is_off_or_the_agent_is_blocked() {
+    let mut store = store_with("off");
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(1, "scratchpad_write", json!({ "text": "x" })),
+            call(2, "scratchpad_read", json!({})),
+        ],
+    );
+    for reply in &replies[1..] {
+        let (is_error, text, _) = result_of(reply);
+        assert!(is_error);
+        assert!(text.contains("Settings > Agents"), "{text}");
+    }
+    assert_eq!(store.latest_scratch_seq().unwrap(), 0);
+
+    let mut store = store_with("write");
+    store
+        .set_setting(BLOCKED_KEY, json!(["claude-code"]))
+        .unwrap();
+    let replies = session(
+        &mut store,
+        &[init(), call(1, "scratchpad_write", json!({ "text": "x" }))],
+    );
+    let (is_error, text, _) = result_of(&replies[1]);
+    assert!(is_error);
+    assert!(text.contains("blocked"), "{text}");
+    assert_eq!(store.latest_scratch_seq().unwrap(), 0);
+    assert!(trace(&store).is_empty());
+}
+
+#[test]
+fn a_scratchpad_kind_outside_the_four_names_them() {
+    let mut store = store_with("read");
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(
+                1,
+                "scratchpad_write",
+                json!({ "kind": "todo", "text": "x" }),
+            ),
+            call(2, "scratchpad_write", json!({ "text": "   " })),
+        ],
+    );
+    let (is_error, text, _) = result_of(&replies[1]);
+    assert!(is_error);
+    assert!(text.contains("note, plan, memory, decision"), "{text}");
+    let (is_error, text, _) = result_of(&replies[2]);
+    assert!(is_error);
+    assert!(text.contains("no text"), "{text}");
+    assert_eq!(store.latest_scratch_seq().unwrap(), 0);
+}
+
+#[test]
+fn a_reconnected_client_reads_its_earlier_scratchpad() {
+    use instantnotes_core::store::activity::ClientSession;
+    let mut store = store_with("read");
+    let same = ClientSession {
+        client_session: Some("ec23c3e6".into()),
+        ..Default::default()
+    };
+    for id in ["first", "second"] {
+        store.open_agent_session(id, "claude-code").unwrap();
+        store.describe_agent_session(id, &same).unwrap();
+    }
+    let replies = session_as(
+        &mut store,
+        "first",
+        &[
+            init(),
+            call(
+                1,
+                "scratchpad_write",
+                json!({ "kind": "memory", "text": "The sync bug lives in the merge step" }),
+            ),
+        ],
+    );
+    let (is_error, text, _) = result_of(&replies[1]);
+    assert!(!is_error, "{text}");
+
+    let replies = session_as(
+        &mut store,
+        "second",
+        &[init(), call(1, "scratchpad_read", json!({}))],
+    );
+    let (_, _, read) = result_of(&replies[1]);
+    assert_eq!(read["total"], 1);
+    assert_eq!(
+        read["entries"][0]["text"],
+        "The sync bug lives in the merge step"
+    );
 }

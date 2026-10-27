@@ -171,6 +171,9 @@
   {:else}
     <p class="fine-print">Finding this app's location…</p>
   {/if}
+  <p class="fine-print">
+    An agent's own working notes, plans and memory go to its scratchpad on its page in the Agents Space, never into your notes.
+  </p>
 
   <span class="group-label">Activity</span>
   <div class="activity-card">

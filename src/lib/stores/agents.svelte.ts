@@ -4,6 +4,7 @@ import {
   getAgentConnection,
   getSetting,
   listAgentActivity,
+  listAgentScratch,
   listAgentSessions,
   revertAgentActivity,
   setSetting,
@@ -25,6 +26,7 @@ import {
   parseBlocked,
   parseNotify,
   parsePresence,
+  parseScratch,
   parseTags,
   type AgentAccess,
   type AgentActivity,
@@ -32,6 +34,7 @@ import {
   type AgentKind,
   type AgentNotify,
   type AgentPresence,
+  type AgentScratch,
   type AgentTags,
 } from "$lib/agent-activity";
 
@@ -53,6 +56,7 @@ class AgentsStore {
   currentSearch = $state<AgentActivity | null>(null);
   connection = $state<AgentConnection | null>(null);
   sessions = $state<AgentPresence[]>([]);
+  scratch = $state(new Map<string, AgentScratch[]>());
   watching = $state(false);
   unseen = $state(0);
   show: () => void = () => {};
@@ -73,6 +77,9 @@ class AgentsStore {
     });
     await listen<unknown>(EVENTS.AGENT_SESSIONS, (e) => {
       this.sessions = parsePresence(e.payload);
+    });
+    await listen<unknown>(EVENTS.AGENT_SCRATCH, (e) => {
+      for (const entry of parseScratch(e.payload)) this.#addScratch(entry.session, [entry]);
     });
     void this.loadSessions();
     try {
@@ -129,6 +136,28 @@ class AgentsStore {
     } catch {
       this.hasMore = false;
     }
+  }
+
+  async loadScratch(sessions: string[]): Promise<void> {
+    for (const session of sessions) {
+      if (this.scratch.has(session)) continue;
+      try {
+        this.#addScratch(session, parseScratch(await listAgentScratch(session)));
+      } catch {
+      }
+    }
+  }
+
+  scratchFor(sessions: string[]): AgentScratch[] {
+    return sessions.flatMap((s) => this.scratch.get(s) ?? []).sort((a, b) => a.seq - b.seq);
+  }
+
+  #addScratch(session: string, entries: AgentScratch[]): void {
+    const next = new Map(this.scratch);
+    const list = next.get(session) ?? [];
+    const seen = new Set(list.map((e) => e.seq));
+    next.set(session, [...list, ...entries.filter((e) => !seen.has(e.seq))].sort((a, b) => a.seq - b.seq));
+    this.scratch = next;
   }
 
   async loadConnection(): Promise<void> {
@@ -279,6 +308,7 @@ class AgentsStore {
     try {
       await clearAgentActivity();
       this.recent = [];
+      this.scratch = new Map();
       this.hasMore = false;
       this.unseen = 0;
       void this.loadSessions();

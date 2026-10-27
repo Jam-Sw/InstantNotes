@@ -21,6 +21,19 @@ pub fn normalize_workspace_name(raw: &str) -> Option<String> {
     }
 }
 
+pub const SWATCH_NAMES: [&str; 9] = [
+    "red", "orange", "yellow", "green", "teal", "blue", "purple", "pink", "grey",
+];
+
+pub fn normalize_color(raw: &str) -> Option<String> {
+    let value = raw.trim().to_lowercase();
+    if SWATCH_NAMES.contains(&value.as_str()) {
+        return Some(value);
+    }
+    let digits = value.strip_prefix('#')?;
+    (digits.len() == 6 && digits.bytes().all(|b| b.is_ascii_hexdigit())).then_some(value)
+}
+
 pub fn extract_inline_tags(body: &str) -> Vec<String> {
     let chars: Vec<char> = body.chars().collect();
     let mut out: Vec<String> = Vec::new();

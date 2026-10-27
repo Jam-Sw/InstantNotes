@@ -2,6 +2,7 @@ use crate::*;
 use instantnotes_core::clients::{self, Client};
 use instantnotes_core::store::activity::{
     session_alive, ActivityWire, AgentActivity, AgentSession, ClientSession, NoteSnapshot,
+    ScratchEntry,
 };
 use instantnotes_core::store::now_ms;
 use instantnotes_core::Store;
@@ -13,6 +14,7 @@ const POLL: Duration = Duration::from_millis(400);
 const BATCH: i64 = 200;
 const PRESENCE_EVERY: u32 = 5;
 const SESSIONS: i64 = 200;
+const SCRATCH_PAGE: i64 = 200;
 
 #[derive(Serialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -117,10 +119,11 @@ pub(crate) fn start_agent_watcher(app: &AppHandle, db_path: PathBuf) -> AgentBri
     std::thread::spawn(move || {
         let mut last_version: Option<i64> = None;
         let mut last_seq: i64 = 0;
+        let mut last_scratch: i64 = 0;
         let mut last_sessions: Option<Vec<AgentSessionView>> = None;
         let mut polls: u32 = 0;
         loop {
-            let moved = read_state(&handle).map(|(v, _)| Some(v) != last_version);
+            let moved = read_state(&handle).map(|(v, _, _)| Some(v) != last_version);
             if moved == Some(true) || polls.is_multiple_of(PRESENCE_EVERY) {
                 if let Some(now) = read_sessions(&handle, &db) {
                     if last_sessions.as_ref() != Some(&now) {
@@ -130,9 +133,12 @@ pub(crate) fn start_agent_watcher(app: &AppHandle, db_path: PathBuf) -> AgentBri
                 }
             }
             polls = polls.wrapping_add(1);
-            if let Some((version, newest)) = read_state(&handle) {
+            if let Some((version, newest, newest_scratch)) = read_state(&handle) {
                 match last_version {
-                    None => last_seq = newest,
+                    None => {
+                        last_seq = newest;
+                        last_scratch = newest_scratch;
+                    }
                     Some(v) if v != version => {
                         if let Some(fresh) = fresh_rows(&handle, last_seq) {
                             if let Some(e) = fresh.last() {
@@ -140,9 +146,21 @@ pub(crate) fn start_agent_watcher(app: &AppHandle, db_path: PathBuf) -> AgentBri
                             }
                             announce(&handle, fresh);
                         }
+                        if let Some(fresh) = fresh_scratch(&handle, last_scratch) {
+                            if let Some(e) = fresh.last() {
+                                last_scratch = e.seq;
+                                let _ = handle.emit(events::AGENT_SCRATCH, fresh);
+                            }
+                        }
                     }
-                    _ if newest > last_seq => last_seq = newest,
-                    _ => {}
+                    _ => {
+                        if newest > last_seq {
+                            last_seq = newest;
+                        }
+                        if newest_scratch > last_scratch {
+                            last_scratch = newest_scratch;
+                        }
+                    }
                 }
                 last_version = Some(version);
             }
@@ -152,18 +170,25 @@ pub(crate) fn start_agent_watcher(app: &AppHandle, db_path: PathBuf) -> AgentBri
     AgentBridge { db_path }
 }
 
-fn read_state(app: &AppHandle) -> Option<(i64, i64)> {
+fn read_state(app: &AppHandle) -> Option<(i64, i64, i64)> {
     let state = app.try_state::<AppState>()?;
     let store = state.store.lock().ok()?;
     let version = store.data_version().ok()?;
     let newest = store.latest_activity_seq().ok()?;
-    Some((version, newest))
+    let newest_scratch = store.latest_scratch_seq().ok()?;
+    Some((version, newest, newest_scratch))
 }
 
 fn fresh_rows(app: &AppHandle, after_seq: i64) -> Option<Vec<AgentActivity>> {
     let state = app.try_state::<AppState>()?;
     let store = state.store.lock().ok()?;
     store.activity_since(after_seq, BATCH).ok()
+}
+
+fn fresh_scratch(app: &AppHandle, after_seq: i64) -> Option<Vec<ScratchEntry>> {
+    let state = app.try_state::<AppState>()?;
+    let store = state.store.lock().ok()?;
+    store.scratch_since(after_seq, BATCH).ok()
 }
 
 fn announce(app: &AppHandle, fresh: Vec<AgentActivity>) {
@@ -213,6 +238,15 @@ pub fn list_agent_activity(
     offset: Option<i64>,
 ) -> CmdResult<Vec<AgentActivity>> {
     Ok(locked(&state)?.list_activity(limit.unwrap_or(200), offset.unwrap_or(0))?)
+}
+
+#[tauri::command(async)]
+pub fn list_agent_scratch(
+    state: State<'_, AppState>,
+    session: String,
+    limit: Option<i64>,
+) -> CmdResult<Vec<ScratchEntry>> {
+    Ok(locked_reader(&state)?.list_scratch(&session, limit.unwrap_or(SCRATCH_PAGE))?)
 }
 
 #[tauri::command(async)]

@@ -15,14 +15,31 @@ Usage: See the [plugin's readme](https://github.com/jamubc/toolbox/tree/main/plu
 
 ## Features
 
-- **Quick Capture:** Global hotkey (`Opt` / `Ctrl+Shift+Space`) with drafts.
+- **Quick Capture:** Global hotkey (`Opt` / `Ctrl+Shift+Space`) opens a capture panel on the screen you are on, with drafts, and hands focus back when you finish.
 - **Command Palette:** `Cmd/Ctrl+P` for actions, search, and themes.
-- **Flexible Organization:** Group notes with Spaces and `#inline` tags instead of strict folders.
+- **Spaces and tags:** Group notes with Spaces and `#inline` tags instead of strict folders, and give each Space or tag a colour and a flag.
+- **Search to write:** Type in the note list, arrow through the results, press Enter to open one, or start a note from the words you typed.
+- **Copy context for agents:** Right-click a note, or a selection of notes, to copy it for an agent, with a source line that names the note id.
+- **Layouts for every width:** The sidebar, note list and editor adapt from a phone to a wide window, and a welcome finder searches your notes when the list is hidden.
 - **Plain Markdown Vault and Sync:** Keep every note as a Markdown file in a folder you choose, readable in any editor. Point several devices at the same folder (a network drive, Syncthing, Dropbox) and they stay in sync; edits made in the folder come back in.
-- **Agents, on your terms:** Connect Claude Code, Codex, or Cursor over MCP (Settings > Agents). Off until you turn it on; what an agent reads or changes lights up as it happens, every call is traced, and every change can be reverted.
-- **Themes:** Eight built-in themes with live previews, light and dark, shareable as files.
+- **Agents, on your terms:** Connect Claude Code, Codex, or Cursor over MCP (Settings > Agents). Off until you turn it on; what an agent reads or changes lights up as it happens, every call is traced, and every change can be reverted. Each agent gets a scratchpad for its own working notes, plans and memory, kept on its page and never in your notes.
+- **Themes:** Nine built-in themes, including the new Folio and Peony, with live previews, light and dark, shareable as files.
 - **Self-hosted sync:** Run the InstantNotes server on your own machine and sync one library across the desktop apps and any browser. The web app works on phones and tablets: one pane at a time on a phone, side by side on a tablet, with touch-sized controls and a command button for the palette. Notes are end-to-end encrypted by default: the server stores only ciphertext.
 - **100% Local & Private:** Your library lives in a local SQLite database, and in the vault folder if you set one. No server unless you run your own, zero telemetry.
+
+## Screenshots
+
+![The library](docs/images/library.png)
+The library, with coloured Spaces and a note open.
+
+![The welcome finder](docs/images/finder.png)
+The welcome finder, searching notes with the list hidden.
+
+![An agent's page with its scratchpad](docs/images/agent-scratchpad.png)
+An agent's page, with its scratchpad beside the activity trace.
+
+![The phone layout](docs/images/phone.png)
+The phone layout, one pane at a time.
 
 ## Installation
 > The builds are unsigned, You will likely be prompted on first launch.
@@ -60,7 +77,7 @@ docker run -d --name instantnotes \
   -e INSTANTNOTES_OIDC_ISSUER=https://id.example.org \
   -e INSTANTNOTES_OIDC_CLIENT_ID=instantnotes \
   -e INSTANTNOTES_OIDC_CLIENT_SECRET=change-me \
-  ghcr.io/jam-sw/instantnotes-server:0.10.1
+  ghcr.io/jam-sw/instantnotes-server:0.11.0
 ```
 
 | Setting | Required | Meaning |

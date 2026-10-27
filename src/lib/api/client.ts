@@ -8,6 +8,7 @@ import type {
   AgentActivity,
   AgentConnection,
   AgentPresence,
+  AgentScratch,
   AgentWire,
   NoteSnapshot,
 } from "$lib/agent-activity";
@@ -24,6 +25,7 @@ import type {
   ImportOutcome,
   Note,
   NoteFilter,
+  NoteTitle,
   SearchResult,
   ShortcutFailure,
   SpaceSuggestion,
@@ -31,6 +33,7 @@ import type {
   StickiesScan,
   TagSuggestion,
   Tag,
+  TagSlice,
   TagWithCount,
   UpdateNotePatch,
   MergeReview,
@@ -119,6 +122,8 @@ export const destroyNotes = (ids: string[], confirm: boolean) =>
 export const listTags = () => call<TagWithCount[]>("list_tags");
 export const updateTag = (id: string, name?: string, color?: string) =>
   call<Tag>("update_tag", { id, name, color });
+export const setTagColor = (id: string, color: string | null) =>
+  call<Tag>("set_tag_color", { id, color });
 export const deleteTag = (id: string) => call<void>("delete_tag", { id });
 export const addTagToNote = (noteId: string, name: string) =>
   call<Tag>("add_tag_to_note", { noteId, name });
@@ -133,6 +138,12 @@ export const getOrCreateWorkspace = (name: string) =>
   call<Workspace>("get_or_create_workspace", { name });
 export const renameWorkspace = (id: string, name: string) =>
   call<Workspace>("rename_workspace", { id, name });
+export const setWorkspaceColor = (id: string, color: string | null) =>
+  call<Workspace>("set_workspace_color", { id, color });
+export const setWorkspaceFlag = (id: string, flag: boolean) =>
+  call<Workspace>("set_workspace_flag", { id, flag });
+export const workspaceTagSlices = () =>
+  call<TagSlice[]>("workspace_tag_slices");
 export const deleteWorkspace = (id: string) =>
   call<string[]>("delete_workspace", { id });
 export const listWorkspaceTags = (workspaceId: string) =>
@@ -148,6 +159,9 @@ export const captureInputReady = () =>
   call<number | null>("capture_input_ready");
 export const getCaptureLatency = () =>
   call<CaptureLatencySummary>("get_capture_latency");
+export const captureTargets = () => call<NoteTitle[]>("capture_targets");
+export const captureAppend = (id: string, text: string) =>
+  call<void>("capture_append", { id, text });
 
 export const getSetting = <T>(key: string) =>
   call<T | null>("get_setting", { key });
@@ -156,7 +170,8 @@ export const setSetting = (key: string, value: unknown) =>
 export const deleteSetting = (key: string) =>
   call<void>("delete_setting", { key });
 
-export const hideCapture = () => call<void>("hide_capture");
+export const hideCapture = (restoreFocus: boolean) =>
+  call<void>("hide_capture", { restoreFocus });
 export const openLibrary = () => call<void>("open_library");
 export const openDataFolder = () => call<void>("open_data_folder");
 export const requestQuit = () => call<void>("request_quit");
@@ -218,8 +233,9 @@ export const saveAttachment = async (
 export const getAttachmentsDir = () => call<string>("get_attachments_dir");
 export const importImageFile = (path: string) =>
   call<string>("import_image_file", { path });
-export const allowImageFile = (path: string) =>
-  call<void>("allow_image_file", { path });
+export const allowLinkedImages = (paths: string[]) =>
+  call<string[]>("allow_linked_images", { paths });
+export const pickLinkedImage = () => call<string | null>("pick_linked_image");
 export const openAttachmentsFolder = () =>
   call<void>("open_attachments_folder");
 export const unusedAttachments = () => call<AttachmentCleanup>("unused_attachments");
@@ -307,3 +323,5 @@ export const agentActivityWire = (seq: number) =>
 export const revertAgentActivity = (seq: number) =>
   call<AgentActivity>("revert_agent_activity", { seq });
 export const clearAgentActivity = () => call<void>("clear_agent_activity");
+export const listAgentScratch = (session: string, limit?: number) =>
+  call<AgentScratch[]>("list_agent_scratch", { session, limit });

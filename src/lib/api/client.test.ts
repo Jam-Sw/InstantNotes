@@ -13,6 +13,10 @@ import {
   listWorkspaceTags,
   removeNoteFromWorkspace,
   renameWorkspace,
+  setTagColor,
+  setWorkspaceColor,
+  setWorkspaceFlag,
+  workspaceTagSlices,
   deleteWorkspace,
   workspacesForNote,
 } from "./client";
@@ -79,6 +83,50 @@ describe("workspace client wrappers", () => {
     expect(invoke).toHaveBeenCalledWith("workspaces_for_note", {
       noteId: "n1",
     });
+  });
+
+  it("setWorkspaceColor passes the id and the colour, null clears it", async () => {
+    invoke.mockResolvedValue({ id: "w1", color: "blue", flag: false });
+    await setWorkspaceColor("w1", "blue");
+    expect(invoke).toHaveBeenCalledWith("set_workspace_color", {
+      id: "w1",
+      color: "blue",
+    });
+    await setWorkspaceColor("w1", null);
+    expect(invoke).toHaveBeenLastCalledWith("set_workspace_color", {
+      id: "w1",
+      color: null,
+    });
+  });
+
+  it("setWorkspaceFlag passes the id and the flag", async () => {
+    invoke.mockResolvedValue({ id: "w1", color: null, flag: true });
+    await setWorkspaceFlag("w1", true);
+    expect(invoke).toHaveBeenCalledWith("set_workspace_flag", {
+      id: "w1",
+      flag: true,
+    });
+  });
+
+  it("setTagColor passes the id and the colour", async () => {
+    invoke.mockResolvedValue({ id: "t1", name: "work", color: "#ff0000" });
+    await setTagColor("t1", "#ff0000");
+    expect(invoke).toHaveBeenCalledWith("set_tag_color", {
+      id: "t1",
+      color: "#ff0000",
+    });
+    await setTagColor("t1", null);
+    expect(invoke).toHaveBeenLastCalledWith("set_tag_color", {
+      id: "t1",
+      color: null,
+    });
+  });
+
+  it("workspaceTagSlices calls workspace_tag_slices without arguments", async () => {
+    const slices = [{ workspaceId: "w1", tagId: "t1", color: "red", noteCount: 2 }];
+    invoke.mockResolvedValue(slices);
+    await expect(workspaceTagSlices()).resolves.toEqual(slices);
+    expect(invoke).toHaveBeenCalledWith("workspace_tag_slices", undefined);
   });
 
   it("maps structured backend errors to ApiError", async () => {

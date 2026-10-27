@@ -59,7 +59,7 @@ impl Store {
 
     pub fn list_workspaces(&self) -> Result<Vec<WorkspaceWithCount>> {
         let mut stmt = self.conn.prepare(
-            "SELECT w.id, w.name, w.created_at, w.updated_at, \
+            "SELECT w.id, w.name, w.color, w.flag, w.created_at, w.updated_at, \
                     COALESCE(c.n, 0) AS note_count \
              FROM workspaces w \
              LEFT JOIN (SELECT nw.workspace_id, COUNT(*) AS n FROM note_workspaces nw \
@@ -71,7 +71,7 @@ impl Store {
         let rows = stmt.query_map([], |row| {
             Ok(WorkspaceWithCount {
                 workspace: row_to_workspace(row)?,
-                note_count: row.get(4)?,
+                note_count: row.get(6)?,
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -99,6 +99,47 @@ impl Store {
             params![name, now_iso(), id],
         )?;
         self.fetch_workspace(id)
+    }
+
+    pub fn set_workspace_color(&mut self, id: &str, color: Option<String>) -> Result<Workspace> {
+        self.fetch_workspace(id)?;
+        let color = color.map(|raw| validated_color(&raw)).transpose()?;
+        self.conn.execute(
+            "UPDATE workspaces SET color = ?1, updated_at = ?2 WHERE id = ?3",
+            params![color, now_iso(), id],
+        )?;
+        self.fetch_workspace(id)
+    }
+
+    pub fn set_workspace_flag(&mut self, id: &str, flag: bool) -> Result<Workspace> {
+        self.fetch_workspace(id)?;
+        self.conn.execute(
+            "UPDATE workspaces SET flag = ?1, updated_at = ?2 WHERE id = ?3",
+            params![flag as i64, now_iso(), id],
+        )?;
+        self.fetch_workspace(id)
+    }
+
+    pub fn workspace_tag_slices(&self) -> Result<Vec<TagSlice>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT nw.workspace_id, t.id, t.color, COUNT(*) AS note_count \
+             FROM note_workspaces nw \
+             JOIN note_tags nt ON nt.note_id = nw.note_id \
+             JOIN tags t ON t.id = nt.tag_id \
+             JOIN notes n ON n.id = nw.note_id \
+             WHERE t.color IS NOT NULL AND n.is_deleted = 0 \
+             GROUP BY nw.workspace_id, t.id \
+             ORDER BY nw.workspace_id, note_count DESC, t.name",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(TagSlice {
+                workspace_id: row.get(0)?,
+                tag_id: row.get(1)?,
+                color: row.get(2)?,
+                note_count: row.get(3)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
     pub fn delete_workspace(&mut self, id: &str) -> Result<Vec<String>> {
@@ -158,7 +199,7 @@ impl Store {
 
     pub fn workspaces_for_note(&self, note_id: &str) -> Result<Vec<Workspace>> {
         let mut stmt = self.conn.prepare(
-            "SELECT w.id, w.name, w.created_at, w.updated_at \
+            "SELECT w.id, w.name, w.color, w.flag, w.created_at, w.updated_at \
              FROM workspaces w JOIN note_workspaces nw ON nw.workspace_id = w.id \
              WHERE nw.note_id = ?1 ORDER BY w.name COLLATE NOCASE",
         )?;
