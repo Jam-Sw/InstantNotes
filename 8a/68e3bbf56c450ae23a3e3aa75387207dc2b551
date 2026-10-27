@@ -1,0 +1,21 @@
+src-tauri/web/Cargo.toml
+  s_7b96e4316ebe9a::t_5000e6534c44ea 21
+src-tauri/Cargo.lock
+  s_7b96e4316ebe9a::t_0c323ff3cf4352 5-16,1217-1230,1280,1549-1560,2699-2743,3330-3425,4999-5020,5502,5504-5514,6532-6537
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8a68e3bbf56c450ae23a3e3aa75387207dc2b551",
+  "prompts": {},
+  "sessions": {
+    "s_7b96e4316ebe9a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f2b5ccdd-70a6-4131-9efa-e317e549912a",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
