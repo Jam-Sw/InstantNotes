@@ -37,7 +37,7 @@ export function applyImageMode(
   });
 }
 
-export interface RenderOptions {
+interface RenderOptions {
   imageMode?: ContextImageMode;
   attachmentsDir?: string | null;
   /** When the copy happens; fills {copied}. Defaults to now. */
@@ -71,7 +71,7 @@ export function renderTemplate(
   return template.replace(/\{(title|tags|date|content|id|copied)\}/g, (_, key: string) => values[key] ?? "");
 }
 
-export interface ContextOptions extends RenderOptions {
+interface ContextOptions extends RenderOptions {
   addSourceLine?: boolean;
 }
 
