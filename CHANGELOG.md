@@ -41,6 +41,11 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   tag, Show the whole space when a tag slice inside a space is empty.
 - Two themes: Folio (book paper, serif type, a vermilion mark) and Peony (plum and peony pink, soft
   round corners, with glass).
+- An agent's scratchpad: MCP `scratchpad_write` (kinds `note`, `plan`, `memory`, `decision`) and
+  `scratchpad_read` keep an agent's working notes outside your notes, per conversation and across a
+  reconnect, never traced as activity. The agent's page shows them live beside its trace, with a
+  Scratchpad filter (`list_agent_scratch`, event `agents:scratch`); the newest 5000 entries are kept
+  and Clear history clears them too.
 
 ### Changed
 - A new note, from the + button, Cmd or Ctrl+N, the menu or the palette, opens with the cursor in its
@@ -49,8 +54,16 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   cursor. The search field is the height of the + control beside it.
 - Panes slide with their content when they show or hide, and snap while the window is being resized,
   as a native split view does.
-- The library schema is version 16 (space colour and flag). Once 0.11 opens a library, 0.10 refuses it
-  as too new.
+- The library schema is version 17 (space colour and flag, the agent scratchpad). Once 0.11 opens a
+  library, 0.10 refuses it as too new.
+- Dependencies: the Cargo group (12 crates) and the npm patch releases; SvelteKit stays on 2 and
+  TypeScript on 6.
+
+### Security
+- Images linked from outside the library load only from the vault folder and folders you allowed; a
+  note linking elsewhere asks once per folder, and Settings > Images lists the allowed folders with
+  Remove. Link original picks the file on the Rust side. Commands `allow_linked_images` and
+  `pick_linked_image` replace `allow_image_file`; setting `images.linkedFolders`. Reported as issue #82.
 
 ### Removed
 - The Ember and Paper Dark themes. If one was your theme, the app opens in Manuscript; pick any

@@ -194,6 +194,7 @@ public so tests can build fixtures at a historical schema version.
 | v13 | `idx_notes_list` (the note list's own sort order, so listing never sorts) and `idx_notes_revisit` (never-opened notes) replace `idx_notes_flags`. No column. |
 | v14 | `notes_fts` rebuilt with a prefix index for one, two and three letters (section 7). Search results and their order are unchanged. |
 | v15 | `sync_objects` and `attachment_files` for the sync server (section 10.2). |
+| v16 | `workspaces.color` and `workspaces.flag`: a space's colour and whether it shows its flag (section 5). |
 | v17 | `agent_scratch`: an agent's scratchpad, one row per entry (section 11). |
 
 v4 exists because pre-release builds that carried the whiteboard already

@@ -397,6 +397,27 @@ visual pass on the phone and tablet layouts, and checks on real devices
 move to 0.11. See
 `changes/feat-one-experience/`.
 
+## 13m. `feat-agent-scratchpad` (0.11.0)
+
+An agent's own working notes, plans, memory and decisions, written over MCP
+(`scratchpad_write`, `scratchpad_read`) into their own table and shown live
+on the agent's page beside its trace, never in the notes. Migration v17 adds
+`agent_scratch`; no note shape changes and the two tools pass the existing
+access gate without a trace, so the insertion rule places it after unit 9's
+slot as persisted state of its own, and it lands on `0.11.0-pre` on
+2026-10-26 with the owner's note 180 as its origin. See
+`changes/feat-agent-scratchpad/`.
+
+## 13n. `fix-linked-image-scope` (0.11.0)
+
+Issue #82: a note body could widen the asset scope to any image on the disk.
+Linked images now load from the vault folder and the folders in
+`images.linkedFolders` only, a note linking elsewhere asks once per folder,
+and link mode picks its file on the Rust side (`allow_linked_images`,
+`pick_linked_image`; `allow_image_file` removed). One device setting, no
+migration, so it sits in any slot; landed on `0.11.0-pre` on 2026-10-26. See
+`changes/fix-linked-image-scope/`.
+
 ## 14. Local AI
 
 Needs embedding storage, so it cannot precede unit 10. Embeddings are a
