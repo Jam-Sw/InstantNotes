@@ -7,7 +7,7 @@ in-app updater, written for users. Newest first.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.11.0]
+## [Unreleased]
 ### Added
 - Space and tag colours: right-click a space or tag to pick a swatch from the theme's palette (every
   theme carries one) or any `#rrggbb` colour, and right-click a space to show its flag. Settings >
