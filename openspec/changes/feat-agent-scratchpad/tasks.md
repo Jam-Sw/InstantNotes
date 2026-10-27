@@ -35,5 +35,5 @@ Built on `0.11.0-pre`. Order: core, agents crate, shell, frontend, docs, checks.
 
 ## Checks
 
-- [ ] `.claude/scripts/check.sh`: svelte-check, vitest, cargo test, clippy, rustfmt, wasm, knip in both modes
-- [ ] The diff adds no code comments
+- [x] `.claude/scripts/check.sh`: svelte-check, vitest, cargo test, clippy, rustfmt, wasm, knip in both modes. Ran at `daa78d6`, all eight pass
+- [x] The diff adds no code comments. Checked: `git diff origin/main HEAD -- src src-tauri` has no added `//`, `/*` or `<!--` line beyond the tool-read ones

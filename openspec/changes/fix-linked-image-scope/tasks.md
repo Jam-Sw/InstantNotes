@@ -20,4 +20,4 @@
 ## Checks
 
 - [x] `src-tauri/tauri.conf.json`: not edited; the asset scope is still `$APPDATA/attachments/**`
-- [ ] `.claude/scripts/check.sh`: svelte-check, vitest, cargo test, clippy, rustfmt, wasm, knip in both modes
+- [x] `.claude/scripts/check.sh`: svelte-check, vitest, cargo test, clippy, rustfmt, wasm, knip in both modes. Ran at `daa78d6`, all eight pass
