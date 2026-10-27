@@ -107,6 +107,28 @@
     {/if}
   </p>
 
+  {#if !isWeb}
+    <span class="group-label">Linked folders</span>
+    <p class="fine-print">
+      Images in notes load from these folders. A note that links elsewhere asks first.
+    </p>
+    <div class="attach-card">
+      {#each imagePrefs.linkedFolders as folder (folder)}
+        <div class="attach-row">
+          <span class="attach-path" title={folder}>{folder}</span>
+          <button
+            class="folder-btn"
+            aria-label={`Remove ${folder}`}
+            onclick={() => imagePrefs.removeLinkedFolder(folder)}>Remove</button>
+        </div>
+      {:else}
+        <div class="attach-row">
+          <span class="attach-val">No folders yet. Insert an image with Link original, or allow one when a note asks.</span>
+        </div>
+      {/each}
+    </div>
+  {/if}
+
   <span class="group-label">Preview</span>
   <PrefRow
     label="Maximum height in the note"

@@ -31,7 +31,7 @@
     getAttachmentsDir,
     openUrl,
     saveAttachment,
-    allowImageFile,
+    allowLinkedImages,
   } from "$lib/api/client";
   import { toasts } from "$lib/stores/toasts.svelte";
   import { applyExternalEdit, externalEdit, minimalChange } from "$lib/external-edit";
@@ -134,7 +134,7 @@
     try {
       const linked = linkedImagePaths(next);
       if (linked.length > 0) {
-        await Promise.all(linked.map((p) => allowImageFile(p).catch(() => {})));
+        await allowLinkedImages(linked).catch(() => {});
         if (value !== next) return;
       }
       if (!view) return;

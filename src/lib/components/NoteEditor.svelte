@@ -13,7 +13,7 @@
   import { confirmDialog } from "$lib/stores/confirm.svelte";
   import { openElsewhere } from "$lib/stores/open-elsewhere.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
-  import { importImageFile, allowImageFile, openUrl, popOutNote, tagSuggestion } from "$lib/api/client";
+  import { importImageFile, pickLinkedImage, openUrl, popOutNote, tagSuggestion } from "$lib/api/client";
   import { isWeb } from "$lib/api/runtime";
   import { modKey, shiftKey } from "$lib/platform";
   import { theme } from "$lib/stores/theme.svelte";
@@ -86,19 +86,19 @@
   const boardTheme = $derived(effectiveVariant(theme.activeTheme, theme.resolvedVariant));
 
   async function insertImage() {
-    const picked = await open({
-      multiple: false,
-      filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp"] }],
-    });
-    if (typeof picked !== "string") return;
     try {
-      if (imagePrefs.storage === "copy") {
-        const name = await importImageFile(picked);
-        editorRef?.insertText(attachmentMarkdown(name));
-      } else {
-        await allowImageFile(picked);
-        editorRef?.insertText(`![](${picked})`);
+      if (imagePrefs.storage === "link") {
+        const picked = await pickLinkedImage();
+        if (typeof picked === "string") editorRef?.insertText(`![](${picked})`);
+        return;
       }
+      const picked = await open({
+        multiple: false,
+        filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp"] }],
+      });
+      if (typeof picked !== "string") return;
+      const name = await importImageFile(picked);
+      editorRef?.insertText(attachmentMarkdown(name));
     } catch (e) {
       toasts.show(`Couldn't add image. ${e instanceof Error ? e.message : String(e)}`);
     }

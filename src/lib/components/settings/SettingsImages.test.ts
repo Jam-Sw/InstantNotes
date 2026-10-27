@@ -39,6 +39,7 @@ afterEach(cleanup);
 beforeEach(() => {
   imagePrefs.storage = "copy";
   imagePrefs.maxPreviewHeight = DEFAULT_MAX_HEIGHT;
+  imagePrefs.linkedFolders = [];
   vi.mocked(setSetting).mockClear();
   vi.mocked(openAttachmentsFolder).mockClear();
   vi.mocked(unusedAttachments).mockReset().mockResolvedValue({ count: 0, bytes: 0 });
@@ -140,5 +141,24 @@ describe("SettingsImages", () => {
     await vi.waitFor(() => expect(button.hasAttribute("disabled")).toBe(false));
     await fireEvent.click(button);
     expect(vi.mocked(removeUnusedAttachments)).not.toHaveBeenCalled();
+  });
+
+  it("lists the folders images may load from", async () => {
+    imagePrefs.linkedFolders = ["/home/me/Pictures"];
+    const { findByText } = render(SettingsImages);
+    expect(await findByText("/home/me/Pictures")).toBeTruthy();
+  });
+
+  it("removes a linked folder and persists the list", async () => {
+    imagePrefs.linkedFolders = ["/home/me/Pictures"];
+    const { findByRole, queryByText } = render(SettingsImages);
+    await fireEvent.click(await findByRole("button", { name: "Remove /home/me/Pictures" }));
+    expect(vi.mocked(setSetting)).toHaveBeenCalledWith("images.linkedFolders", []);
+    expect(queryByText("/home/me/Pictures")).toBeNull();
+  });
+
+  it("says no folders are allowed yet when the list is empty", async () => {
+    const { findByText } = render(SettingsImages);
+    expect(await findByText("No folders yet.", { exact: false })).toBeTruthy();
   });
 });

@@ -233,8 +233,9 @@ export const saveAttachment = async (
 export const getAttachmentsDir = () => call<string>("get_attachments_dir");
 export const importImageFile = (path: string) =>
   call<string>("import_image_file", { path });
-export const allowImageFile = (path: string) =>
-  call<void>("allow_image_file", { path });
+export const allowLinkedImages = (paths: string[]) =>
+  call<string[]>("allow_linked_images", { paths });
+export const pickLinkedImage = () => call<string | null>("pick_linked_image");
 export const openAttachmentsFolder = () =>
   call<void>("open_attachments_folder");
 export const unusedAttachments = () => call<AttachmentCleanup>("unused_attachments");
