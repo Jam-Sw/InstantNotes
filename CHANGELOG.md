@@ -7,6 +7,13 @@ in-app updater, written for users. Newest first.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1]
+### Fixed
+- "Library too new" no longer aborts the app: `SyncJoinDialog`'s mount called `list_sync_join_requests`, whose
+  `app.state::<AppState>()` panicked (`panic = "abort"`) because the store never opened. The 12
+  `state::<AppState>()` calls in commands, backups and stickies now go through `library_state` (an error,
+  not a panic), and `ServerLink` is managed before the store opens, so Update reaches the updater.
+
 ## [0.11.0] - 2026-10-26
 ### Added
 - Space and tag colours: right-click a space or tag to pick a swatch from the theme's palette (every

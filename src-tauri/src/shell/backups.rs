@@ -86,7 +86,7 @@ fn list(app: &AppHandle) -> CmdResult<BackupList> {
     let library = library_path()?;
     let dir = backups_dir(library);
     let found = entries(&dir);
-    let state = app.state::<AppState>();
+    let state = library_state(app)?;
     let automatic = automatic(&*locked(&state)?);
     Ok(BackupList {
         last_at: found.first().map(|(_, e)| e.made_at.clone()),
@@ -120,7 +120,7 @@ fn take_backup(app: &AppHandle) -> CmdResult<()> {
     if target.exists() {
         return Ok(());
     }
-    let state = app.state::<AppState>();
+    let state = library_state(app)?;
     if let Err(e) = locked_reader(&state)?.backup_to(&target) {
         log::log("backup.failed", &[("error", &e.to_string())]);
         return Err(e.into());
@@ -144,7 +144,9 @@ fn take_backup(app: &AppHandle) -> CmdResult<()> {
 fn backup_if_stale(app: &AppHandle) {
     let Ok(library) = library_path() else { return };
     let dir = backups_dir(library);
-    let state = app.state::<AppState>();
+    let Ok(state) = library_state(app) else {
+        return;
+    };
     let on = match locked(&state) {
         Ok(store) => automatic(&store),
         Err(_) => return,

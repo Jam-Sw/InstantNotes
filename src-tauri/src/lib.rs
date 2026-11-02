@@ -15,6 +15,11 @@ struct AppState {
     analyst: Mutex<Store>,
 }
 
+fn library_state(app: &AppHandle) -> CmdResult<State<'_, AppState>> {
+    app.try_state::<AppState>()
+        .ok_or_else(|| CmdError::storage("the library is not open"))
+}
+
 fn locked<'a>(
     state: &'a State<'_, AppState>,
 ) -> Result<std::sync::MutexGuard<'a, Store>, CmdError> {
@@ -129,6 +134,7 @@ pub fn run() {
             if let Some(parent) = db_path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
+            app.manage(ServerLink::default());
             let restored = apply_restore_at_launch(&db_path);
             let (mut store, recovered) = match Store::open_or_recover(&db_path) {
                 Ok(ok) => ok,
@@ -183,7 +189,6 @@ pub fn run() {
             });
             app.manage(CaptureMetrics::default());
             app.manage(LinkedImageState::default());
-            app.manage(ServerLink::default());
             app.manage(start_vault_sync(app.handle()));
             app.manage(start_agent_watcher(app.handle(), db_path.clone()));
             start_backups(app.handle());
