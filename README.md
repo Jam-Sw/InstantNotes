@@ -1,17 +1,14 @@
 # InstantNotes
 
-Instantly externalize your writing. Capture and locate your thoughts.
+Instantly externalize your writing. Capture and locate your thoughts. Or ask your agent to do it for you.
 
-> **02/10/2026: Use InstantNotes directly inside Claude Code, with offical UI mods** <br/> Search, read, and capture notes directly inside [Claude Code](https://claude.com/product/claude-code)! <br/> Get the new `instantnotes` plugin from [toolbox](https://github.com/jamubc/toolbox).<br/>
-Usage: 
->
-> ```
-> /plugin marketplace add jamubc/toolbox
-> /plugin install instantnotes@toolbox
-> ```
->
-> Explore notes with `/notes` or take ***an instant note*** with `/note <text>`. <br/>
-Usage: See the [plugin's readme](https://github.com/jamubc/toolbox/tree/main/plugins/instantnotes) for more details.
+> **01/11/2026: Your notes, anywhere & anytime, across Mac, Windows and Linux devices or servers** (see: [instantnotes-server](https://github.com/orgs/Jam-Sw/packages/container/package/instantnotes-server) <br/>
+> Agents can act on your notes for you, help you organize them, identify patterns or lost goals <br/>
+> Add instantNotes to your server to give users a notes app, or self host your instantNotes as a service on your private cloud. <br/>
+
+> **02/10/2026: Use InstantNotes directly inside Claude Code** <br/> Search, read, and write notes without leaving [Claude Code](https://claude.com/product/claude-code)! <br/>
+> Get the new `instantnotes` plugin from [toolbox](https://github.com/jamubc/toolbox). <br/>
+> Usage: See the [plugin's readme](https://github.com/jamubc/toolbox/tree/main/plugins/instantnotes) for more details.
 
 ## Features
 
