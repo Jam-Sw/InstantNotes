@@ -13,6 +13,12 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `app.state::<AppState>()` panicked (`panic = "abort"`) because the store never opened. The 12
   `state::<AppState>()` calls in commands, backups and stickies now go through `library_state` (an error,
   not a panic), and `ServerLink` is managed before the store opens, so Update reaches the updater.
+- Sign in again no longer loses the library key: keychain entries are named by device id, so the new id from
+  `connect_sync_server` found no key and the device fell to `needsKey`. `finish_connect` moves the key (and drops
+  the old token) from the previous device id on the same address, and goes to `syncing` when it matches the
+  server's recipient.
+- Stop syncing during `confirmJoin` used the old saved settings, so the new sign-in stayed on the server's device
+  list with its token in the keychain. `disconnect_sync_server` now revokes the pending device and deletes its token.
 
 ## [0.11.0] - 2026-10-26
 ### Added

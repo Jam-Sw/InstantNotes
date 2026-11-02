@@ -533,14 +533,24 @@ async fn finish_connect(
         CmdError::storage(message)
     };
     let keys = authed.keys().await.map_err(|e| fail(&e.to_string()))?;
-    {
+    let previous = {
         let state = library_state(app)?;
         let mut store = locked(&state)?;
+        let previous = server_settings(&store)
+            .filter(|p| p.address == settings.address && p.device_id != settings.device_id);
         backup_library(app, &store)?;
         store.configure_vault(None)?;
         store.set_setting(TRANSPORT_SETTING, serde_json::Value::String(SERVER.into()))?;
         save_settings(&mut store, &settings)?;
         store.begin_server_sync()?;
+        previous
+    };
+    if let Some(previous) = &previous {
+        if let Some(key) = keychain_get(previous, "key") {
+            keychain_set(&settings, "key", &key).map_err(|e| fail(&e))?;
+        }
+        keychain_delete(previous, "key");
+        keychain_delete(previous, "token");
     }
     let mut status = ServerStatus {
         address: Some(settings.address.clone()),
@@ -567,6 +577,14 @@ async fn finish_connect(
                 .map_err(|e| fail(&e.to_string()))?;
             set_mode(app, PLAIN)?;
             status.stage = "syncing".into();
+        }
+        Some(ENCRYPTED)
+            if library_recipient(&settings)
+                .is_some_and(|r| keys.recipient.as_deref() == Some(r.as_str())) =>
+        {
+            set_mode(app, ENCRYPTED)?;
+            status.stage = "syncing".into();
+            status.encrypted = true;
         }
         Some(ENCRYPTED) => {
             status.stage = "needsKey".into();
@@ -750,7 +768,30 @@ pub(crate) fn accept_plain_server(app: AppHandle) -> CmdResult<()> {
 
 #[tauri::command]
 pub(crate) async fn disconnect_sync_server(app: AppHandle) -> CmdResult<()> {
+    let pending = link(&app)
+        .pending
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take();
+    if let Some(pending) = &pending {
+        if let Ok(client) = Client::new(&pending.settings.address) {
+            let _ = client
+                .with_token(&pending.token)
+                .revoke(Some(&pending.settings.device_id))
+                .await;
+        }
+        keychain_delete(&pending.settings, "token");
+    }
     let Ok(settings) = connected(&app) else {
+        if pending.is_some() {
+            link(&app).set(|s| {
+                *s = ServerStatus {
+                    stage: "off".into(),
+                    ..ServerStatus::default()
+                }
+            });
+            let _ = app.emit(events::VAULT_STATUS, ());
+        }
         return Ok(());
     };
     if let Ok(client) = client_for(&settings) {
