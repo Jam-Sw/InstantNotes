@@ -1,0 +1,45 @@
+CHANGELOG.md
+  s_a91225ec421eac::t_718559c3082e06 10-12,16
+  s_a91225ec421eac::t_4210467500d853 14-15
+  s_a91225ec421eac::t_d3388bedd8b5be 13
+src-tauri/src/lib.rs
+  s_b6f9e01c5e7a94::t_03cee058b67da2 18-22,137
+src-tauri/src/shell/backups.rs
+  s_874793a9c2f5cd::t_911d09e399ba1b 89,123,147
+src-tauri/src/shell/server.rs
+  s_a91225ec421eac::t_570b6fa8f7748d 451,537,588,596,762,895,1119
+src-tauri/src/shell/stickies.rs
+  s_a91225ec421eac::t_3eca9a35aee00e 181-183,239
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b08700438cb70b5dd5f5bd7abf56e243b5d89350",
+  "prompts": {},
+  "sessions": {
+    "s_874793a9c2f5cd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c24fad8b-ccd4-4c5a-86de-4fae1bc65e97",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    },
+    "s_a91225ec421eac": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7ec305f3-007e-4d32-8b01-4c98a58cb39a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    },
+    "s_b6f9e01c5e7a94": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c7f9d87d-70c8-4b7c-a902-b8b617d84c6d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
