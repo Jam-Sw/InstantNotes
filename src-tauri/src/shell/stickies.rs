@@ -178,7 +178,9 @@ fn monitor_areas(app: &AppHandle) -> Vec<Area> {
 }
 
 pub(crate) fn restore_stickies(app: &AppHandle) {
-    let state = app.state::<AppState>();
+    let Ok(state) = library_state(app) else {
+        return;
+    };
     let Ok(mut store) = state.store.lock() else {
         return;
     };
@@ -234,7 +236,7 @@ fn pop_in(app: &AppHandle, note_id: &str) -> CmdResult<()> {
         }
         let _ = win.destroy();
     }
-    let state = app.state::<AppState>();
+    let state = library_state(app)?;
     with_map(&state, |map| {
         map.remove(note_id);
     })?;

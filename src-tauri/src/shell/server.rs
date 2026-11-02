@@ -448,7 +448,7 @@ pub(crate) async fn connect_sync_server(
     keychain_set(&settings, "token", &issued.token).map_err(|e| fail(&e))?;
     let authed = client.clone().with_token(&issued.token);
     let local_notes = {
-        let state = app.state::<AppState>();
+        let state = library_state(&app)?;
         let store = locked(&state)?;
         store.count_notes(&NoteFilter::default())? as usize
     };
@@ -533,14 +533,24 @@ async fn finish_connect(
         CmdError::storage(message)
     };
     let keys = authed.keys().await.map_err(|e| fail(&e.to_string()))?;
-    {
-        let state = app.state::<AppState>();
+    let previous = {
+        let state = library_state(app)?;
         let mut store = locked(&state)?;
+        let previous = server_settings(&store)
+            .filter(|p| p.address == settings.address && p.device_id != settings.device_id);
         backup_library(app, &store)?;
         store.configure_vault(None)?;
         store.set_setting(TRANSPORT_SETTING, serde_json::Value::String(SERVER.into()))?;
         save_settings(&mut store, &settings)?;
         store.begin_server_sync()?;
+        previous
+    };
+    if let Some(previous) = &previous {
+        if let Some(key) = keychain_get(previous, "key") {
+            keychain_set(&settings, "key", &key).map_err(|e| fail(&e))?;
+        }
+        keychain_delete(previous, "key");
+        keychain_delete(previous, "token");
     }
     let mut status = ServerStatus {
         address: Some(settings.address.clone()),
@@ -568,6 +578,14 @@ async fn finish_connect(
             set_mode(app, PLAIN)?;
             status.stage = "syncing".into();
         }
+        Some(ENCRYPTED)
+            if library_recipient(&settings)
+                .is_some_and(|r| keys.recipient.as_deref() == Some(r.as_str())) =>
+        {
+            set_mode(app, ENCRYPTED)?;
+            status.stage = "syncing".into();
+            status.encrypted = true;
+        }
         Some(ENCRYPTED) => {
             status.stage = "needsKey".into();
             status.encrypted = true;
@@ -585,7 +603,7 @@ async fn finish_connect(
 }
 
 fn set_mode(app: &AppHandle, mode: &str) -> CmdResult<()> {
-    let state = app.state::<AppState>();
+    let state = library_state(app)?;
     let mut store = locked(&state)?;
     let mut settings = server_settings(&store).ok_or_else(|| CmdError::storage("not connected"))?;
     settings.mode = Some(mode.to_string());
@@ -593,7 +611,7 @@ fn set_mode(app: &AppHandle, mode: &str) -> CmdResult<()> {
 }
 
 fn connected(app: &AppHandle) -> CmdResult<ServerSettings> {
-    let state = app.state::<AppState>();
+    let state = library_state(app)?;
     let store = locked(&state)?;
     server_settings(&store).ok_or_else(|| CmdError::storage("not connected to a sync server"))
 }
@@ -750,7 +768,30 @@ pub(crate) fn accept_plain_server(app: AppHandle) -> CmdResult<()> {
 
 #[tauri::command]
 pub(crate) async fn disconnect_sync_server(app: AppHandle) -> CmdResult<()> {
+    let pending = link(&app)
+        .pending
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take();
+    if let Some(pending) = &pending {
+        if let Ok(client) = Client::new(&pending.settings.address) {
+            let _ = client
+                .with_token(&pending.token)
+                .revoke(Some(&pending.settings.device_id))
+                .await;
+        }
+        keychain_delete(&pending.settings, "token");
+    }
     let Ok(settings) = connected(&app) else {
+        if pending.is_some() {
+            link(&app).set(|s| {
+                *s = ServerStatus {
+                    stage: "off".into(),
+                    ..ServerStatus::default()
+                }
+            });
+            let _ = app.emit(events::VAULT_STATUS, ());
+        }
         return Ok(());
     };
     if let Ok(client) = client_for(&settings) {
@@ -759,7 +800,7 @@ pub(crate) async fn disconnect_sync_server(app: AppHandle) -> CmdResult<()> {
     keychain_delete(&settings, "token");
     keychain_delete(&settings, "key");
     {
-        let state = app.state::<AppState>();
+        let state = library_state(&app)?;
         let mut store = locked(&state)?;
         store.end_server_sync()?;
         store.delete_setting(SERVER_SETTING)?;
@@ -892,7 +933,7 @@ fn switch_encryption(
     let _engine = link.engine.lock().unwrap_or_else(|e| e.into_inner());
     let remote = connection(settings)?;
     let current = lock_from_keychain(settings);
-    let state = app.state::<AppState>();
+    let state = library_state(app)?;
     let mut sync = ServerSync::new(
         remote,
         current,
@@ -1116,7 +1157,7 @@ fn copy_legacy(app: &AppHandle, client: &Client) -> Result<bool, String> {
         .into_iter()
         .map(|n| (n.md, n.surface))
         .collect();
-    let state = app.state::<AppState>();
+    let state = library_state(app).map_err(|e| e.message().to_string())?;
     let mut store = locked(&state).map_err(|e| e.message().to_string())?;
     store
         .import_legacy(&notes, Some(&legacy.manifest))
