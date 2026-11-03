@@ -1,0 +1,21 @@
+src-tauri/core/src/store/echoes.rs
+  s_dc2c53a5bbf508::t_9b2f9e8f6908c0 312-314,317
+CHANGELOG.md
+  s_dc2c53a5bbf508::t_462676ca7a7e41 12-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3a4f0802592c08903ebd1884aed13054d82af069",
+  "prompts": {},
+  "sessions": {
+    "s_dc2c53a5bbf508": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fb1a0bc8-fc67-44eb-80d2-e90d2b816d39",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
