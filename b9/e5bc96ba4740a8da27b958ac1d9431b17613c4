@@ -1,0 +1,19 @@
+scripts/bump-version.mjs
+  s_441d89dc5c1c63::t_a3522a93b35a30 53,73-74,77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b9e5bc96ba4740a8da27b958ac1d9431b17613c4",
+  "prompts": {},
+  "sessions": {
+    "s_441d89dc5c1c63": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3c8894df-07c4-406c-b45d-105e1dbb2d77",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
