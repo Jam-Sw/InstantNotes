@@ -1,0 +1,32 @@
+src/lib/echo-suggest.ts
+  s_dc2c53a5bbf508::t_2bbf226b6c52f2 1-2,14
+src/lib/components/settings/SettingsEditor.test.ts
+  s_dc2c53a5bbf508::t_2bbf226b6c52f2 69
+  s_dc2c53a5bbf508::t_9948c58449a529 70,75
+src/lib/echo-suggest.test.ts
+  s_dc2c53a5bbf508::t_2bbf226b6c52f2 5,12
+src/lib/components/NoteEditor.svelte
+  s_dc2c53a5bbf508::t_2bbf226b6c52f2 163
+src-tauri/core/src/store/echoes.rs
+  s_dc2c53a5bbf508::t_2bbf226b6c52f2 21-61,320,324,604-607,629,699,861
+src/lib/components/settings/SettingsEditor.svelte
+  s_dc2c53a5bbf508::t_2bbf226b6c52f2 98-102,110-112
+docs/API.md
+  s_dc2c53a5bbf508::t_9372fc52f47be3 70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dab0881ce5bedc24be6d95c568edc5943915b8f0",
+  "prompts": {},
+  "sessions": {
+    "s_dc2c53a5bbf508": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fb1a0bc8-fc67-44eb-80d2-e90d2b816d39",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
