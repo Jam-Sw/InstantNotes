@@ -1,0 +1,91 @@
+src-tauri/src/commands/import.rs
+  s_7f269685f35687::t_afc6a67cb69292 117
+  s_7f269685f35687::t_cede1c0d1cb35f 217-224,282,284-291,407,479-483,499
+  s_7f269685f35687::t_adfe5f9582a95e 3
+  s_7f269685f35687::t_6cbf691f142fea 261-264
+  s_7f269685f35687::t_0f2d9479bf9368 153-157,161,165-216,225-260,265-281,283,292-406,408-478,484-498,500-506
+  s_7f269685f35687::t_ad06f07c6c1012 507
+src-tauri/core/src/import/obsidian.rs
+  s_7f269685f35687::t_25cc4494118298 4-65,70-109,111-198,200-224,226-259,263-373,378-417
+  s_7f269685f35687::t_bff03e80edb967 110
+  s_7f269685f35687::t_cede1c0d1cb35f 66-69,260-262,374-377
+  s_7f269685f35687::t_50b091055bf138 1-3
+  s_7f269685f35687::t_e9d47912a0fbe8 199
+  s_7f269685f35687::t_2e7a9f66fbf592 225
+src/lib/folder-picker.ts
+  s_7f269685f35687::t_219a643e245455 18-32
+src-tauri/core/tests/import_test.rs
+  s_7f269685f35687::t_0ac613c164fc70 232
+  s_7f269685f35687::t_d9a5ae67a48cca 344
+src/lib/api/client.ts
+  s_7f269685f35687::t_b2ce77b4ab8aa9 26
+  s_7f269685f35687::t_d5bdeab01aac20 303-310
+src-tauri/core/src/import/markdown.rs
+  s_7f269685f35687::t_361834dd33dda5 2-14,22-107,110-183,188-202,207-214,219-240,242-324,368-408,413-428,431-434,440-444,450-463,468-476
+  s_7f269685f35687::t_c7f8bfb59e29f7 15-21
+  s_7f269685f35687::t_a7fe320d3c9509 184-187
+  s_7f269685f35687::t_ed9de341ad9c9f 1
+  s_7f269685f35687::t_4ca3e622b141b2 325-367
+  s_7f269685f35687::t_927397faf4054f 215-218
+  s_7f269685f35687::t_d89acfb66e8ff6 241
+  s_7f269685f35687::t_cede1c0d1cb35f 108-109,203-206,409-412,429-430,435-439,445-449,464-467
+src-tauri/core/src/import/notion.rs
+  s_7f269685f35687::t_532ff924eff0ac 1-171,176-186,191-203,208-239,243-265,271-272
+  s_7f269685f35687::t_a9cfe95c8f306c 266
+  s_7f269685f35687::t_cede1c0d1cb35f 172-175,187-190,204-207,240-242,267-270
+src-tauri/core/src/store/import.rs
+  s_7f269685f35687::t_444366c77f694e 42-47
+src/lib/components/settings/ImportFolder.svelte
+  s_7f269685f35687::t_510de96c0fdca2 46
+  s_7f269685f35687::t_6e1558e56aeadc 1,3-45,47-281
+  s_7f269685f35687::t_2154b5b429886b 2
+src/lib/components/settings/SettingsImport.svelte
+  s_7f269685f35687::t_fa4116c2d7d91c 279
+  s_7f269685f35687::t_76cee2b41a66fb 106-135
+  s_7f269685f35687::t_f737dff0587924 299
+  s_7f269685f35687::t_f61ddce168be61 2-15
+docs/API.md
+  s_7f269685f35687::t_bd9d5866f43469 726-753
+  s_7f269685f35687::t_7dca814b71dbc3 699-700
+src-tauri/core/src/import/mod.rs
+  s_7f269685f35687::t_61fc4079d7b9d9 1-3
+src-tauri/Cargo.toml
+  s_7f269685f35687::t_4360833227df1d 35
+src/lib/components/SettingsView.svelte
+  s_7f269685f35687::t_20b60296e1f1f3 75
+src-tauri/core/src/types.rs
+  s_7f269685f35687::t_510290bd15dc6f 86
+src/lib/components/SettingsView.test.ts
+  s_7f269685f35687::t_7e70ca68890998 62-63
+  s_7f269685f35687::t_349a901fdd697d 64
+src/lib/components/settings/SettingsImport.test.ts
+  s_7f269685f35687::t_dea9593abc0f1c 20-29
+  s_7f269685f35687::t_a519b407cce16b 4-11
+  s_7f269685f35687::t_3b64eb1a31615c 161-182
+src/lib/api/types.ts
+  s_7f269685f35687::t_65cfbf7e49733f 258-266
+docs/DATA_MODEL.md
+  s_7f269685f35687::t_4cdde2967d3f5e 170-172
+src-tauri/src/lib.rs
+  s_7f269685f35687::t_258eee7029f676 352-357
+src/lib/folder-import.ts
+  s_7f269685f35687::t_bd7661ee416a8f 1-52
+src-tauri/Cargo.lock
+  s_7f269685f35687::t_d8efd65464847a 2819,7658
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "387f784943636a20ecdea2352e72e53c380aa63c",
+  "prompts": {},
+  "sessions": {
+    "s_7f269685f35687": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "29d2e1c5-df3c-4b7b-9f59-9596437ac3b1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
