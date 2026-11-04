@@ -1,0 +1,28 @@
+src-tauri/core/src/import/obsidian.rs
+  s_bdb8afbd34a3fb::t_aa0d048d453c8c 11
+docs/API.md
+  s_bdb8afbd34a3fb::t_7e39904988caa1 611,736,739,742,749-751
+src-tauri/src/commands/import.rs
+  s_bdb8afbd34a3fb::t_c872e474af5b6e 570-642
+  s_bdb8afbd34a3fb::t_a8f3d026c820a1 176-191,231,242-244,284,301-304,319,337-342,345,363,372,378,380,387,395,407-409,475-494,497
+src-tauri/core/tests/import_test.rs
+  s_bdb8afbd34a3fb::t_dd81de72c7580e 286,300
+  s_bdb8afbd34a3fb::t_c872e474af5b6e 277-285,287-299,301-312
+  s_bdb8afbd34a3fb::t_1b8cb0da32f754 276
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6a4ebfd4d946a4df408ba58f1be602c4827ed774",
+  "prompts": {},
+  "sessions": {
+    "s_bdb8afbd34a3fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "49070493-7f75-40c6-ad27-5f64eaec03e9",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
