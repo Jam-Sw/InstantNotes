@@ -1,0 +1,35 @@
+src/lib/components/NoteList.test.ts
+  s_39815111be66f3::t_0a021560ec28a1 57-66
+src/lib/stores/library.svelte.test.ts
+  s_39815111be66f3::t_0a021560ec28a1 695,701,708,718,731,736,777-778,862,869,871,875,879,1092-1094,1109,1118,1128,1159,1189
+src/routes/+page.svelte
+  s_39815111be66f3::t_0a021560ec28a1 65,87,98,120,133,140,144,316,354,438,501,530
+src/lib/components/Sidebar.svelte
+  s_39815111be66f3::t_0a021560ec28a1 33,36,91,132-135,140,143,153,173,178,195,199,216,220,243,247,288,292
+src/lib/search-focus.test.ts
+  s_39815111be66f3::t_0a021560ec28a1 5,27,43,55
+src/lib/stores/library.svelte.ts
+  s_39815111be66f3::t_0a021560ec28a1 89,258,272,283,286,344-345,356,378,385,387,397,403,409,415,436,442,449,451-452,456,527,533,557,624,629,853-854,857-858,865-866,868-870,896
+src/lib/components/NoteList.svelte
+  s_39815111be66f3::t_0a021560ec28a1 33,37,39,41,52-54,197,202,211,216,224,280,298,338,341,343,346,350,354,357
+src/lib/components/BulkActions.svelte
+  s_39815111be66f3::t_0a021560ec28a1 29,41,43
+src/lib/search-focus.ts
+  s_39815111be66f3::t_0a021560ec28a1 23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e357a4d19fa99586f0c25b3dd1f1a671333b8ad1",
+  "prompts": {},
+  "sessions": {
+    "s_39815111be66f3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b9c06f02-b335-46e1-add9-734b9a52ad5d",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
