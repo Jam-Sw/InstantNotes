@@ -1,0 +1,34 @@
+src-tauri/src/commands/graph.rs
+  s_debfe8caa5613b::t_ea265780116e54 48
+src-tauri/core/src/store/activity.rs
+  s_debfe8caa5613b::t_0d5e4f32566383 176-238,358,360,363,494-503,540,549
+  s_debfe8caa5613b::t_ea265780116e54 541-548
+src-tauri/core/src/store/related.rs
+  s_debfe8caa5613b::t_ea265780116e54 15,69
+src/lib/api/client.ts
+  s_debfe8caa5613b::t_ea265780116e54 102
+src/lib/components/NoteEditor.svelte
+  s_debfe8caa5613b::t_ea265780116e54 85,110,115,118
+src-tauri/core/src/commands.rs
+  s_debfe8caa5613b::t_ea265780116e54 351
+src-tauri/core/src/store.rs
+  s_debfe8caa5613b::t_ea265780116e54 738
+src/lib/stores/library.svelte.ts
+  s_debfe8caa5613b::t_a0d50748b29001 39,696-723,726-727,733-738,741,757-775
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9de003fce8d5bfd799632a304e4631312531002b",
+  "prompts": {},
+  "sessions": {
+    "s_debfe8caa5613b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "df89a73b-51d1-4856-ad88-5cad16e016b2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
