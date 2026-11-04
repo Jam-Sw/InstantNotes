@@ -1,0 +1,21 @@
+docs/DATA_MODEL.md
+  s_3ece201542427a::t_251ace51af0649 167-170
+docs/API.md
+  s_3ece201542427a::t_251ace51af0649 70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "32c17b9d2b4bb236d847a28f924804b6224808f0",
+  "prompts": {},
+  "sessions": {
+    "s_3ece201542427a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b144bded-b06a-40c0-9f7b-2b86a544e065",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
