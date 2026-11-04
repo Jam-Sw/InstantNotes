@@ -1,0 +1,21 @@
+src-tauri/agents/src/tools.rs
+  s_bdb8afbd34a3fb::t_aa6af7414b478b 203,863,866-868,890-892
+src/lib/components/settings/SettingsEditor.svelte
+  s_bdb8afbd34a3fb::t_c678cac86cc88c 80-81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "306070cfa29fa7adcf851dbad908fb7fcd008185",
+  "prompts": {},
+  "sessions": {
+    "s_bdb8afbd34a3fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "49070493-7f75-40c6-ad27-5f64eaec03e9",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
