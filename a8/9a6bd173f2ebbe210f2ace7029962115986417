@@ -1,0 +1,51 @@
+src-tauri/agents/src/activity.rs
+  s_bdb8afbd34a3fb::t_aa6af7414b478b 2,87-93
+  s_bdb8afbd34a3fb::t_d23de8f7d2fd5b 81-86
+src-tauri/core/src/store/suggest.rs
+  s_bdb8afbd34a3fb::t_d23de8f7d2fd5b 1,3,10-14,17,22,209-214
+openspec/specs/instantnotes/spec.md
+  s_bdb8afbd34a3fb::t_7e39904988caa1 82
+src/lib/stores/library.svelte.test.ts
+  s_bdb8afbd34a3fb::t_c872e474af5b6e 9,29,33,64-65,113-114,195-196,1540-1639
+  s_bdb8afbd34a3fb::t_cfc780e397f129 1640
+src-tauri/src/commands/graph.rs
+  s_bdb8afbd34a3fb::t_4853b2e3211f28 48-52
+src-tauri/core/src/store/corpus.rs
+  s_bdb8afbd34a3fb::t_cb9c390b07b949 49,51,73
+  s_bdb8afbd34a3fb::t_d23de8f7d2fd5b 1-16,18-48,50,52-72,74-261
+  s_bdb8afbd34a3fb::t_7e39904988caa1 17
+CHANGELOG.md
+  s_bdb8afbd34a3fb::t_7e39904988caa1 12-14
+src-tauri/core/src/store/related.rs
+  s_bdb8afbd34a3fb::t_aa6af7414b478b 1-2,13,25-33,74,78,87,125,128,184-186,348,406
+src-tauri/core/src/store/notes.rs
+  s_bdb8afbd34a3fb::t_aa0d048d453c8c 261
+src-tauri/core/src/store/fold.rs
+  s_bdb8afbd34a3fb::t_aa0d048d453c8c 17-27,43,122
+src-tauri/core/src/store/activity.rs
+  s_bdb8afbd34a3fb::t_aa0d048d453c8c 131-141,451-454,478-480,520
+  s_bdb8afbd34a3fb::t_d23de8f7d2fd5b 481-518
+src-tauri/core/src/store/rows.rs
+  s_bdb8afbd34a3fb::t_4853b2e3211f28 136-141
+  s_bdb8afbd34a3fb::t_aa0d048d453c8c 171-197
+  s_bdb8afbd34a3fb::t_300086b43d54c8 198
+src-tauri/core/src/store.rs
+  s_bdb8afbd34a3fb::t_4853b2e3211f28 318
+  s_bdb8afbd34a3fb::t_aa6af7414b478b 28,297,314
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a89a6bd173f2ebbe210f2ace7029962115986417",
+  "prompts": {},
+  "sessions": {
+    "s_bdb8afbd34a3fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "49070493-7f75-40c6-ad27-5f64eaec03e9",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
