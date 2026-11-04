@@ -1,0 +1,23 @@
+src-tauri/core/src/store.rs
+  s_39815111be66f3::t_8c194e568e386a 300,303,313-314,317
+src-tauri/core/src/store/migrations.rs
+  s_39815111be66f3::t_802cce739afb89 1-678
+src-tauri/core/src/store/rows.rs
+  s_39815111be66f3::t_802cce739afb89 1-165
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "82e5c022d6586f68af044ee44e787d605b954438",
+  "prompts": {},
+  "sessions": {
+    "s_39815111be66f3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b9c06f02-b335-46e1-add9-734b9a52ad5d",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
