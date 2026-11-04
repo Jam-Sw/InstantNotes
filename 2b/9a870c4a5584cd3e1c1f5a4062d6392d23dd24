@@ -1,0 +1,19 @@
+src/lib/components/Toast.svelte
+  s_5911eccbd695e7::t_e25544748eb68d 16,20,38-39,41-42,45,49-59,65-66,76,78-83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2b9a870c4a5584cd3e1c1f5a4062d6392d23dd24",
+  "prompts": {},
+  "sessions": {
+    "s_5911eccbd695e7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a20541f1-418e-4408-b931-e9145556a4b4",
+        "model": "unknown"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
