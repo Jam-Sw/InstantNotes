@@ -1,0 +1,41 @@
+src/lib/format.ts
+  s_d254e1b9dfd259::t_1413b0e4492dd6 52-55
+src-tauri/src/commands/tags.rs
+  s_d254e1b9dfd259::t_b30129ee76d5a2 69
+CHANGELOG.md
+  s_d254e1b9dfd259::t_35a90becb92fbd 28-29
+src-tauri/src/commands/workspaces.rs
+  s_d254e1b9dfd259::t_eb423aae30c5e7 111
+src-tauri/core/src/store/notes.rs
+  s_d254e1b9dfd259::t_20f5a6aefe5a45 569-577,579-583
+src/routes/+page.svelte
+  s_d254e1b9dfd259::t_2ee9d745285e8e 180
+src/lib/stores/library.svelte.ts
+  s_d254e1b9dfd259::t_70e9a8be344854 547-548,552-556
+  s_d254e1b9dfd259::t_dee3bac0c42210 82,84
+src/lib/components/NoteEditor.svelte
+  s_d254e1b9dfd259::t_ad146fe73c90ed 139
+  s_d254e1b9dfd259::t_a65d4a3296a85e 169-173,176,180-197
+src/lib/components/Editor.svelte
+  s_d254e1b9dfd259::t_ca76e5daf10768 101-102
+  s_d254e1b9dfd259::t_20b679d799759c 153
+  s_d254e1b9dfd259::t_f73178d64c621e 116
+  s_d254e1b9dfd259::t_259bcf6f9b0b71 172,178
+  s_d254e1b9dfd259::t_978390a3c69dd0 69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2c7baa20a433362a601531c4a807d6ca4c892cc9",
+  "prompts": {},
+  "sessions": {
+    "s_d254e1b9dfd259": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9648eee5-52ea-4e7d-8280-991fd7b40023",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
