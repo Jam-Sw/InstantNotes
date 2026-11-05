@@ -1,0 +1,25 @@
+src/lib/components/NoteEditor.svelte
+  s_1d05a9c459ac4a::t_50c65e47b1b6b8 517-525
+  s_1d05a9c459ac4a::t_bf47d3b68ce49c 779,781,783
+  s_1d05a9c459ac4a::t_2ad54700258c1b 790-793
+  s_1d05a9c459ac4a::t_74727b4ab07db4 526
+src/lib/components/RelatedStrip.svelte
+  s_1d05a9c459ac4a::t_10378eda966ac2 129-130,134-138
+  s_1d05a9c459ac4a::t_f750364adb6094 278
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c7291cf0b193866385edea19964b9dc494a77fd8",
+  "prompts": {},
+  "sessions": {
+    "s_1d05a9c459ac4a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "38eba170-c77b-4dd9-be75-d4082db768fc",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
