@@ -1,0 +1,27 @@
+CHANGELOG.md
+  s_ace4e7a8209c64::t_d65d2fb3f196a6 26-27
+src/lib/components/settings/SettingsEditor.svelte
+  s_ace4e7a8209c64::t_d65d2fb3f196a6 3,18-22,55-62
+  s_ace4e7a8209c64::t_77158c3bbae5ea 63
+src/lib/stores/editor.svelte.test.ts
+  s_ace4e7a8209c64::t_ec77f4a82db46b 42-68,73
+src/lib/stores/editor.svelte.ts
+  s_ace4e7a8209c64::t_d65d2fb3f196a6 7,12-27,33,42,47,61-64,81-85
+  s_ace4e7a8209c64::t_b9fc7cae4d966b 86-87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "97df29967d708d1360ff25eac4859a2f956797ca",
+  "prompts": {},
+  "sessions": {
+    "s_ace4e7a8209c64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dbfc31fe-eba4-4848-86b5-3221dcd3b72f",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
