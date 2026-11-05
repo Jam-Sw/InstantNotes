@@ -1,0 +1,33 @@
+CHANGELOG.md
+  s_d254e1b9dfd259::t_f1720be5bfcf6b 29
+src/lib/components/Editor.svelte
+  s_d254e1b9dfd259::t_6d84612f6a8ab9 129-138
+  s_d254e1b9dfd259::t_9966f36929877b 73-80
+  s_d254e1b9dfd259::t_36ac091ccea6de 149
+  s_d254e1b9dfd259::t_0bc53bfc8c6a6f 70-72,81-93
+  s_d254e1b9dfd259::t_9070d200dc78d7 185
+src/lib/components/NoteList.svelte
+  s_d254e1b9dfd259::t_b68dc56ff3f5ad 527-528
+src-tauri/core/src/store/corpus.rs
+  s_d254e1b9dfd259::t_2fe1f14783d1bb 11
+  s_d254e1b9dfd259::t_ca02c909ab61e4 115-123,125-132
+  s_d254e1b9dfd259::t_923c635d4f9611 272,276-278
+src-tauri/src/commands/settings.rs
+  s_d254e1b9dfd259::t_6ff595758bb44b 8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "deee57020c6040564a1f70c52dfcbcd9c3bc1857",
+  "prompts": {},
+  "sessions": {
+    "s_d254e1b9dfd259": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9648eee5-52ea-4e7d-8280-991fd7b40023",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
