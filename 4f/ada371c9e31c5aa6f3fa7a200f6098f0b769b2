@@ -1,0 +1,66 @@
+src/lib/calc/table.test.ts
+  s_ace4e7a8209c64::t_6e4119c7a41362 1-86,92,94,96-111
+  s_ace4e7a8209c64::t_be370056bee0c5 87-91,93,95
+src/lib/editor/calc.ts
+  s_ace4e7a8209c64::t_7d46aadeff2b60 1-198
+src/lib/editor/types.ts
+  s_ace4e7a8209c64::t_9976e9785f1def 17
+src/lib/editor/theme.ts
+  s_ace4e7a8209c64::t_9976e9785f1def 83-121
+src/lib/calc/table.ts
+  s_ace4e7a8209c64::t_53d4dc417b8d61 58,60
+  s_ace4e7a8209c64::t_3a6b53dd7e85d7 1-41,43-57,59,61-155,158,160-162,165-176,179-195
+  s_ace4e7a8209c64::t_6a4d0f5127fd24 42
+  s_ace4e7a8209c64::t_be370056bee0c5 156-157,159,163-164
+  s_ace4e7a8209c64::t_08475ac49e4998 177-178
+src/lib/calc/engine.test.ts
+  s_ace4e7a8209c64::t_6e4119c7a41362 1-159
+README.md
+  s_ace4e7a8209c64::t_93d6d075c82440 17
+src/lib/editor/scanner.ts
+  s_ace4e7a8209c64::t_9976e9785f1def 125-127
+src/lib/calc/format.ts
+  s_ace4e7a8209c64::t_6a4d0f5127fd24 17
+  s_ace4e7a8209c64::t_7b809debce46eb 1-16,18-41
+src/lib/editor/kernel.test.ts
+  s_ace4e7a8209c64::t_67f10322d99533 20-21,37,48,103-112,212-215
+  s_ace4e7a8209c64::t_0e5b091c87e817 216-217
+src/lib/editor/constructs/calc.ts
+  s_ace4e7a8209c64::t_aecea0dfc24aa0 1-64
+src/lib/calc/engine.ts
+  s_ace4e7a8209c64::t_08475ac49e4998 1061,1071
+  s_ace4e7a8209c64::t_6a4d0f5127fd24 36,52,56
+  s_ace4e7a8209c64::t_21bab53a525b7a 545-548
+  s_ace4e7a8209c64::t_e66148b055cb25 1-29,31,33-35,37-51,53-55,57-246,249-298,300-458,460-544,549-551,553-555,557-890,892-1060,1062-1070,1072-1120
+  s_ace4e7a8209c64::t_0b26132511704e 247-248,299,459,552,556,891
+  s_ace4e7a8209c64::t_53d4dc417b8d61 30,32
+src/lib/components/sheet/SheetGrid.svelte
+  s_ace4e7a8209c64::t_6e4119c7a41362 88
+  s_ace4e7a8209c64::t_77acfc547159ef 25,633-638,761-768
+src/lib/editor/calc.test.ts
+  s_ace4e7a8209c64::t_6e4119c7a41362 1-5,7-68,103-104
+  s_ace4e7a8209c64::t_67f10322d99533 6,69-102
+src/lib/editor/index.ts
+  s_ace4e7a8209c64::t_9976e9785f1def 26-27,50-51,57
+CHANGELOG.md
+  s_ace4e7a8209c64::t_93d6d075c82440 12-20
+src/lib/editor/ARCHITECTURE.md
+  s_ace4e7a8209c64::t_93d6d075c82440 71-74
+  s_ace4e7a8209c64::t_179296486a9253 51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4fada371c9e31c5aa6f3fa7a200f6098f0b769b2",
+  "prompts": {},
+  "sessions": {
+    "s_ace4e7a8209c64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dbfc31fe-eba4-4848-86b5-3221dcd3b72f",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
