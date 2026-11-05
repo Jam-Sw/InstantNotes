@@ -1,0 +1,35 @@
+src/lib/editor/calc.ts
+  s_f423694dbbfebe::t_360422d66bbbf6 26
+CHANGELOG.md
+  s_f423694dbbfebe::t_360422d66bbbf6 12
+README.md
+  s_f423694dbbfebe::t_360422d66bbbf6 17
+src/lib/calc/engine.test.ts
+  s_f423694dbbfebe::t_360422d66bbbf6 13,137
+src/lib/editor/calc.test.ts
+  s_f423694dbbfebe::t_360422d66bbbf6 47-48,54
+src/lib/components/SettingsView.svelte
+  s_f423694dbbfebe::t_8fcbd556028e68 143-151
+  s_f423694dbbfebe::t_0cf065791985cb 273-290,292,296-297,301,306,311,316-318,323,339,341,640,643-645,650-656,663,665,670,673-699,703-706,711-714,716-717,722-725,728,733,735,738,740,742,746,748,752-757,763,767-768,778-780,783,787,791-792,799,802-803,806-817,819,821,826-828,830-840
+  s_f423694dbbfebe::t_ec543db3fdcecd 646-647
+  s_f423694dbbfebe::t_07d69d7e0482eb 131-142,152-166,340
+  s_f423694dbbfebe::t_360422d66bbbf6 702,715,718-719,829
+src/lib/components/SettingsView.test.ts
+  s_f423694dbbfebe::t_c53a73f5bc09f5 70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0adf6feeff51ae3dc977690fd09dd5b2babe01ef",
+  "prompts": {},
+  "sessions": {
+    "s_f423694dbbfebe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f0785ae8-7451-4713-8a03-699e421a2205",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
