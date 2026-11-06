@@ -1,0 +1,62 @@
+src/lib/components/ConfirmDialog.svelte
+  s_ab9a560e5d9c0e::t_48b5c0e397930d 23
+src/lib/components/settings/PrefRow.svelte
+  s_ab9a560e5d9c0e::t_59eb2e2ecf1035 50-53
+  s_ab9a560e5d9c0e::t_d0e585c412d895 49
+src/lib/components/GraphView.svelte
+  s_ab9a560e5d9c0e::t_de21f171e99756 726-739,907
+  s_ab9a560e5d9c0e::t_6dab876b8c4f36 903-906
+src/lib/app.css
+  s_ab9a560e5d9c0e::t_1d5ca3c7eca399 157,161,344-350,355-365
+  s_ab9a560e5d9c0e::t_0065db28598acb 380-381
+  s_ab9a560e5d9c0e::t_ccbbbfee393df7 42-47
+  s_cf43f7c6484047::t_c66b4e89f5b5c8 154-156,158-160,162,382
+src/lib/components/WelcomeScreen.svelte
+  s_ab9a560e5d9c0e::t_14b76fcebec00b 302,306,309-310
+src/routes/+page.svelte
+  s_ab9a560e5d9c0e::t_1faf953ad8bdbe 722-733
+src/lib/components/CommandPalette.svelte
+  s_ab9a560e5d9c0e::t_8b6defa248ca1e 228-231
+README.md
+  s_ab9a560e5d9c0e::t_1a4e31229ff8c7 182-185
+src/lib/components/SettingsView.svelte
+  s_ab9a560e5d9c0e::t_6d15ac964b7266 434-436
+src/lib/themes/builtin/night-console.ts
+  s_ab9a560e5d9c0e::t_30ad75ee86c83f 36
+src/lib/components/ContextMenu.svelte
+  s_ab9a560e5d9c0e::t_7bd6ffaea64db6 135-136
+scripts/bump-version.mjs
+  s_ab9a560e5d9c0e::t_359f3e20605ab9 82
+src/lib/components/settings/SettingsVault.svelte
+  s_ab9a560e5d9c0e::t_958ce551ce5ee6 100
+src/lib/components/settings/SettingsContexting.svelte
+  s_ab9a560e5d9c0e::t_f1f576e326e3d2 7
+  s_ab9a560e5d9c0e::t_ed3661ceb19c74 82-88,92
+CHANGELOG.md
+  s_cf43f7c6484047::t_d13750ab25e2fb 28
+  s_cf43f7c6484047::t_dfc98b2ef90161 32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "62658da0712f914c8cdf3d40a0f7813572e550f6",
+  "prompts": {},
+  "sessions": {
+    "s_ab9a560e5d9c0e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ab6ea00-25fe-48a2-8196-c997558edb26",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    },
+    "s_cf43f7c6484047": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "66c9001d-20b1-4c17-9cc1-0db812b420ec",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
