@@ -1,0 +1,20 @@
+CHANGELOG.md
+  s_7e49377c6b35fd::t_a86516582a0b66 29
+  s_7e49377c6b35fd::t_f6fec7f0311595 12-16,19-28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "00e3477e476df463662f73a62df17fb8645a9b76",
+  "prompts": {},
+  "sessions": {
+    "s_7e49377c6b35fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4a85dab4-9645-41ec-acaa-3161a0dec606",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
