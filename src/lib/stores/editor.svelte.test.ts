@@ -39,11 +39,38 @@ describe("editorPrefs", () => {
     expect(prefs.showExactTime).toBe(true);
   });
 
+  it("applies a stored width as --measure and ignores an unknown one", async () => {
+    mockGetSetting.mockImplementation(async (key: string) =>
+      key === "editor.width" ? "full" : undefined,
+    );
+    const prefs = await load();
+    await prefs.init();
+    expect(prefs.width).toBe("full");
+    expect(document.documentElement.style.getPropertyValue("--measure")).toBe("100vw");
+
+    vi.resetModules();
+    mockGetSetting.mockImplementation(async (key: string) =>
+      key === "editor.width" ? "huge" : undefined,
+    );
+    const next = await load();
+    await next.init();
+    expect(next.width).toBe("readable");
+  });
+
+  it("saves and applies a width choice", async () => {
+    const prefs = await load();
+    prefs.setWidth("wide");
+    expect(mockSetSetting).toHaveBeenCalledWith("editor.width", "wide");
+    expect(document.documentElement.style.getPropertyValue("--measure")).toBe("110ch");
+    prefs.setWidth("readable");
+    expect(document.documentElement.style.getPropertyValue("--measure")).toBe("70ch");
+  });
+
   it("only fetches settings on the first init call", async () => {
     const prefs = await load();
     await prefs.init();
     await prefs.init();
-    expect(mockGetSetting).toHaveBeenCalledTimes(4);
+    expect(mockGetSetting).toHaveBeenCalledTimes(5);
   });
 
   it("shows the toolbar by default, in the rendered view", async () => {

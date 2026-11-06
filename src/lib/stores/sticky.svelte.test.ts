@@ -179,7 +179,7 @@ describe("StickyNote when an agent writes its note", () => {
 
     expect(await sticky.flush()).toBe(true);
     const toast = toasts.items.at(-1)!;
-    expect(toast.message).toBe("Claude Code's change to this note was replaced by your typing.");
+    expect(toast.message).toBe("Typed over Claude Code's change");
 
     mockUpdateNote.mockResolvedValueOnce(mkNote({ body: theirs }));
     toast.action!.run();

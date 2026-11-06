@@ -23,6 +23,8 @@ import { HrSpec } from "./constructs/hr";
 import { TaskSpec } from "./constructs/task";
 import { ImageSpec } from "./constructs/image";
 import { TagSpec } from "./constructs/tags";
+import { CalcSpec } from "./constructs/calc";
+import { calcField } from "./calc";
 
 export interface EditorKernelOpts {
   openUrl: (url: string) => void;
@@ -45,13 +47,14 @@ export function editorKernel(opts: EditorKernelOpts): Extension {
       new TaskSpec(),
       new ImageSpec(opts.convertSrc ?? (isWeb ? (path) => path : convertFileSrc)),
     ],
-    textSpecs: [new TagSpec()],
-    rescanOn: [linkPrefsField, attachmentsBaseField],
+    textSpecs: [new TagSpec(), new CalcSpec()],
+    rescanOn: [linkPrefsField, attachmentsBaseField, calcField],
   });
 
   return [
     linkPrefsField,
     attachmentsBaseField,
+    calcField,
     markerBackspaceKeymap(),
     keymap.of(markdownKeymap),
     extension,

@@ -80,6 +80,45 @@ export const kernelTheme = EditorView.baseTheme({
     textDecoration: "line-through",
     color: "var(--text-tertiary)",
   },
+  ".cm-calc": {
+    display: "inline-block",
+    fontFamily: "var(--font-meta)",
+    fontSize: "0.9em",
+    lineHeight: "1.4",
+    verticalAlign: "baseline",
+    whiteSpace: "nowrap",
+  },
+  ".cm-calc-attached": {
+    marginLeft: "0.75em",
+  },
+  ".cm-calc-value, .cm-calc-error": {
+    display: "inline-block",
+    padding: "0 0.45em",
+    borderRadius: "4px",
+    background: "var(--accent-soft)",
+    color: "var(--accent-text)",
+  },
+  ".cm-calc-value + .cm-calc-value, .cm-calc-value + .cm-calc-error": {
+    marginLeft: "0.4em",
+  },
+  ".cm-calc-error": {
+    background: "color-mix(in srgb, var(--danger) 14%, transparent)",
+    color: "var(--danger)",
+  },
+  ".cm-calc-matrix": {
+    display: "inline-table",
+    borderCollapse: "collapse",
+    verticalAlign: "middle",
+    margin: "2px 0",
+    borderLeft: "1.5px solid currentColor",
+    borderRight: "1.5px solid currentColor",
+    borderRadius: "3px",
+  },
+  ".cm-calc-matrix td": {
+    padding: "0 0.4em",
+    textAlign: "right",
+    lineHeight: "1.3",
+  },
   ".cm-image-preview": {
     maxWidth: "100%",
     maxHeight: "var(--image-max-height, 420px)",

@@ -24,7 +24,7 @@
     const checked = updater.lastCheckedAt ? formatExact(updater.lastCheckedAt) : null;
     if (updater.status === "checking") return "Checking…";
     if (updater.pendingUpdate && updater.version) return `Update available: v${updater.version}`;
-    if (updater.status === "error") return checked ? `Couldn't check. Last checked ${checked}` : "Couldn't check";
+    if (updater.status === "error") return checked ? `Couldn't check · last checked ${checked}` : "Couldn't check";
     if (updater.status === "uptodate" && checked) return `Up to date, checked ${checked}`;
     return checked ? `Last checked ${checked}` : "Last checked: never";
   });
@@ -51,15 +51,12 @@
     {#if !isWeb}
       <hr />
       <div class="detail-row">
-        <span class="detail-key">Capture readiness</span>
-        <span
-          class="detail-val"
-          title="Hotkey reveal to ready-for-typing, median of recent opens"
-        >
+        <span class="detail-key">Capture latency (median)</span>
+        <span class="detail-val">
           {#if captureLatency && captureLatency.medianMs !== null}
             {captureLatency.medianMs} ms
           {:else}
-            Measured on first capture
+            Not measured
           {/if}
         </span>
       </div>
@@ -186,16 +183,6 @@
     display: flex;
     gap: 8px;
     padding-top: 8px;
-  }
-  .card-btn {
-    padding: 6px 12px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--accent);
-    font-size: 13px;
-  }
-  .card-btn:hover:not(:disabled) {
-    background: var(--bg-hover);
   }
   .card-btn:disabled {
     opacity: 0.6;

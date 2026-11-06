@@ -25,24 +25,11 @@
     { value: "write", label: "Read & write" },
   ];
 
-  const ACCESS_SUB: Record<AgentAccess, string> = {
-    off: "No agent can see your notes.",
-    read: "Agents can search and read notes, tags, and Spaces. They cannot change anything.",
-    write:
-      "Agents can also write, tag, file, and trash notes. Nothing is ever deleted for good, every change is traced, and each one can be reverted.",
-  };
-
   const NOTIFY_OPTIONS: { value: AgentNotify; label: string }[] = [
     { value: "writes", label: "Changes" },
     { value: "all", label: "Everything" },
     { value: "off", label: "Off" },
   ];
-
-  const NOTIFY_SUB: Record<AgentNotify, string> = {
-    writes: "A toast for every change an agent makes, with Revert on it. Reads stay quiet.",
-    all: "A toast for every call, reads and searches included.",
-    off: "No toasts. The live marks on your notes and the Agents Space still show everything.",
-  };
 
   function saveTags(client: string, raw: string) {
     const names = raw
@@ -77,41 +64,32 @@
   }
 
   const SNIPPET_HINT: Record<Client, string> = {
-    claude: "Run once in a terminal. Then ask Claude Code about your notes.",
-    codex: "Run once in a terminal.",
-    hermes: "Add to ~/.hermes/config.yaml, then restart Hermes.",
-    json: "Add to the app's MCP settings (Claude Desktop, Cursor, Zed, Windsurf).",
+    claude: "Run once in a terminal",
+    codex: "Run once in a terminal",
+    hermes: "Add to ~/.hermes/config.yaml, restart Hermes",
+    json: "Add to MCP settings (Claude Desktop, Cursor, Zed, Windsurf)",
   };
 
   async function copy(text: string) {
     try {
       await navigator.clipboard.writeText(text);
-      toasts.show("Copied.");
+      toasts.show("Copied");
     } catch {
-      toasts.show("Couldn't copy. Select the text and copy it instead.");
+      toasts.show("Couldn't copy");
     }
   }
 </script>
 
 <div class="agents-pane">
   <h2>Agents</h2>
-  <p class="section-hint">
-    Connect Claude Code, Codex, Hermes, Cursor, or any agent that speaks the Model
-    Context Protocol. It works through the same search and the same rules you
-    do. Whatever it reads or changes lights up in your library as it happens,
-    and every change can be reverted.
-  </p>
-
   <SegmentedRow
     label="Access"
-    sub={ACCESS_SUB[agents.access]}
     options={ACCESS_OPTIONS}
     value={agents.access}
     onchange={(v) => agents.setAccess(v)}
   />
   <SegmentedRow
     label="Notify me about"
-    sub={NOTIFY_SUB[agents.notify]}
     options={NOTIFY_OPTIONS}
     value={agents.notify}
     onchange={(v) => agents.setNotify(v)}
@@ -119,10 +97,7 @@
 
   <span class="group-label">Each agent</span>
   {#each AGENT_KINDS as client (client)}
-    <PrefRow
-      label={clientLabel(client)}
-      sub="Tags it puts on every note it creates, separated by commas. Block refuses everything it asks for."
-    >
+    <PrefRow label={clientLabel(client)}>
       {#snippet control()}
         <div class="kind-controls">
           <input
@@ -161,19 +136,9 @@
       </div>
       <pre class="code">{snippet()}</pre>
     </div>
-    <p class="fine-print">
-      The agent runs InstantNotes itself in the background to reach your notes,
-      so it works whether or not this window is open. Access applies to every
-      agent, and turning it off takes effect on their next request. Besides
-      tools, notes are offered as <code>instantnotes://notes/&lt;id&gt;</code>
-      resources for apps that browse them.
-    </p>
   {:else}
-    <p class="fine-print">Finding this app's location…</p>
+    <p class="fine-print">Locating app…</p>
   {/if}
-  <p class="fine-print">
-    An agent's own working notes, plans and memory go to its scratchpad on its page in the Agents Space, never into your notes.
-  </p>
 
   <span class="group-label">Activity</span>
   <div class="activity-card">
@@ -197,13 +162,13 @@
     <p class="connected-line">
       <span class="live-dot" data-state={agents.connectedCount > 0 ? (agents.working ? "working" : "connected") : "off"}></span>
       {#if agents.connectedCount === 0}
-        No agent is connected right now.
+        No agent connected
       {:else}
         {agents.connectedCount} connected: {agents.sessions.filter((s) => s.connected).map((s) => agentName(s.client, s.label)).join(", ")}
       {/if}
     </p>
     {#if recent.length === 0}
-      <p class="fine-print">No agent has asked for anything yet.</p>
+      <p class="fine-print">No activity yet</p>
     {:else}
       <ul class="activity" aria-label="Recent agent activity">
         {#each recent as entry (entry.seq)}
@@ -234,12 +199,6 @@
     margin: 0 0 6px;
     font-size: 18px;
     font-weight: 600;
-  }
-  .section-hint {
-    color: var(--text-secondary);
-    font-size: 13px;
-    line-height: 1.5;
-    margin: 0 0 20px;
   }
   .group-label {
     display: block;
@@ -334,18 +293,11 @@
     font-size: 12.5px;
     white-space: nowrap;
   }
-  .card-btn:hover {
-    background: var(--bg-hover);
-  }
   .fine-print {
     margin: 8px 0 0;
     color: var(--text-tertiary);
     font-size: 12px;
     line-height: 1.5;
-  }
-  .fine-print code {
-    font-family: var(--font-mono);
-    font-size: 11px;
   }
   .activity-stats {
     display: flex;

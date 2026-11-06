@@ -52,20 +52,20 @@ describe("chooseVaultFolder", () => {
 describe("describeVaultReport", () => {
   it("says everything matches for a clean vault", () => {
     expect(describeVaultReport(report({ checked: 412 }))).toEqual([
-      "All 412 notes match their files.",
+      "412 notes match",
     ]);
   });
 
   it("uses the singular for one note", () => {
     expect(describeVaultReport(report({ checked: 1 }))).toEqual([
-      "The 1 note matches its file.",
+      "1 note matches",
     ]);
   });
 
   it("mentions notes still being written", () => {
     expect(describeVaultReport(report({ checked: 10, pending: 2 }))).toEqual([
-      "All 10 notes match their files.",
-      "2 more are still being written.",
+      "10 notes match",
+      "2 still writing",
     ]);
   });
 
@@ -80,10 +80,10 @@ describe("describeVaultReport", () => {
       }),
     );
     expect(lines).toEqual([
-      "1 file was edited outside InstantNotes: A.md",
-      "2 note files are missing: B.md, C.md",
-      "5 files are not notes InstantNotes wrote: 1.md, 2.md, 3.md and 2 more",
-      "instantnotes.yaml does not match your tags and Spaces.",
+      "Edited outside (1): A.md",
+      "Missing (2): B.md, C.md",
+      "Not from InstantNotes (5): 1.md, 2.md, 3.md and 2 more",
+      "instantnotes.yaml out of date",
     ]);
   });
 });
@@ -116,12 +116,12 @@ describe("describeVaultStatus", () => {
       describeVaultStatus(
         status({ reachable: false, unreachable: "cannot list", lastError: "x", pending: 1 }),
       ),
-    ).toEqual({ line: "Offline: cannot list. 1 note will sync when it's back.", tone: "warn" });
+    ).toEqual({ line: "Offline: cannot list · 1 note waiting", tone: "warn" });
   });
 
   it("then held removals, then errors, then work in flight", () => {
     expect(describeVaultStatus(status({ heldRemovals: 1, lastError: "x" })).line).toBe(
-      "Waiting: 1 note went missing from the folder at once.",
+      "Held: 1 note missing from the folder",
     );
     expect(describeVaultStatus(status({ lastError: "x", pending: 2 }))).toEqual({
       line: "Problem: x",

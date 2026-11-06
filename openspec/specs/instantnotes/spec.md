@@ -79,7 +79,7 @@ The app SHALL draw the library as a graph of notes, tags, and Spaces, linked by 
 - **AND** tags and Spaces keep their labels, the open, centred or hovered node and its neighbours are labelled, and other notes are labelled on hover, all at one size whatever the zoom
 
 ### Requirement: Filing Suggestions
-The app SHALL say, in the Graph, which Space each live note in no Space most likely belongs to, with a probability and up to three reasons drawn from the note's tags and words, judged against the notes already filed, recounted on every read with nothing trained or stored. The app SHALL only suggest, never file on its own, and SHALL say nothing until two Spaces hold notes or when the evidence does not clearly favour one Space.
+The app SHALL say, in the Graph, which Space each live note in no Space most likely belongs to, with a probability and up to three reasons drawn from the note's tags and words, judged against the notes already filed, recounted on every read from word counts kept in memory for the session, with nothing trained or stored on disk. The app SHALL only suggest, never file on its own, and SHALL say nothing until two Spaces hold notes or when the evidence does not clearly favour one Space.
 
 #### Scenario: See where a note belongs
 - **WHEN** the Graph opens and some unfiled notes share tags or words with a Space's notes

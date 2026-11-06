@@ -23,12 +23,11 @@ beforeEach(() => {
 });
 
 describe("confirmConvertToWhiteboard", () => {
-  it("says the text moves onto the board and that there is no way back", async () => {
+  it("says there is no way back", async () => {
     ask.mockResolvedValue(false);
     await confirmConvertToWhiteboard();
     const { body } = ask.mock.calls[0][0];
-    expect(body).toMatch(/text moves onto the board/);
-    expect(body).toMatch(/can't be turned back/);
+    expect(body).toBe("Can't be turned back into text");
   });
 
   it("converts only when confirmed", async () => {

@@ -45,7 +45,7 @@ async function promptForCrashReports(): Promise<void> {
     if (fresh.length === 0) return;
     await setSetting(LAST_PROMPT_SETTING, fresh[0].madeAt);
     toasts.show(
-      "InstantNotes had a problem last time. Review the report?",
+      "New crash report",
       { label: "Review", run: () => shell.openSettings("diagnostics") },
       Infinity,
     );

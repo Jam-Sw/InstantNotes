@@ -1,6 +1,7 @@
-use super::vault::{io_error, sha256_hex, MANIFEST_BASE_SETTING};
+use super::vault::{io_error, MANIFEST_BASE_SETTING};
 use super::*;
 use crate::sheet::Sheet;
+use crate::sync::object::sha_hex;
 use crate::vault::reconcile::{
     conflict_title, decide, derived_id, equivalent, Decision, Remote, Side, Synced,
 };
@@ -48,7 +49,7 @@ fn file_time(path: &Path) -> String {
 fn read_text(path: &Path) -> Result<Option<(String, String)>> {
     match fs::read(path) {
         Ok(bytes) => {
-            let sha = sha256_hex(&bytes);
+            let sha = sha_hex(&bytes);
             let text = String::from_utf8(bytes)
                 .map_err(|_| AppError::Validation("the file is not UTF-8 text".into()))?;
             Ok(Some((text, sha)))
@@ -322,7 +323,7 @@ impl Store {
             }
             Decision::Fork(Side::Remote) => {
                 let mine = local.as_ref().expect("a fork has a local side");
-                let mine_sha = sha256_hex(serialize_note(mine).as_bytes());
+                let mine_sha = sha_hex(serialize_note(mine).as_bytes());
                 if let Some(copy) = self.copy_from_vault(mine, &mine_sha)? {
                     out.conflicts += 1;
                     changed.push(copy);

@@ -2190,3 +2190,59 @@ fn a_reconnected_client_reads_its_earlier_scratchpad() {
         "The sync bug lives in the merge step"
     );
 }
+
+#[test]
+fn find_related_and_fold_notes_converge_fragments_and_revert_atomically() {
+    let mut store = store_with("write");
+    let fragment = note(
+        &mut store,
+        "Kvass recipe\nToasted rye crusts steeped with mint and honey #ferment",
+    );
+    let main = note(
+        &mut store,
+        "Summer drinks\nTesting toasted rye crusts with honey for kvass #ferment",
+    );
+
+    let replies = session(
+        &mut store,
+        &[
+            init(),
+            call(1, "find_related", json!({ "id": main })),
+            call(2, "find_related", json!({})),
+            call(
+                3,
+                "fold_notes",
+                json!({ "id": main, "sourceIds": [fragment] }),
+            ),
+        ],
+    );
+
+    let (err1, _, one) = result_of(&replies[1]);
+    assert!(!err1);
+    assert_eq!(one["total"], 1);
+    assert_eq!(one["related"][0]["id"], fragment);
+
+    let (err2, _, pairs) = result_of(&replies[2]);
+    assert!(!err2);
+    assert_eq!(pairs["total"], 1);
+    assert_eq!(pairs["related"][0]["related"]["id"], fragment);
+
+    let (err3, text3, folded) = result_of(&replies[3]);
+    assert!(!err3, "{text3}");
+    assert_eq!(folded["folded"][0]["id"], fragment);
+    assert!(store.get_note(&fragment, false).unwrap().is_archived);
+    assert!(store
+        .get_note(&main, false)
+        .unwrap()
+        .body
+        .contains("mint and honey"));
+
+    let log = trace(&store);
+    let fold_entry = log.iter().find(|e| e.tool == "fold_notes").unwrap();
+    assert!(fold_entry.revertable);
+    store.revert_activity(fold_entry.seq).unwrap();
+
+    let reverted_main = store.get_note(&main, false).unwrap();
+    assert!(!reverted_main.body.contains("mint and honey"));
+    assert!(!store.get_note(&fragment, false).unwrap().is_archived);
+}

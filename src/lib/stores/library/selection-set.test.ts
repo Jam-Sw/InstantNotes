@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rangeSelection, stepId, toggleSelection } from "./selection";
+import { rangeSelection, stepId, toggleSelection } from "./selection-set";
 
 const ids = ["a", "b", "c", "d", "e"];
 

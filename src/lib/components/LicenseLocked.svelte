@@ -3,7 +3,7 @@
 </script>
 
 <div class="locked" role="status">
-  <p>Agree to the license and EULA in InstantNotes to start writing.</p>
+  <p>License agreement pending</p>
   <button class="btn" onclick={() => void openLibrary()}>Open InstantNotes</button>
 </div>
 

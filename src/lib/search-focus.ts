@@ -20,7 +20,7 @@ function take(doc: Document, input: HTMLInputElement | null): boolean {
 export async function focusSearch(doc: Document = document): Promise<boolean> {
   shell.closeSettings();
   if (take(doc, doc.querySelector<HTMLInputElement>(".welcome-search input.search"))) return true;
-  library.graphMode = false;
+  library.nav.graphMode = false;
   if (layout.phone) layout.back();
   else sidebar.revealList();
   const win = doc.defaultView ?? window;

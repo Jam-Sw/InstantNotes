@@ -367,7 +367,7 @@ async function waitForApproval(id: string, recipient: string): Promise<void> {
       }
       status.stage = "needsKey";
       status.joinWords = null;
-      status.message = "The request expired. Start it again.";
+      status.message = "Request expired";
       changed();
       return;
     }
@@ -391,7 +391,7 @@ async function waitForApproval(id: string, recipient: string): Promise<void> {
       return;
     }
     status.stage = "needsKey";
-    status.message = "The request was not approved.";
+    status.message = "Request denied";
     changed();
     return;
   }

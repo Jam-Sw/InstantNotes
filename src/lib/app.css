@@ -39,6 +39,12 @@
   --divider: color-mix(in srgb, var(--border) 86%, var(--text));
   --select-bg: color-mix(in srgb, var(--accent) 18%, transparent);
 }
+:root[data-variant="light"] {
+  color-scheme: light;
+}
+:root[data-variant="dark"] {
+  color-scheme: dark;
+}
 html[data-chrome="overlay"] {
   --chrome-inset: 80px;
 }
@@ -126,6 +132,23 @@ html[data-chrome="overlay"] {
 .icon-btn.danger:hover {
   background: color-mix(in srgb, var(--danger) 14%, transparent);
   color: var(--danger);
+}
+.card-btn {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--accent);
+  font-size: 13px;
+}
+.card-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.card-btn:disabled {
+  opacity: 0.5;
+}
+.card-btn.quiet {
+  margin-left: auto;
+  color: var(--text-secondary);
 }
 
 * {
@@ -318,13 +341,28 @@ html[data-touch] .nav-item {
 }
 html[data-touch] .space-tag-chip,
 html[data-touch] .filter-pill,
-html[data-touch] .action {
+html[data-touch] .action,
+html[data-touch] .related-action,
+html[data-touch] .related-pill {
+  min-height: 36px;
+}
+html[data-touch] .related-dismiss {
+  min-width: 36px;
   min-height: 36px;
 }
 html[data-touch] .icon-btn,
 html[data-touch] .fmt {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
+}
+html[data-touch] .pane-nav,
+html[data-touch] .list-toggle {
+  width: 44px;
+  height: 44px;
+}
+html[data-touch] .dot {
+  width: 26px;
+  height: 26px;
 }
 html[data-touch] .format-bar {
   height: 48px;
@@ -338,6 +376,9 @@ html[data-touch] .cmd-input {
 }
 html[data-touch] .new-note {
   width: 40px;
+}
+html[data-touch] .new-control {
+  height: 40px;
 }
 html[data-touch] .new-kind {
   width: 28px;

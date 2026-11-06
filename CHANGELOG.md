@@ -7,7 +7,32 @@ in-app updater, written for users. Newest first.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.11.1]
+## [0.11.2]
+### Added
+- `calc` fences compute each line (`x = 3*4`, `;` silences, `%` comments, `format long`); inline `` `=expr` `` shares the note's variables; matrices, ranges and `sum`, `mean`, `std`, `det`, `inv` and more.
+- Table cells starting with `=` compute: `=Price*Qty` by header, `=sum(above)`, `=mean(B2:B5)`, `=sum(Price(:))`; sheets take the same formulas.
+- Around this note in the status bar: notes sharing uncommon words or tags with the paragraph under the cursor (`related_notes`, MCP `find_related`, `suggest.related`); Not related hides a pair.
+- Fold into one: fold notes into the open note, archiving the sources; Undo or activity Revert restores them (`fold_notes`, `undo_fold`, MCP `fold_notes`).
+- Settings > Import takes an Obsidian vault or a Notion export on every desktop platform (`import_obsidian`, `import_notion`).
+
+### Changed
+- Settings > Editor > Width: Readable (70 ch), Wide (110 ch) or Full (`editor.width`, `--measure`).
+- Merge review lists the fields that differ (Title, Tags, Spaces, Pin, Archive) with Keep on each side; Leave all as they are is Dismiss all.
+- Settings > Overview: status under the heading, stats in one strip, What's new renders inline code.
+- Toasts stack at the top of the window.
+- Toasts, dialogs, empty states and the server sign-in pages use short labels; failures read `Couldn't <action>: <reason>`.
+- `tag_suggestion`, `space_suggestions` and `related_notes` share one corpus, rebuilt only when `PRAGMA data_version` changes.
+- Opening a note runs `get_note`, `tags_for_note` and `workspaces_for_note` in parallel; `search_notes` snippets only the returned rows; the list loads 512 body chars.
+- Typing skips a second `doc.toString()`, `wordCount` counts without splitting, `tag_suggestion` refetches 600 ms after a save.
+- Sync server `missing` and `commit` run in `spawn_blocking`; `search_notes` uses `prepare_cached`; upload checks `missing` as a `HashSet`.
+- Touch: 44 px `.icon-btn`, `.pane-nav`, `.list-toggle`; settings rows wrap and graph bar truncates under 600 px; `ContextMenu` scrolls.
+- Crates share `[workspace.package]` (license, repository) and `[workspace.dependencies]`; one `sha_hex` and `now_secs`; `make-update-manifest.sh` removed.
+
+### Fixed
+- `ConfirmDialog` Shift+Tab from Confirm moves to Cancel; `CommandPalette` Tab keeps focus in the input; web hides the Agents settings link.
+- Keeping the conflict copy in merge review (`settle_pair`) drops its `(conflict …)` title suffix and `#conflict` tag and keeps the original's pin.
+
+## [0.11.1] - 2026-11-01
 ### Fixed
 - "Library too new" no longer aborts the app: `SyncJoinDialog`'s mount called `list_sync_join_requests`, whose
   `app.state::<AppState>()` panicked (`panic = "abort"`) because the store never opened. The 12

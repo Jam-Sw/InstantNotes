@@ -2,9 +2,9 @@
 
 Instantly externalize your writing. Capture and locate your thoughts. Or ask your agent to do it for you.
 
-> **01/11/2026: Your notes, anywhere & anytime, across Mac, Windows and Linux devices or servers** (see: [instantnotes-server](https://github.com/orgs/Jam-Sw/packages/container/package/instantnotes-server) <br/>
+> **01/11/2026: Your notes, anywhere & anytime, across Mac, Windows and Linux devices or servers** (see: [instantnotes-server](https://github.com/orgs/Jam-Sw/packages/container/package/instantnotes-server)) <br/>
 > Agents can act on your notes for you, help you organize them, identify patterns or lost goals <br/>
-> Add instantNotes to your server to give users a notes app, or self host your instantNotes as a service on your private cloud. <br/>
+> Add InstantNotes to your server to give users a notes app, or self host your InstantNotes as a service on your private cloud. <br/>
 
 > **02/10/2026: Use InstantNotes directly inside Claude Code** <br/> Search, read, and write notes without leaving [Claude Code](https://claude.com/product/claude-code)! <br/>
 > Get the new `instantnotes` plugin from [toolbox](https://github.com/jamubc/toolbox). <br/>
@@ -14,6 +14,7 @@ Instantly externalize your writing. Capture and locate your thoughts. Or ask you
 
 - **Quick Capture:** Global hotkey (`Opt` / `Ctrl+Shift+Space`) opens a capture panel on the screen you are on, with drafts, and hands focus back when you finish.
 - **Command Palette:** `Cmd/Ctrl+P` for actions, search, and themes.
+- **Math that computes in place:** A ` ```calc ` fence runs each line and shows its result at the line end; inline `` `=x*2` `` shows its value, and a table cell `=sum(above)` or `=Price*Qty` computes from its column or row. Sheets take the same formulas.
 - **Spaces and tags:** Group notes with Spaces and `#inline` tags instead of strict folders, and give each Space or tag a colour and a flag.
 - **Search to write:** Type in the note list, arrow through the results, press Enter to open one, or start a note from the words you typed.
 - **Copy context for agents:** Right-click a note, or a selection of notes, to copy it for an agent, with a source line that names the note id.
@@ -74,7 +75,7 @@ docker run -d --name instantnotes \
   -e INSTANTNOTES_OIDC_ISSUER=https://id.example.org \
   -e INSTANTNOTES_OIDC_CLIENT_ID=instantnotes \
   -e INSTANTNOTES_OIDC_CLIENT_SECRET=change-me \
-  ghcr.io/jam-sw/instantnotes-server:0.11.0
+  ghcr.io/jam-sw/instantnotes-server:0.11.2
 ```
 
 | Setting | Required | Meaning |
@@ -154,7 +155,7 @@ npm run tauri:dev
 ### Test
 
 ```sh
-cargo test --workspace --manifest-path src-tauri/Cargo.toml  # Rust tests (app and core)
+cargo test --workspace --manifest-path src-tauri/Cargo.toml  # Rust tests (app, core, agents, server, web)
 npm run check                                                # type-check frontend (runs svelte-kit sync)
 npm test                                                     # frontend unit tests (Vitest)
 ```
@@ -178,10 +179,11 @@ Releases are built, signed, and published by CI:
 # 1. Add a "## [X.Y.Z]" section to CHANGELOG.md describing the release.
 # 2. Bump every version file in lockstep:
 npm run bump X.Y.Z
-# 3. Commit, tag, and push; .github/workflows/release.yml builds macOS, Windows,
-#    and Linux in a matrix and assembles a draft release with a merged latest.json.
+# 3. Commit on the X.Y.Z-pre branch, open the X.Y.Z-pre PR into main, and merge it.
+#    The push to main runs .github/workflows/release.yml (or run it by hand with
+#    workflow_dispatch), which builds macOS, Windows, and Linux and assembles a draft
+#    release with a merged latest.json. Tag pushes do not start a release.
 git commit -am "chore: bump version to X.Y.Z"
-git tag vX.Y.Z && git push origin vX.Y.Z
 # 4. Smoke test the draft's artifacts, then publish the draft to ship.
 ```
 
@@ -197,7 +199,7 @@ Product requirements and conventions live in [`openspec/`](openspec/):
 
 ### Contributing
 
-This is a private project developed by the jam-sw team.
+This is a private project developed by the Jam-Sw team.
 
 - Each branch should contain one clear product step
 - All changes land via pull request into `main`

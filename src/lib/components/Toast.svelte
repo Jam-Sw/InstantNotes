@@ -13,11 +13,11 @@
     <div
       class="toast"
       role="group"
-      transition:fly={{ y: 10, duration: flyDuration }}
+      transition:fly={{ y: -10, duration: flyDuration }}
       onmouseenter={() => toasts.pause(toast.id)}
       onmouseleave={() => toasts.resume(toast.id)}
     >
-      <span class="toast-message">{toast.message}</span>
+      <span class="toast-message" title={toast.message}>{toast.message}</span>
       <div class="toast-actions">
         {#if toast.action}
           <button class="toast-action" onclick={() => toasts.activate(toast.id)}>
@@ -35,21 +35,35 @@
 <style>
   .toast-stack {
     position: fixed;
-    right: 16px;
-    bottom: 16px;
+    top: calc(env(safe-area-inset-top) + 8px);
+    right: calc(env(safe-area-inset-right) + 208px);
     z-index: 120;
+    width: max-content;
+    max-width: min(520px, calc(100vw - 808px));
     display: flex;
     flex-direction: column-reverse;
+    align-items: flex-end;
     gap: 8px;
     pointer-events: none;
+  }
+  @media (max-width: 1120px) {
+    .toast-stack {
+      top: calc(var(--chrome-h) + env(safe-area-inset-top) + 8px);
+      left: 0;
+      right: 0;
+      width: fit-content;
+      max-width: min(520px, calc(100vw - 32px));
+      margin: 0 auto;
+      align-items: center;
+    }
   }
   .toast {
     pointer-events: auto;
     display: flex;
     align-items: center;
     gap: 12px;
-    width: min(320px, 80vw);
-    padding: 10px 12px;
+    max-width: 100%;
+    padding: 6px 10px 6px 14px;
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -59,7 +73,14 @@
     flex: 1;
     min-width: 0;
     font-size: 13px;
+    line-height: 1.35;
     color: var(--text);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    overflow-wrap: anywhere;
   }
   .toast-actions {
     display: flex;

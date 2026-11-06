@@ -21,7 +21,7 @@
   let viewing = $state<{ name: string; text: string } | null>(null);
 
   function fail(what: string, e: unknown) {
-    toasts.show(`Couldn't ${what}. ${e instanceof Error ? e.message : e}`);
+    toasts.show(`Couldn't ${what}: ${e instanceof Error ? e.message : e}`);
   }
 
   async function refresh() {
@@ -79,7 +79,7 @@
   async function copy() {
     try {
       await navigator.clipboard.writeText(fullText());
-      toasts.show("Copied the report.");
+      toasts.show("Copied");
     } catch (e) {
       fail("copy the report", e);
     }
@@ -88,7 +88,7 @@
   async function send() {
     try {
       await openUrl(diagnosticsIssueUrl(fullText()));
-      toasts.show("GitHub is opening with the report filled in. Nothing is sent until you submit it there.");
+      toasts.show("Opening GitHub");
     } catch (e) {
       fail("open GitHub", e);
     }
@@ -97,26 +97,17 @@
 
 <div class="diag-pane">
   <h2>Diagnostics</h2>
-  <p class="section-hint">
-    {#if isWeb}
-      What this browser knows about InstantNotes, ready to hand over when something goes wrong.
-    {:else}
-      When something goes wrong, InstantNotes writes a short report beside your library. Nothing
-      leaves this machine unless you send it.
-    {/if}
-  </p>
 
   {#if !isWeb}
     <ToggleRow
-      label="Ask to review a crash report at the next launch"
-      sub="Reports are always written; this decides whether the app brings them up."
+      label="Crash report prompt on launch"
       checked={prompt}
       onchange={(v) => void setPrompt(v)}
     />
 
     <h3>Crash reports</h3>
     {#if reports.length === 0}
-      <p class="empty">No crash reports.</p>
+      <p class="empty">No crash reports</p>
     {:else}
       <ul class="reports" aria-label="Crash reports">
         {#each reports as r (r.name)}
@@ -136,12 +127,6 @@
     <button class="primary" disabled={!report} onclick={() => void send()}>Send</button>
     <button class="secondary" disabled={!report} onclick={() => void copy()}>Copy</button>
   </div>
-  <p class="fine-print">
-    It holds the version, platform, counts, sync and backup state, crash reports and recent log
-    lines. It never holds note text, your server address, your name or paths outside the app's
-    folder. Send opens a GitHub issue in your browser with exactly the text above; it is filed only
-    when you submit it there.
-  </p>
 </div>
 
 <style>
@@ -161,11 +146,6 @@
     letter-spacing: 0.4px;
     color: var(--text-tertiary);
     font-family: var(--font-meta);
-  }
-  .section-hint {
-    color: var(--text-secondary);
-    font-size: 13px;
-    margin: 0 0 12px;
   }
   .empty {
     margin: 0;
@@ -242,11 +222,5 @@
   .primary:disabled,
   .secondary:disabled {
     opacity: 0.5;
-  }
-  .fine-print {
-    margin: 10px 0 0;
-    color: var(--text-tertiary);
-    font-size: 12px;
-    line-height: 1.5;
   }
 </style>

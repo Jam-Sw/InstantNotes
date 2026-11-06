@@ -23,7 +23,6 @@
     {@const search = agentSearch}
     <button
       class="agent-search-run"
-      title="Run this search yourself"
       onclick={() => library.setSearch(search.query ?? "")}
     >
       {search.noteCount} hit{search.noteCount === 1 ? "" : "s"}

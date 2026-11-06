@@ -20,7 +20,7 @@
     if (e.key === "Tab") {
       e.preventDefault();
       const onConfirm = document.activeElement === confirmBtn;
-      const next = e.shiftKey === onConfirm ? confirmBtn : cancelBtn;
+      const next = onConfirm ? cancelBtn : confirmBtn;
       next?.focus();
     }
   }

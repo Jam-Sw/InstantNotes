@@ -193,6 +193,21 @@ const TOOLS: &[ToolDef] = &[
         }), &[]),
     },
     ToolDef {
+        name: "find_related",
+        title: "Find related notes",
+        level: Access::Read,
+        read_only: true,
+        traced: true,
+        destructive: false,
+        idempotent: true,
+        description: "Finds notes that share uncommon words or tags with a note, favouring notes not opened in a while, as the app's Around this note does (that strip keeps the user's own threshold and shows fewer). Pass id, and optionally passage to focus on one paragraph; omit id to list related pairs across the whole library that could be consolidated. Pairs the user marked Not related are skipped; trashed and archived notes are left out. With id, the result also carries that note's id and title. Each related note has id, title, kind, excerpt, score, reasons and updatedAt; a pair also has the id and title of the note it relates to. Changes nothing; to merge notes into one document, call fold_notes. limit (default 10).",
+        schema: || object(json!({
+            "id": id_param(),
+            "passage": { "type": "string", "description": "A paragraph inside the note to focus on." },
+            "limit": limit_param(SEARCH_LIMIT)
+        }), &[]),
+    },
+    ToolDef {
         name: "create_note",
         title: "Create a note",
         level: Access::Write,
@@ -337,6 +352,25 @@ const TOOLS: &[ToolDef] = &[
         idempotent: true,
         description: "Bring a note back from the Trash (find its id with search_notes or list_notes and status \"trash\"). Returns the note without its body.",
         schema: || object(json!({ "id": id_param() }), &["id"]),
+    },
+    ToolDef {
+        name: "fold_notes",
+        title: "Fold notes into one",
+        level: Access::Write,
+        read_only: false,
+        traced: true,
+        destructive: false,
+        idempotent: false,
+        description: "Consolidate one or more notes (sourceIds) into a live document note (id). Appends each source note's prose in order, carries over its manual and inline tags and Spaces onto id, and archives every folded source note in one transaction so nothing is lost. Whiteboards and sheets cannot be the target id, and trashed notes must be restored first. Returns the target note without its body plus folded (the archived source notes).",
+        schema: || object(json!({
+            "id": id_param(),
+            "sourceIds": {
+                "type": "array",
+                "minItems": 1,
+                "items": id_param(),
+                "description": "Ids of the notes to fold into id and archive."
+            }
+        }), &["id", "sourceIds"]),
     },
     ToolDef {
         name: "scratchpad_write",
@@ -554,11 +588,13 @@ impl<'a> Tools<'a> {
                 })).collect::<Vec<_>>() }))
             }
             "suggest_space" => self.suggest_space(parse(args)?),
+            "find_related" => self.find_related(parse(args)?),
             "create_note" => self.create_note(parse(args)?),
             "update_note" => self.update_note(parse(args)?),
             "edit_note" => self.edit_note(parse(args)?),
             "append_to_note" => self.append_to_note(parse(args)?),
             "append_sheet_rows" => self.append_sheet_rows(parse(args)?),
+            "fold_notes" => self.fold_notes(parse(args)?),
             "tag_note" => {
                 let a: TagArgs = parse(args)?;
                 self.store.add_tag_to_note(&a.id, &a.tag).map_err(fail)?;
@@ -820,6 +856,58 @@ impl<'a> Tools<'a> {
                 json!("No Space is clearly favoured for this note, or it is already filed.");
         }
         Ok(out)
+    }
+
+    fn find_related(&mut self, a: RelatedArgs) -> ToolResult {
+        let limit = clamp_limit(a.limit, SEARCH_LIMIT) as usize;
+        let mut out = json!({});
+        let list: Vec<Value> = match &a.id {
+            Some(id) => {
+                let note = self.store.get_note(id, false).map_err(fail)?;
+                out["id"] = json!(note.id);
+                out["title"] = json!(note.title);
+                self.store
+                    .find_related_notes(id, a.passage.as_deref(), limit)
+                    .map_err(fail)?
+                    .iter()
+                    .map(related_json)
+                    .collect()
+            }
+            None => self
+                .store
+                .related_pairs(limit)
+                .map_err(fail)?
+                .iter()
+                .map(|p| {
+                    json!({
+                        "id": p.note_id,
+                        "title": p.note_title,
+                        "related": related_json(&p.related),
+                    })
+                })
+                .collect(),
+        };
+        out["total"] = json!(list.len());
+        out["related"] = json!(list);
+        Ok(out)
+    }
+
+    fn fold_notes(&mut self, a: FoldArgs) -> ToolResult {
+        if a.source_ids.is_empty() {
+            return Err("sourceIds must name at least one note to fold in".into());
+        }
+        let current = self.store.get_note(&a.id, false).map_err(fail)?;
+        refuse_derived_body(&current)?;
+        let outcome = self.store.fold_notes(&a.id, &a.source_ids).map_err(fail)?;
+        let mut view = self.note_view(&a.id, None)?;
+        let folded: Vec<Value> = outcome
+            .before
+            .iter()
+            .skip(1)
+            .map(|s| json!({ "id": s.id, "title": s.title }))
+            .collect();
+        view["folded"] = json!(folded);
+        Ok(view)
     }
 
     fn file_note(&mut self, id: &str, space: &str) -> Result<bool, String> {
@@ -1478,6 +1566,33 @@ struct TagArgs {
 struct SpaceArgs {
     id: String,
     space: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RelatedArgs {
+    id: Option<String>,
+    passage: Option<String>,
+    limit: Option<i64>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct FoldArgs {
+    id: String,
+    source_ids: Vec<String>,
+}
+
+fn related_json(e: &instantnotes_core::types::RelatedNote) -> Value {
+    json!({
+        "id": e.note_id,
+        "title": e.title,
+        "kind": e.content_kind,
+        "excerpt": e.excerpt,
+        "score": (e.score * 100.0).round() / 100.0,
+        "reasons": e.reasons,
+        "updatedAt": e.updated_at,
+    })
 }
 
 #[cfg(test)]

@@ -1,7 +1,16 @@
 {
   "name": "instantnotes",
-  "version": "0.11.1",
+  "version": "0.11.2",
   "description": "InstantNotes — instant capture, organized knowledge",
+  "author": "Jam-Sw",
+  "homepage": "https://github.com/Jam-Sw/InstantNotes",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Jam-Sw/InstantNotes.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Jam-Sw/InstantNotes/issues"
+  },
   "type": "module",
   "engines": {
     "node": ">=22"

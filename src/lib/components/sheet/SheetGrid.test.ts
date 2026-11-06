@@ -252,6 +252,6 @@ describe("SheetGrid", () => {
     await tick();
     await key(host.querySelector(".cell-editor")!, "Enter");
     await tick();
-    expect(vi.mocked(toasts.show)).toHaveBeenCalledWith(expect.stringContaining("5,000 rows"));
+    expect(vi.mocked(toasts.show)).toHaveBeenCalledWith("Row limit: 5,000");
   });
 });

@@ -48,7 +48,7 @@ Each module is directly specified: purpose, construction, public surface.
 
 - `types.ts`: the construct model. `ConstructSpec` (tree driven), `TextSpec`
   (text driven, e.g. tags), `Emit` (what a spec may declare: construct spans,
-  hides, marks, line chrome), `RevealMode` (`span` reveals on touch, `never`
+  hides, marks, line chrome, point widgets), `RevealMode` (`span` reveals on touch, `never`
   is widget-stable).
 - `scanner.ts`: `ConstructScanner` class. Constructor takes the spec
   registry; `scan(state, ranges, preview)` performs the single syntax-tree
@@ -68,6 +68,10 @@ Each module is directly specified: purpose, construction, public surface.
 - `links.ts`, `images.ts`, `tasks.ts`, `blocks.ts`: behavior modules (open
   routing, paste/drop capture, toggle, marker backspace) plus their pure,
   tested helpers. State fields and effects keep their old names.
+- `calc.ts`: `calcField`, the one evaluation of every calc fence line, inline
+  `=expr` and table `=formula` in the document, in order, through
+  `src/lib/calc/` (the engine notes, tables and sheets share). Recomputed when
+  the document or its syntax tree changes; `constructs/calc.ts` only reads it.
 - `theme.ts`: all kernel base themes in one place.
 - `index.ts`: `editorKernel(opts)`, the only entry point. Editor.svelte
   consumes this and nothing else from the kernel.

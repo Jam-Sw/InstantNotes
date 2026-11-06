@@ -14,7 +14,6 @@
     const what = ids.length === 1 ? "this note" : `these ${ids.length} notes`;
     const ok = await confirmDialog.ask({
       title: `Delete ${what} permanently?`,
-      body: "This action cannot be undone.",
       confirmLabel: "Delete Forever",
       tone: "danger",
     });
@@ -26,18 +25,21 @@
   <div class="bulk-inner">
     <h2>{library.multiSelected.size} notes selected</h2>
     <div class="bulk-actions">
-      {#if library.statusFilter === "trash"}
+      {#if library.nav.statusFilter === "trash"}
         <button class="action" onclick={() => library.bulkRestore()}>Restore</button>
         <button class="action danger" onclick={confirmBulkDestroy}>Delete Forever</button>
       {:else}
+        {#if library.canBulkFold}
+          <button class="action" onclick={() => library.bulkFold()}>Fold into one</button>
+        {/if}
         <button class="action" onclick={() => library.bulkSetPinned(!allPinned)}>
           {allPinned ? "Unpin" : "Pin"}
         </button>
         <button
           class="action"
-          onclick={() => library.bulkSetArchived(library.statusFilter !== "archived")}
+          onclick={() => library.bulkSetArchived(library.nav.statusFilter !== "archived")}
         >
-          {library.statusFilter === "archived" ? "Unarchive" : "Archive"}
+          {library.nav.statusFilter === "archived" ? "Unarchive" : "Archive"}
         </button>
         <button class="action danger" onclick={() => library.bulkDelete()}>Delete</button>
       {/if}

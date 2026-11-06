@@ -54,7 +54,7 @@ describe("SettingsFeedback", () => {
   it("switching category changes the placeholder copy", async () => {
     const { getByRole, getByPlaceholderText } = open();
     await fireEvent.click(getByRole("radio", { name: "Idea" }));
-    expect(getByPlaceholderText(/better for you/i)).toBeTruthy();
+    expect(getByPlaceholderText("What would improve InstantNotes?")).toBeTruthy();
   });
 
   it("disables Send while the message is empty or only whitespace", async () => {
@@ -79,7 +79,7 @@ describe("SettingsFeedback", () => {
     );
     expect(vi.mocked(openUrl)).toHaveBeenCalled();
     expect((getByLabelText("Message") as HTMLTextAreaElement).value).toBe("");
-    expect(lastToast()).toMatch(/thanks/i);
+    expect(lastToast()).toBe("Saved · opening GitHub");
   });
 
   it("keeps the draft and reports the error when the local save fails", async () => {
@@ -101,7 +101,7 @@ describe("SettingsFeedback", () => {
 
     expect(vi.mocked(submitFeedback)).toHaveBeenCalled();
     expect((getByLabelText("Message") as HTMLTextAreaElement).value).toBe("");
-    expect(lastToast()).toMatch(/saved locally, but couldn't open github/i);
+    expect(lastToast()).toBe("Saved · couldn't open GitHub");
   });
 
   it("reveals the feedback log from its button", async () => {

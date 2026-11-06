@@ -36,10 +36,8 @@
     "offline",
     "signedOut",
   ]);
-  const ENCRYPTION_ON =
-    "Your server stores your notes encrypted. Only your devices can read them. New devices are approved from one you already use; keep your recovery key safe.";
-  const ENCRYPTION_OFF =
-    "Your server can read your notes, and so can anyone with its backups. New devices only need to sign in.";
+  const ENCRYPTION_ON = "New devices need approval";
+  const ENCRYPTION_OFF = "The server can read notes";
 
   let status = $state<SyncServerStatus | null>(null);
   let address = $state("");
@@ -167,9 +165,7 @@
   async function signOut() {
     const ok = await confirmDialog.ask({
       title: isWeb ? "Sign out of this browser?" : `Stop syncing with ${host}?`,
-      body: isWeb
-        ? "This browser's copy of your notes is removed. They stay on your server and your other devices."
-        : "Your notes stay on this device.",
+      body: isWeb ? "Removes this browser's copy" : undefined,
       confirmLabel: "Sign out",
     });
     if (ok) await act(disconnectSyncServer, "Couldn't sign out");
@@ -197,9 +193,9 @@
   async function trashHeld() {
     try {
       await confirmSyncRemovals();
-      toasts.show("They'll move to the Trash on the next sync.");
+      toasts.show("Queued for Trash");
     } catch (e) {
-      toasts.show(`Couldn't do that: ${errorMessage(e)}`);
+      toasts.show(`Couldn't trash missing notes: ${errorMessage(e)}`);
     }
     await refresh();
   }
@@ -209,12 +205,12 @@
       on
         ? {
             title: "Turn on end-to-end encryption?",
-            body: "Your library is uploaded again, encrypted, and you get a recovery key to save. Your other devices stop syncing until you approve them from this one. Server backups taken while encryption was off still hold your notes unencrypted.",
+            body: "Other devices need approval from this one · old server backups stay unencrypted",
             confirmLabel: "Turn on",
           }
         : {
             title: "Turn off end-to-end encryption?",
-            body: "Your library is uploaded again, unencrypted. Your server, and anyone with its backups, can read your notes. Every device deletes its copy of the key.",
+            body: "The server and its backups can read notes",
             confirmLabel: "Turn off",
             tone: "danger",
           },
@@ -242,7 +238,6 @@
   async function revoke(device: SyncDevice) {
     const ok = await confirmDialog.ask({
       title: `Revoke ${device.name}?`,
-      body: "It stops syncing until someone signs in on it again. The notes already on it stay there.",
       confirmLabel: "Revoke",
       tone: "danger",
     });
@@ -258,7 +253,6 @@
   async function signOutEverywhere() {
     const ok = await confirmDialog.ask({
       title: "Sign out everywhere?",
-      body: "Every device, this one included, stops syncing until it signs in again. Your notes stay on each device.",
       confirmLabel: "Sign out everywhere",
       tone: "danger",
     });
@@ -281,7 +275,7 @@
   }
 
   const statusLine = $derived.by((): { line: string; warn: boolean; note: string } => {
-    const why = status?.message ? status.message.replace(/^./, (c) => c.toUpperCase()).replace(/\.?$/, ".") : "";
+    const why = status?.message?.replace(/^./, (c) => c.toUpperCase()) ?? "";
     switch (stage) {
       case "upToDate":
         return {
@@ -298,9 +292,9 @@
       case "refused":
         return { line: "Stopped", warn: true, note: why };
       case "offline":
-        return { line: "Offline", warn: true, note: `${why} Your changes wait and sync when it's back.`.trim() };
+        return { line: "Offline", warn: true, note: why };
       case "signedOut":
-        return { line: "Signed out", warn: true, note: "Nothing syncs until you sign in again. Your notes stay on this device." };
+        return { line: "Signed out", warn: true, note: "" };
       default:
         return { line: "Syncing…", warn: false, note: "" };
     }
@@ -336,8 +330,7 @@
 
 {#if status && stage === "off" && isWeb}
   <div class="vault-card step">
-    <p class="lead">This server has no library yet.</p>
-    <p class="detail">Set it up from this browser.</p>
+    <p class="lead">No library on this server</p>
     <div class="card-actions">
       <button class="primary-btn" disabled={busy} onclick={setUp}>
         {busy ? "Setting up…" : "Set up"}
@@ -348,7 +341,7 @@
     <p class="failure" role="alert">Couldn't set up: {failure || status.message}</p>
   {/if}
 {:else if status && stage === "off"}
-  <PrefRow label="Server address" sub="The address of your InstantNotes server.">
+  <PrefRow label="Server address">
     {#snippet control()}
       <form
         class="address-form"
@@ -378,13 +371,12 @@
   <div class="vault-card step">
     {#if status?.pairingCode}
       <p class="lead">
-        <span class="pulse" aria-hidden="true"></span>On any device with a browser, open
-        {status.pairingUrl} and enter this code:
+        <span class="pulse" aria-hidden="true"></span>Open {status.pairingUrl} and enter this code:
       </p>
       <p class="detail"><strong>{status.pairingCode}</strong></p>
       <p class="detail">{host}</p>
     {:else}
-      <p class="lead"><span class="pulse" aria-hidden="true"></span>Finish signing in in your browser.</p>
+      <p class="lead"><span class="pulse" aria-hidden="true"></span>Finish in your browser</p>
       <p class="detail">{host}</p>
     {/if}
     <div class="card-actions">
@@ -394,12 +386,7 @@
 {:else if stage === "confirmJoin" && status}
   <div class="vault-card step">
     <p class="lead">
-      This server holds {status.serverItems} items and this device has {notes(status.localNotes)}.
-      They'll be combined into one library.
-    </p>
-    <p class="detail">
-      Exact copies are combined; anything that might be the same note is kept twice and shown to you
-      to decide. This device's library is backed up first.
+      Server: {status.serverItems} items. This device: {notes(status.localNotes)}.
     </p>
     <div class="card-actions">
       <button class="primary-btn" disabled={busy} onclick={() => answerJoin(true)}>
@@ -413,8 +400,7 @@
 {:else if stage === "recoveryKey" && status?.recoveryKey}
   <div class="vault-card step">
     <p class="lead">
-      If you lose this recovery key and every device you use, your notes cannot be recovered by anyone,
-      including whoever runs your server.
+      Lost key and devices mean lost notes
     </p>
     <RecoveryKey recoveryKey={status.recoveryKey} />
     <div class="card-actions saved-row">
@@ -427,7 +413,7 @@
   </div>
 {:else if stage === "needsKey"}
   <div class="vault-card step">
-    <p class="lead">Approve this device on one you already use, or enter your recovery key.</p>
+    <p class="lead">Approval needed</p>
     {#if status?.message}
       <p class="detail warn" role="alert">{status.message}</p>
     {/if}
@@ -445,13 +431,13 @@
         <li><span class="ordinal" aria-hidden="true">{i + 1}</span><span class="word">{word}</span></li>
       {/each}
     </ol>
-    <p class="lead">Check that the same six words show on the device you approve from.</p>
+    <p class="lead">Same words must show on the other device</p>
     <p class="detail"><span class="pulse" aria-hidden="true"></span>Waiting for approval</p>
     {@render recoveryForm()}
   </div>
 {:else if stage === "confirmPlain"}
   <div class="vault-card step">
-    <p class="lead">This server keeps notes unencrypted. Sync with it anyway?</p>
+    <p class="lead">This server stores notes unencrypted</p>
     <div class="card-actions">
       <button class="primary-btn" disabled={busy} onclick={() => act(acceptPlainServer, "Couldn't sync")}>
         Sync anyway
@@ -463,8 +449,7 @@
   </div>
 {:else if stage === "otherLibrary"}
   <div class="vault-card step">
-    <p class="lead">This browser holds notes from another library, so it won't sync them into yours.</p>
-    <p class="detail">Clear this browser's copy to use your own library here. Those notes stay on their own server.</p>
+    <p class="lead">This browser holds another library</p>
     <div class="card-actions">
       <button class="primary-btn" disabled={busy} onclick={() => act(clearBrowserLibrary, "Couldn't clear this browser")}>
         Clear this browser
@@ -494,22 +479,21 @@
       <div class="card-row">
         <span class="card-key">Conflicts</span>
         <span class="card-status">
-          {notes(status.conflicts)} changed in two places; both versions are kept, the other tagged #conflict
+          {notes(status.conflicts)} changed in two places
         </span>
       </div>
     {/if}
     {#if status.tooLarge.length > 0}
       <ul class="too-large" aria-label="Not synced">
         {#each status.tooLarge as name (name)}
-          <li><span class="name">{name}</span>: too large for this server, kept on this device only</li>
+          <li><span class="name">{name}</span>: too large</li>
         {/each}
       </ul>
     {/if}
     {#if status.heldRemovals > 0}
       <div class="held" role="alert">
         <p>
-          {notes(status.heldRemovals)} went missing from the server at once. Nothing was removed. If these
-          notes were deleted on another device, move them to the Trash here too.
+          {notes(status.heldRemovals)} missing from the server
         </p>
         <button class="card-btn" disabled={busy} onclick={trashHeld}>
           Move {notes(status.heldRemovals)} to Trash
@@ -542,13 +526,13 @@
     onchange={(on) => (connected ? flipEncryption(on) : (encrypt = on))}
   />
   {#if switching}
-    <p class="fine-print">Uploading your library again. Keep InstantNotes open until this finishes.</p>
+    <p class="fine-print">Re-uploading…</p>
   {:else if switchError}
     <p class="failure" role="alert">Couldn't switch: {switchError}</p>
   {/if}
   {#if connected}
     {#if status?.encrypted}
-      <PrefRow label="Recovery key" sub="Needed only if you lose every device you use.">
+      <PrefRow label="Recovery key">
         {#snippet control()}
           {#if shownKey}
             <button class="card-btn" onclick={() => (shownKey = "")}>Hide</button>
@@ -822,23 +806,6 @@
     display: flex;
     gap: 8px;
     margin-top: 12px;
-  }
-  .card-btn {
-    padding: 6px 12px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--accent);
-    font-size: 13px;
-  }
-  .card-btn:hover:not(:disabled) {
-    background: var(--bg-hover);
-  }
-  .card-btn:disabled {
-    opacity: 0.5;
-  }
-  .card-btn.quiet {
-    margin-left: auto;
-    color: var(--text-secondary);
   }
   .card-btn.danger {
     color: var(--danger);

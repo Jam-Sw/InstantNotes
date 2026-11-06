@@ -132,9 +132,7 @@
     class:active
     data-agent={agent ? "read" : null}
     bind:this={selectButton}
-    title={readonly
-      ? countLabel
-      : `${countLabel} · Double-click renames, right-click for options`}
+    title={countLabel}
     onclick={onSelect}
     ondblclick={readonly ? undefined : onStartRename}
     oncontextmenu={readonly ? undefined : onContextMenu}

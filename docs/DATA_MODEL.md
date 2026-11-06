@@ -164,10 +164,19 @@ Every write to it drops the entries of notes and Spaces that no longer
 exist, and deleting a Space prunes it at once; a malformed value reads as
 nothing dismissed. It is device-local UI state like `stickies`: never in the
 vault, and losing it only means a dismissed suggestion can show again.
+`related.dismissed` uses the same store and the same pruning code for the
+pairs marked Not related in the editor's Around this note strip, but only a
+dismiss or restore of a related pair runs it: deleting a Space does not, so
+pairs naming a destroyed note stay until the next such write. The pair is
+symmetric: it is kept once, under the smaller of the two note ids, and both
+ids must still exist. `suggest.related` (`{ enabled, showAt }`) syncs across
+devices alongside `suggest.tags`.
 
 It also holds one record per import source, `import.<source>`: an object
 mapping each imported item's id in the app it came from to the note it
-became. `import.stickies` is the only one (API.md §16). It is written in the
+became: `import.stickies` (sticky UUID), `import.obsidian` (the note's full
+path, vault included), and `import.notion` (the 32-hex page id in its file name, or its
+path when there is none) (API.md §16). It is written in the
 same transaction as the notes, and an entry whose note no longer exists is
 ignored, so destroying an imported note for good lets it be imported again.
 

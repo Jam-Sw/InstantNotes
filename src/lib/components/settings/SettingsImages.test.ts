@@ -127,10 +127,10 @@ describe("SettingsImages", () => {
     await fireEvent.click(await findByRole("button", { name: "Remove unused…" }));
 
     const ask = vi.mocked(confirmDialog.ask).mock.calls[0][0];
-    expect(ask.body).toMatch(/Trash/);
+    expect(ask.body).toBe("Deleted for good");
     expect(vi.mocked(removeUnusedAttachments)).toHaveBeenCalledTimes(1);
     expect(await findByText("None")).toBeTruthy();
-    expect(show).toHaveBeenCalledWith("Removed 2 unused images (2 KB).");
+    expect(show).toHaveBeenCalledWith("Removed 2 unused images (2 KB)");
   });
 
   it("does nothing when the confirm is declined", async () => {
@@ -159,6 +159,6 @@ describe("SettingsImages", () => {
 
   it("says no folders are allowed yet when the list is empty", async () => {
     const { findByText } = render(SettingsImages);
-    expect(await findByText("No folders yet.", { exact: false })).toBeTruthy();
+    expect(await findByText("No folders")).toBeTruthy();
   });
 });

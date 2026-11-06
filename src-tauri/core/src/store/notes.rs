@@ -258,30 +258,7 @@ impl Store {
             ],
         )?;
         if let Some(body) = &new_body {
-            let mut kept_ids: Vec<String> = Vec::new();
-            for name in domain::extract_inline_tags(body) {
-                let tag = tag_get_or_create(&tx, &name)?;
-                attach_tag(&tx, id, &tag.id, "inline")?;
-                kept_ids.push(tag.id);
-            }
-            if kept_ids.is_empty() {
-                tx.execute(
-                    "DELETE FROM note_tags WHERE note_id = ?1 AND source = 'inline'",
-                    params![id],
-                )?;
-            } else {
-                let placeholders = vec!["?"; kept_ids.len()].join(", ");
-                let sql = format!(
-                    "DELETE FROM note_tags WHERE note_id = ? AND source = 'inline' \
-                     AND tag_id NOT IN ({placeholders})"
-                );
-                let mut args: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(kept_ids.len() + 1);
-                args.push(&id);
-                for tag_id in &kept_ids {
-                    args.push(tag_id);
-                }
-                tx.execute(&sql, rusqlite::params_from_iter(args))?;
-            }
+            reconcile_inline_tags(&tx, id, body)?;
         }
         tx.commit()?;
         self.fetch_note(id)
@@ -588,15 +565,22 @@ impl Store {
             return Ok(Vec::new());
         };
         let limit = limit.clamp(1, 500);
-        let mut stmt = self.conn.prepare(
-            "SELECT n.id, highlight(notes_fts, 0, '\u{1}', '\u{2}'), \
+        let mut stmt = self.conn.prepare_cached(
+            "WITH hits AS ( \
+               SELECT notes_fts.rowid AS seq, bm25(notes_fts) AS rank, \
+                      lower(n.title) = lower(?3) AS exact \
+               FROM notes_fts \
+               JOIN notes n ON n.seq = notes_fts.rowid \
+               WHERE notes_fts MATCH ?1 AND n.is_deleted = 0 AND n.is_archived = 0 \
+               ORDER BY exact DESC, rank, seq \
+               LIMIT ?2) \
+             SELECT n.id, highlight(notes_fts, 0, '\u{1}', '\u{2}'), \
                     snippet(notes_fts, 1, '\u{1}', '\u{2}', '…', 16), \
-                    bm25(notes_fts), n.updated_at \
-             FROM notes_fts \
-             JOIN notes n ON n.seq = notes_fts.rowid \
-             WHERE notes_fts MATCH ?1 AND n.is_deleted = 0 AND n.is_archived = 0 \
-             ORDER BY lower(n.title) = lower(?3) DESC, bm25(notes_fts) \
-             LIMIT ?2",
+                    hits.rank, n.updated_at \
+             FROM hits \
+             JOIN notes_fts ON notes_fts.rowid = hits.seq AND notes_fts MATCH ?1 \
+             JOIN notes n ON n.seq = hits.seq \
+             ORDER BY hits.exact DESC, hits.rank, hits.seq",
         )?;
         let rows = stmt.query_map(params![match_expr, limit, text.trim()], |row| {
             Ok(SearchResult {

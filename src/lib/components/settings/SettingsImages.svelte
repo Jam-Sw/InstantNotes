@@ -21,8 +21,6 @@
     { value: "link", label: "Link original" },
   ];
 
-  const heightSubId = $props.id();
-
   let attachmentsCount = $state<number | null>(null);
   let attachmentsBytes = $state(0);
   let attachmentsDir = $state("");
@@ -55,7 +53,7 @@
     if (!unused?.count || removing) return;
     const ok = await confirmDialog.ask({
       title: `Remove ${plural(unused.count)} no note uses?`,
-      body: "They are deleted from the attachments folder for good. Images used by notes in the Trash or the Archive are kept, and anything added in the last hour is left alone.",
+      body: "Deleted for good",
       confirmLabel: "Remove",
       tone: "danger",
     });
@@ -63,9 +61,9 @@
     removing = true;
     try {
       const done = await removeUnusedAttachments();
-      toasts.show(`Removed ${done.count} unused ${done.count === 1 ? "image" : "images"} (${formatBytes(done.bytes)}).`);
+      toasts.show(`Removed ${done.count} unused ${done.count === 1 ? "image" : "images"} (${formatBytes(done.bytes)})`);
     } catch (e) {
-      toasts.show(`Couldn't remove unused images. ${e instanceof Error ? e.message : e}`);
+      toasts.show(`Couldn't remove unused images: ${e instanceof Error ? e.message : e}`);
     } finally {
       removing = false;
       loadCounts();
@@ -76,42 +74,27 @@
     try {
       await openAttachmentsFolder();
     } catch (e) {
-      toasts.show(`Couldn't open the folder. ${e instanceof Error ? e.message : e}`);
+      toasts.show(`Couldn't open images folder: ${e instanceof Error ? e.message : e}`);
     }
   }
 </script>
 
 <div class="images-pane">
   <h2>Images</h2>
-  <p class="section-hint">
-    Screenshots and drawings you paste, drop, or insert into notes. How they are
-    stored, how large they preview, and where they live.
-  </p>
 
   <span class="group-label">Storage</span>
   <SegmentedRow
     label="When adding an image"
-    sub="Copy keeps a portable copy inside InstantNotes; Link references the original file where it already sits."
     options={STORAGE_OPTIONS}
     value={imagePrefs.storage}
     onchange={(v) => imagePrefs.setStorage(v)}
   />
-  <p class="fine-print">
-    {#if imagePrefs.storage === "copy"}
-      Images are copied into the attachments folder, so exported markdown stays
-      self-contained. This is the safe default.
-    {:else}
-      A picked file is referenced by its path and read from where it sits.
-      Pasted or dropped screenshots have no original file, so they are always
-      copied in regardless of this setting.
-    {/if}
-  </p>
+  {#if imagePrefs.storage === "link"}
+    <p class="fine-print">Pasted or dropped images are always copied</p>
+  {/if}
 
   {#if !isWeb}
     <span class="group-label">Linked folders</span>
-    <p class="fine-print">
-      Images in notes load from these folders. A note that links elsewhere asks first.
-    </p>
     <div class="attach-card">
       {#each imagePrefs.linkedFolders as folder (folder)}
         <div class="attach-row">
@@ -123,7 +106,7 @@
         </div>
       {:else}
         <div class="attach-row">
-          <span class="attach-val">No folders yet. Insert an image with Link original, or allow one when a note asks.</span>
+          <span class="attach-val">No folders</span>
         </div>
       {/each}
     </div>
@@ -132,8 +115,6 @@
   <span class="group-label">Preview</span>
   <PrefRow
     label="Maximum height in the note"
-    sub="How tall an image can render before it is scaled down. Wide images always fit the note width."
-    subId={heightSubId}
   >
     {#snippet control()}
       <div class="slider-cell">
@@ -145,7 +126,6 @@
           value={imagePrefs.maxPreviewHeight}
           oninput={(e) => imagePrefs.setMaxPreviewHeight(+e.currentTarget.value)}
           aria-label="Maximum image preview height"
-          aria-describedby={heightSubId}
         />
         <span class="slider-val">{imagePrefs.maxPreviewHeight}px</span>
       </div>
@@ -191,11 +171,6 @@
     margin: 0 0 6px;
     font-size: 18px;
     font-weight: 600;
-  }
-  .section-hint {
-    color: var(--text-secondary);
-    font-size: 13px;
-    margin: 0 0 20px;
   }
   .group-label {
     display: block;

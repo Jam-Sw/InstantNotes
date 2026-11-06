@@ -163,7 +163,7 @@ describe("SyncServer when not connected", () => {
     await fireEvent.click(
       await findByRole("switch", { name: "End-to-end encryption" }),
     );
-    expect(getByText(/Your server can read your notes/)).toBeTruthy();
+    expect(getByText("The server can read notes")).toBeTruthy();
     expect(ask).not.toHaveBeenCalled();
     await fireEvent.input(getByRole("textbox", { name: "Server address" }), {
       target: { value: "notes.example.org" },
@@ -215,7 +215,7 @@ describe("SyncServer setting up", () => {
       at("signingIn", { person: null }),
     );
 
-    expect(await findByText("Finish signing in in your browser.")).toBeTruthy();
+    expect(await findByText("Finish in your browser")).toBeTruthy();
     vi.mocked(getSyncServerStatus).mockResolvedValue(OFF);
     await fireEvent.click(getByRole("button", { name: "Cancel" }));
 
@@ -234,7 +234,7 @@ describe("SyncServer setting up", () => {
 
     expect(
       await findByText(
-        /This server holds 812 items and this device has 640 notes. They'll be combined/,
+        /Server: 812 items. This device: 640 notes./,
       ),
     ).toBeTruthy();
     expect(queryByRole("button", { name: /Replace/ })).toBeNull();
@@ -293,7 +293,7 @@ describe("SyncServer setting up", () => {
       },
     );
     await fireEvent.click(getByRole("button", { name: /Sign in/ }));
-    expect(await findByText(/This server holds 5 items/)).toBeTruthy();
+    expect(await findByText(/Server: 5 items/)).toBeTruthy();
     fire();
     await waitFor(() => expect(getSyncServerStatus).toHaveBeenCalledTimes(2));
 
@@ -306,9 +306,7 @@ describe("SyncServer setting up", () => {
     );
 
     expect(
-      await findByText(
-        /If you lose this recovery key and every device you use/,
-      ),
+      await findByText("Lost key and devices mean lost notes"),
     ).toBeTruthy();
     expect(getByLabelText("Recovery key").textContent).toBe(KEY);
     expect(getByRole("img", { name: /QR code/ })).toBeTruthy();
@@ -345,7 +343,7 @@ describe("SyncServer setting up", () => {
     vi.mocked(startSyncJoin).mockResolvedValue(
       at("joining", { joinWords: ["apple", "river", "seven", "lamp", "north", "cedar"] }),
     );
-    const { findByRole } = showing(at("needsKey", { message: "The request was not approved." }));
+    const { findByRole } = showing(at("needsKey", { message: "Request denied" }));
 
     const again = await findByRole("button", { name: "Approve on another device" });
     expect(startSyncJoin).not.toHaveBeenCalled();
@@ -379,9 +377,9 @@ describe("SyncServer setting up", () => {
 
   it("says why an approval was not given", async () => {
     const { findByText } = showing(
-      at("needsKey", { message: "The request was not approved." }),
+      at("needsKey", { message: "Request denied" }),
     );
-    expect(await findByText("The request was not approved.")).toBeTruthy();
+    expect(await findByText("Request denied")).toBeTruthy();
   });
 
   it("shows the six words to compare while waiting", async () => {
@@ -393,7 +391,7 @@ describe("SyncServer setting up", () => {
 
     expect(
       await findByText(
-        "Check that the same six words show on the device you approve from.",
+        "Same words must show on the other device",
       ),
     ).toBeTruthy();
     expect(getByRole("list", { name: "Six words" }).textContent).toContain(
@@ -406,7 +404,7 @@ describe("SyncServer setting up", () => {
 
     expect(
       await findByText(
-        "This server keeps notes unencrypted. Sync with it anyway?",
+        "This server stores notes unencrypted",
       ),
     ).toBeTruthy();
     await fireEvent.click(getByRole("button", { name: "Sync anyway" }));
@@ -436,7 +434,7 @@ describe("SyncServer connected", () => {
     expect(getByText(/Up to date as of/)).toBeTruthy();
     expect(getByText(/2 notes changed in two places/)).toBeTruthy();
     expect(
-      getByText(/too large for this server, kept on this device only/)
+      getByText(/too large/)
         .textContent,
     ).toContain("Site survey.mp4");
   });
@@ -452,9 +450,7 @@ describe("SyncServer connected", () => {
     );
     expect(await findByText("Offline")).toBeTruthy();
     expect(
-      getByText(
-        "The server did not answer. Your changes wait and sync when it's back.",
-      ),
+      getByText("The server did not answer"),
     ).toBeTruthy();
   });
 
@@ -463,7 +459,7 @@ describe("SyncServer connected", () => {
       at("problem", { message: "note x: disk full" }),
     );
     expect(await findByText("Problem")).toBeTruthy();
-    expect(getByText("Note x: disk full.")).toBeTruthy();
+    expect(getByText("Note x: disk full")).toBeTruthy();
   });
 
   it("reports a refusal as stopped", async () => {
@@ -490,7 +486,7 @@ describe("SyncServer connected", () => {
 
     expect(getByText("Held")).toBeTruthy();
     expect(
-      getByText(/40 notes went missing from the server at once/),
+      getByText(/40 notes missing from the server/),
     ).toBeTruthy();
     expect(confirmSyncRemovals).toHaveBeenCalled();
   });
@@ -518,7 +514,6 @@ describe("SyncServer connected", () => {
 
     expect(ask.mock.calls[0][0]).toMatchObject({
       title: "Stop syncing with notes.example.org?",
-      body: "Your notes stay on this device.",
     });
     await waitFor(() => expect(disconnectSyncServer).toHaveBeenCalled());
   });
@@ -534,7 +529,7 @@ describe("SyncServer security", () => {
 
     expect(
       await findByText(
-        /Your server stores your notes encrypted\. Only your devices can read them/,
+        "New devices need approval",
       ),
     ).toBeTruthy();
     await fireEvent.click(
@@ -548,7 +543,7 @@ describe("SyncServer security", () => {
     await waitFor(() => expect(setSyncEncryption).toHaveBeenCalledWith(false));
     expect(
       await findByText(
-        /Your server can read your notes, and so can anyone with its backups/,
+        "The server can read notes",
       ),
     ).toBeTruthy();
   });
@@ -579,10 +574,10 @@ describe("SyncServer security", () => {
     );
 
     expect(ask.mock.calls[0][0].body).toMatch(
-      /backups taken while encryption was off/,
+      /old server backups stay unencrypted/,
     );
     await waitFor(() => expect(setSyncEncryption).toHaveBeenCalledWith(true));
-    expect(await findByText(/If you lose this recovery key/)).toBeTruthy();
+    expect(await findByText("Lost key and devices mean lost notes")).toBeTruthy();
   });
 
   it("shows why a switch was refused", async () => {

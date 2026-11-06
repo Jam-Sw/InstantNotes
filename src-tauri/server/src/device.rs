@@ -329,13 +329,13 @@ async fn authorize(
         return too_many(wait);
     }
     if !loopback_redirect(&q.redirect_uri) {
-        return bad_request("This sign-in can only return to an app on your own computer.");
+        return bad_request("Sign-in must return to an app on this computer");
     }
     if q.code_challenge_method != "S256" || !valid_challenge(&q.code_challenge) {
-        return bad_request("The app sent an invalid sign-in request.");
+        return bad_request("Invalid sign-in request");
     }
     if q.state.is_empty() || q.state.len() > 256 {
-        return bad_request("The app sent an invalid sign-in request.");
+        return bad_request("Invalid sign-in request");
     }
     let device_name: String = q
         .device_name
@@ -375,7 +375,7 @@ async fn confirm(
     Query(q): Query<ConfirmQuery>,
 ) -> Response {
     let Some(request) = state.devices.get(&q.request) else {
-        return bad_request("This sign-in expired. Start it again from the app.");
+        return bad_request("Sign-in expired");
     };
     match signed_in_person(&state, &headers) {
         Some(person) => confirm_page(&person, &q.request, &request),
@@ -396,7 +396,7 @@ async fn allow(
     Form(form): Form<AllowForm>,
 ) -> Response {
     let Some(person) = signed_in_person(&state, &headers) else {
-        return bad_request("Sign in again to allow this device.");
+        return bad_request("Signed out");
     };
     let allowed = form.decision == "allow";
     if state
@@ -412,7 +412,7 @@ async fn allow(
         return statics::html(StatusCode::OK, statics::device_paired(allowed));
     }
     let Some(request) = state.devices.take(&form.request, &form.csrf) else {
-        return bad_request("This sign-in expired. Start it again from the app.");
+        return bad_request("Sign-in expired");
     };
     let target = if form.decision == "allow" {
         crate::log(
@@ -568,7 +568,7 @@ async fn link(
     let Some((id, request)) = state.devices.find_pairing(&typed) else {
         return statics::html(
             StatusCode::NOT_FOUND,
-            statics::device_link(Some("That code is not valid or has expired.")),
+            statics::device_link(Some("Code invalid or expired")),
         );
     };
     match signed_in_person(&state, &headers) {

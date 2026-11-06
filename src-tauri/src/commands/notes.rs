@@ -113,6 +113,33 @@ pub fn restore_notes(
 }
 
 #[tauri::command(async)]
+pub fn fold_notes(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    into_id: String,
+    source_ids: Vec<String>,
+) -> CmdResult<FoldOutcome> {
+    let outcome = locked(&state)?.fold_notes(&into_id, &source_ids)?;
+    emit_notes_changed(&app);
+    emit_tags_changed(&app);
+    emit_workspaces_changed(&app);
+    Ok(outcome)
+}
+
+#[tauri::command(async)]
+pub fn undo_fold(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    before: Vec<instantnotes_core::store::activity::NoteSnapshot>,
+) -> CmdResult<Note> {
+    let note = locked(&state)?.undo_fold(&before)?;
+    emit_notes_changed(&app);
+    emit_tags_changed(&app);
+    emit_workspaces_changed(&app);
+    Ok(note)
+}
+
+#[tauri::command(async)]
 pub fn destroy_notes(
     state: State<'_, AppState>,
     app: AppHandle,

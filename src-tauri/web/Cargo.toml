@@ -1,17 +1,19 @@
 [package]
 name = "instantnotes-web"
 version = "0.1.0"
-edition = "2021"
-license = "PolyForm-Strict-1.0.0"
+description = "InstantNotes web core: the core library compiled to WebAssembly for the browser. No Tauri."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 publish = false
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [target.'cfg(target_family = "wasm")'.dependencies]
-instantnotes-core = { path = "../core" }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+instantnotes-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"

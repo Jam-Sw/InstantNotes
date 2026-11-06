@@ -26,11 +26,7 @@
   } = $props();
 
   const headingTitle = $derived(
-    active.heading === 0
-      ? "Heading"
-      : active.heading >= 3
-        ? "Heading 3 (click for plain text)"
-        : `Heading ${active.heading} (click for heading ${active.heading + 1})`,
+    active.heading === 0 ? "Heading" : `Heading ${active.heading}`,
   );
 </script>
 
@@ -139,7 +135,7 @@
       <Icon name="link" />
     </button>
     {#if onImage}
-      <button class="fmt" title="Insert image from a file" aria-label="Insert image" onclick={() => onImage?.()}>
+      <button class="fmt" title="Insert image" aria-label="Insert image" onclick={() => onImage?.()}>
         <Icon name="image" />
       </button>
     {/if}

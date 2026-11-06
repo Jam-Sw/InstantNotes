@@ -1,4 +1,5 @@
 use super::*;
+use crate::sync::object::sha_hex;
 use crate::vault::reconcile::equivalent;
 use crate::vault::transport::{reach, Reach, FOLDER};
 use crate::vault::{
@@ -7,7 +8,6 @@ use crate::vault::{
     FlushOutcome, Manifest, ManifestSpace, ManifestTag, VaultNote, VaultReport, VaultStatus,
     MANIFEST_FILE, TRASH_DIR,
 };
-use sha2::{Digest, Sha256};
 use std::fs;
 
 const VAULT_PATH_SETTING: &str = "vault.path";
@@ -45,13 +45,6 @@ enum Written {
     Deferred,
 }
 
-pub(super) fn sha256_hex(bytes: &[u8]) -> String {
-    Sha256::digest(bytes)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
-}
-
 pub(super) fn io_error(context: &str, path: &Path, e: std::io::Error) -> AppError {
     AppError::Storage(format!("{context} {}: {e}", path.display()))
 }
@@ -80,7 +73,7 @@ fn same_file(a: &Path, b: &Path) -> bool {
 
 pub(super) fn holds_our_bytes(path: &Path, sha: Option<&str>) -> bool {
     match (fs::read(path), sha) {
-        (Ok(bytes), Some(sha)) => sha256_hex(&bytes) == sha,
+        (Ok(bytes), Some(sha)) => sha_hex(&bytes) == sha,
         _ => false,
     }
 }
@@ -553,8 +546,8 @@ impl Store {
              WHERE id = ?4",
             params![
                 rel,
-                sha256_hex(bytes.as_bytes()),
-                surface.map(|c| sha256_hex(c.as_bytes())),
+                sha_hex(bytes.as_bytes()),
+                surface.map(|c| sha_hex(c.as_bytes())),
                 id
             ],
         )?;

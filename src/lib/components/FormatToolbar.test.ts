@@ -48,9 +48,7 @@ describe("FormatToolbar", () => {
     expect(getByRole("button", { name: "Bold" }).getAttribute("aria-pressed")).toBe("true");
     expect(getByRole("button", { name: "Italic" }).getAttribute("aria-pressed")).toBe("false");
     expect(getByRole("button", { name: "Heading" }).getAttribute("aria-pressed")).toBe("true");
-    expect(getByRole("button", { name: "Heading" }).getAttribute("title")).toBe(
-      "Heading 2 (click for heading 3)",
-    );
+    expect(getByRole("button", { name: "Heading" }).getAttribute("title")).toBe("Heading 2");
   });
 
   it("disables undo and redo until there is something to undo or redo", async () => {

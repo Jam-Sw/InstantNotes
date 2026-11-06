@@ -1,8 +1,10 @@
 [package]
 name = "instantnotes-server"
-version = "0.11.1"
+version = "0.11.2"
 description = "InstantNotes sync server: per-person encrypted sync and the web app. No Tauri."
-edition = "2021"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [lib]
 name = "instantnotes_server"
@@ -13,24 +15,23 @@ name = "instantnotes-server"
 path = "src/main.rs"
 
 [dependencies]
-instantnotes-core = { path = "../core" }
+instantnotes-core = { workspace = true }
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "query", "form"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "fs", "signal"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "form"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde = { workspace = true }
+serde_json = { workspace = true }
 rand = "0.10"
-base64 = "0.23"
-sha2 = "0.11"
-uuid = { version = "1", features = ["v4"] }
+base64 = { workspace = true }
+sha2 = { workspace = true }
+uuid = { workspace = true }
 jsonwebtoken = { version = "11", default-features = false, features = ["aws_lc_rs"] }
-rusqlite = { version = "0.40", features = ["bundled"] }
+rusqlite = { workspace = true }
 governor = "0.10"
 chacha20poly1305 = "0.11"
-hkdf = "0.13"
-tempfile = "3"
+hkdf = { workspace = true }
+tempfile = { workspace = true }
 
 [dev-dependencies]
-tempfile = "3"
 aws-lc-rs = "1"

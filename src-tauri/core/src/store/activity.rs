@@ -122,6 +122,23 @@ pub fn session_alive(db: &Path, session: &str) -> bool {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum Before {
+    One(Option<NoteSnapshot>),
+    Many(Vec<NoteSnapshot>),
+}
+
+impl Before {
+    fn decode(json: &str) -> Result<Before> {
+        let corrupt = |e: serde_json::Error| AppError::Storage(format!("corrupt snapshot: {e}"));
+        if json.trim_start().starts_with('[') {
+            Ok(Before::Many(serde_json::from_str(json).map_err(corrupt)?))
+        } else {
+            Ok(Before::One(serde_json::from_str(json).map_err(corrupt)?))
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct ActivityRecord {
     pub session: String,
@@ -138,7 +155,7 @@ pub struct ActivityRecord {
     pub tag: Option<String>,
     pub query: Option<String>,
     pub after_updated_at: Option<String>,
-    pub before: Option<Option<NoteSnapshot>>,
+    pub before: Option<Before>,
     pub reverts: Option<i64>,
 }
 
@@ -172,7 +189,70 @@ fn row_to_activity(row: &rusqlite::Row<'_>) -> rusqlite::Result<AgentActivity> {
     })
 }
 
-fn snapshot(conn: &Connection, id: &str) -> Result<Option<NoteSnapshot>> {
+fn encode_snapshot<T: Serialize>(value: &T) -> Result<String> {
+    serde_json::to_string(value)
+        .map_err(|e| AppError::Storage(format!("cannot encode snapshot: {e}")))
+}
+
+fn revert_record(
+    started: std::time::Instant,
+    note_ids: Vec<String>,
+    titles: Vec<String>,
+    note_count: i64,
+    after: String,
+    reverts: i64,
+) -> ActivityRecord {
+    ActivityRecord {
+        session: "app".into(),
+        client: "instantnotes".into(),
+        tool: "revert".into(),
+        kind: "write".into(),
+        status: "ok".into(),
+        duration_ms: started.elapsed().as_millis() as i64,
+        note_ids,
+        note_count,
+        titles,
+        after_updated_at: Some(after),
+        reverts: Some(reverts),
+        ..Default::default()
+    }
+}
+
+fn insert_activity(
+    conn: &Connection,
+    at: i64,
+    rec: &ActivityRecord,
+    before: Option<String>,
+) -> Result<i64> {
+    conn.execute(
+        "INSERT INTO agent_activity (at, session, client, tool, kind, status, error, \
+         duration_ms, note_ids, note_count, titles, space, tag, query, after_updated_at, \
+         before, reverts) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, \
+         ?14, ?15, ?16, ?17)",
+        params![
+            at,
+            rec.session,
+            rec.client,
+            rec.tool,
+            rec.kind,
+            rec.status,
+            rec.error,
+            rec.duration_ms,
+            serde_json::to_string(&rec.note_ids).unwrap_or_else(|_| "[]".into()),
+            rec.note_count,
+            serde_json::to_string(&rec.titles).unwrap_or_else(|_| "[]".into()),
+            rec.space,
+            rec.tag,
+            rec.query,
+            rec.after_updated_at,
+            before,
+            rec.reverts,
+        ],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub(super) fn snapshot(conn: &Connection, id: &str) -> Result<Option<NoteSnapshot>> {
     let head = conn
         .query_row(
             "SELECT title, title_is_auto, body, is_pinned, is_archived, is_deleted, \
@@ -239,7 +319,7 @@ fn snapshot(conn: &Connection, id: &str) -> Result<Option<NoteSnapshot>> {
     }))
 }
 
-fn restore(tx: &Connection, snap: &NoteSnapshot) -> Result<()> {
+pub(super) fn restore(tx: &Connection, snap: &NoteSnapshot) -> Result<()> {
     let now = now_iso();
     let changed = tx.execute(
         "UPDATE notes SET title = ?1, title_is_auto = ?2, body = ?3, is_pinned = ?4, \
@@ -291,41 +371,12 @@ impl Store {
 
     pub fn record_activity(&mut self, rec: ActivityRecord) -> Result<i64> {
         let before = match &rec.before {
+            Some(Before::One(snap)) => Some(encode_snapshot(snap)?),
+            Some(Before::Many(snaps)) => Some(encode_snapshot(snaps)?),
             None => None,
-            Some(snap) => Some(
-                serde_json::to_string(snap)
-                    .map_err(|e| AppError::Storage(format!("cannot encode snapshot: {e}")))?,
-            ),
         };
-        let note_ids = serde_json::to_string(&rec.note_ids).unwrap_or_else(|_| "[]".into());
-        let titles = serde_json::to_string(&rec.titles).unwrap_or_else(|_| "[]".into());
         let tx = self.conn.transaction()?;
-        tx.execute(
-            "INSERT INTO agent_activity (at, session, client, tool, kind, status, error, \
-             duration_ms, note_ids, note_count, titles, space, tag, query, after_updated_at, \
-             before, reverts) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, \
-             ?14, ?15, ?16, ?17)",
-            params![
-                now_ms(),
-                rec.session,
-                rec.client,
-                rec.tool,
-                rec.kind,
-                rec.status,
-                rec.error,
-                rec.duration_ms,
-                note_ids,
-                rec.note_count,
-                titles,
-                rec.space,
-                rec.tag,
-                rec.query,
-                rec.after_updated_at,
-                before,
-                rec.reverts,
-            ],
-        )?;
-        let seq = tx.last_insert_rowid();
+        let seq = insert_activity(&tx, now_ms(), &rec, before)?;
         tx.execute(
             "DELETE FROM agent_activity WHERE seq <= ?1",
             params![seq - ACTIVITY_KEEP],
@@ -397,8 +448,10 @@ impl Store {
         match raw {
             None => Err(AppError::NotFound(format!("activity {seq} not found"))),
             Some(None) => Ok(None),
-            Some(Some(json)) => serde_json::from_str::<Option<NoteSnapshot>>(&json)
-                .map_err(|e| AppError::Storage(format!("corrupt snapshot: {e}"))),
+            Some(Some(json)) => Ok(match Before::decode(&json)? {
+                Before::Many(many) => many.into_iter().next(),
+                Before::One(one) => one,
+            }),
         }
     }
 
@@ -422,8 +475,49 @@ impl Store {
                 "this call changed nothing, so there is nothing to revert".into(),
             ));
         };
-        let snap: Option<NoteSnapshot> = serde_json::from_str(&before)
-            .map_err(|e| AppError::Storage(format!("corrupt snapshot: {e}")))?;
+        let snap = match Before::decode(&before)? {
+            Before::One(snap) => snap,
+            Before::Many(snaps) => {
+                let primary_id = snaps
+                    .first()
+                    .map(|s| s.id.clone())
+                    .ok_or_else(|| AppError::Validation("the call named no note".into()))?;
+                let started = std::time::Instant::now();
+                let tx = self.conn.transaction()?;
+                let mut current = Vec::with_capacity(snaps.len());
+                for snap in &snaps {
+                    let cur = snapshot(&tx, &snap.id)?.ok_or_else(|| {
+                        AppError::NotFound(format!("note {} no longer exists", snap.id))
+                    })?;
+                    current.push(cur);
+                }
+                for snap in &snaps {
+                    restore(&tx, snap)?;
+                }
+                let after: String = tx.query_row(
+                    "SELECT updated_at FROM notes WHERE id = ?1",
+                    params![primary_id],
+                    |r| r.get(0),
+                )?;
+                let now = now_ms();
+                tx.execute(
+                    "UPDATE agent_activity SET reverted_at = ?1 WHERE seq = ?2",
+                    params![now, seq],
+                )?;
+                let before_json = encode_snapshot(&current)?;
+                let rec = revert_record(
+                    started,
+                    current.iter().map(|c| c.id.clone()).collect(),
+                    current.iter().take(3).map(|c| c.title.clone()).collect(),
+                    current.len() as i64,
+                    after,
+                    seq,
+                );
+                let new_seq = insert_activity(&tx, now, &rec, Some(before_json))?;
+                tx.commit()?;
+                return Ok(new_seq);
+            }
+        };
         let ids: Vec<String> = serde_json::from_str(&note_ids).unwrap_or_default();
         let id = snap
             .as_ref()
@@ -455,24 +549,16 @@ impl Store {
             "UPDATE agent_activity SET reverted_at = ?1 WHERE seq = ?2",
             params![now, seq],
         )?;
-        let before_json = serde_json::to_string(&Some(&current))
-            .map_err(|e| AppError::Storage(format!("cannot encode snapshot: {e}")))?;
-        tx.execute(
-            "INSERT INTO agent_activity (at, session, client, tool, kind, status, error, \
-             duration_ms, note_ids, note_count, titles, space, tag, query, after_updated_at, \
-             before, reverts) VALUES (?1, 'app', 'instantnotes', 'revert', 'write', 'ok', NULL, \
-             ?2, ?3, 1, ?4, NULL, NULL, NULL, ?5, ?6, ?7)",
-            params![
-                now,
-                started.elapsed().as_millis() as i64,
-                serde_json::to_string(&[&id]).unwrap_or_else(|_| "[]".into()),
-                serde_json::to_string(&[&current.title]).unwrap_or_else(|_| "[]".into()),
-                after,
-                before_json,
-                seq,
-            ],
-        )?;
-        let new_seq = tx.last_insert_rowid();
+        let before_json = encode_snapshot(&Some(&current))?;
+        let rec = revert_record(
+            started,
+            vec![id],
+            vec![current.title.clone()],
+            1,
+            after,
+            seq,
+        );
+        let new_seq = insert_activity(&tx, now, &rec, Some(before_json))?;
         tx.commit()?;
         Ok(new_seq)
     }

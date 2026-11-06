@@ -46,4 +46,9 @@
   .pref-row.disabled .pref-label {
     opacity: 0.5;
   }
+  @media (max-width: 599px) {
+    .pref-row {
+      flex-wrap: wrap;
+    }
+  }
 </style>

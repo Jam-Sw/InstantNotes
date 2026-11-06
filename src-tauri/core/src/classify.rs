@@ -256,14 +256,17 @@ pub fn features(text: &str, tags: &[(String, String)], params: Params) -> Featur
         }
     });
     for (name, source) in tags {
-        let weight = if source == "inline" {
-            params.inline_weight
-        } else {
-            params.manual_weight
-        };
-        out.insert(format!("#{name}"), weight);
+        out.insert(format!("#{name}"), tag_weight(source, params));
     }
     out
+}
+
+pub fn tag_weight(source: &str, params: Params) -> f64 {
+    if source == "inline" {
+        params.inline_weight
+    } else {
+        params.manual_weight
+    }
 }
 
 #[cfg(test)]

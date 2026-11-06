@@ -30,7 +30,7 @@
     try {
       list = await listBackups();
     } catch (e) {
-      toasts.show(`Couldn't read the backups. ${errorMessage(e)}`);
+      toasts.show(`Couldn't read backups: ${errorMessage(e)}`);
     }
   }
 
@@ -47,7 +47,7 @@
     try {
       await setBackupsAutomatic(on);
     } catch (e) {
-      toasts.show(`Couldn't change the setting. ${errorMessage(e)}`);
+      toasts.show(`Couldn't change automatic backups: ${errorMessage(e)}`);
       void refresh();
     }
   }
@@ -57,9 +57,9 @@
     busy = true;
     try {
       list = await backupNow();
-      toasts.show("Backed up. The copy is in the backups folder.");
+      toasts.show("Backed up");
     } catch (e) {
-      toasts.show(`Couldn't back up. ${errorMessage(e)}`);
+      toasts.show(`Couldn't back up: ${errorMessage(e)}`);
     } finally {
       busy = false;
     }
@@ -71,17 +71,16 @@
     try {
       const found = await inspectBackup(path);
       const when = found.madeAt ? formatExact(found.madeAt) : "an unknown time";
-      const notes = `${found.notes} ${found.notes === 1 ? "note" : "notes"}`;
       const ok = await confirmDialog.ask({
         title: `Restore the library from ${when}?`,
-        body: `That copy holds ${notes}. InstantNotes restarts, keeps today's library as a backup, and turns sync off; turn it back on in Settings > Sync when ready.`,
+        body: `${found.notes} ${found.notes === 1 ? "note" : "notes"} · restarts the app and turns sync off`,
         confirmLabel: "Restore and restart",
         tone: "danger",
       });
       if (!ok) return;
       await restoreBackup(path);
     } catch (e) {
-      toasts.show(`Couldn't restore. ${errorMessage(e)}`);
+      toasts.show(`Couldn't restore: ${errorMessage(e)}`);
     } finally {
       busy = false;
     }
@@ -95,7 +94,7 @@
         filters: [{ name: "InstantNotes library", extensions: ["db"] }],
       });
     } catch (e) {
-      toasts.show(`Couldn't open the file picker. ${errorMessage(e)}`);
+      toasts.show(`Couldn't open file picker: ${errorMessage(e)}`);
       return;
     }
     if (!path || typeof path !== "string") return;
@@ -106,7 +105,7 @@
     try {
       await openBackupsFolder();
     } catch (e) {
-      toasts.show(`Couldn't open the folder. ${errorMessage(e)}`);
+      toasts.show(`Couldn't open backups folder: ${errorMessage(e)}`);
     }
   }
 
@@ -116,13 +115,9 @@
     try {
       const result = isWeb ? await exportArchiveDownload() : await exportVaultToFolder();
       if ("ok" in result && result.ok) {
-        toasts.show(
-          isWeb
-            ? "Exported. The download holds every note as a plain Markdown file."
-            : "Exported. Every note is now a plain Markdown file in the folder you chose.",
-        );
+        toasts.show("Exported");
       } else if ("error" in result) {
-        toasts.show(`Couldn't export. ${result.error}`);
+        toasts.show(`Couldn't export: ${result.error}`);
       }
     } finally {
       exporting = false;
@@ -133,19 +128,11 @@
 <div class="backups-pane">
   {#if isWeb}
     <h2>Export</h2>
-    <p class="section-hint">
-      Your notes are kept on the server and on every signed-in device. Take a copy whenever you like.
-    </p>
   {:else}
     <h2>Backups</h2>
-    <p class="section-hint">
-      A copy of your library is made every day and kept beside it. Images stay in the attachments folder;
-      the Markdown export carries them.
-    </p>
 
     <ToggleRow
       label="Automatic backups"
-      sub="Once a day, while InstantNotes is open. A week of daily copies is kept, then one a week, then one a month."
       checked={list?.automatic ?? true}
       disabled={!list}
       onchange={(on) => void setAutomatic(on)}
@@ -153,7 +140,7 @@
 
     <PrefRow
       label="Back up now"
-      sub={!list ? "" : list.lastAt ? `Last backup ${formatExact(list.lastAt)}.` : "No backup yet."}
+      sub={list?.lastAt ? `Last backup ${formatExact(list.lastAt)}` : ""}
     >
       {#snippet control()}
         <button class="primary-btn" disabled={busy || !list} onclick={() => void runBackupNow()}>
@@ -176,7 +163,7 @@
         {/each}
       </ul>
     {:else if list}
-      <p class="fine-print">No backups yet. The first one is made a few seconds after launch.</p>
+      <p class="fine-print">No backups yet</p>
     {/if}
     <div class="row-actions">
       <button class="card-btn" disabled={busy} onclick={() => void restoreFromFile()}>
@@ -188,12 +175,7 @@
     <span class="group-label">Export</span>
   {/if}
 
-  <PrefRow
-    label="Export everything as Markdown"
-    sub={isWeb
-      ? "A .zip with every note, tag, Space and image, as the folder export writes them."
-      : "A snapshot of every note, tag, Space, and attachment, written once to a folder you choose."}
-  >
+  <PrefRow label="Export everything as Markdown">
     {#snippet control()}
       <button class="primary-btn" disabled={exporting} onclick={() => void runExport()}>
         {exporting ? "Exporting…" : isWeb ? "Download…" : "Export a copy…"}
@@ -210,12 +192,6 @@
     margin: 0 0 6px;
     font-size: 18px;
     font-weight: 600;
-  }
-  .section-hint {
-    color: var(--text-secondary);
-    font-size: 13px;
-    line-height: 1.5;
-    margin: 0 0 20px;
   }
   .group-label {
     display: block;
@@ -265,16 +241,6 @@
     color: var(--text-tertiary);
     font-size: 12px;
     margin: 8px 0 0;
-  }
-  .card-btn {
-    padding: 6px 12px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--accent);
-    font-size: 13px;
-  }
-  .card-btn:hover:not(:disabled) {
-    background: var(--bg-hover);
   }
   .card-btn:disabled {
     opacity: 0.6;

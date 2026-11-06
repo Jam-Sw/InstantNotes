@@ -14,6 +14,7 @@ pub const SHARED_SETTINGS: &[&str] = &[
     "links.externalIndicator",
     "images.maxPreviewHeight",
     "suggest.tags",
+    "suggest.related",
 ];
 
 pub(super) const SETTINGS_BASE_SETTING: &str = "sync.settingsBase";

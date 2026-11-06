@@ -22,7 +22,6 @@
     role="alertdialog"
     aria-modal="true"
     aria-labelledby="other-tab-title"
-    aria-describedby="other-tab-body"
     tabindex="-1"
     onkeydown={onKeydown}
   >
@@ -31,11 +30,7 @@
         <span class="tab here"></span>
         <span class="tab there"></span>
       </div>
-      <h2 id="other-tab-title">InstantNotes is open in another tab.</h2>
-      <p id="other-tab-body">
-        Your notes can be open in one tab at a time. Use them here and the other tab will show this
-        message instead.
-      </p>
+      <h2 id="other-tab-title">Open in another tab</h2>
       <button bind:this={useBtn} class="btn" onclick={() => tab.useHere()}>Use here</button>
     </div>
   </div>
@@ -97,16 +92,10 @@
     background: var(--accent);
   }
   h2 {
-    margin: 0;
+    margin: 0 0 20px;
     font-size: 17px;
     font-weight: 600;
     line-height: 1.35;
-  }
-  p {
-    margin: 8px 0 20px;
-    color: var(--text-secondary);
-    font-size: 13px;
-    line-height: 1.5;
   }
   .btn {
     padding: 6px 14px;

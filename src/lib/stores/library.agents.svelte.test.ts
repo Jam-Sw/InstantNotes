@@ -252,7 +252,7 @@ describe("a save meets an agent's edit", () => {
     });
     expect(library.saveState).toBe("saved");
     const toast = toasts.items.at(-1)!;
-    expect(toast.message).toBe("Claude Code's change to this note was replaced by your typing.");
+    expect(toast.message).toBe("Typed over Claude Code's change");
     expect(toast.action?.label).toBe("Restore theirs");
 
     mockUpdateNote.mockResolvedValueOnce(mkNote("n1", { body: theirs, updatedAt: "2026-01-01T00:07:00.000000Z" }));

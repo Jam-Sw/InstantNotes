@@ -137,7 +137,7 @@ describe("GraphView", () => {
   it("says how many notes it leaves out, and when suggestions will start", async () => {
     const { findByText } = render(GraphView);
     expect(
-      await findByText(/2 notes with no tags or Spaces aren't shown\.\s+Suggestions start once two Spaces hold notes\./),
+      await findByText(/Hidden: 2 notes without tags or Spaces\s+· Suggestions need 2 Spaces with notes/),
     ).toBeTruthy();
   });
 
@@ -194,7 +194,7 @@ describe("GraphView", () => {
   it("explains itself when nothing is connected yet", async () => {
     vi.mocked(libraryGraph).mockResolvedValue({ ...GRAPH, links: [] });
     const { findByText } = render(GraphView);
-    expect(await findByText(/Tag notes or add them to Spaces/)).toBeTruthy();
+    expect(await findByText("No tagged notes or Spaces")).toBeTruthy();
   });
 
   it("redraws when notes, tags, or Spaces change", async () => {
@@ -242,7 +242,7 @@ describe("GraphView suggestions", () => {
     expect(row.textContent).toMatch(/84%/);
     expect(row.textContent).toMatch(/because #pasta, simmer, ragu/);
     expect(within(row).getByRole("button", { name: "Add “Lasagne” to Research" })).toBeTruthy();
-    expect(within(row).getByRole("button", { name: "Don't suggest Research for “Lasagne”" })).toBeTruthy();
+    expect(within(row).getByRole("button", { name: "Dismiss Research for “Lasagne”" })).toBeTruthy();
   });
 
   it("draws the suggested note, named for what it is suggested for", async () => {
@@ -264,14 +264,14 @@ describe("GraphView suggestions", () => {
 
   it("remembers a dismissal, changes nothing else, and can take it back", async () => {
     const { findByRole, queryByRole } = render(GraphView);
-    await fireEvent.click(await findByRole("button", { name: "Don't suggest Research for “Lasagne”" }));
+    await fireEvent.click(await findByRole("button", { name: "Dismiss Research for “Lasagne”" }));
     await waitFor(() => expect(dismissSpaceSuggestion).toHaveBeenCalledWith("n4", "s1"));
     expect(addNoteToWorkspace).not.toHaveBeenCalled();
     expect(queryByRole("complementary", { name: "Filing suggestions" })).toBeNull();
     expect(lib.refreshSuggestionCount).toHaveBeenCalled();
     await waitFor(() => expect(show).toHaveBeenCalled());
     const [message, action] = show.mock.calls[0];
-    expect(message).toBe('Won\'t suggest Research for "Lasagne"');
+    expect(message).toBe('Dismissed Research for "Lasagne"');
     action?.run();
     expect(restoreSpaceSuggestion).toHaveBeenCalledWith("n4", "s1");
     await waitFor(() => expect(spaceSuggestions).toHaveBeenCalledTimes(2));
@@ -292,7 +292,7 @@ describe("GraphView suggestions", () => {
     );
     const { findByRole, getByRole, getAllByRole } = render(GraphView);
     const panel = await findByRole("complementary", { name: "Filing suggestions" });
-    expect(panel.textContent).toMatch(/Where these belong\s*200/);
+    expect(panel.textContent).toMatch(/Suggestions\s*200/);
     expect(within(panel).getAllByRole("listitem")).toHaveLength(25);
     expect(getAllByRole("button", { name: /suggested for Research/ })).toHaveLength(25);
     await fireEvent.click(getByRole("button", { name: "Show 25 more" }));

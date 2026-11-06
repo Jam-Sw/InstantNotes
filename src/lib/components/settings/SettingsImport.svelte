@@ -1,5 +1,18 @@
 <script lang="ts">
-  import { importStickies, openUrl, scanStickies } from "$lib/api/client";
+  import {
+    importNotion,
+    importObsidian,
+    importStickies,
+    notionExports,
+    obsidianVaults,
+    openUrl,
+    scanNotion,
+    scanObsidian,
+    scanStickies,
+  } from "$lib/api/client";
+  import { chooseNotionExport, chooseNotionFolder, chooseObsidianVault } from "$lib/folder-import";
+  import { isMac } from "$lib/platform";
+  import ImportFolder from "$lib/components/settings/ImportFolder.svelte";
   import type { ImportOutcome, StickiesScan, StickyPreview } from "$lib/api/types";
   import { formatExact } from "$lib/format";
   import {
@@ -85,17 +98,40 @@
 
 <div class="import-pane">
   <h2>Import</h2>
-  <p class="section-hint">
-    Bring notes in from other apps. The app they came from keeps its copy;
-    nothing there changes.
-  </p>
 
+  <ImportFolder
+    source="Obsidian"
+    label="Notes, images, tags, dates"
+    sub="Links become plain text"
+    defaultSpace="Obsidian"
+    found={obsidianVaults}
+    pickers={[{ label: "Choose Vault Folder…", pick: chooseObsidianVault }]}
+    scan={scanObsidian}
+    run={importObsidian}
+    {onShowSpace}
+  />
+
+  <ImportFolder
+    source="Notion"
+    label="Pages, images, tags, dates"
+    fine="Notion: Settings → General → Export all workspace content → Markdown & CSV"
+    defaultSpace="Notion"
+    found={notionExports}
+    pickers={[
+      { label: "Choose Export Zip…", pick: chooseNotionExport },
+      { label: "Choose Unzipped Folder…", pick: chooseNotionFolder },
+    ]}
+    scan={scanNotion}
+    run={importNotion}
+    {onShowSpace}
+  />
+
+  {#if isMac}
   <span class="group-label">Apple Stickies</span>
 
   {#if phase.kind === "start" || phase.kind === "reading"}
     <PrefRow
-      label="Every sticky becomes a note"
-      sub="With its formatting, lists, links, images, and original dates. You pick which ones and where they go."
+      label="Formatting, lists, links, images, dates"
     >
       {#snippet control()}
         <button class="primary-btn" disabled={phase.kind === "reading"} onclick={choose}>
@@ -103,17 +139,10 @@
         </button>
       {/snippet}
     </PrefRow>
-    <p class="fine-print">
-      macOS keeps each app's data private, so you show InstantNotes where
-      Stickies keeps its notes. The picker opens there; choose Open.
-    </p>
   {:else if phase.kind === "denied"}
     <div class="notice" role="alert">
-      <p class="notice-main">macOS didn't let InstantNotes read that folder.</p>
-      <p class="notice-sub">
-        In Privacy &amp; Security, allow InstantNotes to use other apps' data,
-        then choose the folder again.
-      </p>
+      <p class="notice-main">No access to that folder</p>
+      <p class="notice-sub">Privacy &amp; Security → allow access to other apps' data</p>
       <div class="actions">
         <button class="card-btn" onclick={() => openUrl(PRIVACY_SETTINGS_URL)}>
           Open Privacy &amp; Security
@@ -141,8 +170,8 @@
     </div>
   {:else if scan && scan.stickies.length === 0}
     <div class="notice" role="status">
-      <p class="notice-main">There are no stickies in that folder.</p>
-      <p class="notice-sub">Stickies keeps them in <code>{STICKIES_PATH_HINT}</code>.</p>
+      <p class="notice-main">No stickies in that folder</p>
+      <p class="notice-sub">Expected in <code>{STICKIES_PATH_HINT}</code></p>
       <div class="actions">
         <button class="card-btn" onclick={choose}>Choose Again…</button>
       </div>
@@ -200,7 +229,7 @@
       {/each}
     </div>
 
-    <PrefRow label="File them in" sub="A Space to go through them in. Leave it empty for none.">
+    <PrefRow label="Space">
       {#snippet control()}
         <input
           class="space-input"
@@ -209,7 +238,7 @@
           placeholder="No Space"
           spellcheck="false"
           disabled={importing}
-          aria-label="Space to file the imported stickies in"
+          aria-label="Space for imported stickies"
         />
       {/snippet}
     </PrefRow>
@@ -228,10 +257,8 @@
         Choose Another Folder…
       </button>
     </div>
-    <p class="fine-print">
-      Stickies keeps its notes. Formatting Markdown can't hold, like fonts,
-      sizes, and text colors, stays behind.
-    </p>
+    <p class="fine-print">Fonts, sizes and text colors are dropped</p>
+  {/if}
   {/if}
 </div>
 
@@ -244,15 +271,9 @@
     font-size: 18px;
     font-weight: 600;
   }
-  .section-hint {
-    color: var(--text-secondary);
-    font-size: 13px;
-    line-height: 1.5;
-    margin: 0 0 20px;
-  }
   .group-label {
     display: block;
-    margin: 20px 0 2px;
+    margin: 24px 0 2px;
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
@@ -274,23 +295,6 @@
   }
   .primary-btn:disabled {
     opacity: 0.5;
-  }
-  .card-btn {
-    padding: 6px 12px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--accent);
-    font-size: 13px;
-  }
-  .card-btn:hover:not(:disabled) {
-    background: var(--bg-hover);
-  }
-  .card-btn:disabled {
-    opacity: 0.5;
-  }
-  .card-btn.quiet {
-    margin-left: auto;
-    color: var(--text-secondary);
   }
   .actions {
     display: flex;

@@ -22,6 +22,7 @@
     type Range,
     type Sheet,
   } from "$lib/sheet/model";
+  import { cellKey, evaluateGrid } from "$lib/calc/table";
   import {
     clampSelection,
     coversFullCols,
@@ -84,6 +85,7 @@
   let editor = $state<HTMLTextAreaElement>();
 
   const rows = $derived(sheet.rows.length);
+  const computed = $derived(evaluateGrid(sheet.rows, false));
   const cols = $derived(sheet.cols.length);
   const range = $derived(rangeOf(sel));
   const tableWidth = $derived(ROW_HEAD_W + sheet.cols.reduce((sum, c) => sum + c.w, 0));
@@ -172,7 +174,7 @@
     const { r, c, value } = editing;
     editing = null;
     if (value.length > MAX_CELL_CHARS) {
-      toasts.show(`A cell holds at most ${MAX_CELL_CHARS.toLocaleString()} characters; the rest was cut.`);
+      toasts.show(`Cut to ${MAX_CELL_CHARS.toLocaleString()} characters`);
     }
     let next = setCell(sheet, r, c, value);
     let nextSel: Selection;
@@ -215,7 +217,7 @@
 
   function growRows(from: Sheet, n: number): Sheet {
     const grown = insertRows(from, from.rows.length, n);
-    if (grown === from) toasts.show(`A sheet holds at most ${MAX_ROWS.toLocaleString()} rows.`);
+    if (grown === from) toasts.show(`Row limit: ${MAX_ROWS.toLocaleString()}`);
     return grown;
   }
 
@@ -339,7 +341,7 @@
     const { sheet: next, clipped } = pasteBlock(sheet, r0, c0, fill);
     if (clipped) {
       toasts.show(
-        `Some pasted cells didn't fit: a sheet holds at most ${MAX_COLS} columns and ${MAX_ROWS.toLocaleString()} rows.`,
+        `Paste clipped to ${MAX_COLS} columns, ${MAX_ROWS.toLocaleString()} rows`,
       );
     }
     const r1 = Math.min(r0 + fill.length - 1, next.rows.length - 1);
@@ -422,8 +424,8 @@
       if (next === sheet) {
         toasts.show(
           kind === "row"
-            ? `A sheet holds at most ${MAX_ROWS.toLocaleString()} rows.`
-            : `A sheet holds at most ${MAX_COLS} columns.`,
+            ? `Row limit: ${MAX_ROWS.toLocaleString()}`
+            : `Column limit: ${MAX_COLS}`,
         );
       }
       apply(next);
@@ -628,7 +630,12 @@
                   }}
                 ></textarea>
               {:else}
-                <span class="cell-text">{display(sheet, r, c)}</span>
+                {@const out = computed.get(cellKey(r, c))}
+                {#if out}
+                  <span class="cell-text formula" class:error={out.error}>{out.text}</span>
+                {:else}
+                  <span class="cell-text">{display(sheet, r, c)}</span>
+                {/if}
               {/if}
             </td>
           {/each}
@@ -750,6 +757,14 @@
     line-height: 25px;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .cell-text.formula {
+    font-family: var(--font-meta);
+    font-size: 12px;
+    color: var(--accent-text);
+  }
+  .cell-text.error {
+    color: var(--danger);
   }
   .cell-editor {
     position: absolute;

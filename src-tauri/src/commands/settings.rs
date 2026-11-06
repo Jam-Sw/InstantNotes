@@ -5,7 +5,7 @@ pub fn get_setting(
     state: State<'_, AppState>,
     key: String,
 ) -> CmdResult<Option<serde_json::Value>> {
-    Ok(locked(&state)?.get_setting(&key)?)
+    Ok(locked_reader(&state)?.get_setting(&key)?)
 }
 
 #[tauri::command(async)]

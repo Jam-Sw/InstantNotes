@@ -24,9 +24,9 @@
     if (!link) return;
     try {
       await navigator.clipboard.writeText(link);
-      toasts.show("Copied the link.");
+      toasts.show("Copied");
     } catch {
-      toasts.show("Couldn't copy. Select the link and copy it instead.");
+      toasts.show("Couldn't copy");
     }
   }
 </script>
@@ -43,7 +43,6 @@
     <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="open-elsewhere-title">
       <h2 id="open-elsewhere-title">Open on another device</h2>
       {#if link && qr}
-        <p class="body">Scan this with your phone or tablet camera. It opens this note on your Sync server.</p>
         <svg
           class="qr"
           viewBox="0 0 {qr.size} {qr.size}"
@@ -56,7 +55,7 @@
         </svg>
         <code class="link" aria-label="Link to this note">{link}</code>
       {:else}
-        <p class="body">Open this on your phone through a Sync server: Settings &gt; Sync.</p>
+        <p class="body">Needs a Sync server: Settings &gt; Sync</p>
       {/if}
       <div class="actions">
         {#if link}

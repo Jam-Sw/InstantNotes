@@ -333,7 +333,7 @@
         run: () => void removeNoteFromWorkspace(s.noteId, s.spaceId).catch(() => reload()),
       });
     } catch {
-      toasts.show(`Couldn't file "${s.noteTitle}" in ${s.spaceName}.`);
+      toasts.show(`Couldn't file "${s.noteTitle}" in ${s.spaceName}`);
       reload();
     }
   }
@@ -344,12 +344,12 @@
     try {
       await dismissSpaceSuggestion(s.noteId, s.spaceId);
       void library.refreshSuggestionCount();
-      toasts.show(`Won't suggest ${s.spaceName} for "${s.noteTitle}"`, {
+      toasts.show(`Dismissed ${s.spaceName} for "${s.noteTitle}"`, {
         label: "Undo",
         run: () => void restoreSpaceSuggestion(s.noteId, s.spaceId).then(() => reload(), () => reload()),
       });
     } catch {
-      toasts.show(`Couldn't dismiss the suggestion for "${s.noteTitle}".`);
+      toasts.show(`Couldn't dismiss suggestion for "${s.noteTitle}"`);
       reload();
     }
   }
@@ -527,12 +527,9 @@
       oncontextmenu={(e) => e.preventDefault()}
     >
       {#if failed}
-        <p class="graph-empty">The graph couldn't load. Your notes are fine; try again in a moment.</p>
+        <p class="graph-empty">Graph couldn't load</p>
       {:else if graph && graph.nodes.length === 0}
-        <p class="graph-empty">
-          Nothing to draw yet. Tag notes or add them to Spaces, and they appear here, linked by
-          what they share.
-        </p>
+        <p class="graph-empty">No tagged notes or Spaces</p>
       {:else if graph}
         <svg {width} {height} role="group" aria-label="Notes, tags, and Spaces">
           <g transform="translate({view.x} {view.y}) scale({view.k})">
@@ -619,7 +616,7 @@
     {#if shown.length > 0}
       <aside class="suggestions" aria-label="Filing suggestions">
         <h3>
-          Where these belong
+          Suggestions
           <span class="sug-count">{suggestions.length}</span>
         </h3>
         <ul>
@@ -631,12 +628,12 @@
               onfocusin={() => (hovered = s.noteId)}
               onfocusout={() => (hovered = null)}
             >
-              <button class="sug-note" title="Open the note" onclick={() => void library.select(s.noteId)}>
+              <button class="sug-note" onclick={() => void library.select(s.noteId)}>
                 {s.noteTitle || "Untitled"}
               </button>
               <p class="sug-verdict">
                 <span class="sug-space">{s.spaceName}</span>
-                <span class="sug-pct" title="How sure the suggestion is">{percent(s.probability)}</span>
+                <span class="sug-pct" title="Confidence">{percent(s.probability)}</span>
               </p>
               {#if s.reasons.length > 0}
                 <p class="sug-why">because {because(s)}</p>
@@ -651,10 +648,10 @@
                 </button>
                 <button
                   class="sug-dismiss"
-                  aria-label="Don't suggest {s.spaceName} for “{s.noteTitle || 'Untitled'}”"
+                  aria-label="Dismiss {s.spaceName} for “{s.noteTitle || 'Untitled'}”"
                   onclick={() => void dismiss(s)}
                 >
-                  Not this
+                  Dismiss
                 </button>
               </p>
             </li>
@@ -678,10 +675,9 @@
         <li><svg width="22" height="8" aria-hidden="true"><line class="edge suggested" x1="1" y1="4" x2="21" y2="4" /></svg>suggested Space</li>      </ul>
       {#if graph.unconnectedNotes > 0}
         <span class="foot-note">
-          {plural(graph.unconnectedNotes, "note", "notes")} with no tags or Spaces
-          {graph.unconnectedNotes === 1 ? "isn't" : "aren't"} shown.
+          Hidden: {plural(graph.unconnectedNotes, "note", "notes")} without tags or Spaces
           {#if graph.populatedSpaces < 2}
-            Suggestions start once two Spaces hold notes.
+            · Suggestions need 2 Spaces with notes
           {/if}
         </span>
       {/if}
@@ -726,6 +722,20 @@
   }
   .bar-btn:hover {
     background: var(--bg-hover);
+  }
+  @media (max-width: 599px) {
+    .graph-counts {
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+    .bar-actions {
+      flex: none;
+    }
+    .bar-btn {
+      white-space: nowrap;
+    }
   }
   .graph-body {
     display: flex;
@@ -889,6 +899,11 @@
     border-left: 1px solid var(--divider);
     padding: 10px 12px 12px;
     font-size: 12.5px;
+  }
+  @media (max-width: 599px) {
+    .suggestions {
+      max-width: 40%;
+    }
   }
   .suggestions h3 {
     display: flex;

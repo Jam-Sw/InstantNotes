@@ -113,7 +113,7 @@ describe("SettingsVault live mirror", () => {
       on({ reachable: false, pending: 3, unreachable: "vault folder not found: /Volumes/USB/Vault" }),
     );
     const { findByText } = render(SettingsVault);
-    expect(await findByText(/Offline: the folder can't be found. 3 notes will sync/)).toBeTruthy();
+    expect(await findByText(/Offline: folder not found · 3 notes waiting/)).toBeTruthy();
   });
 
   it("explains an empty mount point as an unmounted drive", async () => {
@@ -121,7 +121,7 @@ describe("SettingsVault live mirror", () => {
       on({ reachable: false, unreachable: "vault folder has no instantnotes.yaml: /mnt/share" }),
     );
     const { findByText } = render(SettingsVault);
-    expect(await findByText(/check that it's mounted/)).toBeTruthy();
+    expect(await findByText(/folder empty or not mounted/)).toBeTruthy();
   });
 
   it("shows any other error as a problem with its message", async () => {
@@ -134,7 +134,7 @@ describe("SettingsVault live mirror", () => {
     vi.mocked(getVaultStatus).mockResolvedValue(on({ heldRemovals: 40 }));
     vi.mocked(confirmVaultRemovals).mockResolvedValue(on());
     const { findByRole, findByText } = render(SettingsVault);
-    expect(await findByText(/40 notes went missing/)).toBeTruthy();
+    expect(await findByText(/40 notes missing/)).toBeTruthy();
     await fireEvent.click(await findByRole("button", { name: /Move 40 notes to Trash/ }));
     expect(confirmVaultRemovals).toHaveBeenCalled();
     expect(await findByText(/Up to date/)).toBeTruthy();
@@ -171,6 +171,6 @@ describe("SettingsVault live mirror", () => {
 
     await fireEvent.click(await findByRole("button", { name: /Check vault/ }));
 
-    expect(await findByText(/1 file was edited outside InstantNotes: Plan.md/)).toBeTruthy();
+    expect(await findByText(/Edited outside \(1\): Plan.md/)).toBeTruthy();
   });
 });

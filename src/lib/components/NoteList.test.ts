@@ -1,13 +1,14 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, fireEvent, cleanup, waitFor } from "@testing-library/svelte";
 
-const { newNote, newWhiteboard, copyIds, restoreIds, write, searchNow, moveSelection, toggleScopedTag, list } = vi.hoisted(() => ({
+const { newNote, newWhiteboard, copyIds, restoreIds, foldIds, write, searchNow, moveSelection, toggleScopedTag, list } = vi.hoisted(() => ({
   newNote: vi.fn(),
   write: vi.fn(async () => {}),
   searchNow: vi.fn(async () => {}),
   moveSelection: vi.fn(async () => null),
   toggleScopedTag: vi.fn(),
   restoreIds: vi.fn(async () => {}),
+  foldIds: vi.fn(async () => {}),
   newWhiteboard: vi.fn(),
   copyIds: vi.fn(async () => {}),
   list: {
@@ -53,19 +54,21 @@ vi.mock("$lib/stores/library.svelte", () => ({
     get searchResults() {
       return list.searchResults;
     },
-    get activeWorkspaceId() {
-      return list.activeWorkspaceId;
-    },
-    get scopedTagId() {
-      return list.scopedTagId;
+    nav: {
+      get activeWorkspaceId() {
+        return list.activeWorkspaceId;
+      },
+      get scopedTagId() {
+        return list.scopedTagId;
+      },
+      activeTagId: null,
+      revisitMode: false,
+      statusFilter: "active",
     },
     selected: null,
-    activeTagId: null,
     workspaceTags: [{ id: "t1", name: "trip", usageCount: 2 }],
     workspaces: [{ id: "w1", name: "Garden" }],
     tags: [],
-    revisitMode: false,
-    statusFilter: "active",
     isSelected: (id: string) => list.selected.has(id),
     newNote,
     newWhiteboard,
@@ -81,6 +84,8 @@ vi.mock("$lib/stores/library.svelte", () => ({
     extendSelectionTo: vi.fn(),
     emptyTrash: vi.fn(),
     restoreIds,
+    canFoldIds: (ids: string[]) => ids.length >= 2,
+    foldIds,
   },
 }));
 vi.mock("$lib/stores/update-space", () => ({ updateSpace: { notes: [] } }));
@@ -113,7 +118,7 @@ describe("NoteList create control", () => {
 
   it("offers both kinds from the chevron, and starts a whiteboard", async () => {
     const { getByLabelText, getByRole, findByRole } = render(NoteList);
-    await fireEvent.click(getByLabelText("Choose what to create"));
+    await fireEvent.click(getByLabelText("New…"));
 
     const menu = await findByRole("menu");
     expect(menu.textContent).toContain("New note");
@@ -149,6 +154,16 @@ describe("NoteList copy context", () => {
     await findByRole("menu");
     await fireEvent.click(getByRole("menuitem", { name: "Copy context (2 notes)" }));
     await waitFor(() => expect(copyIds).toHaveBeenCalledWith(["n1", "n3"]));
+  });
+
+  it("folds the whole selection in list order from the context menu", async () => {
+    list.notes = [noteRow("n1", "One"), noteRow("n2", "Two"), noteRow("n3", "Three")];
+    list.selected = new Set(["n3", "n1"]);
+    const { container, getByRole, findByRole } = render(NoteList);
+    await fireEvent.contextMenu(container.querySelector('[data-note-id="n3"]')!);
+    await findByRole("menu");
+    await fireEvent.click(getByRole("menuitem", { name: "Fold 2 notes into one" }));
+    await waitFor(() => expect(foldIds).toHaveBeenCalledWith(["n1", "n3"]));
   });
 
   it("copies only the clicked note when it sits outside the selection", async () => {

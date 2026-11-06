@@ -22,10 +22,13 @@ import type {
   CreateNoteInput,
   DashboardStats,
   FeedbackInput,
+  FoldOutcome,
   ImportOutcome,
+  FolderScan,
   Note,
   NoteFilter,
   NoteTitle,
+  RelatedNote,
   SearchResult,
   ShortcutFailure,
   SpaceSuggestion,
@@ -96,6 +99,16 @@ export const dismissSpaceSuggestion = (noteId: string, spaceId: string) =>
   call<void>("dismiss_space_suggestion", { noteId, spaceId });
 export const restoreSpaceSuggestion = (noteId: string, spaceId: string) =>
   call<void>("restore_space_suggestion", { noteId, spaceId });
+export const relatedNotes = (noteId: string, passage?: string | null, limit?: number) =>
+  call<RelatedNote[]>("related_notes", { noteId, passage: passage ?? null, limit });
+export const dismissRelatedNote = (noteId: string, relatedId: string) =>
+  call<void>("dismiss_related_note", { noteId, relatedId });
+export const restoreRelatedNote = (noteId: string, relatedId: string) =>
+  call<void>("restore_related_note", { noteId, relatedId });
+export const foldNotes = (intoId: string, sourceIds: string[]) =>
+  call<FoldOutcome>("fold_notes", { intoId, sourceIds });
+export const undoFold = (before: NoteSnapshot[]) =>
+  call<Note>("undo_fold", { before });
 export const listNotes = (filter: NoteFilter = {}) =>
   call<Note[]>("list_notes", { filter });
 export const countNotes = (filter: NoteFilter = {}) =>
@@ -299,6 +312,14 @@ export const stickiesLocation = () => call<string | null>("stickies_location");
 export const scanStickies = (folder: string) => call<StickiesScan>("scan_stickies", { folder });
 export const importStickies = (folder: string, ids: string[], space: string | null) =>
   call<ImportOutcome>("import_stickies", { folder, ids, space });
+export const obsidianVaults = () => call<string[]>("obsidian_vaults");
+export const scanObsidian = (folder: string) => call<FolderScan>("scan_obsidian", { folder });
+export const importObsidian = (folder: string, space: string | null) =>
+  call<ImportOutcome>("import_obsidian", { folder, space });
+export const notionExports = () => call<string[]>("notion_exports");
+export const scanNotion = (path: string) => call<FolderScan>("scan_notion", { path });
+export const importNotion = (folder: string, space: string | null) =>
+  call<ImportOutcome>("import_notion", { folder, space });
 
 export const getLibraryStats = () => call<DashboardStats>("library_stats");
 export const submitFeedback = (input: FeedbackInput) =>

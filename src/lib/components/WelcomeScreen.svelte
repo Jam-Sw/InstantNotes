@@ -134,21 +134,19 @@
       {/if}
     </h2>
     <p>
-      Select a note{#if !isWeb && !shortcutConflict?.wayland}, or press <kbd>{captureShortcut}</kbd> anywhere to capture{/if}.
+      Select a note{#if !isWeb && !shortcutConflict?.wayland}, or capture with <kbd>{captureShortcut}</kbd>{/if}
     </p>
     {#if layout.touch}
-      <p class="hint-line">Tap the command button for commands and themes.</p>
+      <p class="hint-line">Commands and themes: command button</p>
     {:else}
-      <p class="hint-line">Press <kbd>{modKey}K</kbd> for commands and themes.</p>
+      <p class="hint-line">Commands and themes: <kbd>{modKey}K</kbd></p>
     {/if}
     {#if shortcutConflict && !conflictDismissed}
       <p class="shortcut-notice">
         {#if shortcutConflict.wayland}
-          On Wayland, <kbd>{shortcutConflict.label}</kbd> only reaches InstantNotes while an X11 app is focused.
-          Bind a shortcut to <code>instantnotes capture</code> in your desktop's keyboard settings instead.
+          <kbd>{shortcutConflict.label}</kbd> works only in X11 apps. Bind <code>instantnotes capture</code>.
         {:else}
-          The capture shortcut <kbd>{shortcutConflict.label}</kbd> could not be registered;
-          another app likely owns it.
+          <kbd>{shortcutConflict.label}</kbd> not registered
         {/if}
         <button class="notice-dismiss" onclick={() => (conflictDismissed = true)}>
           Dismiss
@@ -301,15 +299,15 @@
   }
   .shortcut-notice {
     font-size: 12px;
-    color: #e8923a;
+    color: var(--warning);
   }
   .notice-dismiss {
     margin-left: 4px;
-    border: 1px solid #e8923a;
+    border: 1px solid var(--warning);
     border-radius: 99px;
     padding: 0 7px;
-    color: #e8923a;
-    background: rgba(232, 146, 58, 0.08);
+    color: var(--warning);
+    background: color-mix(in srgb, var(--warning) 8%, transparent);
     font-size: 10px;
     cursor: pointer;
   }

@@ -41,7 +41,7 @@
       const choice = await chooseVaultFolder();
       if ("cancelled" in choice) return;
       if ("error" in choice) {
-        toasts.show(`Couldn't open the folder picker. ${choice.error}`);
+        toasts.show(choice.error);
         return;
       }
       status = await setVaultFolder(choice.path);
@@ -59,7 +59,7 @@
     try {
       status = await setVaultFolder(null);
       reportLines = [];
-      toasts.show("Stopped. The files already written stay in the folder.");
+      toasts.show("Stopped");
     } catch (e) {
       toasts.show(`Couldn't stop syncing: ${errorMessage(e)}`);
     } finally {
@@ -72,9 +72,9 @@
     busy = true;
     try {
       status = await confirmVaultRemovals();
-      toasts.show("They'll move to the Trash on the next sync.");
+      toasts.show("Queued for Trash");
     } catch (e) {
-      toasts.show(`Couldn't do that: ${errorMessage(e)}`);
+      toasts.show(`Couldn't trash missing notes: ${errorMessage(e)}`);
     } finally {
       busy = false;
     }
@@ -96,17 +96,8 @@
 </script>
 
 <div>
-  <p class="section-hint">
-    Your notes as plain Markdown files, with their tags and Spaces, in a folder
-    you choose. Readable and editable in any editor, with InstantNotes closed,
-    on any device.
-  </p>
-
   {#if !status?.path}
-    <PrefRow
-      label="Keep your notes in a folder"
-      sub="Changes are written to the folder a moment after you make them, and changes made in the folder come back in. Point each device at the same folder, such as a network drive or a Syncthing or Dropbox folder, and they stay in step."
-    >
+    <PrefRow label="Notes folder">
       {#snippet control()}
         <button class="primary-btn" disabled={busy || !status} onclick={chooseFolder}>
           Choose folder…
@@ -132,17 +123,12 @@
         <div class="card-row">
           <span class="card-key">Conflicts</span>
           <span class="card-status">
-            {status.conflicts === 1 ? "1 note" : `${status.conflicts} notes`} changed in two places; both
-            versions are kept, the other tagged #conflict
+            {status.conflicts === 1 ? "1 note" : `${status.conflicts} notes`} changed in two places
           </span>
         </div>
       {/if}
       {#if status.heldRemovals > 0}
         <div class="held" role="alert">
-          <p>
-            Nothing was removed. If the folder is only partly there, wait for it to come back. If these
-            notes were deleted on another device, move them to the Trash here too.
-          </p>
           <button class="card-btn" disabled={busy} onclick={trashMissing}>
             Move {status.heldRemovals === 1 ? "1 note" : `${status.heldRemovals} notes`} to Trash
           </button>
@@ -165,21 +151,10 @@
         {/each}
       </ul>
     {/if}
-    <p class="fine-print">
-      Edits made in the folder, on another device or in another editor, come in
-      within a few seconds. A note deleted elsewhere moves to the Trash here. While
-      the folder is offline, your changes wait and sync when it's back.
-    </p>
   {/if}
 </div>
 
 <style>
-  .section-hint {
-    color: var(--text-secondary);
-    font-size: 13px;
-    line-height: 1.5;
-    margin: 16px 0 8px;
-  }
   .primary-btn {
     flex-shrink: 0;
     padding: 6px 14px;
@@ -239,23 +214,6 @@
     gap: 8px;
     margin-top: 10px;
   }
-  .card-btn {
-    padding: 6px 12px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--accent);
-    font-size: 13px;
-  }
-  .card-btn:hover:not(:disabled) {
-    background: var(--bg-hover);
-  }
-  .card-btn:disabled {
-    opacity: 0.5;
-  }
-  .card-btn.quiet {
-    margin-left: auto;
-    color: var(--text-secondary);
-  }
   .held {
     margin-top: 10px;
     padding: 10px 12px;
@@ -265,20 +223,11 @@
     line-height: 1.5;
     color: var(--text-secondary);
   }
-  .held p {
-    margin: 0 0 8px;
-  }
   .report {
     margin: 10px 0 0;
     padding-left: 18px;
     font-size: 12.5px;
     line-height: 1.6;
     color: var(--text-secondary);
-  }
-  .fine-print {
-    margin: 8px 0 0;
-    color: var(--text-tertiary);
-    font-size: 12px;
-    line-height: 1.5;
   }
 </style>

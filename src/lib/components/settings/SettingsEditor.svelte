@@ -1,28 +1,45 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { editorPrefs } from "$lib/stores/editor.svelte";
+  import { editorPrefs, type EditorWidth } from "$lib/stores/editor.svelte";
   import ToggleRow from "$lib/components/settings/ToggleRow.svelte";
   import SegmentedRow from "$lib/components/settings/SegmentedRow.svelte";
   import { getSetting, setSetting } from "$lib/api/client";
   import {
-    parseTagSuggest,
+    parseSuggestSetting,
+    RELATED_SUGGEST_KEY,
+    SUGGEST_DEFAULT,
     SURENESS,
-    TAG_SUGGEST_DEFAULT,
     TAG_SUGGEST_KEY,
-    type TagSuggestSetting,
-  } from "$lib/tag-suggest";
+    type SuggestSetting,
+  } from "$lib/suggest-setting";
 
-  let tagSuggest = $state<TagSuggestSetting>(TAG_SUGGEST_DEFAULT);
+  let tagSuggest = $state<SuggestSetting>(SUGGEST_DEFAULT);
+  let relatedSuggest = $state<SuggestSetting>(SUGGEST_DEFAULT);
+  const widths: { value: EditorWidth; label: string }[] = [
+    { value: "readable", label: "Readable" },
+    { value: "wide", label: "Wide" },
+    { value: "full", label: "Full width" },
+  ];
+  const sureness = SURENESS.map((s) => ({ value: String(s.value), label: s.label }));
 
-  function saveTagSuggest(next: TagSuggestSetting) {
+  function saveTagSuggest(next: SuggestSetting) {
     tagSuggest = next;
     void setSetting(TAG_SUGGEST_KEY, next);
+  }
+
+  function saveRelatedSuggest(next: SuggestSetting) {
+    relatedSuggest = next;
+    void setSetting(RELATED_SUGGEST_KEY, next);
   }
 
   onMount(() => {
     void editorPrefs.init();
     getSetting<unknown>(TAG_SUGGEST_KEY).then(
-      (v) => (tagSuggest = parseTagSuggest(v)),
+      (v) => (tagSuggest = parseSuggestSetting(v)),
+      () => {},
+    );
+    getSetting<unknown>(RELATED_SUGGEST_KEY).then(
+      (v) => (relatedSuggest = parseSuggestSetting(v)),
       () => {},
     );
   });
@@ -30,15 +47,18 @@
 
 <div class="editor-pane-settings">
   <h2>Editor</h2>
-  <p class="section-hint">
-    How writing and the note itself present. These apply everywhere a note is
-    open.
-  </p>
+
+  <span class="group-label">Writing area</span>
+  <SegmentedRow
+    label="Width"
+    options={widths}
+    value={editorPrefs.width}
+    onchange={(v) => editorPrefs.setWidth(v)}
+  />
 
   <span class="group-label">Timestamps</span>
   <ToggleRow
     label="Show exact save time"
-    sub="Show the full date and time, to the minute, in the editor's Saved line. The exact time is always on hover, even when this is off."
     checked={editorPrefs.showExactTime}
     onchange={(v) => editorPrefs.setShowExactTime(v)}
   />
@@ -46,35 +66,37 @@
   <span class="group-label">Formatting</span>
   <ToggleRow
     label="Show the formatting toolbar"
-    sub="The row of undo, heading, bold and the other tools above every note. The note header's Formatting tools button hides and shows it too."
     checked={editorPrefs.toolbarOpen}
     onchange={() => editorPrefs.toggleToolbar()}
   />
   <ToggleRow
     label="Show Markdown source"
-    sub="Show the Markdown marks (**bold**, # headings) instead of the rendered text. The toolbar's Markdown button switches this too."
     checked={editorPrefs.sourceMode}
     onchange={() => editorPrefs.toggleSourceMode()}
   />
 
-  <span class="group-label">Tag suggestions</span>
-  <p class="section-hint">
-    The open note gets a + #tag chip when its words match notes that already carry that tag. The
-    model counts words in your own notes, on this device, each time you open one. Nothing is
-    stored or sent, and agents cannot see or change it. The chip's hover lists the words that led
-    to it.
-  </p>
+  <span class="group-label">Suggestions</span>
   <ToggleRow
-    label="Suggest a tag for the open note"
+    label="Tag suggestions"
     checked={tagSuggest.enabled}
     onchange={(v) => saveTagSuggest({ ...tagSuggest, enabled: v })}
   />
   <SegmentedRow
-    label="How sure it must be"
-    sub="Eager suggests more often and is wrong more often. Careful speaks up only when the words clearly point to one tag."
-    options={SURENESS.map((s) => ({ value: String(s.value), label: s.label }))}
+    label="Tag strictness"
+    options={sureness}
     value={String(tagSuggest.showAt)}
     onchange={(v) => saveTagSuggest({ ...tagSuggest, showAt: Number(v) })}
+  />
+  <ToggleRow
+    label="Around this note"
+    checked={relatedSuggest.enabled}
+    onchange={(v) => saveRelatedSuggest({ ...relatedSuggest, enabled: v })}
+  />
+  <SegmentedRow
+    label="Match strictness"
+    options={sureness}
+    value={String(relatedSuggest.showAt)}
+    onchange={(v) => saveRelatedSuggest({ ...relatedSuggest, showAt: Number(v) })}
   />
 </div>
 
@@ -86,11 +108,6 @@
     margin: 0 0 6px;
     font-size: 18px;
     font-weight: 600;
-  }
-  .section-hint {
-    color: var(--text-secondary);
-    font-size: 13px;
-    margin: 0 0 20px;
   }
   .group-label {
     display: block;

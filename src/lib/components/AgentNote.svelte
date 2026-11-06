@@ -111,7 +111,7 @@
     if (editedSince(e)) {
       const ok = await confirmDialog.ask({
         title: "Revert this change?",
-        body: "You have edited this note since. Reverting puts the note back as it was before the agent's change, and your edits since then go with it. The revert itself can be undone.",
+        body: "Your later edits are lost",
         confirmLabel: "Revert",
       });
       if (!ok) return;
@@ -130,15 +130,15 @@
     agents.setBlocked(client, on);
     toasts.show(
       on
-        ? `${clientLabel(client)} is blocked. It can no longer read or change your notes.`
-        : `${clientLabel(client)} is unblocked.`,
+        ? `${clientLabel(client)} is blocked`
+        : `${clientLabel(client)} is unblocked`,
     );
   }
 
   async function endSession(session: string, client: string) {
     const ok = await confirmDialog.ask({
       title: `End this ${clientLabel(client)} session?`,
-      body: "Its connection to your notes closes now. The agent may start a new one; Block stops that.",
+      body: "The agent may reconnect",
       confirmLabel: "End Session",
       tone: "danger",
     });
@@ -146,14 +146,14 @@
     try {
       await endAgentSession(session);
     } catch (e) {
-      toasts.show(`Couldn't end the session. ${e instanceof Error ? e.message : String(e)}`);
+      toasts.show(`Couldn't end session: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
   async function clearAll() {
     const ok = await confirmDialog.ask({
       title: "Clear the agent history?",
-      body: "The trace is forgotten and changes it recorded can no longer be reverted from here. Your notes are not touched.",
+      body: "Recorded changes can no longer be reverted",
       confirmLabel: "Clear History",
       tone: "danger",
     });
@@ -190,9 +190,9 @@
           {#if agents.access === "off"}
             Agent access is off
           {:else if agents.access === "read"}
-            May read
+            Read only
           {:else}
-            May read and write
+            Read and write
           {/if}
         </span>
       </p>
@@ -203,11 +203,7 @@
             <dd>
               <code>{session.clientSession}</code>
               {#if session.inferred}
-                <span
-                  class="inferred"
-                  title="This client does not tell its servers which session they belong to. This is the session its process began, matched from the client's own records."
-                  >best match</span
-                >
+                <span class="inferred">best match</span>
               {/if}
             </dd>
           {/if}
@@ -233,7 +229,7 @@
       </div>
       {#if filter === "scratch"}
         {#if scratchEntries.length === 0}
-          <p class="lead">It has written nothing to its scratchpad. An agent's working notes, plans and memory land here, never in your notes.</p>
+          <p class="lead">Scratchpad empty</p>
         {/if}
         <ol class="rows scratch" class:empty={scratchEntries.length === 0} bind:this={scratchEl}>
           {#each scratchEntries as s (s.seq)}
@@ -249,11 +245,11 @@
       {:else if shown.length === 0}
         <p class="lead">
           {#if session.entries.length === 0}
-            Connected, and it has not asked for anything yet. Every call will be listed here as it happens.
+            No calls yet
           {:else if filter === "changes"}
-            It has not changed anything.
+            No changes
           {:else}
-            Nothing it tried has failed.
+            No failures
           {/if}
         </p>
       {/if}
@@ -285,15 +281,13 @@
                   <span class="muted">Loading…</span>
                 {:else if wire && (wire.request || wire.response)}
                   <span class="wire-label section-label">Request</span>
-                  <pre class="wire">{wire.request ? prettyWire(wire.request) : "Not kept."}</pre>
+                  <pre class="wire">{wire.request ? prettyWire(wire.request) : "Not recorded"}</pre>
                   <span class="wire-label section-label">Response · {formatDuration(e.durationMs)}</span>
-                  <pre class="wire">{wire.response ? prettyWire(wire.response) : "Not kept."}</pre>
+                  <pre class="wire">{wire.response ? prettyWire(wire.response) : "Not recorded"}</pre>
                 {:else if e.client === "instantnotes"}
-                  <span class="muted">Made in the app, not over MCP, so there are no messages to show.</span>
+                  <span class="muted">In-app change</span>
                 {:else}
-                  <span class="muted">
-                    This call was traced before raw messages were kept: {e.tool}{#if e.error}, which failed with {e.error}{/if}.
-                  </span>
+                  <span class="muted">Not recorded · {e.tool}{#if e.error} · {e.error}{/if}</span>
                 {/if}
                 {#if e.kind === "write" && e.revertable}
                   <div class="before">
@@ -301,7 +295,7 @@
                     {#if beforeFor === e.seq && before === undefined}
                       <span class="muted">Loading…</span>
                     {:else if beforeFor === e.seq && before === null}
-                      <span class="muted">The note did not exist yet. Reverting moves it to the Trash.</span>
+                      <span class="muted">New note · Revert moves it to Trash</span>
                     {:else if beforeFor === e.seq && before}
                       <div class="snap">
                         <strong>{before.title || "Untitled"}</strong>
@@ -338,7 +332,7 @@
         <button class="btn quiet" onclick={clearAll}>Clear history</button>
       </div>
     {:else}
-      <p class="lead">This conversation is no longer in the agent history.</p>
+      <p class="lead">Not in agent history</p>
     {/if}
   </div>
 </div>

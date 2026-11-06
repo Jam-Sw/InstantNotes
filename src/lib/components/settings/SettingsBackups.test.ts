@@ -66,7 +66,6 @@ describe("SettingsBackups on the desktop", () => {
     vi.mocked(listBackups).mockResolvedValue(EMPTY);
     const { findByText, queryByRole } = render(SettingsBackups);
 
-    expect(await findByText("No backup yet.")).toBeTruthy();
     expect(await findByText(/No backups yet/)).toBeTruthy();
     expect(queryByRole("list", { name: "Backups" })).toBeNull();
   });
@@ -102,7 +101,7 @@ describe("SettingsBackups on the desktop", () => {
     await fireEvent.click(await findByRole("button", { name: "Back up now" }));
 
     expect(await findAllByRole("button", { name: "Restore…" })).toHaveLength(2);
-    expect(toasts.items.map((t) => t.message)).toEqual([expect.stringContaining("Backed up.")]);
+    expect(toasts.items.map((t) => t.message)).toEqual(["Backed up"]);
   });
 
   it("asks before restoring, naming the date, the count and the sync consequence", async () => {
@@ -158,7 +157,7 @@ describe("SettingsBackups on the desktop", () => {
 
     await fireEvent.click(getByRole("button", { name: /Export a copy/ }));
     await waitFor(() =>
-      expect(toasts.items.map((t) => t.message)).toEqual([expect.stringContaining("Exported.")]),
+      expect(toasts.items.map((t) => t.message)).toEqual(["Exported"]),
     );
   });
 

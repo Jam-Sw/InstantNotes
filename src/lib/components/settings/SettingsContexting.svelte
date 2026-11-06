@@ -1,10 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { modKey } from "$lib/platform";
   import { contexting } from "$lib/stores/contexting.svelte";
   import { renderContext, type ContextImageMode } from "$lib/contexting-format";
   import { library } from "$lib/stores/library.svelte";
   import { shell } from "$lib/stores/shell.svelte";
+  import { isWeb } from "$lib/api/runtime";
   import type { Note, Tag } from "$lib/api/types";
   import SegmentedRow from "$lib/components/settings/SegmentedRow.svelte";
   import ToggleRow from "$lib/components/settings/ToggleRow.svelte";
@@ -54,11 +54,6 @@
 
 <div class="contexting-pane">
   <h2>Contexting</h2>
-  <p class="section-hint">
-    The template behind "Copy note as context" in the {modKey}K palette and "Copy context" in
-    the note list's right-click menu, which works on several selected notes at once. Wrap the
-    note however a tool or model expects; this is the seed for InstantNotes' AI features.
-  </p>
 
   <label class="field-label" for="ctx-template">Template</label>
   <textarea
@@ -81,21 +76,20 @@
   <span class="field-label">Source</span>
   <ToggleRow
     label="Add source line"
-    sub="Appends &quot;From InstantNotes&quot;, the copy time and the note id after each copied note."
     checked={contexting.addSourceLine}
     onchange={(v) => contexting.setAddSourceLine(v)}
   />
-  <p class="ctx-agent-note">
-    An agent connected over MCP can fetch the full note by that id with get_note.
-    <button type="button" class="ctx-link" onclick={() => shell.openSettings("agents")}>
-      Agents settings
-    </button>
-  </p>
+  {#if !isWeb}
+    <p class="ctx-agent-note">
+      <button type="button" class="ctx-link" onclick={() => shell.openSettings("agents")}>
+        Agents settings
+      </button>
+    </p>
+  {/if}
 
   <span class="field-label">Images</span>
   <SegmentedRow
-    label="When copying, images become"
-    sub="What happens to an image in the note. Absolute path lets a tool or agent that reads files find the image; keep leaves the note's own reference; remove drops it for text-only context."
+    label="Images on copy"
     options={IMAGE_MODE_OPTIONS}
     value={contexting.imageMode}
     onchange={(v) => contexting.setImageMode(v)}
@@ -114,11 +108,6 @@
     font-weight: 600;
     color: var(--text);
     margin: 0 0 4px;
-  }
-  .section-hint {
-    color: var(--text-secondary);
-    font-size: 13px;
-    margin: 0 0 20px;
   }
   .field-label {
     display: block;

@@ -68,7 +68,6 @@
     if (active !== "off" && next !== active) {
       const ok = await confirmDialog.ask({
         title: `Stop syncing with ${currentName()}?`,
-        body: "Your notes stay on this device.",
         confirmLabel: "Stop syncing",
       });
       if (!ok) return;
@@ -92,14 +91,8 @@
 <div class="sync-pane">
   <h2>Sync</h2>
   {#if isWeb}
-    <p class="section-hint">Every device signed in to this server keeps the same library.</p>
     <SyncServer />
   {:else}
-    <p class="section-hint">
-      Keep the same notes on every device you use, through a folder you already sync or through your
-      own InstantNotes server.
-    </p>
-
     <SegmentedRow
       label="Sync with"
       options={PROVIDERS}
@@ -111,12 +104,7 @@
     {#if shown === "folder"}
       <SettingsVault />
     {:else if shown === "server"}
-      <p class="provider-hint">
-        Every device signed in to your InstantNotes server keeps the same library.
-      </p>
       <SyncServer />
-    {:else if vault || server}
-      <p class="fine-print">Your notes are on this device only.</p>
     {/if}
 
   {/if}
@@ -130,18 +118,6 @@
     margin: 0 0 6px;
     font-size: 18px;
     font-weight: 600;
-  }
-  .section-hint {
-    color: var(--text-secondary);
-    font-size: 13px;
-    line-height: 1.5;
-    margin: 0 0 20px;
-  }
-  .provider-hint {
-    color: var(--text-secondary);
-    font-size: 13px;
-    line-height: 1.5;
-    margin: 16px 0 8px;
   }
   .primary-btn {
     flex-shrink: 0;
@@ -157,11 +133,5 @@
   }
   .primary-btn:disabled {
     opacity: 0.5;
-  }
-  .fine-print {
-    margin: 4px 0 0;
-    color: var(--text-tertiary);
-    font-size: 12px;
-    line-height: 1.5;
   }
 </style>

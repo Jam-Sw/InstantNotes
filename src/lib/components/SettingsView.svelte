@@ -57,38 +57,36 @@
     {
       label: "General",
       entries: [
-        { id: "home", title: "Overview", desc: "Your library at a glance and what's new.", keywords: "dashboard stats release notes changelog" },
-        { id: "appearance", title: "Appearance", desc: "Theme, light or dark, and the body font.", keywords: "theme dark light font color" },
-        { id: "editor", title: "Editor", desc: "Timestamps and writing preferences.", keywords: "toolbar markdown save time" },
-        { id: "links", title: "Links", desc: "How links in your notes look and open.", keywords: "underline click external" },
-        { id: "images", title: "Images", desc: "How images are stored, shown, and shared.", keywords: "attachments pictures cleanup" },
+        { id: "home", title: "Overview", desc: "Stats, release notes", keywords: "dashboard stats release notes changelog" },
+        { id: "appearance", title: "Appearance", desc: "Theme, mode, font", keywords: "theme dark light font color" },
+        { id: "editor", title: "Editor", desc: "Width, timestamps, toolbar, suggestions", keywords: "toolbar markdown save time" },
+        { id: "links", title: "Links", desc: "Underline, open behavior", keywords: "underline click external" },
+        { id: "images", title: "Images", desc: "Storage, preview, cleanup", keywords: "attachments pictures cleanup" },
       ],
     },
     {
       label: "Your data",
       entries: [
-        { id: "vault", title: "Sync", desc: isWeb ? "Keep your notes the same on every device signed in to this server." : "Keep your notes the same on every device, through a folder or your own server.", keywords: "vault folder server sign in encryption recovery key devices" },
+        { id: "vault", title: "Sync", desc: isWeb ? "Server, devices, encryption" : "Folder or server", keywords: "vault folder server sign in encryption recovery key devices" },
         isWeb
-          ? { id: "backups" as const, title: "Export", desc: "Every note as plain Markdown, in one download.", keywords: "export backup markdown zip files download" }
-          : { id: "backups" as const, title: "Backups", desc: "Daily copies of your library, restore, and export as Markdown.", keywords: "backup restore export markdown files copy snapshot" },
-        { id: "contexting", title: "Contexting", desc: "Shape what copying a note hands to other tools and AI.", keywords: "copy context clipboard ai" },
-        ...(isMac
-          ? [{ id: "import" as const, title: "Import", desc: "Bring in your Apple Stickies as notes.", keywords: "stickies apple migrate" }]
-          : []),
+          ? { id: "backups" as const, title: "Export", desc: "Markdown download", keywords: "export backup markdown zip files download" }
+          : { id: "backups" as const, title: "Backups", desc: "Daily copies, restore, export", keywords: "backup restore export markdown files copy snapshot" },
+        { id: "contexting", title: "Contexting", desc: "Copy template", keywords: "copy context clipboard ai" },
+        { id: "import", title: "Import", desc: isMac ? "Obsidian, Notion, Apple Stickies" : "Obsidian, Notion", keywords: "obsidian notion vault export stickies apple migrate move" },
       ],
     },
     {
       label: "Connections",
       entries: [
-        { id: "agents", title: "Agents", desc: "Let Claude Code and other agents read and write your notes.", keywords: "mcp claude codex cursor ai access revert trace block tags" },
+        { id: "agents", title: "Agents", desc: "Access, tags, activity", keywords: "mcp claude codex cursor ai access revert trace block tags" },
       ],
     },
     {
       label: "Help",
       entries: [
-        { id: "about", title: "About", desc: "Version, platform, and project links.", keywords: "version license github" },
-        { id: "feedback", title: "Feedback", desc: "Report a bug or send an idea.", keywords: "bug issue idea report" },
-        { id: "diagnostics", title: "Diagnostics", desc: "Crash reports and a report you can send.", keywords: "crash error log problem report debug" },
+        { id: "about", title: "About", desc: "Version, platform, links", keywords: "version license github" },
+        { id: "feedback", title: "Feedback", desc: "Bugs and ideas", keywords: "bug issue idea report" },
+        { id: "diagnostics", title: "Diagnostics", desc: "Crash reports, sendable report", keywords: "crash error log problem report debug" },
       ],
     },
     ] as Group[]
@@ -130,6 +128,42 @@
   let stats = $state<DashboardStats | null>(null);
   let captureMs = $state<number | null>(null);
   const release = $derived(parseChangelog(changelogRaw, appVersion));
+  function codeSpans(text: string): { text: string; code: boolean }[] {
+    const parts: { text: string; code: boolean }[] = [];
+    let plain = "";
+    let i = 0;
+    while (i < text.length) {
+      if (text[i] !== "`") {
+        plain += text[i++];
+        continue;
+      }
+      let n = 0;
+      while (text[i + n] === "`") n++;
+      const fence = "`".repeat(n);
+      const runs = /`+/g;
+      runs.lastIndex = i + n;
+      let end = -1;
+      for (let m = runs.exec(text); m; m = runs.exec(text)) {
+        if (m[0].length === n) {
+          end = m.index;
+          break;
+        }
+      }
+      if (end === -1) {
+        plain += fence;
+        i += n;
+        continue;
+      }
+      let inner = text.slice(i + n, end);
+      if (inner.startsWith(" ") && inner.endsWith(" ") && inner.trim()) inner = inner.slice(1, -1);
+      if (plain) parts.push({ text: plain, code: false });
+      plain = "";
+      parts.push({ text: inner, code: true });
+      i = end + n;
+    }
+    if (plain) parts.push({ text: plain, code: false });
+    return parts;
+  }
 
   onMount(() => {
     void getLibraryStats()
@@ -236,56 +270,58 @@
       </div>
       <div class="settings-home">
         <header class="home-head">
-          <h2 class="home-title">Overview</h2>
-          <p class="home-sub">Your library at a glance, and what changed in this version.</p>
+          <div class="home-heading">
+            <h2 class="home-title">Overview</h2>
+            <p class="home-sub">Library stats and release notes</p>
+          </div>
+          <dl class="status-row" aria-label="Status">
+            <div class="status">
+              <dt class="status-key">Theme</dt>
+              <dd class="status-val">{theme.activeTheme.name} · {theme.resolvedVariant === "dark" ? "dark" : "light"}</dd>
+            </div>
+            <div class="status">
+              <dt class="status-key">Agent access</dt>
+              <dd class="status-val" data-on={agents.access !== "off"}>{ACCESS_LABEL[agents.access]}</dd>
+            </div>
+            <div class="status">
+              <dt class="status-key">Agent calls traced</dt>
+              <dd class="status-val">{agents.recent.length}</dd>
+            </div>
+          </dl>
         </header>
+
         <section class="stat-grid" aria-label="Library stats">
           <div class="stat">
-            <span class="stat-num">{stats?.notesTotal ?? "-"}</span>
             <span class="stat-label">Notes</span>
-            <span class="stat-sub"
-              >{stats ? `${stats.notesPinned} pinned · ${stats.notesArchived} archived` : ""}</span
-            >
+            <span class="stat-num">{stats?.notesTotal ?? "–"}</span>
+            <span class="stat-sub">{stats ? `${stats.notesPinned} pinned · ${stats.notesArchived} archived` : ""}</span>
           </div>
           <div class="stat">
-            <span class="stat-num">{stats?.tags ?? "-"}</span>
             <span class="stat-label">Tags</span>
+            <span class="stat-num">{stats?.tags ?? "–"}</span>
             <span class="stat-sub"></span>
           </div>
           <div class="stat">
-            <span class="stat-num">{stats?.spaces ?? "-"}</span>
             <span class="stat-label">Spaces</span>
+            <span class="stat-num">{stats?.spaces ?? "–"}</span>
             <span class="stat-sub"></span>
           </div>
           <div class="stat">
-            <span class="stat-num">{stats?.attachmentsCount ?? "-"}</span>
             <span class="stat-label">Attachments</span>
+            <span class="stat-num">{stats?.attachmentsCount ?? "–"}</span>
             <span class="stat-sub">{stats ? formatBytes(stats.attachmentsBytes) : ""}</span>
           </div>
           <div class="stat">
-            <span class="stat-num">{captureMs !== null ? `${captureMs}` : "-"}<span class="stat-unit">ms</span></span>
             <span class="stat-label">Capture</span>
+            <span class="stat-num"
+              >{#if captureMs !== null}{captureMs}<span class="stat-unit">ms</span>{:else}–{/if}</span
+            >
             <span class="stat-sub">reveal to ready</span>
           </div>
           <div class="stat">
-            <span class="stat-num">{stats?.notesTrashed ?? "-"}</span>
             <span class="stat-label">In Trash</span>
+            <span class="stat-num">{stats?.notesTrashed ?? "–"}</span>
             <span class="stat-sub"></span>
-          </div>
-        </section>
-
-        <section class="status-row" aria-label="Status">
-          <div class="status">
-            <span class="status-key">Theme</span>
-            <span class="status-val">{theme.activeTheme.name} · {theme.resolvedVariant === "dark" ? "dark" : "light"}</span>
-          </div>
-          <div class="status">
-            <span class="status-key">Agent access</span>
-            <span class="status-val" data-on={agents.access !== "off"}>{ACCESS_LABEL[agents.access]}</span>
-          </div>
-          <div class="status">
-            <span class="status-key">Agent calls traced</span>
-            <span class="status-val">{agents.recent.length}</span>
           </div>
         </section>
 
@@ -300,7 +336,9 @@
                 {#if sec.heading}<span class="wn-kind">{sec.heading}</span>{/if}
                 <ul class="wn-list">
                   {#each sec.items as item, i (i)}
-                    <li>{item}</li>
+                    <li>
+                      {#each codeSpans(item) as part, j (j)}{#if part.code}<code>{part.text}</code>{:else}{part.text}{/if}{/each}
+                    </li>
                   {/each}
                 </ul>
               </div>
@@ -391,6 +429,9 @@
     padding: 16px 16px calc(40px + env(safe-area-inset-bottom));
   }
   .phone .settings-home {
+    padding: 4px 16px calc(40px + env(safe-area-inset-bottom));
+  }
+  .phone .settings-results {
     padding: 4px 16px calc(40px + env(safe-area-inset-bottom));
   }
   .settings-nav {
@@ -599,75 +640,44 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 4px 40px 40px;
+    padding: 4px 48px 48px;
     display: flex;
     flex-direction: column;
-    gap: 22px;
-    max-width: 820px;
+    gap: 28px;
+    max-width: 1040px;
+  }
+  .settings-home > * {
+    flex-shrink: 0;
   }
   .home-head {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .home-heading {
     display: flex;
     flex-direction: column;
     gap: 4px;
   }
   .home-title {
     margin: 0;
-    font-size: 18px;
+    font-size: 22px;
     font-weight: 600;
+    letter-spacing: -0.01em;
     color: var(--text);
   }
   .home-sub {
     margin: 0;
-    font-size: 13px;
+    font-size: 13.5px;
     color: var(--text-secondary);
-  }
-  .stat-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
-  }
-  .stat {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding: 14px 16px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--bg-sidebar);
-  }
-  .stat-num {
-    font-size: 24px;
-    font-weight: 700;
-    color: var(--text);
-    font-family: var(--font-ui);
-    line-height: 1.1;
-  }
-  .stat-unit {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-tertiary);
-    margin-left: 2px;
-  }
-  .stat-label {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    font-family: var(--font-meta);
-  }
-  .stat-sub {
-    font-size: 11px;
-    color: var(--text-tertiary);
-    min-height: 13px;
   }
   .status-row {
+    margin: 0;
     display: flex;
     flex-wrap: wrap;
-    gap: 8px 24px;
-    padding: 10px 16px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
+    gap: 6px 28px;
   }
   .status {
     display: flex;
@@ -677,32 +687,88 @@
   }
   .status-key {
     color: var(--text-tertiary);
+    font-family: var(--font-meta);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
   .status-val {
+    margin: 0;
     color: var(--text);
     font-weight: 500;
   }
   .status-val[data-on="true"] {
     color: var(--success);
   }
-
-  .whatsnew {
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 16px 18px;
     background: var(--bg-sidebar);
+    overflow: hidden;
+  }
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 16px 18px 14px;
+    min-width: 0;
+  }
+  .stat:not(:nth-child(3n + 1)) {
+    border-left: 1px solid var(--border);
+  }
+  .stat:nth-child(n + 4) {
+    border-top: 1px solid var(--border);
+  }
+  .stat-num {
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+    font-family: var(--font-ui);
+    line-height: 1;
+  }
+  .stat-unit {
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0;
+    color: var(--text-tertiary);
+    margin-left: 3px;
+  }
+  .stat-label {
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-family: var(--font-meta);
+  }
+  .stat-sub {
+    font-size: 11.5px;
+    color: var(--text-tertiary);
+    min-height: 14px;
+  }
+
+  .whatsnew {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding-left: 18px;
+    border-left: 2px solid var(--accent-soft);
+    max-width: 72ch;
   }
   .wn-head {
     display: flex;
     align-items: baseline;
-    justify-content: space-between;
     gap: 10px;
-    margin-bottom: 10px;
+    flex-wrap: wrap;
   }
   .wn-title {
     margin: 0;
-    font-size: 15px;
-    font-weight: 700;
+    font-size: 16px;
+    font-weight: 600;
     color: var(--text);
     font-family: var(--font-ui);
   }
@@ -712,38 +778,67 @@
     font-family: var(--font-meta);
   }
   .wn-section {
-    margin-bottom: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
   .wn-kind {
-    display: inline-block;
+    align-self: flex-start;
     font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.06em;
     color: var(--accent-text);
     background: var(--accent-soft);
     border-radius: 99px;
-    padding: 1px 8px;
-    margin-bottom: 6px;
+    padding: 2px 9px;
+    font-family: var(--font-meta);
   }
   .wn-list {
     margin: 0;
     padding-left: 18px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 8px;
   }
   .wn-list li {
-    font-size: 12.5px;
-    line-height: 1.5;
+    font-size: 13px;
+    line-height: 1.55;
     color: var(--text-secondary);
   }
+  .wn-list li::marker {
+    color: var(--text-tertiary);
+  }
+  .wn-list code {
+    font-family: var(--font-meta);
+    font-size: 11.5px;
+    color: var(--text);
+    background: var(--bg-hover);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0 4px;
+  }
   .wn-link {
-    margin-top: 6px;
+    align-self: flex-start;
     color: var(--accent);
-    font-size: 12px;
+    font-size: 12.5px;
   }
   .wn-link:hover {
     text-decoration: underline;
+  }
+  .phone .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .phone .stat:not(:nth-child(3n + 1)) {
+    border-left: 0;
+  }
+  .phone .stat:nth-child(even) {
+    border-left: 1px solid var(--border);
+  }
+  .phone .stat:nth-child(n + 3) {
+    border-top: 1px solid var(--border);
+  }
+  .phone .whatsnew {
+    padding-left: 14px;
   }
 </style>

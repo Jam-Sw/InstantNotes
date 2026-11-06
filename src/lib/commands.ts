@@ -25,8 +25,8 @@ const REPO_URL = "https://github.com/Jam-Sw/InstantNotes";
 
 async function runExport(): Promise<void> {
   const result = isWeb ? await exportArchiveDownload() : await exportVaultToFolder();
-  if ("error" in result) toasts.show(`Couldn't export. ${result.error}`);
-  else if ("ok" in result) toasts.show("Exported. Every note is a plain Markdown file in the copy.");
+  if ("error" in result) toasts.show(`Couldn't export: ${result.error}`);
+  else if ("ok" in result) toasts.show("Exported as Markdown");
 }
 
 export type { Command } from "$lib/command-filter";
@@ -203,6 +203,16 @@ export function buildCommands(): Command[] {
     },
   ];
 
+  if (library.canBulkFold) {
+    const count = library.multiSelected.size;
+    commands.push({
+      id: "note.foldSelection",
+      title: `Fold ${count} notes into one`,
+      group: "Notes",
+      run: () => library.bulkFold(),
+    });
+  }
+
   if (library.selected) {
     const n = library.selected;
     const notePrefix = n.title || "Untitled";
@@ -360,10 +370,10 @@ export function buildCommands(): Command[] {
       run: () =>
         backupNow().then(
           () => {
-            toasts.show("Backed up. The copy is in the backups folder.");
+            toasts.show("Backed up");
           },
           (e: unknown) => {
-            toasts.show(`Couldn't back up. ${e instanceof Error ? e.message : e}`);
+            toasts.show(`Couldn't back up: ${e instanceof Error ? e.message : e}`);
           },
         ),
     });

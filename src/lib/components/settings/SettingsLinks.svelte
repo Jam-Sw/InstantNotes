@@ -40,10 +40,6 @@
 
 <div class="links-pane">
   <h2>Links</h2>
-  <p class="section-hint">
-    How links inside notes look and open. Links always open in your
-    browser, never inside InstantNotes.
-  </p>
 
   <span class="field-label">Sample</span>
   <div class="link-sample">
@@ -57,13 +53,6 @@
       onclick={sampleLinkClick}
     >the write-up</button> for the numbers.
   </div>
-  <p class="sample-hint">
-    {linkPrefs.openWith === "click"
-      ? "Click the link to try it. While editing with the Aa toolbar open, links need "
-      : "Links open with "}{modKey}&#8288;Click{linkPrefs.openWith === "click"
-      ? " so the caret can land in the text."
-      : " everywhere, so a stray click never leaves the note."}
-  </p>
 
   <SegmentedRow
     label="Open links with"
@@ -81,14 +70,12 @@
 
   <ToggleRow
     label="Show destination on hover"
-    sub="The URL stays hidden in the text; hovering reveals where a link goes."
     checked={linkPrefs.tooltip}
     onchange={(v) => linkPrefs.setTooltip(v)}
   />
 
   <ToggleRow
     label="Mark external links with ↗"
-    sub="A small arrow after links that leave the app."
     checked={linkPrefs.externalIndicator}
     onchange={(v) => linkPrefs.setExternalIndicator(v)}
   />
@@ -102,11 +89,6 @@
     margin: 0 0 6px;
     font-size: 18px;
     font-weight: 600;
-  }
-  .section-hint {
-    color: var(--text-secondary);
-    font-size: 13px;
-    margin: 0 0 20px;
   }
   .field-label {
     display: block;
@@ -154,10 +136,5 @@
     vertical-align: super;
     margin-left: 1px;
     opacity: 0.75;
-  }
-  .sample-hint {
-    margin: 8px 0 20px;
-    color: var(--text-tertiary);
-    font-size: 12px;
   }
 </style>

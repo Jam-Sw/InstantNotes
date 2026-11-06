@@ -1,7 +1,6 @@
 use base64::Engine;
 use rand::Rng;
 use rusqlite::{params, Connection, OptionalExtension};
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
@@ -98,10 +97,7 @@ pub fn random_token() -> String {
 }
 
 fn hash(token: &str) -> String {
-    Sha256::digest(token.as_bytes())
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+    instantnotes_core::sync::object::sha_hex(token.as_bytes())
 }
 
 pub fn now_secs() -> i64 {

@@ -99,7 +99,7 @@ class UpdaterStore {
         this.error = e instanceof Error ? e.message : String(e);
         this.status = "error";
         toasts.show(
-          "Couldn't check for updates. Check your connection and try again.",
+          "Couldn't check for updates",
         );
       } else {
         this.status = "idle";

@@ -37,7 +37,6 @@ describe("SettingsBackups in the browser", () => {
     const { getByRole, getByText, queryByRole, queryByText } = render(SettingsBackups);
 
     expect(getByRole("heading", { name: "Export" })).toBeTruthy();
-    expect(getByText(/kept on the server and on every signed-in device/)).toBeTruthy();
     expect(queryByRole("switch")).toBeNull();
     expect(queryByText("Back up now")).toBeNull();
     expect(listBackups).not.toHaveBeenCalled();
@@ -46,7 +45,7 @@ describe("SettingsBackups in the browser", () => {
 
     await waitFor(() => expect(exportArchiveDownload).toHaveBeenCalledTimes(1));
     await waitFor(() =>
-      expect(toasts.items.map((t) => t.message)).toEqual([expect.stringContaining("Exported.")]),
+      expect(toasts.items.map((t) => t.message)).toEqual(["Exported"]),
     );
   });
 

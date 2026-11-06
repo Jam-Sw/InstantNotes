@@ -3,9 +3,9 @@ use crate::config;
 use crate::people::{People, Template, CHECK_EMAIL, CHECK_SUB};
 use crate::sessions::{now_secs, Person, Sessions};
 use instantnotes_core::sync::crypto::{LibraryKey, Lock};
+use instantnotes_core::sync::object::sha_hex;
 use instantnotes_core::sync::remote::RemoteOp;
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -131,13 +131,6 @@ pub fn usage_table(rows: &[Usage], now: i64) -> String {
         ));
     }
     out
-}
-
-fn sha_hex(bytes: &[u8]) -> String {
-    Sha256::digest(bytes)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
 }
 
 struct Steps {

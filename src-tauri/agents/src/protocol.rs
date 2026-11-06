@@ -49,6 +49,8 @@ answer the question; read with get_notes only the notes that matter.
 true and you need more, call again with offset set to nextOffset.
 - Open loops are captures the user has never opened, older than three days: \
 list_notes with status \"revisit\" lists them.
+- Scattered fragments that share a topic are found with find_related and \
+consolidated into one document with fold_notes.
 
 # Limits
 - Sheets: append_sheet_rows adds rows; the user edits cells in the app.

@@ -49,6 +49,8 @@ export function sheetPreview(body: string): string {
 }
 
 export function wordCount(body: string): number {
-  const trimmed = body.trim();
-  return trimmed ? trimmed.split(/\s+/).length : 0;
+  let n = 0;
+  const words = /\S+/g;
+  while (words.exec(body)) n++;
+  return n;
 }

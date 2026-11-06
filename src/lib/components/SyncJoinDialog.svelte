@@ -94,8 +94,8 @@
       aria-describedby="sync-join-body"
       tabindex="-1"
     >
-      <h2 id="sync-join-title"><strong>{current.deviceName}</strong> wants to join.</h2>
-      <p id="sync-join-body" class="body">Do these words match the ones on it?</p>
+      <h2 id="sync-join-title">Join request: <strong>{current.deviceName}</strong></h2>
+      <p id="sync-join-body" class="body">Words match?</p>
       <ol class="words" aria-label="Words">
         {#each current.words as word, i (i)}
           <li><span class="n" aria-hidden="true">{i + 1}</span><span class="word">{word}</span></li>

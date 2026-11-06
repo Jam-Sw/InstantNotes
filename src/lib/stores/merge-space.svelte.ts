@@ -3,7 +3,9 @@ import {
   getMergeReview,
   getNote,
   settleMergePair,
+  tagsForNote,
   undoMergeCombine,
+  workspacesForNote,
 } from "$lib/api/client";
 import { EVENTS, listen } from "$lib/api/events";
 import type { MergeReview, Note } from "$lib/api/types";
@@ -15,6 +17,7 @@ import {
   COPIES_NOTE_ID,
   MERGE_SPACE_ID,
   pairNoteId,
+  type Labels,
   type MergePair,
 } from "$lib/merge/space";
 
@@ -23,6 +26,7 @@ const EMPTY: MergeReview = { combined: [], pairs: [] };
 class MergeSpace {
   review = $state<MergeReview>(EMPTY);
   known = $state<Record<string, Note>>({});
+  labels = $state<Record<string, Labels>>({});
   #started = false;
 
   get visible(): boolean {
@@ -30,7 +34,7 @@ class MergeSpace {
   }
 
   get notes(): Note[] {
-    return buildMergeNotes(this.review, this.known);
+    return buildMergeNotes(this.review, this.known, this.labels);
   }
 
   pairFor(noteId: string | null | undefined): MergePair | null {
@@ -63,7 +67,7 @@ class MergeSpace {
       await this.#adopt(await settleMergePair(pair.a, pair.b, keep));
       this.#showNext();
     } catch (e) {
-      toasts.show(`Couldn't settle this pair. ${friendlyError(e)}`);
+      toasts.show(`Couldn't settle: ${friendlyError(e)}`);
     }
   }
 
@@ -72,7 +76,7 @@ class MergeSpace {
       await this.#adopt(await undoMergeCombine(trashed));
       this.#showNext();
     } catch (e) {
-      toasts.show(`Couldn't undo. ${friendlyError(e)}`);
+      toasts.show(`Couldn't undo: ${friendlyError(e)}`);
     }
   }
 
@@ -81,7 +85,7 @@ class MergeSpace {
       await clearMergeReview();
       this.review = EMPTY;
     } catch (e) {
-      toasts.show(`Couldn't clear the list. ${friendlyError(e)}`);
+      toasts.show(`Couldn't dismiss: ${friendlyError(e)}`);
     }
   }
 
@@ -95,7 +99,19 @@ class MergeSpace {
     for (const result of found) {
       if (result.status === "fulfilled") known[result.value.id] = result.value;
     }
+    const pairIds = [...new Set(review.pairs.flatMap((p) => [p.a, p.b]))].filter((id) => known[id]);
+    const loaded = await Promise.allSettled(
+      pairIds.map(async (id) => {
+        const [tags, spaces] = await Promise.all([tagsForNote(id), workspacesForNote(id)]);
+        return [id, { tags: tags.map((t) => t.name), spaces: spaces.map((w) => w.name) }] as const;
+      }),
+    );
+    const labels: Record<string, Labels> = {};
+    for (const result of loaded) {
+      if (result.status === "fulfilled") labels[result.value[0]] = result.value[1];
+    }
     this.known = known;
+    this.labels = labels;
     this.review = review;
   }
 

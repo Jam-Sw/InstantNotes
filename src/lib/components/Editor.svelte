@@ -35,6 +35,7 @@
   } from "$lib/api/client";
   import { toasts } from "$lib/stores/toasts.svelte";
   import { applyExternalEdit, externalEdit, minimalChange } from "$lib/external-edit";
+  import { paragraphAround } from "$lib/related";
 
   let {
     value = "",
@@ -44,6 +45,7 @@
     onchange,
     onactive,
     onhistory,
+    onpassage,
   }: {
     value?: string;
     docKey?: string;
@@ -52,6 +54,7 @@
     onchange?: (v: string) => void;
     onactive?: (marks: ActiveMarks) => void;
     onhistory?: (h: EditHistory) => void;
+    onpassage?: (passage: string) => void;
   } = $props();
 
   export type EditHistory = { undo: boolean; redo: boolean };
@@ -63,6 +66,31 @@
   let focusWanted: { key: string; atEnd: boolean } | null = null;
   let extensions: Extension[] = [];
   let attachmentsBase: string | null = null;
+  let emitted: string | undefined;
+  let lastMarks: ActiveMarks | undefined;
+  let lastPassage: string | undefined;
+
+  function publish(state: EditorState) {
+    lastMarks = activeMarks(state);
+    lastPassage = passageState(state);
+    onactive?.(lastMarks);
+    onhistory?.(historyState(state));
+    onpassage?.(lastPassage);
+  }
+
+  function sameMarks(a: ActiveMarks, b: ActiveMarks | undefined): boolean {
+    return (
+      b !== undefined &&
+      a.bold === b.bold &&
+      a.italic === b.italic &&
+      a.strike === b.strike &&
+      a.code === b.code &&
+      a.quote === b.quote &&
+      a.list === b.list &&
+      a.task === b.task &&
+      a.heading === b.heading
+    );
+  }
 
   onMount(() => {
     extensions = [
@@ -81,7 +109,7 @@
           editorKernel({
             openUrl: (url) => void openUrl(url),
             saveImage: saveAttachment,
-            onImageError: (m) => toasts.show(`Couldn't save image. ${m}`),
+            onImageError: (m) => toasts.show(`Couldn't save image: ${m}`),
           }),
           keymap.of([...defaultKeymap, ...historyKeymap]),
           markdown({
@@ -94,10 +122,20 @@
           cmPlaceholder(placeholder),
           EditorView.updateListener.of((u) => {
             if (u.docChanged && !applyingExternal) {
-              onchange?.(u.state.doc.toString());
+              emitted = u.state.doc.toString();
+              onchange?.(emitted);
             }
             if (u.docChanged || u.selectionSet) {
-              onactive?.(activeMarks(u.state));
+              const marks = activeMarks(u.state);
+              if (!sameMarks(marks, lastMarks)) {
+                lastMarks = marks;
+                onactive?.(marks);
+              }
+              const passage = passageState(u.state);
+              if (passage !== lastPassage) {
+                lastPassage = passage;
+                onpassage?.(passage);
+              }
             }
             if (u.docChanged) onhistory?.(historyState(u.state));
           }),
@@ -107,8 +145,8 @@
       parent: container,
     });
     loadedKey = docKey;
-    onactive?.(activeMarks(view.state));
-    onhistory?.(historyState(view.state));
+    emitted = value;
+    publish(view.state);
     void getAttachmentsDir()
       .then((dir) => {
         attachmentsBase = dir;
@@ -142,9 +180,9 @@
         EditorState.create({ doc: next, selection: { anchor: 0 }, extensions }),
       );
       loadedKey = key;
+      emitted = next;
       view.dispatch({ effects: seedEffects() });
-      onactive?.(activeMarks(view.state));
-      onhistory?.(historyState(view.state));
+      publish(view.state);
       const wanted = focusWanted;
       if (wanted && wanted.key === key) {
         focusWanted = null;
@@ -159,12 +197,13 @@
     const next = value;
     const key = docKey;
     if (!view) return;
-    const changed = next !== view.state.doc.toString();
+    const changed = next !== emitted && next !== view.state.doc.toString();
     if (key !== undefined && key === loadedKey) {
       if (!changed) return;
       applyingExternal = true;
       try {
         applyExternalEdit(view, next);
+        emitted = next;
       } finally {
         applyingExternal = false;
       }
@@ -189,6 +228,12 @@
 
   function historyState(state: EditorState): EditHistory {
     return { undo: undoDepth(state) > 0, redo: redoDepth(state) > 0 };
+  }
+
+  function passageState(state: EditorState): string {
+    const doc = state.doc;
+    const current = doc.lineAt(state.selection.main.head).number - 1;
+    return paragraphAround(doc.lines, (i) => doc.line(i + 1).text, current);
   }
 
   export function focus(key?: string, atEnd = false) {

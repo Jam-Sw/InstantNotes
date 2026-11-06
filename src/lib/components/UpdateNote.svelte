@@ -20,14 +20,10 @@
     <h1 class="update-title">{title}</h1>
   </div>
   <div class="update-body">
-    <p class="update-lead">
-      You're going from <span class="version">{updater.currentVersion}</span>
-      to <span class="version to">{updater.version}</span>.
-    </p>
     {#if updater.deltaState === "loading"}
-      <p class="delta muted">Measuring the download…</p>
+      <p class="delta muted">Download size…</p>
     {:else if deltaLine}
-      <p class="delta">The download is {deltaLine}.</p>
+      <p class="delta">Download: {deltaLine}</p>
     {/if}
 
     {#if updater.status === "downloading"}
@@ -36,16 +32,13 @@
         {pct != null ? `${pct}%` : "Starting…"} · Installing v{updater.version}
       </p>
     {:else if updater.status === "ready"}
-      <p class="muted">
-        InstantNotes v{updater.version} is installed. Restart to use it; closing
-        the window keeps the current version running in the tray.
-      </p>
+      <p class="muted">v{updater.version} installed</p>
       <div class="actions">
         <button class="btn primary" onclick={() => updater.restart()}>Restart now</button>
         <button class="btn" onclick={() => updater.acknowledge()}>Later</button>
       </div>
     {:else if updater.status === "error"}
-      <p class="error">{updater.error ?? "The update could not be installed."}</p>
+      <p class="error">{updater.error ?? "Update failed"}</p>
       <button class="btn primary" onclick={() => updater.downloadAndInstall()}>
         Try again
       </button>
@@ -82,19 +75,6 @@
     align-items: flex-start;
     gap: 10px;
     padding: 8px 16px 16px;
-  }
-  .update-lead {
-    margin: 0;
-    font-size: 14px;
-    color: var(--text);
-  }
-  .version {
-    font-family: var(--font-meta);
-    font-size: 13px;
-  }
-  .version.to {
-    color: var(--accent-text);
-    font-weight: 600;
   }
   .delta {
     margin: 0;

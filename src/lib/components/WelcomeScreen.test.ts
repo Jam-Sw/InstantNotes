@@ -55,14 +55,14 @@ describe("WelcomeScreen", () => {
   it("says another app owns the shortcut when registering it failed", async () => {
     vi.mocked(getShortcutFailure).mockResolvedValue({ label: "Ctrl+Shift+Space", wayland: false });
     const { findByText } = render(WelcomeScreen, props);
-    expect(await findByText(/another app likely owns it/)).toBeTruthy();
+    expect(await findByText(/not registered/)).toBeTruthy();
   });
 
   it("points a Wayland desktop at the capture command", async () => {
     vi.mocked(getShortcutFailure).mockResolvedValue({ label: "Ctrl+Shift+Space", wayland: true });
     const { findByText, queryByText } = render(WelcomeScreen, props);
     expect(await findByText("instantnotes capture")).toBeTruthy();
-    expect(queryByText(/another app likely owns it/)).toBeNull();
+    expect(queryByText(/not registered/)).toBeNull();
   });
 });
 

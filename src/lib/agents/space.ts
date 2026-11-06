@@ -132,7 +132,7 @@ export function buildAgentNotes(
       title: agentName(s.client, s.label),
       body: now
         ? describeActivity(now)
-        : sessionSummary(s) || (s.connected ? "Connected. Nothing asked yet." : ""),
+        : sessionSummary(s) || (s.connected ? "Connected, no calls" : ""),
       createdAt: new Date(s.startedAt).toISOString(),
       updatedAt: new Date(s.endedAt).toISOString(),
       isPinned: false,

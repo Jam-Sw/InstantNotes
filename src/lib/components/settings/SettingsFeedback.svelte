@@ -48,7 +48,7 @@
     try {
       await submitFeedback({ category, message: text, appVersion, diagnostics: diag });
     } catch (e) {
-      toasts.show(`Couldn't send feedback. ${e instanceof Error ? e.message : e}`);
+      toasts.show(`Couldn't send feedback: ${e instanceof Error ? e.message : e}`);
       sending = false;
       return;
     }
@@ -61,9 +61,9 @@
           diagnostics: diag ? diagnosticsMarkdown(diag) : null,
         }),
       );
-      toasts.show("Thanks. Saved locally, and GitHub is opening to file it.");
+      toasts.show("Saved · opening GitHub");
     } catch {
-      toasts.show("Saved locally, but couldn't open GitHub automatically.");
+      toasts.show("Saved · couldn't open GitHub");
     } finally {
       sending = false;
     }
@@ -73,17 +73,13 @@
     try {
       await openFeedbackLog();
     } catch (e) {
-      toasts.show(`Couldn't open the feedback log. ${e instanceof Error ? e.message : e}`);
+      toasts.show(`Couldn't open feedback log: ${e instanceof Error ? e.message : e}`);
     }
   }
 </script>
 
 <div class="feedback-pane">
   <h2>Feedback</h2>
-  <p class="section-hint">
-    Found a bug or have an idea? Send it straight from here. It is saved on this
-    machine and opens a prefilled GitHub issue so it reaches the project.
-  </p>
 
   <SegmentedRow
     label="Kind"
@@ -99,14 +95,13 @@
     placeholder={category === "bug"
       ? "What happened, and what did you expect?"
       : category === "idea"
-        ? "What would make InstantNotes better for you?"
-        : "Tell us anything."}
+        ? "What would improve InstantNotes?"
+        : "Anything"}
     bind:value={message}
   ></textarea>
 
   <ToggleRow
     label="Include diagnostics"
-    sub="Attach the details below so a report is actionable. Nothing else is sent."
     checked={includeDiagnostics}
     onchange={(v) => (includeDiagnostics = v)}
   />
@@ -120,10 +115,6 @@
     </button>
     <button class="fb-reveal" onclick={revealLog}>Reveal saved feedback</button>
   </div>
-  <p class="fine-print">
-    Every submission is appended to a local file, kept in full, and never
-    pruned automatically.
-  </p>
 </div>
 
 <style>
@@ -134,11 +125,6 @@
     margin: 0 0 6px;
     font-size: 18px;
     font-weight: 600;
-  }
-  .section-hint {
-    color: var(--text-secondary);
-    font-size: 13px;
-    margin: 0 0 12px;
   }
   .field-label {
     display: block;
@@ -185,12 +171,6 @@
     display: flex;
     align-items: center;
     gap: 10px;
-  }
-  .fine-print {
-    margin: 8px 0 0;
-    color: var(--text-tertiary);
-    font-size: 12px;
-    line-height: 1.5;
   }
   .fb-reveal {
     padding: 8px 14px;

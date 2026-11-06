@@ -1,4 +1,4 @@
-import { rangeSelection, stepId, toggleSelection } from "$lib/selection";
+import { rangeSelection, stepId, toggleSelection } from "./selection-set";
 
 export class SelectionModel {
   ids = $state<Set<string>>(new Set());

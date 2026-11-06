@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, cleanup, fireEvent } from "@testing-library/svelte";
 
-const { library } = vi.hoisted(() => ({
+const { library, relatedNotes, dismissRelatedNote, restoreRelatedNote } = vi.hoisted(() => ({
   library: {
     selected: null as Record<string, unknown> | null,
     focusRequest: null as { id: string; atEnd: boolean } | null,
@@ -15,7 +15,12 @@ const { library } = vi.hoisted(() => ({
     editTitle: vi.fn(),
     editBody: vi.fn(),
     onBeforeFlush: vi.fn(),
+    select: vi.fn(),
+    foldIntoSelected: vi.fn().mockResolvedValue(true),
   },
+  relatedNotes: vi.fn().mockResolvedValue([]),
+  dismissRelatedNote: vi.fn().mockResolvedValue(undefined),
+  restoreRelatedNote: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("$lib/stores/library.svelte", () => ({ library }));
@@ -46,6 +51,9 @@ vi.mock("$lib/api/client", () => ({
   importImageFile: vi.fn().mockResolvedValue("x.png"),
   popOutNote: vi.fn(),
   tagSuggestion: vi.fn().mockResolvedValue(null),
+  relatedNotes,
+  dismissRelatedNote,
+  restoreRelatedNote,
   getSetting: vi.fn().mockResolvedValue(undefined),
   setSetting: vi.fn().mockResolvedValue(undefined),
 }));
@@ -72,6 +80,8 @@ afterEach(() => {
   cleanup();
   library.selected = null;
   library.focusRequest = null;
+  relatedNotes.mockResolvedValue([]);
+  vi.clearAllMocks();
 });
 
 describe("NoteEditor header", () => {
@@ -128,5 +138,54 @@ describe("NoteEditor cursor handoff", () => {
     await fireEvent.keyDown(title, { key: "Enter" });
     expect(library.editTitle).toHaveBeenCalled();
     expect(container.querySelector(".cm-content")?.contains(document.activeElement)).toBe(true);
+  });
+});
+
+describe("NoteEditor around this note", () => {
+  it("lists related notes for the open note and folds one in on click", async () => {
+    relatedNotes.mockResolvedValue([
+      {
+        noteId: "related-1",
+        title: "Forgotten orchard sketch",
+        excerpt: "grafting cider apples onto dwarf rootstock",
+        contentKind: "document",
+        createdAt: "2026-01-10T10:00:00Z",
+        updatedAt: "2026-01-12T10:00:00Z",
+        score: 0.72,
+        reasons: ["graft", "rootstock"],
+      },
+    ]);
+    library.selected = note({ id: "n1", contentKind: "document" });
+    const { findByRole, getByRole } = render(NoteEditor);
+    const pill = await findByRole("button", { name: /Forgotten orchard sketch/ });
+    await fireEvent.click(pill);
+    await fireEvent.click(getByRole("button", { name: "Fold in" }));
+    expect(library.foldIntoSelected).toHaveBeenCalledWith("related-1", "Forgotten orchard sketch");
+  });
+
+  it("marks a note not related and never asks for trashed notes", async () => {
+    relatedNotes.mockResolvedValue([
+      {
+        noteId: "related-2",
+        title: "Old fragment",
+        excerpt: "unrelated match",
+        contentKind: "document",
+        createdAt: "2026-01-08T10:00:00Z",
+        updatedAt: "2026-01-10T10:00:00Z",
+        score: 0.61,
+        reasons: ["fragment"],
+      },
+    ]);
+    library.selected = note({ id: "n1", contentKind: "document" });
+    const { findByRole, getByRole } = render(NoteEditor);
+    await fireEvent.click(await findByRole("button", { name: /Old fragment/ }));
+    await fireEvent.click(getByRole("button", { name: "Not related" }));
+    expect(dismissRelatedNote).toHaveBeenCalledWith("n1", "related-2");
+
+    cleanup();
+    relatedNotes.mockClear();
+    library.selected = note({ id: "n-trash", isDeleted: true });
+    render(NoteEditor);
+    expect(relatedNotes).not.toHaveBeenCalled();
   });
 });

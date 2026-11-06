@@ -57,12 +57,24 @@ describe("SettingsEditor", () => {
   });
 
   it("turns tag suggestions off and sets how sure they must be, saved under one key", async () => {
-    const { findByRole } = render(SettingsEditor);
-    const sw = await findByRole("switch", { name: "Suggest a tag for the open note" });
+    const { findByRole, findAllByRole } = render(SettingsEditor);
+    const sw = await findByRole("switch", { name: "Tag suggestions" });
     expect(sw.getAttribute("aria-checked")).toBe("true");
     await fireEvent.click(sw);
     expect(vi.mocked(setSetting)).toHaveBeenLastCalledWith("suggest.tags", { enabled: false, showAt: 0.5 });
-    await fireEvent.click(await findByRole("radio", { name: "Careful" }));
+    const [tagCareful] = await findAllByRole("radio", { name: "Careful" });
+    await fireEvent.click(tagCareful);
     expect(vi.mocked(setSetting)).toHaveBeenLastCalledWith("suggest.tags", { enabled: false, showAt: 0.7 });
+  });
+
+  it("turns notes around this one off and sets how close they must be under suggest.related", async () => {
+    const { findByRole, findAllByRole } = render(SettingsEditor);
+    const sw = await findByRole("switch", { name: "Around this note" });
+    expect(sw.getAttribute("aria-checked")).toBe("true");
+    await fireEvent.click(sw);
+    expect(vi.mocked(setSetting)).toHaveBeenLastCalledWith("suggest.related", { enabled: false, showAt: 0.5 });
+    const [, relatedCareful] = await findAllByRole("radio", { name: "Careful" });
+    await fireEvent.click(relatedCareful);
+    expect(vi.mocked(setSetting)).toHaveBeenLastCalledWith("suggest.related", { enabled: false, showAt: 0.7 });
   });
 });

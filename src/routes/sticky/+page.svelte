@@ -57,7 +57,7 @@
       await setStickyLevel(next);
     } catch {
       level = previous;
-      toasts.show("Couldn't change where the sticky sits.");
+      toasts.show("Couldn't change level");
     }
   }
 
@@ -79,7 +79,7 @@
 
   const header = $derived(
     sticky.note
-      ? `Created ${formatExact(sticky.note.createdAt)}\nEdited ${formatExact(sticky.note.updatedAt)}\nDouble-click to ${collapsed ? "expand" : "collapse"}`
+      ? `Created ${formatExact(sticky.note.createdAt)}\nEdited ${formatExact(sticky.note.updatedAt)}`
       : "",
   );
 
@@ -88,7 +88,7 @@
       await popInNote(noteId);
       await openLibrary();
     } catch (e) {
-      toasts.show(e instanceof Error ? e.message : "Couldn't bring the note back.");
+      toasts.show(e instanceof Error ? e.message : "Couldn't bring back");
     }
   }
 

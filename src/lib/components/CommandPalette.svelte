@@ -225,6 +225,10 @@
         if (currentParent !== null) goUp();
         else open = false;
         break;
+      case "Tab":
+        e.preventDefault();
+        input?.focus();
+        break;
     }
   }
 

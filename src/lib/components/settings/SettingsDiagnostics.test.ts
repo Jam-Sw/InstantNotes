@@ -59,12 +59,12 @@ describe("SettingsDiagnostics", () => {
     vi.mocked(listCrashReports).mockResolvedValue([]);
     await fireEvent.click(getByRole("button", { name: "Delete" }));
     expect(deleteCrashReport).toHaveBeenCalledWith("crash-20261013-080000.txt");
-    await findByText("No crash reports.");
+    await findByText("No crash reports");
   });
 
   it("the switch saves the prompt setting", async () => {
     const { getByRole } = render(SettingsDiagnostics);
-    await fireEvent.click(getByRole("switch", { name: "Ask to review a crash report at the next launch" }));
+    await fireEvent.click(getByRole("switch", { name: "Crash report prompt on launch" }));
     expect(setSetting).toHaveBeenCalledWith("diagnostics.crashReports", true);
   });
 });

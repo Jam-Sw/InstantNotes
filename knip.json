@@ -13,9 +13,12 @@
   ],
   "ignoreIssues": {
     "src/lib/agents/space.ts": ["exports"],
+    "src/lib/calc/format.ts": ["exports"],
+    "src/lib/calc/table.ts": ["exports"],
     "src/lib/command-filter.ts": ["exports"],
     "src/lib/contexting-format.ts": ["exports"],
     "src/lib/editor/blocks.ts": ["exports"],
+    "src/lib/editor/calc.ts": ["exports"],
     "src/lib/editor/images.ts": ["exports"],
     "src/lib/editor/links.ts": ["exports"],
     "src/lib/errors.ts": ["exports"],

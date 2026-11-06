@@ -6,7 +6,9 @@ use crate::attachments::Attachments;
 use crate::sync::object::{
     attachment_key, note_key, sha_hex, Envelope, MANIFEST_KEY, NOTE_PREFIX, SETTINGS_KEY,
 };
-use crate::vault::reconcile::{decide, derived_id, equivalent, Decision, Remote, Side, Synced};
+use crate::vault::reconcile::{
+    decide, derived_id, equivalent, strip_conflict_title, Decision, Remote, Side, Synced,
+};
 use crate::vault::{
     merge_manifest, parse_manifest, parse_note, serialize_manifest, serialize_note, VaultNote,
 };
@@ -22,6 +24,7 @@ const LIKELY_MIN_CHARS: usize = 200;
 const PREFIX_MIN_CHARS: usize = 20;
 const LIKELY_RATIO: f32 = 0.9;
 const BUCKET_CHARS: usize = 32;
+const COPY_REASON: &str = "changed in two places";
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -380,7 +383,7 @@ impl Store {
             Decision::Fork(Side::Local) => {
                 if let Some(copy) = self.copy_from_vault(&note, plain_sha)? {
                     out.conflict = true;
-                    self.note_review_pair(id, &copy, "changed in two places")?;
+                    self.note_review_pair(id, &copy, COPY_REASON)?;
                     out.changed.push(copy);
                 }
                 self.conn.execute(
@@ -394,7 +397,7 @@ impl Store {
                 let mine_sha = sha_hex(&note_envelope(mine).encode());
                 if let Some(copy) = self.copy_from_vault(mine, &mine_sha)? {
                     out.conflict = true;
-                    self.note_review_pair(id, &copy, "changed in two places")?;
+                    self.note_review_pair(id, &copy, COPY_REASON)?;
                     out.changed.push(copy);
                 }
                 self.apply_from_vault(&note)?;
@@ -949,15 +952,35 @@ impl Store {
 
     pub fn settle_pair(&mut self, a: &str, b: &str, keep: Option<&str>) -> Result<()> {
         let mut review = self.merge_review()?;
-        let before = review.pairs.len();
-        review
-            .pairs
-            .retain(|p| !((p.a == a && p.b == b) || (p.a == b && p.b == a)));
-        if review.pairs.len() == before {
+        let matches = |p: &Pair| (p.a == a && p.b == b) || (p.a == b && p.b == a);
+        let Some(pair) = review.pairs.iter().find(|p| matches(p)).cloned() else {
             return Err(AppError::NotFound("review pair".into()));
-        }
+        };
+        review.pairs.retain(|p| !matches(p));
         if let Some(keep) = keep {
             let drop = if keep == a { b } else { a };
+            if pair.reason == COPY_REASON && keep == pair.b {
+                let copy = self.vault_note(keep)?;
+                let original = self.vault_note(drop)?;
+                let title = copy
+                    .title
+                    .as_deref()
+                    .map(strip_conflict_title)
+                    .filter(|t| *t != domain::derive_title(&copy.body))
+                    .map(str::to_string);
+                let tags = copy
+                    .tags
+                    .iter()
+                    .filter(|t| t.as_str() != CONFLICT_TAG)
+                    .cloned()
+                    .collect();
+                self.apply_from_vault(&VaultNote {
+                    title,
+                    tags,
+                    is_pinned: original.is_pinned,
+                    ..copy
+                })?;
+            }
             self.conn.execute(
                 "UPDATE notes SET is_deleted = 1, deleted_at = ?2 WHERE id = ?1",
                 params![drop, now_iso()],
@@ -1010,5 +1033,50 @@ mod tests {
         };
         assert_eq!(content_hash(&note("a\r\nb")), content_hash(&note("a\nb")));
         assert_ne!(content_hash(&note("a")), content_hash(&note("b")));
+    }
+
+    #[test]
+    fn keeping_a_conflict_copy_clears_its_marks_and_keeps_the_pin() {
+        let mut store = Store::open_in_memory().unwrap();
+        let original = store
+            .create_note(CreateNoteInput {
+                title: Some("Plan".into()),
+                body: Some("theirs".into()),
+                tags: vec!["work".into()],
+            })
+            .unwrap();
+        store
+            .set_notes_flags(std::slice::from_ref(&original.id), Some(true), None)
+            .unwrap();
+        let mine = VaultNote {
+            body: "mine".into(),
+            ..store.vault_note(&original.id).unwrap()
+        };
+        let copy = store.copy_from_vault(&mine, "sha").unwrap().unwrap();
+        store
+            .set_merge_review(&MergeReview {
+                combined: vec![],
+                pairs: vec![Pair {
+                    a: original.id.clone(),
+                    b: copy.clone(),
+                    reason: COPY_REASON.into(),
+                }],
+            })
+            .unwrap();
+
+        store.settle_pair(&original.id, &copy, Some(&copy)).unwrap();
+
+        let kept = store.fetch_note(&copy).unwrap();
+        assert_eq!(kept.title, "Plan");
+        assert_eq!(kept.body, "mine");
+        assert!(kept.is_pinned);
+        let tags: Vec<String> = store
+            .tags_for_note(&copy)
+            .unwrap()
+            .into_iter()
+            .map(|t| t.name)
+            .collect();
+        assert_eq!(tags, vec!["work".to_string()]);
+        assert!(store.fetch_note(&original.id).unwrap().is_deleted);
     }
 }
