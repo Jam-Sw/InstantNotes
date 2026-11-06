@@ -1,0 +1,911 @@
+src-tauri/server/src/objects.rs
+  s_cf43f7c6484047::t_0e6320cf160d0a 1
+  s_cf43f7c6484047::t_2fe9502345f190 753
+src/lib/components/settings/SettingsBackups.web.test.ts
+  s_7e49377c6b35fd::t_b9f10c6637c115 48
+src/lib/editor/kernel.test.ts
+  s_ace4e7a8209c64::t_67f10322d99533 20-21,37,48,103-112,212-215
+  s_ace4e7a8209c64::t_0e5b091c87e817 216-217
+src/lib/components/settings/SyncServer.web.test.ts
+  s_5d7848805c9451::t_5079f0736a9567 84
+  s_7e49377c6b35fd::t_5117d57e51b9a2 95
+  s_5d7848805c9451::t_d4e1791aa7388a 103
+  s_5d7848805c9451::t_fd7c1bc8f6deaf 131
+src/lib/stores/editor.svelte.test.ts
+  s_ace4e7a8209c64::t_ec77f4a82db46b 42-68,73
+src/lib/components/SettingsView.svelte
+  s_f423694dbbfebe::t_07d69d7e0482eb 131-142,152-166,340
+  s_f423694dbbfebe::t_8fcbd556028e68 143-151
+  s_f423694dbbfebe::t_ec543db3fdcecd 649-650
+  s_ab9a560e5d9c0e::t_6d15ac964b7266 434-436
+  s_5d7848805c9451::t_f57c9ca0f13f0e 72
+  s_f423694dbbfebe::t_360422d66bbbf6 705,718,721-722,832
+  s_f423694dbbfebe::t_0cf065791985cb 273-274,276-290,292,296-297,301,306,311,316-318,323,339,341,643,646-648,653-659,666,668,673,676-702,706-709,714-717,719-720,725-728,731,736,738,741,743,745,749,751,755-760,766,770-771,781-783,786,790,794-795,802,805-806,809-820,822,824,829-831,833-843
+  s_5d7848805c9451::t_b17c7950c3aa52 89
+  s_5d7848805c9451::t_63b9fb076dfb10 70
+  s_1d05a9c459ac4a::t_917e83ec8ec823 62,75,275
+  s_5d7848805c9451::t_b37ac9b0e8356f 63
+  s_5d7848805c9451::t_9747302e2c6d36 73
+  s_5d7848805c9451::t_6ba6b89603258c 61
+  s_5d7848805c9451::t_d356b7809d6bc6 74
+  s_5d7848805c9451::t_523d81c9449171 64
+  s_5d7848805c9451::t_41a138ad806ebc 60
+  s_5d7848805c9451::t_b17d304471ee0b 81
+  s_5d7848805c9451::t_0c9fd5440ea033 88
+  s_5d7848805c9451::t_c796535eee7b19 87
+src/lib/editor/ARCHITECTURE.md
+  s_ace4e7a8209c64::t_93d6d075c82440 71-74
+  s_ace4e7a8209c64::t_179296486a9253 51
+src/lib/components/Sidebar.svelte
+  s_5d7848805c9451::t_d8d58213f99e1d 83
+  s_5d7848805c9451::t_c692e802cee196 154-155
+  s_7e49377c6b35fd::t_3a57e4859bcedb 98
+  s_7e49377c6b35fd::t_aa8a1de27c9a15 33,36,91,132-135,140,143,152,172,177,194,198,215,219,242,246,285,289
+src/lib/components/CommandPalette.svelte
+  s_ab9a560e5d9c0e::t_8b6defa248ca1e 228-231
+src/lib/calc/table.test.ts
+  s_ace4e7a8209c64::t_6e4119c7a41362 1-86,92,94,96-111
+  s_ace4e7a8209c64::t_be370056bee0c5 87-91,93,95
+src-tauri/core/src/vault/reconcile.rs
+  s_7e49377c6b35fd::t_a359e77a80e444 327-328
+  s_7e49377c6b35fd::t_ae35d95b1c82b8 128-134,329-330
+  s_7e49377c6b35fd::t_a9bd63cde661cd 331
+src/lib/whiteboard/convert.test.ts
+  s_7e49377c6b35fd::t_b4637bdf76b9de 26,30
+src/lib/components/MergeNote.svelte
+  s_7e49377c6b35fd::t_ed90588527495d 27-29
+  s_1d05a9c459ac4a::t_3d5b044029bea5 78,164-165,217,221-222,224-226,274,277,282-299,301,303-304,308-359
+  s_5d7848805c9451::t_41ecfd6896bf21 136
+  s_1d05a9c459ac4a::t_e6b73068257fcf 5,8-17,24-26,32,34,68-77,79-123,131,152-153,167-174
+src/lib/components/SyncJoinDialog.test.ts
+  s_7e49377c6b35fd::t_ea8cd921faf461 75
+  s_7e49377c6b35fd::t_15eb62481dcaf4 41
+src/lib/components/settings/SettingsAgents.svelte
+  s_5d7848805c9451::t_1f4ddcb73a4a6f 67-70
+  s_5d7848805c9451::t_128810b5ee74ec 100
+  s_5d7848805c9451::t_ed659fd794719c 165
+  s_5d7848805c9451::t_87837ba5d180ff 76,78
+  s_5d7848805c9451::t_5438e5e509a6bb 140
+  s_5d7848805c9451::t_aeebef655579a4 171
+src/lib/format.ts
+  s_d254e1b9dfd259::t_1413b0e4492dd6 52-55
+src/lib/editor/types.ts
+  s_ace4e7a8209c64::t_9976e9785f1def 17
+src/lib/stores/library.agents.svelte.test.ts
+  s_7e49377c6b35fd::t_2f40a53ce7f54d 255
+src/lib/calc/format.ts
+  s_ace4e7a8209c64::t_6a4d0f5127fd24 17
+  s_ace4e7a8209c64::t_7b809debce46eb 1-16,18-41
+src/lib/components/FormatToolbar.svelte
+  s_5d7848805c9451::t_a38f6347bb036e 29
+  s_7e49377c6b35fd::t_3514f41e282fdc 138
+src/lib/editor/calc.test.ts
+  s_ace4e7a8209c64::t_6e4119c7a41362 1-5,7-46,49-53,55-68,103-104
+  s_ace4e7a8209c64::t_67f10322d99533 6,69-102
+  s_f423694dbbfebe::t_360422d66bbbf6 47-48,54
+src/lib/components/OtherTabScreen.test.ts
+  s_7e49377c6b35fd::t_383f4a84989faf 25
+src/lib/stores/sticky.svelte.test.ts
+  s_7e49377c6b35fd::t_9eb3b58a37e899 182
+src/lib/components/sheet/SheetGrid.test.ts
+  s_7e49377c6b35fd::t_dfc87f0be72787 255
+src-tauri/core/tests/fold_test.rs
+  s_7e49377c6b35fd::t_8be83c7e1d36d9 108-110
+  s_7e49377c6b35fd::t_7abeefdacb94f9 105-107
+  s_7e49377c6b35fd::t_563c1898baa502 111-112
+  s_7e49377c6b35fd::t_fab3dd8aa4bf28 1-104
+src/lib/components/ConfirmDialog.svelte
+  s_ab9a560e5d9c0e::t_48b5c0e397930d 23
+src/lib/components/settings/SettingsImport.test.ts
+  s_7e49377c6b35fd::t_417c1a4cf4dec5 179
+  s_7e49377c6b35fd::t_b7b8576b825b16 125
+  s_1d05a9c459ac4a::t_2f786c742332a9 141
+  s_5d7848805c9451::t_811e6dfda4356a 149
+  s_7e49377c6b35fd::t_021ec7ba38dbcc 111
+  s_7e49377c6b35fd::t_0419e91e0831af 176-178
+  s_7e49377c6b35fd::t_b28d33498cb7fb 180-182
+  s_7e49377c6b35fd::t_393f72367e0bdc 4-11,20-29,161-175
+src-tauri/server/src/operators.rs
+  s_cf43f7c6484047::t_cfdd90b243ab0f 6
+src/lib/components/SyncJoinDialog.svelte
+  s_7e49377c6b35fd::t_33e7948e668d86 97-98
+src/lib/editor/index.ts
+  s_ace4e7a8209c64::t_9976e9785f1def 26-27,50-51,57
+src/lib/components/GraphView.svelte
+  s_7e49377c6b35fd::t_a37af0a8b09b80 651,654
+  s_7e49377c6b35fd::t_9ae78cb66760e1 619
+  s_7e49377c6b35fd::t_4560b1d2716561 336
+  s_7e49377c6b35fd::t_118abf4fe0852c 347
+  s_7e49377c6b35fd::t_96d3c29bfdf3a2 352
+  s_7e49377c6b35fd::t_60667619d6c762 530,532
+  s_ab9a560e5d9c0e::t_de21f171e99756 726-739,907
+  s_7e49377c6b35fd::t_a2a447a420b4bf 636
+  s_7e49377c6b35fd::t_1b6d7c9f3f8944 678,680
+  s_7e49377c6b35fd::t_11281fb8b74063 631
+  s_ab9a560e5d9c0e::t_6dab876b8c4f36 903-906
+src-tauri/core/Cargo.toml
+  s_cf43f7c6484047::t_517cd7f8149e92 5-7,10-12,14-15,18,22-23,27-28,32
+src/lib/components/MergeNote.test.ts
+  s_1d05a9c459ac4a::t_2b5016d9fa1a23 12-13,53-54,68-71,91,98-122,134-135,137,141-142,144,148,152
+  s_5d7848805c9451::t_f410dc4780f614 86
+src/lib/components/settings/SettingsImport.svelte
+  s_1d05a9c459ac4a::t_2f786c742332a9 104-129,134,144-145,232,241,260
+  s_5d7848805c9451::t_b94538a679a584 173-174
+  s_cf43f7c6484047::t_02ea3ec07134ca 2-15,102-103,261,276
+src/lib/calc/engine.ts
+  s_ace4e7a8209c64::t_53d4dc417b8d61 30,32
+  s_ace4e7a8209c64::t_21bab53a525b7a 545-548
+  s_ace4e7a8209c64::t_08475ac49e4998 1061,1071
+  s_ace4e7a8209c64::t_e66148b055cb25 1-29,31,33-35,37-51,53-55,57-246,249-298,300-458,460-544,549-551,553-555,557-890,892-1060,1062-1070,1072-1120
+  s_ace4e7a8209c64::t_6a4d0f5127fd24 36,52,56
+  s_ace4e7a8209c64::t_0b26132511704e 247-248,299,459,552,556,891
+src/lib/stores/library.svelte.ts
+  s_7e49377c6b35fd::t_367b9eedb66a3a 927,931
+  s_7e49377c6b35fd::t_1c9a57cf68551c 904
+  s_1d05a9c459ac4a::t_917e83ec8ec823 653
+  s_7e49377c6b35fd::t_5bf6ae17fbe4e8 219
+  s_7e49377c6b35fd::t_478c5e45c9b00f 677,739,1124,1126-1128
+  s_7e49377c6b35fd::t_d9dcd3e1f25b3b 523
+  s_7e49377c6b35fd::t_d289e1f625ef48 760
+  s_d254e1b9dfd259::t_dee3bac0c42210 82,84
+  s_d254e1b9dfd259::t_70e9a8be344854 547-548,552-556
+  s_1d05a9c459ac4a::t_6f5de7b04cd74a 650-652
+  s_7e49377c6b35fd::t_dbca4d58ee6bce 678-680,736-738
+  s_7e49377c6b35fd::t_8310a6ee6c776c 740-742,757-759
+  s_7e49377c6b35fd::t_3a8c6c56980245 761-763
+  s_7e49377c6b35fd::t_318557554dadb0 8,33,39,67-72,89,258,272,283,286,344-345,356,378,385,387,397,403,409,415,436,442,449,451-452,456,527,533,559,625-649,654-676,681-735,743-756,855-856,859-860,867-868,870-872,898
+src/lib/update/space.ts
+  s_7e49377c6b35fd::t_8a039022326c35 62
+src/lib/merge/space.ts
+  s_7e49377c6b35fd::t_21c5c421a2b7fc 56,62
+  s_1d05a9c459ac4a::t_77ca4067048b83 28-55,57-61,63-74
+  s_7e49377c6b35fd::t_f75475c11241d2 113
+  s_1d05a9c459ac4a::t_f1a878722b2a5d 79-83
+  s_1d05a9c459ac4a::t_228e73e0fa72a8 106-107,112
+  s_1d05a9c459ac4a::t_0cb872657a6e51 98
+  s_7e49377c6b35fd::t_64082925bfd595 24
+src-tauri/server/src/lib.rs
+  s_7e49377c6b35fd::t_280fb171e15fdd 436
+  s_7e49377c6b35fd::t_827df557bb9359 449
+src-tauri/src/commands/settings.rs
+  s_d254e1b9dfd259::t_6ff595758bb44b 8
+src/lib/components/sheet/SheetGrid.svelte
+  s_7e49377c6b35fd::t_4506e2d3233191 344
+  s_ace4e7a8209c64::t_6e4119c7a41362 88
+  s_7e49377c6b35fd::t_5b18b13a687ed6 427-428
+  s_7e49377c6b35fd::t_e24432c1b39693 220
+  s_7e49377c6b35fd::t_f02fcface45670 177
+  s_ace4e7a8209c64::t_77acfc547159ef 25,633-638,761-768
+src-tauri/Cargo.toml
+  s_441d89dc5c1c63::t_593812573bb6b7 24
+  s_cf43f7c6484047::t_3ccd2b166fed62 19
+  s_cf43f7c6484047::t_517cd7f8149e92 5-6,8-18,20-22,26-28,43,46-48,51,53,56,59
+scripts/bump-version.mjs
+  s_ab9a560e5d9c0e::t_359f3e20605ab9 82
+  s_441d89dc5c1c63::t_a3522a93b35a30 53,73-74,77
+src/lib/components/settings/SettingsFeedback.svelte
+  s_5d7848805c9451::t_a78ef02b931ba2 98-99
+  s_7e49377c6b35fd::t_3af23eebf8543b 76
+  s_7e49377c6b35fd::t_25f397fe48f02d 64,66
+  s_7e49377c6b35fd::t_b193e9ad42837c 51
+src/lib/stores/merge-space.svelte.ts
+  s_7e49377c6b35fd::t_6565020d222ff2 79
+  s_7e49377c6b35fd::t_10ffc7dabec879 88
+  s_7e49377c6b35fd::t_5e26d1d1a13a49 70
+  s_1d05a9c459ac4a::t_c7448aa3ca5559 6,8
+  s_1d05a9c459ac4a::t_9517e977486b12 102-112,114
+  s_1d05a9c459ac4a::t_7cecda0b7069fb 29,37
+  s_1d05a9c459ac4a::t_17d9c3a77b36fb 20
+src/lib/stores/agents.svelte.test.ts
+  s_7e49377c6b35fd::t_b4c0011e0b8dac 131
+  s_7e49377c6b35fd::t_b6687e315bdce1 149
+src/lib/components/settings/SettingsDiagnostics.svelte
+  s_5d7848805c9451::t_1872b66d911de7 82
+  s_7e49377c6b35fd::t_9eaac169fc529c 110
+  s_7e49377c6b35fd::t_ef3b1942afeb07 24
+  s_7e49377c6b35fd::t_e9abe1f42cbbde 103
+  s_5d7848805c9451::t_499972eacb06c6 91
+src-tauri/agents/Cargo.toml
+  s_cf43f7c6484047::t_517cd7f8149e92 5-7,10-13
+src/lib/components/OpenElsewhere.svelte
+  s_5d7848805c9451::t_a1c12b62c3aa3b 27,29
+  s_5d7848805c9451::t_a71e9323a78417 58
+src/lib/components/settings/SettingsFeedback.test.ts
+  s_7e49377c6b35fd::t_264e934e108c8b 82
+  s_7e49377c6b35fd::t_282761b626e7d4 104
+  s_7e49377c6b35fd::t_2821517eadabb5 57
+src-tauri/server/Cargo.toml
+  s_a91225ec421eac::t_5a86d08b13b734 3
+  s_cf43f7c6484047::t_517cd7f8149e92 5-7,18,23-24,26-28,30,33-34
+src/lib/editor/scanner.ts
+  s_ace4e7a8209c64::t_9976e9785f1def 125-127
+src/routes/capture/+page.svelte
+  s_5d7848805c9451::t_ae0857a7d525c7 131
+src/lib/editor/theme.ts
+  s_ace4e7a8209c64::t_9976e9785f1def 83-121
+src/lib/components/OtherTabScreen.svelte
+  s_7e49377c6b35fd::t_9b02b631dcb321 33
+  s_5d7848805c9451::t_930d4fd40c9f48 95
+src-tauri/core/src/store/related.rs
+  s_7e49377c6b35fd::t_83d84ce9e481ab 39,44,63-64,71,75,79,85,92-93,100-101,107,120,129-130,144,147,150,152,170,173,181,190,207,214,230-231,241,265,267,280,289,359,371,376,408,428-468
+  s_7e49377c6b35fd::t_eb02c033078d0f 36-38
+  s_7e49377c6b35fd::t_1f824722e201b2 40-43
+  s_7e49377c6b35fd::t_5bd4dec6061925 45-47,60-62
+  s_7e49377c6b35fd::t_b9d55cc221f86a 65-70
+  s_7e49377c6b35fd::t_17e8069ee0ed2d 72-74
+  s_7e49377c6b35fd::t_d7234b81318c2a 76-78
+  s_7e49377c6b35fd::t_ca296668944c20 80-84
+  s_7e49377c6b35fd::t_307bcd1c5cc896 86-91
+  s_7e49377c6b35fd::t_c971e5c9e2dd34 94-99
+  s_7e49377c6b35fd::t_61bb4e0546de9d 102-106
+  s_7e49377c6b35fd::t_ec26209dc87627 108-110,117-119
+  s_7e49377c6b35fd::t_7bbfa28389f08c 121-123,126-128
+  s_7e49377c6b35fd::t_73f7861753dfd3 131-133,141-143
+  s_7e49377c6b35fd::t_01153e3db690e2 145-146
+  s_7e49377c6b35fd::t_0c6b47f84844ae 148-149
+  s_7e49377c6b35fd::t_da0837196ed90d 151
+  s_7e49377c6b35fd::t_27714cb3f8fdbe 153-155,167-169
+  s_7e49377c6b35fd::t_5196ea72b354d5 171-172
+  s_7e49377c6b35fd::t_144b3117990331 174-176,178-180
+  s_7e49377c6b35fd::t_0c679d2511e4d9 182-184,187-189
+  s_7e49377c6b35fd::t_27081f9f86bc91 191-193,204-206
+  s_7e49377c6b35fd::t_d2979529f5917d 208-213
+  s_7e49377c6b35fd::t_584d35e0af1282 215-217,227-229
+  s_7e49377c6b35fd::t_9035789fc4d495 232-234,238-240
+  s_7e49377c6b35fd::t_f275809822a112 242-244,262-264
+  s_7e49377c6b35fd::t_23aded750556ec 266
+  s_7e49377c6b35fd::t_54d52b6f616069 268-270,277-279
+  s_7e49377c6b35fd::t_70272632b42228 281-283,286-288
+  s_7e49377c6b35fd::t_0bc9dcf89e76ea 290-292,356-358
+  s_7e49377c6b35fd::t_41e48c5657fba6 360-362,368-370
+  s_7e49377c6b35fd::t_c9a7b916625bed 372-375
+  s_7e49377c6b35fd::t_5d0517c9de66ff 377-379,405-407
+  s_7e49377c6b35fd::t_3d9a4b5aeada0d 409-411,425-427
+  s_7e49377c6b35fd::t_928958f416f205 1-35,48-59,111-116,124-125,134-140,156-166,177,185-186,194-203,218-226,235-237,245-261,271-276,284-285,293-355,363-367,380-404,412-424
+src/lib/vault-export.ts
+  s_7e49377c6b35fd::t_e1b414dc8a1ea4 14
+  s_7e49377c6b35fd::t_5b20d0b85b9bcf 43
+  s_7e49377c6b35fd::t_63f0b87855cb7f 22
+src/lib/calc/table.ts
+  s_ace4e7a8209c64::t_6a4d0f5127fd24 42
+  s_ace4e7a8209c64::t_be370056bee0c5 156-157,159,163-164
+  s_ace4e7a8209c64::t_08475ac49e4998 177-178
+  s_ace4e7a8209c64::t_3a6b53dd7e85d7 1-41,43-57,59,61-155,158,160-162,165-176,179-195
+  s_ace4e7a8209c64::t_53d4dc417b8d61 58,60
+src/routes/+page.svelte
+  s_d254e1b9dfd259::t_2ee9d745285e8e 180
+  s_ab9a560e5d9c0e::t_1faf953ad8bdbe 722-733
+  s_e64d356946cffc::t_15cd01bf596656 65,87,98,120,133,140,144,316,354,437,500,529
+.github/workflows/build.yml
+  s_cf43f7c6484047::t_591a463a6ef04f 21
+  s_cf43f7c6484047::t_16ccc771f18a44 16
+  s_cf43f7c6484047::t_d5d437844308ff 25
+  s_cf43f7c6484047::t_95771d6d5d0eaf 14
+src/lib/components/Editor.svelte
+  s_d254e1b9dfd259::t_f73178d64c621e 148
+  s_d254e1b9dfd259::t_0bc53bfc8c6a6f 70-72,81-93,237
+  s_7e49377c6b35fd::t_87de733f38323b 112
+  s_d254e1b9dfd259::t_36ac091ccea6de 149
+  s_d254e1b9dfd259::t_978390a3c69dd0 69
+  s_d254e1b9dfd259::t_9966f36929877b 73-80
+  s_d254e1b9dfd259::t_9070d200dc78d7 185
+  s_d254e1b9dfd259::t_259bcf6f9b0b71 200,206
+  s_d254e1b9dfd259::t_ca76e5daf10768 125-126
+  s_d254e1b9dfd259::t_20b679d799759c 183
+  s_d254e1b9dfd259::t_6d84612f6a8ab9 129-138
+  s_d254e1b9dfd259::t_d1b49630536139 234-236
+  s_d254e1b9dfd259::t_d460eb4c63c22c 238
+  s_7e49377c6b35fd::t_4baff95dd9cc54 38,48,57,233
+src/lib/components/AgentNote.test.ts
+  s_5d7848805c9451::t_26ce9c2ca455ea 194
+knip.json
+  s_7e49377c6b35fd::t_f8470d1d36a67b 16-17
+  s_7e49377c6b35fd::t_89e139f4e21280 21
+src/lib/components/WelcomeScreen.test.ts
+  s_7e49377c6b35fd::t_2d2e42a6642735 58
+  s_7e49377c6b35fd::t_e0425a76bce22e 65
+src/lib/components/settings/SettingsDiagnostics.test.ts
+  s_7e49377c6b35fd::t_11e689b0c14721 67
+  s_7e49377c6b35fd::t_0f33efacc7aafd 62
+src/lib/components/settings/SettingsSync.test.ts
+  s_5d7848805c9451::t_e865b8339c04ca 116-117
+  s_5d7848805c9451::t_9fb0c9f64600fd 190
+src-tauri/core/src/store/corpus.rs
+  s_d254e1b9dfd259::t_923c635d4f9611 272-278
+  s_d254e1b9dfd259::t_2fe1f14783d1bb 11
+  s_d254e1b9dfd259::t_ca02c909ab61e4 26-27,36-39,64-65,72,76,82,84,111,115-132,174-175,186-187,199-200,217,235-236,252,269,279
+  s_d254e1b9dfd259::t_1f08bc79cef2cd 8-10
+  s_d254e1b9dfd259::t_38935a2040b8c4 12-14,23-25
+  s_d254e1b9dfd259::t_ad7569ebe38ca9 28-30,33-35
+  s_d254e1b9dfd259::t_c4e981705718b3 40-42,61-63
+  s_d254e1b9dfd259::t_44996d5d81403c 66-71
+  s_d254e1b9dfd259::t_37ab455242815b 73-75
+  s_d254e1b9dfd259::t_5b336fa7251736 77-81
+  s_d254e1b9dfd259::t_33cd512e425596 83
+  s_d254e1b9dfd259::t_536dccec21fd6e 85-87,108-110
+  s_d254e1b9dfd259::t_6396a89d7115b3 112-114
+  s_d254e1b9dfd259::t_f839612ab29b7a 133-135,171-173
+  s_d254e1b9dfd259::t_9d1a5bdfa40cf0 176-178,183-185
+  s_d254e1b9dfd259::t_7716248e406f65 188-190,196-198
+  s_d254e1b9dfd259::t_7dc5ee6cf2504f 201-203,214-216
+  s_d254e1b9dfd259::t_c3e19bff1cd33b 218-220,232-234
+  s_d254e1b9dfd259::t_f0bf539adfb36a 237-239,249-251
+  s_d254e1b9dfd259::t_22229776637f24 253-255,266-268
+  s_d254e1b9dfd259::t_2b32a9e8c1535c 270-271
+  s_d254e1b9dfd259::t_83ce54e0bcbc3b 280
+  s_d254e1b9dfd259::t_7e98a5b95d73d4 1-7,15-22,31-32,43-60,88-107,136-170,179-182,191-195,204-213,221-231,240-248,256-265
+src/lib/components/ContextMenu.svelte
+  s_ab9a560e5d9c0e::t_7bd6ffaea64db6 135-136
+src/lib/stores/agents.svelte.ts
+  s_7e49377c6b35fd::t_aaed03778ac3d3 316
+  s_7e49377c6b35fd::t_f34ae4309aa22b 271
+  s_7e49377c6b35fd::t_b287ba59e6cfa7 294-295
+  s_7e49377c6b35fd::t_3901619ac482d0 363
+  s_7e49377c6b35fd::t_beada2851eef71 302
+src/lib/folder-import.ts
+  s_1d05a9c459ac4a::t_2f786c742332a9 33
+  s_7e49377c6b35fd::t_c4c75ad165becc 44-49
+  s_1d05a9c459ac4a::t_91b18565c4df3a 30-32
+  s_7e49377c6b35fd::t_941e310185e3b4 50-52
+  s_7e49377c6b35fd::t_4c482dd581831e 1-29,34-43
+src/lib/components/Toast.svelte
+  s_5911eccbd695e7::t_e25544748eb68d 16,20,38-39,41-42,45,49-59,65-66,76,78-83
+src-tauri/tauri.conf.json
+  s_441d89dc5c1c63::t_bd6fafb2ca498f 4
+src/lib/commands.test.ts
+  s_7e49377c6b35fd::t_05abb1de5689a7 401
+  s_7e49377c6b35fd::t_35f0f2b706a36b 404
+  s_7e49377c6b35fd::t_b2c47a951984d2 8-10,144-145,461-470
+src/lib/stores/library/selection-set.test.ts
+  s_cf43f7c6484047::t_8a09287eef3285 2
+src-tauri/server/src/oidc.rs
+  s_cf43f7c6484047::t_6e31e31ae85c9f 1
+src/lib/calc/engine.test.ts
+  s_ace4e7a8209c64::t_6e4119c7a41362 1-12,14-136,138-159
+  s_f423694dbbfebe::t_360422d66bbbf6 13,137
+src/lib/editor/calc.ts
+  s_7e49377c6b35fd::t_fbb1758a88532a 26
+  s_7e49377c6b35fd::t_ddac56c88f32bc 8,14
+  s_ace4e7a8209c64::t_7d46aadeff2b60 1-7,9-13,15-25,27-198
+src/lib/vault-mirror.test.ts
+  s_7e49377c6b35fd::t_7c26ba336511bf 83-86
+  s_7e49377c6b35fd::t_87de6d60e10650 124
+  s_7e49377c6b35fd::t_b07633fab36ad0 55,61,67-68
+  s_7e49377c6b35fd::t_418b40dad7f4b7 119
+src/lib/components/FormatToolbar.test.ts
+  s_5d7848805c9451::t_af840c155a4991 51
+src/lib/agents/space.ts
+  s_7e49377c6b35fd::t_1a41b4482ec20b 135
+src/lib/stores/updater.svelte.ts
+  s_7e49377c6b35fd::t_7b0ae15778cd40 102
+src/lib/stores/editor.svelte.ts
+  s_ace4e7a8209c64::t_d65d2fb3f196a6 7,12-27,33,42,47,61-64,81-85
+  s_ace4e7a8209c64::t_b9fc7cae4d966b 86-87
+src/lib/components/RelatedStrip.svelte
+  s_1d05a9c459ac4a::t_10378eda966ac2 129-138,170,272
+  s_1d05a9c459ac4a::t_f750364adb6094 278
+  s_1d05a9c459ac4a::t_547d79916cd976 126-128
+  s_1d05a9c459ac4a::t_f2e9f98c9806dc 139-141,167-169
+  s_1d05a9c459ac4a::t_f14b300014c468 171-173,269-271
+  s_1d05a9c459ac4a::t_46346f4b5b0eb6 273-277
+  s_1d05a9c459ac4a::t_f1748e7ce7bdd8 279-281
+  s_1d05a9c459ac4a::t_b611e3cdbb116b 1-125,142-166,174-268,282-310
+src/lib/folder-picker.ts
+  s_7e49377c6b35fd::t_d018259369c68e 13
+  s_7e49377c6b35fd::t_34843860b6db49 28
+  s_7e49377c6b35fd::t_2cccec7f675bc8 14-16,25-27
+  s_7e49377c6b35fd::t_81687c5b061a18 17-24
+src-tauri/core/src/store/server_sync.rs
+  s_7e49377c6b35fd::t_b33126b1812cb4 400
+  s_7e49377c6b35fd::t_4b8dd8977c34fa 955-956,958-959,962-983
+  s_7e49377c6b35fd::t_5b094716376607 27
+  s_7e49377c6b35fd::t_ab8629a30d3050 1049
+  s_7e49377c6b35fd::t_71417c7a1dcd79 386
+  s_7e49377c6b35fd::t_20a57d21b7aec5 1037-1048,1050-1081
+  s_7e49377c6b35fd::t_4cd57ffbbeb95d 9-11
+src/lib/stores/library.svelte.test.ts
+  s_7e49377c6b35fd::t_ae63b9c7ca4db9 762
+  s_7e49377c6b35fd::t_67aa94309852a7 807
+  s_7e49377c6b35fd::t_8dc4422d828d56 829
+  s_7e49377c6b35fd::t_9d3fbfaaaba380 1465
+  s_7e49377c6b35fd::t_9ab9d7f3c727f2 279,317
+  s_7e49377c6b35fd::t_0b26d118653273 692,699,704-705,710,717,727-728,740,745-746,840
+  s_7e49377c6b35fd::t_b9c4d862fdacd5 9,29,33,64-65,113-114,195-196,786-787,871,878,880,884,888,1101-1103,1118,1127,1137,1168,1198,1540-1640
+src/routes/sticky/+page.svelte
+  s_5d7848805c9451::t_336454e4469ba5 60
+  s_5d7848805c9451::t_a98544179afe6b 82
+  s_5d7848805c9451::t_f7195b237d6998 91
+src/lib/components/whiteboard/WhiteboardCanvas.svelte
+  s_5d7848805c9451::t_aefee32af0f67c 187
+src/lib/stores/diagnostics.ts
+  s_7e49377c6b35fd::t_cb7793e1e1e5ff 48
+src-tauri/core/src/sync/cycle.rs
+  s_cf43f7c6484047::t_9391fd42a44026 455
+src/lib/commands.ts
+  s_7e49377c6b35fd::t_70d9e0636083a0 28-29
+  s_7e49377c6b35fd::t_8938acb7b77f1e 373,376
+  s_7e49377c6b35fd::t_811a86094b8e0c 206-215
+src/lib/components/settings/SettingsBackups.test.ts
+  s_7e49377c6b35fd::t_0c247e0613b55a 160
+  s_7e49377c6b35fd::t_384be0d0a4b5f4 104
+package.json
+  s_441d89dc5c1c63::t_b0a265c7563637 3
+  s_cf43f7c6484047::t_9d013507f40945 5-13
+src/lib/components/UpdateNote.test.ts
+  s_7e49377c6b35fd::t_922ab884b49f11 39
+  s_7e49377c6b35fd::t_6947a1295d9066 56
+src/lib/components/NoteList.test.ts
+  s_7e49377c6b35fd::t_b6c60dda16e3ca 121
+  s_7e49377c6b35fd::t_fa89785abfddcc 4,11,57-66,87-88,159-168
+src/lib/components/settings/SettingsAbout.svelte
+  s_7e49377c6b35fd::t_00176fe6fc98d6 27
+  s_7e49377c6b35fd::t_53c3f47d6d962a 54-55,59
+src/lib/errors.ts
+  s_7e49377c6b35fd::t_853523f2c96992 5-9,12
+  s_7e49377c6b35fd::t_8b063a8e3a49c9 25
+src/lib/merge/space.test.ts
+  s_7e49377c6b35fd::t_0fa08e6e3c5a5b 53
+  s_1d05a9c459ac4a::t_d14e38ebe8c1b1 79
+  s_1d05a9c459ac4a::t_2b5016d9fa1a23 5,7-8,13,45,51-52,54-78
+src/lib/components/settings/SyncServer.svelte
+  s_5d7848805c9451::t_2fe015f7d0e408 379
+  s_7e49377c6b35fd::t_95a18a1f92f815 208
+  s_5d7848805c9451::t_defed81fdd3918 452
+  s_5d7848805c9451::t_f76cff0fa911f8 535
+  s_7e49377c6b35fd::t_3e0ebe554dc67d 529
+  s_5d7848805c9451::t_00839e6680e8a7 416
+  s_5d7848805c9451::t_5a703ca507bd15 344
+  s_5d7848805c9451::t_93190b268686d9 39-40
+  s_5d7848805c9451::t_50fb72955619db 295
+  s_5d7848805c9451::t_175f8c0401131d 489
+  s_7e49377c6b35fd::t_34fe6766dadbeb 198
+  s_5d7848805c9451::t_aa98580dc74a2e 213
+  s_5d7848805c9451::t_204f436536185c 482
+  s_5d7848805c9451::t_c404f4ff960a98 374
+  s_5d7848805c9451::t_bbfbcab9cf265d 168
+  s_5d7848805c9451::t_71dc473a4f0fca 403
+  s_5d7848805c9451::t_156bdeb503dfb8 440
+  s_5d7848805c9451::t_344ca0c1285882 196
+  s_5d7848805c9451::t_f3483bdc38ce34 389
+  s_7e49377c6b35fd::t_a7b0d171a91dea 278
+  s_5d7848805c9451::t_699c76986a75ea 297
+  s_5d7848805c9451::t_805ed014e9b892 434
+  s_5d7848805c9451::t_b1a3e575c04d29 496
+  s_5d7848805c9451::t_dc46d284579e05 333
+src/lib/components/SidebarEntityRow.svelte
+  s_5d7848805c9451::t_70cadf865cf9c3 135
+src-tauri/server/src/statics.rs
+  s_7e49377c6b35fd::t_536e681c09a7fc 305,307
+src/lib/components/LicenseLocked.svelte
+  s_5d7848805c9451::t_a4e805520bd0c2 6
+src/lib/components/NoteEditor.svelte
+  s_7e49377c6b35fd::t_17ec26e4bb97d8 229
+  s_d254e1b9dfd259::t_ad146fe73c90ed 139
+  s_1d05a9c459ac4a::t_917e83ec8ec823 159
+  s_d254e1b9dfd259::t_a65d4a3296a85e 116-117,149,165,169-173,176,180-197
+  s_1d05a9c459ac4a::t_2ad54700258c1b 93,102,150,167,782-785
+  s_1d05a9c459ac4a::t_74727b4ab07db4 523
+  s_1d05a9c459ac4a::t_bf47d3b68ce49c 771,773,775
+  s_1d05a9c459ac4a::t_50c65e47b1b6b8 514-522
+  s_5d7848805c9451::t_999e4bcba548cc 493
+  s_7e49377c6b35fd::t_b08ba59a828e6e 164
+  s_1d05a9c459ac4a::t_45db53f3eb0b95 90-92
+  s_1d05a9c459ac4a::t_8852b6f73c6642 94-96,99-101
+  s_d254e1b9dfd259::t_103c3a5702e082 113-115
+  s_d254e1b9dfd259::t_86d3f570a582ad 118-120,136-138
+  s_d254e1b9dfd259::t_46f9a8afb4a63c 140-142,146-148
+  s_1d05a9c459ac4a::t_7e792e189e8f09 151-153,156-158
+  s_7e49377c6b35fd::t_f3ef6957bcb5ec 2,9,18-30,37,69-73,78-89,97-98,106-107,110-112,121-135,143-145,154-155,160-163,166,168,498
+src/lib/components/settings/SettingsMarkers.svelte
+  s_5d7848805c9451::t_1a20d896ee01f7 8-11
+  s_5d7848805c9451::t_2b122accd5c0f1 64
+src/lib/app.css
+  s_ab9a560e5d9c0e::t_ccbbbfee393df7 42-47
+  s_ab9a560e5d9c0e::t_0065db28598acb 380-381
+  s_cf43f7c6484047::t_c8afb2d8e17b3a 136-152
+  s_cf43f7c6484047::t_c66b4e89f5b5c8 382
+  s_ab9a560e5d9c0e::t_1d5ca3c7eca399 344-350,355-365
+src/lib/components/WelcomeScreen.svelte
+  s_5d7848805c9451::t_cae11348199ded 147,149
+  s_ab9a560e5d9c0e::t_14b76fcebec00b 302,306,309-310
+  s_5d7848805c9451::t_d39995a1d8bd96 140,142
+  s_5d7848805c9451::t_539c2f3ae9cabd 137
+src/lib/components/settings/SettingsVault.test.ts
+  s_7e49377c6b35fd::t_3f6bcbb0255e38 174
+  s_7e49377c6b35fd::t_a8354020e4e238 116
+  s_7e49377c6b35fd::t_926616282101cb 124
+  s_7e49377c6b35fd::t_3fe0cc47f8362e 137
+src/lib/components/settings/SettingsImages.test.ts
+  s_7e49377c6b35fd::t_1629be5ad29b96 133
+  s_7e49377c6b35fd::t_1d912b7e5ec794 130
+  s_7e49377c6b35fd::t_ea54a170ccf73b 162
+src-tauri/src/commands/workspaces.rs
+  s_d254e1b9dfd259::t_eb423aae30c5e7 111
+src/lib/components/NoteList.svelte
+  s_d254e1b9dfd259::t_b68dc56ff3f5ad 521-522
+  s_5d7848805c9451::t_eebf3ca2346c16 280,282,284
+  s_7e49377c6b35fd::t_17d5322e433afe 186-187
+  s_5d7848805c9451::t_8b401dd6a34085 357
+  s_5d7848805c9451::t_6785d32dd923db 99
+  s_5d7848805c9451::t_b95598e7d9b0f9 279
+  s_7e49377c6b35fd::t_069a6427f77d39 33,37,39,41,52-54,104-105,112,114-127,196,201,210,215,223,297,337,339,341,344,347,350,352
+src/lib/components/settings/SyncServer.test.ts
+  s_7e49377c6b35fd::t_d8aeb06c89963d 577
+  s_5d7848805c9451::t_49c5bf1dae25b2 437
+  s_5d7848805c9451::t_5b8ef8c01d147a 394
+  s_7e49377c6b35fd::t_0a07a97595024a 309
+  s_7e49377c6b35fd::t_208446be1fd95d 453
+  s_5d7848805c9451::t_5d199dd90b70fd 546
+  s_5d7848805c9451::t_d72435c18eb5bb 166
+  s_7e49377c6b35fd::t_763c3fa58155c6 580
+  s_5d7848805c9451::t_45bcd4d074a8b3 489
+  s_7e49377c6b35fd::t_f7fa48144587cd 380,382
+  s_5d7848805c9451::t_3eaba2c2044215 218
+  s_7e49377c6b35fd::t_4e15d9fda27671 462
+  s_5d7848805c9451::t_f0fea076439425 407
+  s_5d7848805c9451::t_1ebb7818e39bcd 532
+  s_7e49377c6b35fd::t_b52646aa147ab8 346
+  s_5d7848805c9451::t_98d9c9f9210589 296
+  s_5d7848805c9451::t_7a5ce5a387b91e 237
+src/lib/components/UpdateNote.svelte
+  s_5d7848805c9451::t_9b8f82af04dcb2 41
+  s_7e49377c6b35fd::t_853b17cce48261 24,26
+  s_5d7848805c9451::t_1ad649d7e44b69 35
+src-tauri/server/src/client.rs
+  s_7e49377c6b35fd::t_625fc9580364ea 157
+src/lib/components/settings/SettingsAbout.web.test.ts
+  s_7e49377c6b35fd::t_595e3c1352314d 23
+src/lib/components/settings/SettingsEditor.test.ts
+  s_1d05a9c459ac4a::t_59432bb25bb8ba 61,65-66,69-72
+  s_1d05a9c459ac4a::t_2d3441e6209b71 60,73-79
+src/lib/components/settings/RecoveryKey.svelte
+  s_5d7848805c9451::t_314a8f79db3e4d 12,14
+src-tauri/core/src/store/vault_sync.rs
+  s_cf43f7c6484047::t_ae46200477d8e6 326
+  s_cf43f7c6484047::t_c4817aeaba9d12 52
+  s_cf43f7c6484047::t_996cf2fa486ddf 4
+  s_cf43f7c6484047::t_756cfd45485775 1
+src/lib/components/SettingsView.test.ts
+  s_1d05a9c459ac4a::t_917e83ec8ec823 64
+  s_f423694dbbfebe::t_c53a73f5bc09f5 70
+  s_5d7848805c9451::t_07e128ff590ff8 125
+  s_1d05a9c459ac4a::t_5f0349ee1f79b9 62-63
+src/lib/components/settings/SettingsAbout.test.ts
+  s_7e49377c6b35fd::t_02943effdcd1b6 49
+src-tauri/src/commands/tags.rs
+  s_d254e1b9dfd259::t_b30129ee76d5a2 69
+src/lib/components/settings/SettingsAppearance.svelte
+  s_5d7848805c9451::t_372bb318b53bc5 74
+  s_7e49377c6b35fd::t_b91eae87748e1b 43
+  s_7e49377c6b35fd::t_c8c50a5f20a310 49
+src-tauri/server/src/sessions.rs
+  s_cf43f7c6484047::t_88215341c0af49 100
+src/lib/components/GraphView.test.ts
+  s_7e49377c6b35fd::t_ce0dbb1684986f 274
+  s_7e49377c6b35fd::t_8de0bdab5753db 245,267
+  s_7e49377c6b35fd::t_a42e2654206807 295
+  s_7e49377c6b35fd::t_4c8b89cba3206d 140
+  s_7e49377c6b35fd::t_57323e1c3e348f 197
+src/lib/stickies-import.ts
+  s_7e49377c6b35fd::t_c9983ac5f85a15 48,50-51,53
+src/lib/components/settings/SettingsContexting.svelte
+  s_ab9a560e5d9c0e::t_f1f576e326e3d2 7
+  s_ab9a560e5d9c0e::t_ed3661ceb19c74 82-88,92
+src/lib/components/settings/SettingsVault.svelte
+  s_7e49377c6b35fd::t_5ccdee64056e42 77
+  s_5d7848805c9451::t_614e6bab7d398f 126
+  s_7e49377c6b35fd::t_56e8956f6e7739 44
+  s_ab9a560e5d9c0e::t_958ce551ce5ee6 100
+  s_5d7848805c9451::t_8e6d193629078c 62
+  s_5d7848805c9451::t_018798182eda87 75
+src/lib/themes/builtin/night-console.ts
+  s_ab9a560e5d9c0e::t_30ad75ee86c83f 36
+src-tauri/core/src/store/vault.rs
+  s_cf43f7c6484047::t_43a72b3bb3bc94 549-550
+  s_cf43f7c6484047::t_232c6d11a08d3a 76
+  s_cf43f7c6484047::t_dbb6df31432fae 2
+src-tauri/web/Cargo.toml
+  s_cf43f7c6484047::t_517cd7f8149e92 4-7,14-16
+src-tauri/server/src/device.rs
+  s_7e49377c6b35fd::t_53f6bb75413104 399
+  s_7e49377c6b35fd::t_e5414436080137 378
+  s_7e49377c6b35fd::t_f59dbeecfe0972 415
+  s_7e49377c6b35fd::t_c9b7df0651ccb0 571
+  s_7e49377c6b35fd::t_1f21ae283e5880 332,335,338
+src/lib/stores/diagnostics.test.ts
+  s_7e49377c6b35fd::t_3ef46515fa557e 56
+CHANGELOG.md
+  s_cf43f7c6484047::t_dfc98b2ef90161 32
+  s_cf43f7c6484047::t_2fd41c05f89bc3 27,29
+  s_7e49377c6b35fd::t_a86516582a0b66 33
+  s_cf43f7c6484047::t_d13750ab25e2fb 28
+  s_7e49377c6b35fd::t_f6fec7f0311595 12-26,30-31
+  s_441d89dc5c1c63::t_3e25b695e6b17f 10,34-35
+  s_cf43f7c6484047::t_d9ef3db0e5edce 11
+src/lib/components/settings/SettingsEditor.svelte
+  s_1d05a9c459ac4a::t_59432bb25bb8ba 80,85-86,90-96
+  s_ace4e7a8209c64::t_d65d2fb3f196a6 3,8-10,13-14,16-23,25,30-34,38-42,50-57,100
+  s_5d7848805c9451::t_d921232ca1a6b7 78,97-99
+src/lib/components/settings/ImportFolder.svelte
+  s_cf43f7c6484047::t_3576ec6f76b4d2 208
+  s_1d05a9c459ac4a::t_2f786c742332a9 15,26-170
+  s_7e49377c6b35fd::t_b1dc97ae9bc23b 25
+  s_cf43f7c6484047::t_6275f1c86a6d9b 1-14,16-24,171-207,209-267
+src/lib/agents/space.test.ts
+  s_7e49377c6b35fd::t_e87482a73c0540 93
+src/lib/components/settings/PrefRow.svelte
+  s_ab9a560e5d9c0e::t_59eb2e2ecf1035 50-53
+  s_ab9a560e5d9c0e::t_d0e585c412d895 49
+src/lib/components/settings/SettingsImages.svelte
+  s_7e49377c6b35fd::t_de3272bdfda522 109
+  s_7e49377c6b35fd::t_1f384288b92ec2 77
+  s_5d7848805c9451::t_a71257dd260d15 56
+  s_5d7848805c9451::t_8e4ade04513f1d 92-94
+  s_7e49377c6b35fd::t_16fcc55c7f0347 64,66
+src-tauri/core/src/store/notes.rs
+  s_d254e1b9dfd259::t_20f5a6aefe5a45 569-577,579-583
+  s_cf43f7c6484047::t_8df39385e988fe 568
+  s_cf43f7c6484047::t_3f2ac8d8902a81 261
+src/lib/whiteboard/convert.ts
+  s_7e49377c6b35fd::t_101769f913283f 9
+src/lib/components/settings/SettingsBackups.svelte
+  s_7e49377c6b35fd::t_4aa5fd6fa3ac3d 33
+  s_5d7848805c9451::t_0cabd758331fc3 166
+  s_7e49377c6b35fd::t_2e4e010030f869 118,120
+  s_7e49377c6b35fd::t_f92274fdf2f97a 76
+  s_7e49377c6b35fd::t_f5f133a3df2eee 83
+  s_7e49377c6b35fd::t_e911a5d4423aaa 108
+  s_7e49377c6b35fd::t_e519febe9336d1 50
+  s_5d7848805c9451::t_ea151319636f51 178
+  s_7e49377c6b35fd::t_3f582b194c2d92 60,62
+  s_7e49377c6b35fd::t_6d4566705dba7b 97
+  s_7e49377c6b35fd::t_3eedfac5da80f9 143
+README.md
+  s_f423694dbbfebe::t_360422d66bbbf6 17
+  s_cf43f7c6484047::t_af81f7e3ebb61a 202
+  s_ab9a560e5d9c0e::t_1a4e31229ff8c7 182-185
+  s_cf43f7c6484047::t_517cd7f8149e92 5,7,78,158
+src/lib/stickies-import.test.ts
+  s_7e49377c6b35fd::t_15f37f27c61942 60,63,66,69
+src-tauri/server/src/sync_api.rs
+  s_cf43f7c6484047::t_abbc3315300d2d 393-398,400-402
+  s_cf43f7c6484047::t_0b22b2f8ce1308 239-243
+src/lib/editor/constructs/calc.ts
+  s_ace4e7a8209c64::t_aecea0dfc24aa0 1-64
+src/lib/components/AgentNote.svelte
+  s_7e49377c6b35fd::t_fb84b96793e710 149
+  s_7e49377c6b35fd::t_217b7fe831558d 284,286,288,290
+  s_5d7848805c9451::t_49d99e7356fb9b 141
+  s_5d7848805c9451::t_a5fea2d3dd052d 232
+  s_5d7848805c9451::t_0a1a7ea1ead375 114
+  s_5d7848805c9451::t_afe23773b55db6 133-134
+  s_7e49377c6b35fd::t_edb3801c0d305a 298
+  s_7e49377c6b35fd::t_2dac462911d983 193,195
+  s_5d7848805c9451::t_5d8d87426c4886 156
+  s_5d7848805c9451::t_cf814d2359187f 335
+  s_5d7848805c9451::t_1bf298eb3ffcc9 206
+  s_5d7848805c9451::t_74aede933a1e8f 248,250,252
+src-tauri/core/tests/related_test.rs
+  s_7e49377c6b35fd::t_fe38b5b209a833 132
+  s_7e49377c6b35fd::t_2072723ee34a6a 141
+  s_7e49377c6b35fd::t_763e3ea4973948 129-131
+  s_7e49377c6b35fd::t_4fdc65cca99ba6 133-135,138-140
+  s_7e49377c6b35fd::t_ba9597dbf0c07a 142-144
+  s_7e49377c6b35fd::t_4bf06d9b836c98 1-128,136-137,145-188
+src/lib/vault-mirror.ts
+  s_7e49377c6b35fd::t_09bd08181afff6 68
+  s_7e49377c6b35fd::t_a08bb7c18bd4ac 25,27-29,34
+  s_7e49377c6b35fd::t_7eb271863e5cfc 66,69
+  s_7e49377c6b35fd::t_05f1fa84b5c4bd 58,61,64
+package-lock.json
+  s_441d89dc5c1c63::t_a36d1090fa690b 3,9
+src/lib/stores/library/selection.svelte.ts
+  s_cf43f7c6484047::t_7c8ed9009dfa53 1
+src-tauri/Cargo.lock
+  s_a91225ec421eac::t_6bb34626c9ec13 2858
+  s_441d89dc5c1c63::t_fed511a51e9eb0 2797
+  s_7f269685f35687::t_0bd8faf555185c 2819,7658
+src/lib/web/sync.ts
+  s_7e49377c6b35fd::t_a6e10c10ceb967 370
+  s_7e49377c6b35fd::t_77adbe2c9a93c6 394
+docs/API.md
+  s_bdb8afbd34a3fb::t_1e7fe7e2238bc6 70-72,611-612,704-705,731-759
+docs/DATA_MODEL.md
+  s_bdb8afbd34a3fb::t_46db1837833ec0 167-173,177-179
+openspec/specs/instantnotes/spec.md
+  s_bdb8afbd34a3fb::t_4d58b3ebcb206e 82
+src-tauri/agents/src/activity.rs
+  s_bdb8afbd34a3fb::t_81d867985f1112 1-2,33,39-47,53,63,81-95,97-98,176-180,182,186-195,202,262,273,292
+src-tauri/agents/src/protocol.rs
+  s_bdb8afbd34a3fb::t_5ae5f7cc3e08e0 52-53
+src-tauri/agents/src/tools.rs
+  s_bdb8afbd34a3fb::t_eceda00ec9c9f9 195-209,356-374,591,597,861-912,1571-1597
+src-tauri/agents/tests/mcp_test.rs
+  s_bdb8afbd34a3fb::t_7716581cd1cd20 2193-2248
+src-tauri/core/src/commands.rs
+  s_bdb8afbd34a3fb::t_ed3531cff1f3c9 345-386
+src-tauri/core/src/import/markdown.rs
+  s_7f269685f35687::t_aee2545e9443b9 1-476
+src-tauri/core/src/import/mod.rs
+  s_7f269685f35687::t_d21c59a3911c41 1-3
+src-tauri/core/src/import/notion.rs
+  s_7f269685f35687::t_743edc35582ae1 1-272
+src-tauri/core/src/import/obsidian.rs
+  s_bdb8afbd34a3fb::t_11099a61c402bb 1-415
+src-tauri/core/src/store.rs
+  s_bdb8afbd34a3fb::t_7e928e756c6330 28,140-144,183-187,297-298,301,303-304,314-315,317-319
+src-tauri/core/src/store/activity.rs
+  s_bdb8afbd34a3fb::t_c9e263bf286159 125-141,158,192-255,322,374-375,379,451-454,478-520,552-561
+src-tauri/core/src/store/fold.rs
+  s_bdb8afbd34a3fb::t_3bf415ec08be6e 1-179
+src-tauri/core/src/store/migrations.rs
+  s_bdb8afbd34a3fb::t_373c7754c1afb8 1-678
+src-tauri/core/src/store/rows.rs
+  s_bdb8afbd34a3fb::t_f4a719690e6ac9 1-198
+src-tauri/core/src/store/settings.rs
+  s_bdb8afbd34a3fb::t_5b1ff4f02c7a1f 17
+src-tauri/core/src/store/suggest.rs
+  s_bdb8afbd34a3fb::t_1fa1230274372c 1,3,10-12,15-24,28-29,36-37,39-42,50,52-58,87,89,91,94-95,98-100,105-107,109,118,128,132,136-156,176-204,209-215,217,226,235,237,241-244
+src-tauri/core/src/types.rs
+  s_bdb8afbd34a3fb::t_6f99c7d86d279b 86,268-297
+src-tauri/core/tests/import_test.rs
+  s_bdb8afbd34a3fb::t_da2f3602854be6 232,276-312,381
+src-tauri/src/commands/graph.rs
+  s_bdb8afbd34a3fb::t_62280b83dd1856 40-73
+src-tauri/src/commands/import.rs
+  s_bdb8afbd34a3fb::t_018236094ff106 3,117,153-157,161,165-501,570-642
+src-tauri/src/commands/notes.rs
+  s_bdb8afbd34a3fb::t_bd6073494c2aaa 115-141
+src-tauri/src/lib.rs
+  s_bdb8afbd34a3fb::t_20f3537cdc73b9 310-314,357-362
+src/lib/agent-activity.test.ts
+  s_bdb8afbd34a3fb::t_26b47659011ccf 81-94
+src/lib/agent-activity.ts
+  s_bdb8afbd34a3fb::t_228920e949a696 55,224-225,239-242,271,279
+src/lib/api/client.ts
+  s_bdb8afbd34a3fb::t_88210906d4e722 25,27,31,102-111,315-322
+src/lib/api/types.ts
+  s_bdb8afbd34a3fb::t_4dd7b0b640b9ad 3,259-267,304-321
+src/lib/components/NoteEditor.test.ts
+  s_bdb8afbd34a3fb::t_2c230f19cd15cd 4,18-19,21-23,54-56,83-84,143-191
+src/lib/components/RelatedStrip.test.ts
+  s_bdb8afbd34a3fb::t_000990c77a1ce6 1-122
+src/lib/related.test.ts
+  s_bdb8afbd34a3fb::t_baec28d42ca852 1-35
+src/lib/related.ts
+  s_bdb8afbd34a3fb::t_599d02a7334e8e 1-32
+src/lib/search-focus.test.ts
+  s_bdb8afbd34a3fb::t_189ffe30987f4c 5,27,43,55
+src/lib/search-focus.ts
+  s_bdb8afbd34a3fb::t_65518b17aaab9d 23
+src/lib/suggest-setting.test.ts
+  s_bdb8afbd34a3fb::t_a1d16d5b419cc9 2,4,6-9,13-15
+src/lib/suggest-setting.ts
+  s_bdb8afbd34a3fb::t_207024453e5c1d 2,4,9,17,23-24
+src-tauri/core/src/classify.rs
+  s_7e49377c6b35fd::t_736d6d6919317e 259,264-271
+src-tauri/core/src/store/import.rs
+  s_7f269685f35687::t_9aff458f6f4d58 42-47
+src/lib/components/BulkActions.svelte
+  s_5d7848805c9451::t_eefab9f56cc81b 28,32-34,40,42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f31a05c1d907c301c65caadc81282f64235e3615",
+  "prompts": {},
+  "sessions": {
+    "s_1d05a9c459ac4a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "38eba170-c77b-4dd9-be75-d4082db768fc",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    },
+    "s_441d89dc5c1c63": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3c8894df-07c4-406c-b45d-105e1dbb2d77",
+        "model": "unknown"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    },
+    "s_5911eccbd695e7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a20541f1-418e-4408-b931-e9145556a4b4",
+        "model": "unknown"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    },
+    "s_5d7848805c9451": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ad440a1c-2d35-4232-8eb6-80d245214f39",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    },
+    "s_7e49377c6b35fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4a85dab4-9645-41ec-acaa-3161a0dec606",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    },
+    "s_7f269685f35687": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "29d2e1c5-df3c-4b7b-9f59-9596437ac3b1",
+        "model": "unknown"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    },
+    "s_a91225ec421eac": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7ec305f3-007e-4d32-8b01-4c98a58cb39a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    },
+    "s_ab9a560e5d9c0e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ab6ea00-25fe-48a2-8196-c997558edb26",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    },
+    "s_ace4e7a8209c64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dbfc31fe-eba4-4848-86b5-3221dcd3b72f",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    },
+    "s_bdb8afbd34a3fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "49070493-7f75-40c6-ad27-5f64eaec03e9",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    },
+    "s_cf43f7c6484047": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "66c9001d-20b1-4c17-9cc1-0db812b420ec",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    },
+    "s_d254e1b9dfd259": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9648eee5-52ea-4e7d-8280-991fd7b40023",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    },
+    "s_e64d356946cffc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a46344347cb28f4eb",
+        "model": "unknown"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    },
+    "s_f423694dbbfebe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f0785ae8-7451-4713-8a03-699e421a2205",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
