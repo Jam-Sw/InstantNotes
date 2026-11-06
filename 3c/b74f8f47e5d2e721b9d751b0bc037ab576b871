@@ -1,0 +1,30 @@
+knip.json
+  s_7e49377c6b35fd::t_f8470d1d36a67b 16-17
+  s_7e49377c6b35fd::t_89e139f4e21280 21
+src-tauri/core/src/store/related.rs
+  s_7e49377c6b35fd::t_83d84ce9e481ab 431-468
+src/lib/editor/calc.ts
+  s_7e49377c6b35fd::t_fbb1758a88532a 26
+  s_7e49377c6b35fd::t_ddac56c88f32bc 8,14
+src-tauri/core/tests/fold_test.rs
+  s_7e49377c6b35fd::t_8be83c7e1d36d9 108-110
+src-tauri/core/tests/related_test.rs
+  s_7e49377c6b35fd::t_fe38b5b209a833 132
+  s_7e49377c6b35fd::t_2072723ee34a6a 141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3cb74f8f47e5d2e721b9d751b0bc037ab576b871",
+  "prompts": {},
+  "sessions": {
+    "s_7e49377c6b35fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4a85dab4-9645-41ec-acaa-3161a0dec606",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
