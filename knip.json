@@ -14,6 +14,7 @@
   "ignoreIssues": {
     "src/lib/agents/space.ts": ["exports"],
     "src/lib/calc/format.ts": ["exports"],
+    "src/lib/calc/plot.ts": ["exports"],
     "src/lib/calc/table.ts": ["exports"],
     "src/lib/command-filter.ts": ["exports"],
     "src/lib/contexting-format.ts": ["exports"],
@@ -24,7 +25,9 @@
     "src/lib/errors.ts": ["exports"],
     "src/lib/external-edit.ts": ["exports"],
     "src/lib/graph/layout.ts": ["exports"],
-    "src/lib/graph/projection.ts": ["exports"],
+    "src/lib/graphics/figure.ts": ["exports"],
+    "src/lib/graphics/plotly-spec.ts": ["exports"],
+    "src/lib/graphics/projection.ts": ["exports"],
     "src/lib/highlight.ts": ["exports"],
     "src/lib/markdown-format.ts": ["exports"],
     "src/lib/markdown-highlight.ts": ["exports"],

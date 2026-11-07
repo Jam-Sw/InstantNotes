@@ -72,6 +72,8 @@ Each module is directly specified: purpose, construction, public surface.
   `=expr` and table `=formula` in the document, in order, through
   `src/lib/calc/` (the engine notes, tables and sheets share). Recomputed when
   the document or its syntax tree changes; `constructs/calc.ts` only reads it.
+  Each calc fence gets its own `Figures`; its plots become one `figure` item at
+  the fence end, drawn by `src/lib/graphics/figure-view.ts`.
 - `theme.ts`: all kernel base themes in one place.
 - `index.ts`: `editorKernel(opts)`, the only entry point. Editor.svelte
   consumes this and nothing else from the kernel.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CalcError, compileLine, evaluate, isMatrix, type Scope, type Value } from "./engine";
+import { CalcError, compileLine, evaluate, isMatrix, runBlock, type Scope, type Value } from "./engine";
 import { formatNumber, formatValue } from "./format";
 
 function env(): Scope & { vars: Map<string, Value> } {
@@ -121,6 +121,9 @@ describe("matrices", () => {
     expect(run("eye(2)")).toBe("[1 0; 0 1]");
     expect(run("ones(1, 3)")).toBe("[1 1 1]");
     expect(run("linspace(0, 1, 3)")).toBe("[0 0.5 1]");
+    expect(run("linspace(0, 1, 3.7)")).toBe("[0 0.5 1]");
+    expect(run("numel(linspace(0, 1, -2))")).toBe("0");
+    expect(run("max(linspace(0.1, 0.3, 3)) == 0.3")).toBe("1");
     expect(run("det([1 2; 3 4])")).toBe("-2");
     expect(run("inv([2 0; 0 4])")).toBe("[0.5 0; 0 0.25]");
     expect(run("size([1 2 3; 4 5 6])")).toBe("[2 3]");
@@ -155,5 +158,122 @@ describe("format", () => {
   it("parses the format statement", () => {
     expect(compileLine("format long")[0].format).toBe("long");
     expect(compileLine("format")[0].format).toBe("short");
+  });
+});
+
+describe("draw hook", () => {
+  it("keeps linspace feeding plot and leaves ans alone", () => {
+    const s = env();
+    expect(() => evaluate("plot(linspace(0, 1, 5))", s)).toThrow("plot needs a calc block");
+    expect(s.vars.has("ans")).toBe(false);
+    expect(compileLine("plot(linspace(0, 1, 5))")[0].draw).toBe(true);
+  });
+});
+
+describe("MATLAB parity", () => {
+  it("supports complex numbers, conjugate vs non-conjugate transpose, and complex functions", () => {
+    const s = env();
+    expect(run("z = 3 + 4i", s)).toBe("3 + 4i");
+    expect(run("abs(z)", s)).toBe("5");
+    expect(run("real(z)", s)).toBe("3");
+    expect(run("imag(z)", s)).toBe("4");
+    expect(run("conj(z)", s)).toBe("3 - 4i");
+    expect(run("sqrt(-4)")).toBe("2i");
+    run("C = [1+2i, 3-i]", s);
+    expect(run("C'", s)).toBe("[1 - 2i; 3 + i]");
+    expect(run("C.'", s)).toBe("[1 + 2i; 3 - i]");
+  });
+
+  it("solves linear systems with backslash (mldivide) and slash (mrdivide)", () => {
+    const s = env();
+    run("A = [3 1; 1 2]; b = [9; 8]", s);
+    expect(run("A \\ b", s)).toBe("[2; 3]");
+    run("X = [1 1; 1 2; 1 3]; y = [1; 2; 3]", s);
+    expect(run("round(X \\ y, 6)", s)).toBe("[0; 1]");
+    expect(run("[5 8] / [1 2; 3 4]")).toBe("[2 1]");
+  });
+
+  it("computes matrix decompositions and multi-output assignments", () => {
+    const s = env();
+    for (const st of compileLine("A = [4 1; 2 3]; [V, D] = eig(A)")) st.run(s);
+    expect(run("round(A * V - V * D, 10)", s)).toBe("[0 0; 0 0]");
+
+    for (const st of compileLine("[U, S, W] = svd([1 2; 3 4; 5 6])")) st.run(s);
+    expect(run("round(U * S * W', 8)", s)).toBe("[1 2; 3 4; 5 6]");
+
+    for (const st of compileLine("[Q, R] = qr([1 2; 3 4])")) st.run(s);
+    expect(run("round(Q * R, 8)", s)).toBe("[1 2; 3 4]");
+
+    for (const st of compileLine("[L, U] = lu([2 1; 4 3])")) st.run(s);
+    expect(run("round(L * U, 8)", s)).toBe("[2 1; 4 3]");
+
+    expect(run("round(chol([4 2; 2 5])' * chol([4 2; 2 5]), 8)")).toBe("[4 2; 2 5]");
+    expect(run("rank([1 2; 2 4])")).toBe("1");
+    expect(run("round(pinv([1 0; 0 2; 0 0]) * [1 0; 0 2; 0 0], 8)")).toBe("[1 0; 0 1]");
+  });
+
+  it("supports polynomials, FFT, convolution, roots, and numerical calculus", () => {
+    expect(run("polyval([1 0 -2], 3)")).toBe("7");
+    expect(run("sort(round(roots([1 -5 6]), 8))")).toBe("[2; 3]");
+    expect(run("round(polyfit([0 1 2], [1 3 7], 2), 6)")).toBe("[1 1 1]");
+    expect(run("conv([1 2], [3 4])")).toBe("[3 10 8]");
+    expect(run("round(real(ifft(fft([1 2 3 4]))), 8)")).toBe("[1 2 3 4]");
+    expect(run("trapz([0 1 2], [0 2 4])")).toBe("4");
+  });
+
+  it("supports anonymous @(x) function handles with fzero and integral", () => {
+    const s = env();
+    run("f = @(x) x.^2 - 2", s);
+    expect(formatValue(evaluate("fzero(f, 1.5)", s), "long").slice(0, 10)).toBe("1.41421356");
+    expect(run("round(integral(@(x) sin(x), 0, pi), 6)")).toBe("2");
+  });
+
+  it("supports logical indexing, find, meshgrid, and slice assignment", () => {
+    const s = env();
+    run("v = [-2 3 -1 5 0]", s);
+    expect(run("v(v > 0)", s)).toBe("[3 5]");
+    expect(run("find(v > 0)", s)).toBe("[2 4]");
+    for (const st of compileLine("M = zeros(2, 3); M(1, 2) = 9; M(:, 3) = [4; 5]")) st.run(s);
+    expect(run("M", s)).toBe("[0 9 4; 0 0 5]");
+    for (const st of compileLine("[X, Y] = meshgrid(1:3, 10:10:20)")) st.run(s);
+    expect(run("X", s)).toBe("[1 2 3; 1 2 3]");
+    expect(run("Y", s)).toBe("[10 10 10; 20 20 20]");
+  });
+
+  it("supports complex linear algebra, arbitrary-length FFT, special functions, expm/sqrtm, and control flow", () => {
+    const s = env();
+    for (const st of compileLine("Ac = [2+i, 1; 1, 3-i]; bc = [5+2i; 4-i]; xc = Ac \\ bc")) st.run(s);
+    expect(run("round(Ac * xc - bc, 10)", s)).toBe("[0; 0]");
+
+    expect(run("round(real(ifft(fft([1 2 3 4 5 6 7]))), 10)")).toBe("[1 2 3 4 5 6 7]");
+
+    expect(run("round(expm([0 -pi/2; pi/2 0]), 10)")).toBe("[0 -1; 1 0]");
+    expect(run("round(sqrtm([4 0; 0 9]), 10)")).toBe("[2 0; 0 3]");
+
+    expect(run("gamma(5)")).toBe("24");
+    expect(run("round(erf(0), 8)")).toBe("0");
+    expect(run("round(erf(1) + erfc(1), 12)")).toBe("1");
+
+    const res = runBlock(
+      [
+        "function [a, b] = stats2(v)",
+        "  a = sum(v);",
+        "  b = mean(v);",
+        "end",
+        "acc = 0; k = 1;",
+        "while k <= 6",
+        "  if mod(k, 2) == 0",
+        "    acc = acc + ... % line continuation",
+        "      k;",
+        "  end",
+        "  k = k + 1;",
+        "end",
+        "[tot, avg] = stats2(1:4);",
+        "acc + tot + avg",
+      ],
+      s,
+    );
+    expect(res.outcomes).toHaveLength(1);
+    expect(formatValue(res.outcomes[0].value!)).toBe("24.5");
   });
 });

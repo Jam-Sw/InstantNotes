@@ -119,6 +119,53 @@ export const kernelTheme = EditorView.baseTheme({
     textAlign: "right",
     lineHeight: "1.3",
   },
+  ".cm-figures": {
+    display: "block",
+    width: "100%",
+    contain: "inline-size",
+    whiteSpace: "normal",
+    userSelect: "none",
+    WebkitUserSelect: "none",
+  },
+  ".cm-figure": {
+    position: "relative",
+    display: "block",
+    width: "100%",
+    touchAction: "none",
+    cursor: "grab",
+    userSelect: "none",
+    WebkitUserSelect: "none",
+    WebkitTouchCallout: "none",
+  },
+  ".cm-figure.cm-figure-grabbing, .cm-figure.cm-figure-grabbing *": {
+    cursor: "grabbing !important",
+  },
+  ".cm-figure-plotly": {
+    width: "100%",
+    overflow: "hidden",
+  },
+  ".cm-figure svg": {
+    display: "block",
+    width: "100%",
+    height: "auto",
+  },
+  ".cm-figure polyline": {
+    fill: "none",
+    strokeLinejoin: "round",
+    strokeLinecap: "round",
+  },
+  ".cm-figure-frame polyline": {
+    stroke: "var(--text-tertiary)",
+    strokeWidth: "1",
+  },
+  ".cm-figure-lines polyline": {
+    strokeWidth: "1.75",
+  },
+  ".cm-figure-labels text": {
+    fill: "var(--text-secondary)",
+    fontFamily: "var(--font-meta)",
+    fontSize: "10.5px",
+  },
   ".cm-image-preview": {
     maxWidth: "100%",
     maxHeight: "var(--image-max-height, 420px)",

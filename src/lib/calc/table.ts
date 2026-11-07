@@ -125,9 +125,10 @@ export function evaluateGrid(
     if (isFormula(t)) {
       const v = formulaValue(r, c);
       if (isMatrix(v)) {
-        if (v.data.length === 1) return v.data[0];
+        if (v.data.length === 1 && !v.imag) return v.data[0];
         fail(`${refName(r, c)} is a ${v.rows}×${v.cols} matrix`);
       }
+      if (typeof v !== "number") fail(`${refName(r, c)} isn't a real number`);
       return v;
     }
     return parseNumber(t);

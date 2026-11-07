@@ -1,9 +1,10 @@
-import { StateField, type EditorState } from "@codemirror/state";
+import { Facet, StateField, type EditorState } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
 import type { SyntaxNode } from "@lezer/common";
-import { CalcError, compileLine, type Precision, type Scope, type Value } from "$lib/calc/engine";
+import { CalcError, compileLine, runBlock, type Precision, type Scope, type Value } from "$lib/calc/engine";
 import { formatGrid, formatValue } from "$lib/calc/format";
 import { evaluateGrid, isFormula } from "$lib/calc/table";
+import { Figures, type Figure } from "$lib/calc/plot";
 
 interface CalcPart {
   readonly text: string;
@@ -11,7 +12,7 @@ interface CalcPart {
   readonly grid: readonly (readonly string[])[] | null;
 }
 
-type CalcKind = "line" | "inline" | "cell";
+type CalcKind = "line" | "inline" | "cell" | "figure";
 
 export interface CalcItem {
   readonly kind: CalcKind;
@@ -20,14 +21,20 @@ export interface CalcItem {
   readonly innerFrom: number;
   readonly innerTo: number;
   readonly parts: readonly CalcPart[];
+  readonly figures: readonly Figure[];
   readonly key: string;
 }
 
-const CALC_LANGS = new Set(["calc"]);
+export const calcPrecision = Facet.define<Precision, Precision>({
+  combine: (values) => values[0] ?? "short",
+});
+
+const CALC_LANGS = new Set(["calc", "matlab", "m"]);
 
 class Env implements Scope {
   readonly vars = new Map<string, Value>();
   precision: Precision = "short";
+  draw?: Figures;
   get(name: string): Value | undefined {
     return this.vars.get(name);
   }
@@ -54,7 +61,7 @@ function runLine(src: string, env: Env): CalcPart[] {
         continue;
       }
       const v = st.run(env);
-      if (!st.suppressed) parts.push(part(v, env.precision));
+      if (!st.suppressed && !st.draw) parts.push(part(v, env.precision));
     }
   } catch (e) {
     parts.push(errorPart(e));
@@ -75,14 +82,21 @@ function item(
   innerFrom: number,
   innerTo: number,
   parts: CalcPart[],
+  figures: readonly Figure[] = [],
 ): CalcItem {
-  return { kind, from, to, innerFrom, innerTo, parts, key: keyOf(parts) };
+  return { kind, from, to, innerFrom, innerTo, parts, figures, key: keyOf(parts) };
 }
 
 export class CalcTable {
-  static readonly empty = new CalcTable([]);
+  static readonly empty = new CalcTable([], [], [], [], "short");
 
-  constructor(readonly items: readonly CalcItem[]) {}
+  constructor(
+    readonly items: readonly CalcItem[],
+    readonly owners: readonly number[],
+    readonly sources: readonly string[],
+    readonly starts: readonly number[],
+    readonly precision: Precision,
+  ) {}
 
   between(from: number, to: number): readonly CalcItem[] {
     const items = this.items;
@@ -135,46 +149,35 @@ function scanTable(node: SyntaxNode, state: EditorState, env: Env, items: CalcIt
   }
 }
 
-export function scanCalc(state: EditorState): CalcTable {
-  const items: CalcItem[] = [];
-  const env = new Env();
+interface Source {
+  readonly node: SyntaxNode;
+  readonly text: string;
+}
+
+function sourcesOf(state: EditorState): Source[] {
   const doc = state.doc;
+  const out: Source[] = [];
   syntaxTree(state).iterate({
     enter(ref) {
       switch (ref.name) {
         case "FencedCode": {
-          const node = ref.node;
-          const info = node.getChild("CodeInfo");
-          if (!info || !CALC_LANGS.has(doc.sliceString(info.from, info.to).trim().toLowerCase())) {
-            return false;
-          }
-          const text = node.getChild("CodeText");
-          if (!text) return false;
-          const first = doc.lineAt(text.from).number;
-          const last = doc.lineAt(text.to).number;
-          for (let ln = first; ln <= last; ln++) {
-            const line = doc.line(ln);
-            if (!line.text.trim()) continue;
-            const parts = runLine(line.text, env);
-            if (parts.length > 0) items.push(item("line", line.from, line.to, line.from, line.to, parts));
+          const info = ref.node.getChild("CodeInfo");
+          if (info && CALC_LANGS.has(doc.sliceString(info.from, info.to).trim().toLowerCase())) {
+            out.push({ node: ref.node, text: doc.sliceString(ref.from, ref.to) });
           }
           return false;
         }
         case "InlineCode": {
           const raw = doc.sliceString(ref.from, ref.to);
           const inner = stripBackticks(raw);
-          if (!inner) return false;
-          const content = raw.slice(inner.from, inner.to);
-          if (!isFormula(content)) return false;
-          const parts = runLine(content.slice(1), env);
-          if (parts.length > 0) {
-            items.push(item("inline", ref.from, ref.to, ref.from + inner.from, ref.from + inner.to, parts));
-          }
+          if (inner && isFormula(raw.slice(inner.from, inner.to))) out.push({ node: ref.node, text: raw });
           return false;
         }
-        case "Table":
-          scanTable(ref.node, state, env, items);
+        case "Table": {
+          const raw = doc.sliceString(ref.from, ref.to);
+          if (raw.includes("=")) out.push({ node: ref.node, text: raw });
           return false;
+        }
         case "CodeBlock":
         case "HTMLBlock":
         case "Image":
@@ -184,14 +187,107 @@ export function scanCalc(state: EditorState): CalcTable {
       }
     },
   });
-  return items.length === 0 ? CalcTable.empty : new CalcTable(items);
+  return out;
+}
+
+function evaluateSource(src: Source, state: EditorState, env: Env, items: CalcItem[]): void {
+  const doc = state.doc;
+  const node = src.node;
+  switch (node.name) {
+    case "FencedCode": {
+      const text = node.getChild("CodeText");
+      if (!text) return;
+      const first = doc.lineAt(text.from).number;
+      const last = doc.lineAt(text.to).number;
+      const lines: string[] = [];
+      const spans: { from: number; to: number }[] = [];
+      for (let ln = first; ln <= last; ln++) {
+        const line = doc.line(ln);
+        lines.push(line.text);
+        spans.push({ from: line.from, to: line.to });
+      }
+      env.draw = new Figures();
+      const res = runBlock(lines, env, env.precision);
+      env.precision = res.precision;
+      const byLine = new Map<number, CalcPart[]>();
+      for (const out of res.outcomes) {
+        const arr = byLine.get(out.line) ?? [];
+        if (out.error !== undefined) {
+          arr.push({ text: out.error, error: true, grid: null });
+        } else if (out.value !== undefined) {
+          arr.push(part(out.value, out.precision));
+        }
+        byLine.set(out.line, arr);
+      }
+      const orderedLines = [...byLine.keys()].sort((a, b) => a - b);
+      for (const idx of orderedLines) {
+        const parts = byLine.get(idx);
+        const span = spans[idx];
+        if (parts && parts.length > 0 && span) {
+          items.push(item("line", span.from, span.to, span.from, span.to, parts));
+        }
+      }
+      const figures = env.draw.list();
+      env.draw = undefined;
+      if (figures.length > 0) items.push(item("figure", node.to, node.to, node.to, node.to, [], figures));
+      return;
+    }
+    case "InlineCode": {
+      const inner = stripBackticks(src.text) as { from: number; to: number };
+      const parts = runLine(src.text.slice(inner.from + 1, inner.to), env);
+      if (parts.length > 0) {
+        items.push(item("inline", node.from, node.to, node.from + inner.from, node.from + inner.to, parts));
+      }
+      return;
+    }
+    case "Table":
+      scanTable(node, state, env, items);
+  }
+}
+
+function sameSources(prev: CalcTable, sources: readonly Source[], precision: Precision): boolean {
+  if (prev.precision !== precision || prev.sources.length !== sources.length) return false;
+  for (let i = 0; i < sources.length; i++) if (prev.sources[i] !== sources[i].text) return false;
+  return true;
+}
+
+function rebase(prev: CalcTable, starts: readonly number[]): CalcTable {
+  if (starts.every((at, i) => at === prev.starts[i])) return prev;
+  const items = prev.items.map((it, i) => {
+    const d = starts[prev.owners[i]] - prev.starts[prev.owners[i]];
+    return d === 0
+      ? it
+      : { ...it, from: it.from + d, to: it.to + d, innerFrom: it.innerFrom + d, innerTo: it.innerTo + d };
+  });
+  return new CalcTable(items, prev.owners, prev.sources, starts, prev.precision);
+}
+
+export function scanCalc(state: EditorState, prev?: CalcTable): CalcTable {
+  const precision = state.facet(calcPrecision);
+  const sources = sourcesOf(state);
+  const starts = sources.map((src) => src.node.from);
+  if (prev && sameSources(prev, sources, precision)) return rebase(prev, starts);
+  if (sources.length === 0) return CalcTable.empty;
+  const items: CalcItem[] = [];
+  const owners: number[] = [];
+  const env = new Env();
+  env.precision = precision;
+  sources.forEach((src, i) => {
+    evaluateSource(src, state, env, items);
+    while (owners.length < items.length) owners.push(i);
+  });
+  return new CalcTable(items, owners, sources.map((src) => src.text), starts, precision);
 }
 
 export const calcField = StateField.define<CalcTable>({
-  create: scanCalc,
+  create: (state) => scanCalc(state),
   update(value, tr) {
-    if (tr.docChanged || syntaxTree(tr.state) !== syntaxTree(tr.startState)) {
-      return scanCalc(tr.state);
+    if (
+      tr.docChanged ||
+      syntaxTree(tr.state) !== syntaxTree(tr.startState) ||
+      tr.state.facet(calcPrecision) !== tr.startState.facet(calcPrecision)
+    ) {
+      return scanCalc(tr.state, value);
     }
     return value;
   },
