@@ -6,7 +6,7 @@ export interface Series {
   z: Float64Array | null;
 }
 
-export type LineDash = "solid" | "dash" | "dot" | "dashdot" | "none";
+type LineDash = "solid" | "dash" | "dot" | "dashdot" | "none";
 
 export interface LineStyleSpec {
   color?: string;
@@ -17,7 +17,7 @@ export interface LineStyleSpec {
   name?: string;
 }
 
-export type TraceKind =
+type TraceKind =
   | "line2d"
   | "scatter2d"
   | "bar"

@@ -78,7 +78,7 @@ export const isFnHandle = (v: Value): v is FnHandle =>
 export const isMatrix = (v: Value): v is Matrix =>
   typeof v === "object" && v !== null && "rows" in v;
 
-export function complexScalar(re: number, im: number): number | ComplexScalar {
+function complexScalar(re: number, im: number): number | ComplexScalar {
   return im === 0 || Object.is(im, -0) ? (re === 0 ? 0 : re) : { kind: "complex", re, im };
 }
 

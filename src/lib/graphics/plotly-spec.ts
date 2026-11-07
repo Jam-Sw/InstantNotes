@@ -43,7 +43,7 @@ export function readPlotTheme(el?: Element | null): PlotTheme {
   };
 }
 
-export type ColorScale = [number, string][];
+type ColorScale = [number, string][];
 
 const COLORMAPS: Record<string, ColorScale> = {
   parula: [
