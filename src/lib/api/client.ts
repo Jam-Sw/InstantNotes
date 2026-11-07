@@ -266,6 +266,9 @@ export const inspectBackup = (path: string) =>
 export const restoreBackup = (path: string) => call<void>("restore_backup", { path });
 export const openBackupsFolder = () => call<void>("open_backups_folder");
 
+export const setCaptureShortcut = (accelerator: string) =>
+  call<void>("set_capture_shortcut", { accelerator });
+
 export const reportFrontendError = (message: string, stack: string | null, where: string) =>
   call<void>("report_frontend_error", { message, stack, where });
 export const listCrashReports = () => call<CrashReport[]>("list_crash_reports");

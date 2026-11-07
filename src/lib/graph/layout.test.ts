@@ -184,6 +184,23 @@ describe("startLayout", () => {
   });
 });
 
+describe("spread", () => {
+  it("pushes linked nodes further apart as it grows, and is neutral at 1", () => {
+    const g = buildGraph(library());
+    const reach = (spread?: number) => {
+      const run = startLayout(g, undefined, spread);
+      run.step(LAYOUT_TICKS);
+      const out = run.snapshot();
+      const at = (id: string) => out.nodes.find((n) => n.id === id)!;
+      const [a, b] = [at("n1"), at("t1")];
+      return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+    };
+    expect(reach(1)).toBe(reach());
+    expect(reach(2)).toBeGreaterThan(reach(1));
+    expect(reach(0.5)).toBeLessThan(reach(1));
+  });
+});
+
 describe("neighbors", () => {
   it("is the node and everything one link away", () => {
     const g = buildGraph(library());

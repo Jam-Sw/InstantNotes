@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const run = vi.fn();
 const emit = vi.fn();
@@ -258,5 +258,63 @@ describe("moving a 0.9.5 web library into the browser", () => {
     await sync.syncNow();
     expect(settings.get("sync.legacy")).toBe("imported");
     expect(fetched).not.toContainEqual({ url: "/sync/v1/legacy", method: "DELETE" });
+  });
+});
+
+describe("sync timing settings", () => {
+  const syncRuns = () => run.mock.calls.filter((c) => c[0] === "sync").length;
+  const watched = () => fetched.filter((f) => f.url.includes("changes?")).length;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("waits 300 ms before syncing by default", async () => {
+    sync.syncSoon();
+    await vi.advanceTimersByTimeAsync(299);
+    expect(syncRuns()).toBe(0);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(syncRuns()).toBe(1);
+  });
+
+  it("waits the chosen delay on the first change", async () => {
+    settings.set("sync.delayMs", 2000);
+    sync.syncSoon();
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(syncRuns()).toBe(0);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(syncRuns()).toBe(1);
+  });
+
+  it("ignores a delay that is not one of the choices", async () => {
+    settings.set("sync.delayMs", 5);
+    sync.syncSoon();
+    await vi.advanceTimersByTimeAsync(300);
+    sync.syncSoon();
+    await vi.advanceTimersByTimeAsync(300);
+    expect(syncRuns()).toBe(2);
+  });
+
+  it("retries a failed watch after 30 seconds by default", async () => {
+    routes = (url) => (url.includes("changes?") ? new Response("", { status: 500 }) : {});
+    await sync.startSync();
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(watched()).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(watched()).toBe(2);
+  });
+
+  it("retries after the chosen seconds", async () => {
+    settings.set("sync.retrySec", 10);
+    routes = (url) => (url.includes("changes?") ? new Response("", { status: 500 }) : {});
+    await sync.startSync();
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(watched()).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(watched()).toBe(2);
   });
 });

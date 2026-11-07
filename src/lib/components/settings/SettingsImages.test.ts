@@ -162,3 +162,17 @@ describe("SettingsImages", () => {
     expect(await findByText("No folders")).toBeTruthy();
   });
 });
+
+describe("SettingsImages reset", () => {
+  it("resets storage and preview height", async () => {
+    const { getByRole, getByLabelText, queryAllByRole } = render(SettingsImages);
+    expect(queryAllByRole("button", { name: "Reset" })).toHaveLength(0);
+    await fireEvent.click(getByRole("radio", { name: "Link original" }));
+    await fireEvent.input(getByLabelText("Maximum image preview height"), { target: { value: "600" } });
+    const buttons = queryAllByRole("button", { name: "Reset" });
+    expect(buttons).toHaveLength(2);
+    for (const b of buttons) await fireEvent.click(b);
+    expect(imagePrefs.storage).toBe("copy");
+    expect(imagePrefs.maxPreviewHeight).toBe(DEFAULT_MAX_HEIGHT);
+  });
+});

@@ -141,9 +141,30 @@ fn refresh_macos_icon(bundle: std::path::PathBuf) {
     });
 }
 
+fn closes_to_tray(saved: Option<&serde_json::Value>) -> bool {
+    saved
+        .and_then(|v| v.as_bool())
+        .unwrap_or(!cfg!(debug_assertions))
+}
+
+pub(crate) fn close_to_tray(app: &AppHandle) -> bool {
+    closes_to_tray(saved_setting(app, "window.closeToTray").as_ref())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::icon_refresh_needed;
+    use super::{closes_to_tray, icon_refresh_needed};
+
+    #[test]
+    fn closing_goes_to_the_tray_unless_the_setting_says_otherwise() {
+        assert_eq!(closes_to_tray(None), !cfg!(debug_assertions));
+        assert_eq!(
+            closes_to_tray(Some(&serde_json::json!("x"))),
+            !cfg!(debug_assertions)
+        );
+        assert!(closes_to_tray(Some(&serde_json::json!(true))));
+        assert!(!closes_to_tray(Some(&serde_json::json!(false))));
+    }
 
     #[test]
     fn icon_refresh_when_version_changed_or_unknown() {

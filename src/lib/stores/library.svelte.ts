@@ -8,6 +8,7 @@ import {
   foldNotes,
   getNote,
   getOrCreateWorkspace,
+  getSetting,
   listNotes,
   listTags,
   listWorkspaces,
@@ -25,6 +26,7 @@ import {
   softDeleteNotes,
   restoreNotes,
   setNotesFlags,
+  setSetting,
   setTagColor,
   setWorkspaceColor,
   setWorkspaceFlag,
@@ -63,6 +65,8 @@ import {
   type StatusFilter,
 } from "$lib/stores/library/navigation.svelte";
 import { toasts } from "$lib/stores/toasts.svelte";
+import { KEY_LAST_NOTE, listPrefs } from "$lib/stores/list.svelte";
+import { editorPrefs } from "$lib/stores/editor.svelte";
 import { announceOverwrite } from "$lib/stores/agents.svelte";
 import {
   mayHaveWritten,
@@ -112,6 +116,7 @@ class LibraryStore {
   }
 
   #saveQueue = new SaveQueue({
+    delayMs: () => editorPrefs.autosaveMs,
     onPersisted: async (id, updated) => {
       if (this.selected?.id === id) {
         const { body, surfaceData, contentKind } = this.selected;
@@ -269,7 +274,11 @@ class LibraryStore {
         if (token !== this.#refreshToken) return;
         this.searchResults = results;
       } else {
-        const notes = await listNotes({ ...this.nav.filter(), bodyChars: LIST_BODY_CHARS });
+        const notes = await listNotes({
+          ...this.nav.filter(),
+          ...listPrefs.sort(),
+          bodyChars: Math.max(LIST_BODY_CHARS, listPrefs.previewChars * 4),
+        });
         if (token !== this.#refreshToken) return;
         this.searchResults = null;
         this.notes = notes;
@@ -523,6 +532,17 @@ class LibraryStore {
     else toasts.show("Note not on this device yet");
   }
 
+  async reopenLast(): Promise<void> {
+    if (!listPrefs.reopenLast || this.selected) return;
+    try {
+      const id = await getSetting<string>(KEY_LAST_NOTE);
+      if (typeof id !== "string" || this.selected) return;
+      const note = await getNote(id, false);
+      if (!note.isDeleted && !this.selected) await this.select(id);
+    } catch {
+    }
+  }
+
   async select(id: string): Promise<void> {
     this.nav.graphMode = false;
     this.#selection.reset([id], id);
@@ -555,6 +575,7 @@ class LibraryStore {
       this.selectedTags = tags;
       this.selectedWorkspaces = workspaces;
       this.error = null;
+      if (listPrefs.reopenLast && !isSyntheticNoteId(id)) void setSetting(KEY_LAST_NOTE, id).catch(() => {});
       void this.#refreshRevisitCount();
       if (this.nav.revisitMode) void this.refresh();
     } catch (e) {

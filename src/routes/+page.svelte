@@ -30,8 +30,10 @@
   import { editorPrefs } from "$lib/stores/editor.svelte";
   import { imagePrefs } from "$lib/stores/images.svelte";
   import { sidebar } from "$lib/stores/sidebar.svelte";
+  import { graphPrefs } from "$lib/stores/graph.svelte";
+  import { listPrefs } from "$lib/stores/list.svelte";
   import { linkPrefs as linkPrefsStore } from "$lib/stores/links.svelte";
-  import { theme } from "$lib/stores/theme.svelte";
+  import { reducedMotion, theme } from "$lib/stores/theme.svelte";
   import { contexting } from "$lib/stores/contexting.svelte";
   import { agents } from "$lib/stores/agents.svelte";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
@@ -147,9 +149,6 @@
   let animate = $state(false);
   let dragging = $state<"nav" | "list" | null>(null);
 
-  const reducedMotion = () =>
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const motion = (ms: number) => (reducedMotion() || layout.resizing ? 0 : ms);
 
   function onListClick(e: MouseEvent) {
@@ -167,8 +166,17 @@
 
   onMount(() => {
     if (isMac && !isWeb) document.documentElement.dataset.chrome = "overlay";
-    void library.init().then(() => library.openLinked(location.hash));
+    const listReady = listPrefs.init();
+    void library
+      .init()
+      .then(() => library.openLinked(location.hash))
+      .then(() => listReady)
+      .then(() => library.reopenLast());
     void editorPrefs.init();
+    void graphPrefs.init();
+    void listReady.then(() => {
+      if (Object.keys(listPrefs.sort()).length > 0) void library.refresh();
+    });
     void imagePrefs.init();
     void sidebar.init().then(() => {
       requestAnimationFrame(() => requestAnimationFrame(() => (animate = true)));
@@ -195,6 +203,8 @@
     void listen(EVENTS.SETTINGS_CHANGED, () => {
       void theme.init();
       void editorPrefs.reload();
+      void graphPrefs.reload();
+      void listPrefs.reload().then(() => library.refresh());
       void imagePrefs.reload();
       void linkPrefsStore.reload();
     }).then((un) => (unlistenSettings = un));
@@ -403,6 +413,14 @@
   }
 </script>
 
+{#snippet loadFailed(back?: () => void)}
+  <div class="load-failed" role="alert">
+    Couldn't load
+    <button class="card-btn" type="button" onclick={() => location.reload()}>Reload</button>
+    {#if back}<button class="card-btn" type="button" onclick={back}>Back</button>{/if}
+  </div>
+{/snippet}
+
 {#if shell.settingsOpen && !licenseSpace.locked}
   {#await import("$lib/components/SettingsView.svelte") then { default: SettingsView }}
     <SettingsView
@@ -414,6 +432,8 @@
         shell.closeSettings();
       }}
     />
+  {:catch}
+    {@render loadFailed(() => shell.closeSettings())}
   {/await}
 {:else}
   <div
@@ -438,6 +458,8 @@
       <section class="graph-span">
         {#await import("$lib/components/GraphView.svelte") then { default: GraphView }}
           <GraphView />
+        {:catch}
+          {@render loadFailed()}
         {/await}
       </section>
     {:else}
@@ -457,6 +479,8 @@
           {#if !licenseSpace.locked && library.multiSelected.size <= 1 && library.selected && !isUpdateNoteId(library.selected.id) && !isAgentNoteId(library.selected.id) && !isMergeNoteId(library.selected.id)}
             {#await import("$lib/components/NoteEditor.svelte") then { default: NoteEditor }}
               <NoteEditor />
+            {:catch}
+              {@render loadFailed()}
             {/await}
           {:else}
             <div class="pane-header" data-tauri-drag-region></div>
@@ -469,6 +493,8 @@
             {:else if library.selected && isMergeNoteId(library.selected.id)}
               {#await import("$lib/components/MergeNote.svelte") then { default: MergeNote }}
                 <MergeNote />
+              {:catch}
+                {@render loadFailed()}
               {/await}
             {:else if library.selected}
               <UpdateNote />
@@ -490,7 +516,7 @@
         aria-label="Resize sidebar"
         aria-valuenow={sidebar.navWidth}
         aria-valuemin={NAV_PANE.min}
-        aria-valuemax={NAV_PANE.max}
+        aria-valuemax={layout.navPane.max}
         tabindex="0"
         onpointerdown={(e) => startDrag(e, "nav")}
         ondblclick={() => sidebar.resetWidth("nav")}
@@ -508,7 +534,7 @@
         aria-label="Resize note list"
         aria-valuenow={sidebar.listWidth}
         aria-valuemin={LIST_PANE.min}
-        aria-valuemax={LIST_PANE.max}
+        aria-valuemax={layout.listPane.max}
         tabindex="0"
         onpointerdown={(e) => startDrag(e, "list")}
         ondblclick={() => sidebar.resetWidth("list")}
@@ -581,6 +607,16 @@
 {/if}
 
 <style>
+  .load-failed {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 200px;
+    color: var(--text-secondary);
+    font-size: 13px;
+  }
   .layout {
     --pane-ms: 240ms;
     --pane-ease: cubic-bezier(0.2, 0, 0, 1);
@@ -836,13 +872,21 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .layout.animate:not(.resizing),
-    .layout.animate:not(.resizing) .list-toggle,
-    .nav-slot,
-    .list-slot,
-    .layout[data-list-overlay] > .list-slot,
-    .layout[data-list-overlay] > .list-slot:not(.hidden) {
+    :global(:root:not([data-motion="full"])) .layout.animate:not(.resizing),
+    :global(:root:not([data-motion="full"])) .layout.animate:not(.resizing) .list-toggle,
+    :global(:root:not([data-motion="full"])) .nav-slot,
+    :global(:root:not([data-motion="full"])) .list-slot,
+    :global(:root:not([data-motion="full"])) .layout[data-list-overlay] > .list-slot,
+    :global(:root:not([data-motion="full"])) .layout[data-list-overlay] > .list-slot:not(.hidden) {
       transition: none;
     }
+  }
+  :global(:root[data-motion="off"]) .layout.animate:not(.resizing),
+  :global(:root[data-motion="off"]) .layout.animate:not(.resizing) .list-toggle,
+  :global(:root[data-motion="off"]) .nav-slot,
+  :global(:root[data-motion="off"]) .list-slot,
+  :global(:root[data-motion="off"]) .layout[data-list-overlay] > .list-slot,
+  :global(:root[data-motion="off"]) .layout[data-list-overlay] > .list-slot:not(.hidden) {
+    transition: none;
   }
 </style>

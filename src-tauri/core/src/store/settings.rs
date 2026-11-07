@@ -6,6 +6,11 @@ pub const SHARED_SETTINGS: &[&str] = &[
     "theme.mode",
     "theme.custom",
     "theme.font.body",
+    "theme.motion",
+    "theme.density",
+    "theme.leading",
+    "theme.scrollbars",
+    "theme.accent",
     "editor.toolbarOpen",
     "editor.sourceMode",
     "editor.showExactTime",
@@ -194,11 +199,21 @@ mod tests {
         assert!(is_shared_setting("theme.active"));
         assert!(is_shared_setting("editor.sourceMode"));
         for key in [
+            "theme.motion",
+            "theme.density",
+            "theme.leading",
+            "theme.scrollbars",
+            "theme.accent",
+        ] {
+            assert!(is_shared_setting(key), "{key}");
+        }
+        for key in [
             "sidebar.width",
             "editor.zoom",
             "vault.server",
             "backups.automatic",
             "agents.access",
+            "toasts.durationMs",
         ] {
             assert!(!is_shared_setting(key), "{key}");
         }

@@ -13,6 +13,9 @@
   import SettingsBackups from "$lib/components/settings/SettingsBackups.svelte";
   import SettingsAgents from "$lib/components/settings/SettingsAgents.svelte";
   import SettingsImport from "$lib/components/settings/SettingsImport.svelte";
+  import SettingsList from "$lib/components/settings/SettingsList.svelte";
+  import SettingsGraph from "$lib/components/settings/SettingsGraph.svelte";
+  import SettingsBehavior from "$lib/components/settings/SettingsBehavior.svelte";
   import { getLibraryStats, getCaptureLatency, openUrl } from "$lib/api/client";
   import type { DashboardStats } from "$lib/api/types";
   import { formatBytes } from "$lib/format";
@@ -50,7 +53,7 @@
     entries: Entry[];
   }
 
-  const DESKTOP_ONLY: ReadonlySet<Page> = new Set<Page>(["import", "agents", "feedback"]);
+  const DESKTOP_ONLY: ReadonlySet<Page> = new Set<Page>(["import", "agents", "feedback", "behavior"]);
 
   const GROUPS: Group[] = (
     [
@@ -58,27 +61,30 @@
       label: "General",
       entries: [
         { id: "home", title: "Overview", desc: "Stats, release notes", keywords: "dashboard stats release notes changelog" },
-        { id: "appearance", title: "Appearance", desc: "Theme, mode, font", keywords: "theme dark light font color" },
-        { id: "editor", title: "Editor", desc: "Width, timestamps, toolbar, suggestions", keywords: "toolbar markdown save time" },
-        { id: "links", title: "Links", desc: "Underline, open behavior", keywords: "underline click external" },
-        { id: "images", title: "Images", desc: "Storage, preview, cleanup", keywords: "attachments pictures cleanup" },
+        { id: "appearance", title: "Appearance", desc: "Theme, mode, font", keywords: "theme dark light font color body font marker flag space marker motion density line height accent scrollbars toast time" },
+        { id: "editor", title: "Editor", desc: "Width, timestamps, toolbar, suggestions", keywords: "toolbar markdown save time width exact save time source tag suggestions strictness around this note spellcheck wrap lines autosave delay calc precision indent width" },
+        { id: "list", title: "List", desc: "Sort, reopen, preview, recent", keywords: "sort by order newest oldest reopen last note startup restore preview length recent notes" },
+        { id: "graph", title: "Graph", desc: "Labels, size, spread, depth", keywords: "labels node size spread focus depth" },
+        { id: "behavior", title: "Behavior", desc: "Shortcut, tray, updates, confirms", keywords: "capture shortcut close to tray check for updates confirm before pane width limit" },
+        { id: "links", title: "Links", desc: "Underline, open behavior", keywords: "underline click external open links with show destination on hover mark external links" },
+        { id: "images", title: "Images", desc: "Storage, preview, cleanup", keywords: "attachments pictures cleanup when adding an image maximum height preview linked folders" },
       ],
     },
     {
       label: "Your data",
       entries: [
-        { id: "vault", title: "Sync", desc: isWeb ? "Server, devices, encryption" : "Folder or server", keywords: "vault folder server sign in encryption recovery key devices" },
+        { id: "vault", title: "Sync", desc: isWeb ? "Server, devices, encryption" : "Folder or server", keywords: "vault folder server sign in encryption recovery key devices sync with sync delay retry delay" },
         isWeb
-          ? { id: "backups" as const, title: "Export", desc: "Markdown download", keywords: "export backup markdown zip files download" }
-          : { id: "backups" as const, title: "Backups", desc: "Daily copies, restore, export", keywords: "backup restore export markdown files copy snapshot" },
-        { id: "contexting", title: "Contexting", desc: "Copy template", keywords: "copy context clipboard ai" },
+          ? { id: "backups" as const, title: "Export", desc: "Markdown download", keywords: "export backup markdown zip files download export everything as markdown" }
+          : { id: "backups" as const, title: "Backups", desc: "Daily copies, restore, export", keywords: "backup restore export markdown files copy snapshot automatic backups back up now keep backups back up every" },
+        { id: "contexting", title: "Contexting", desc: "Copy template", keywords: "copy context clipboard ai add source line images on copy" },
         { id: "import", title: "Import", desc: isMac ? "Obsidian, Notion, Apple Stickies" : "Obsidian, Notion", keywords: "obsidian notion vault export stickies apple migrate move" },
       ],
     },
     {
       label: "Connections",
       entries: [
-        { id: "agents", title: "Agents", desc: "Access, tags, activity", keywords: "mcp claude codex cursor ai access revert trace block tags" },
+        { id: "agents", title: "Agents", desc: "Access, tags, activity", keywords: "mcp claude codex cursor ai access revert trace block tags notify me about recent agent activity" },
       ],
     },
     {
@@ -383,6 +389,12 @@
           <SettingsBackups />
         {:else if page === "agents"}
           <SettingsAgents />
+        {:else if page === "list"}
+          <SettingsList />
+        {:else if page === "graph"}
+          <SettingsGraph />
+        {:else if page === "behavior"}
+          <SettingsBehavior />
         {:else if page === "import"}
           <SettingsImport {onShowSpace} />
         {:else if page === "feedback"}

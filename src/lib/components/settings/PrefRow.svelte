@@ -5,12 +5,14 @@
     sub = "",
     subId = undefined,
     disabled = false,
+    reset = undefined,
     control,
   }: {
     label: string;
     sub?: string;
     subId?: string;
     disabled?: boolean;
+    reset?: () => void;
     control: Snippet;
   } = $props();
 </script>
@@ -20,6 +22,7 @@
     {label}
     {#if sub}<span class="pref-sub" id={subId}>{sub}</span>{/if}
   </span>
+  {#if reset}<button class="pref-reset" type="button" {disabled} onclick={reset}>Reset</button>{/if}
   {@render control()}
 </div>
 
@@ -42,6 +45,20 @@
   .pref-sub {
     color: var(--text-tertiary);
     font-size: 11.5px;
+  }
+  .pref-reset {
+    margin-left: auto;
+    padding: 2px 6px;
+    color: var(--text-tertiary);
+    font-size: 11.5px;
+    border-radius: var(--radius);
+  }
+  .pref-reset:hover:not(:disabled) {
+    color: var(--accent);
+    background: var(--bg-hover);
+  }
+  .pref-reset:focus-visible {
+    outline: 2px solid var(--accent);
   }
   .pref-row.disabled .pref-label {
     opacity: 0.5;

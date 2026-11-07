@@ -5,12 +5,14 @@
     sub = "",
     checked,
     disabled = false,
+    reset = undefined,
     onchange,
   }: {
     label: string;
     sub?: string;
     checked: boolean;
     disabled?: boolean;
+    reset?: () => void;
     onchange: (v: boolean) => void;
   } = $props();
 
@@ -22,7 +24,7 @@
   }
 </script>
 
-<PrefRow {label} {sub} {subId} {disabled}>
+<PrefRow {label} {sub} {subId} {disabled} {reset}>
   {#snippet control()}
     <button
       class="switch"

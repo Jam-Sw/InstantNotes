@@ -691,9 +691,12 @@
     }
   }
   @media (prefers-reduced-motion: reduce) {
-    .pulse {
+    :global(:root:not([data-motion="full"])) .pulse {
       animation: none;
     }
+  }
+  :global(:root[data-motion="off"]) .pulse {
+    animation: none;
   }
   .words {
     display: grid;

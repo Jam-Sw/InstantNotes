@@ -29,6 +29,12 @@ fn locked<'a>(
         .map_err(|_| CmdError::storage("internal state lock poisoned"))
 }
 
+fn saved_setting(app: &AppHandle, key: &str) -> Option<serde_json::Value> {
+    let state = library_state(app).ok()?;
+    let store = locked(&state).ok()?;
+    store.get_setting(key).ok().flatten()
+}
+
 pub(crate) fn close_session() {
     if let Some(path) = LIBRARY_DB.get() {
         Store::mark_session_closed(path);
@@ -224,26 +230,19 @@ pub fn run() {
             });
 
             if let Some(library) = app.get_webview_window("library") {
-                #[cfg(not(debug_assertions))]
-                {
-                    let handle = library.clone();
-                    library.on_window_event(move |event| {
-                        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let handle = library.clone();
+                library.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        if shell::windows::close_to_tray(handle.app_handle()) {
                             api.prevent_close();
                             let _ = handle.hide();
+                        } else {
+                            handle.app_handle().exit(0);
                         }
-                    });
-                }
+                    }
+                });
                 #[cfg(debug_assertions)]
-                {
-                    let handle = library.app_handle().clone();
-                    library.on_window_event(move |event| {
-                        if let tauri::WindowEvent::CloseRequested { .. } = event {
-                            handle.exit(0);
-                        }
-                    });
-                    let _ = library.set_focus();
-                }
+                let _ = library.set_focus();
             }
 
             restore_stickies(app.handle());
@@ -319,6 +318,7 @@ pub fn run() {
             list_backups,
             backup_now,
             set_backups_automatic,
+            set_capture_shortcut,
             inspect_backup,
             restore_backup,
             open_backups_folder,

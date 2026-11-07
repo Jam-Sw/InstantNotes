@@ -11,6 +11,7 @@ import {
 } from "$lib/api/client";
 import { library } from "$lib/stores/library.svelte";
 import { toasts } from "$lib/stores/toasts.svelte";
+import { graphPrefs } from "$lib/stores/graph.svelte";
 import { listen } from "@tauri-apps/api/event";
 import type { LibraryGraph, SpaceSuggestion } from "$lib/api/types";
 
@@ -98,7 +99,13 @@ beforeEach(() => {
   });
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  graphPrefs.labels = "focus";
+  graphPrefs.nodeSize = 1;
+  graphPrefs.spread = 1;
+  graphPrefs.lensHops = 2;
+});
 
 describe("GraphView", () => {
   it("draws every connected note, tag, and Space as a button", async () => {
@@ -183,6 +190,43 @@ describe("GraphView", () => {
     expect(drawn()).not.toContain("Beta");
     await fireEvent.pointerEnter(getByRole("button", { name: "Note: Beta" }));
     expect(drawn()).toContain("Beta");
+  });
+
+  it("labels every node, or none, by the labels setting", async () => {
+    graphPrefs.labels = "all";
+    const { findByRole, container } = render(GraphView);
+    await findByRole("button", { name: "Note: Alpha" });
+    const drawn = () => [...container.querySelectorAll("text")].map((t) => t.textContent);
+    expect(drawn()).toContain("Beta");
+    graphPrefs.labels = "none";
+    await waitFor(() => expect(drawn()).toEqual([]));
+  });
+
+  it("scales node discs by the node size setting", async () => {
+    const { findByRole } = render(GraphView);
+    const disc = async () =>
+      +(await findByRole("button", { name: "Note: Alpha" })).querySelector("circle:not(.agent-ring)")!.getAttribute("r")!;
+    const base = await disc();
+    graphPrefs.nodeSize = 2;
+    await waitFor(async () => expect(await disc()).toBeGreaterThan(base * 1.5));
+  });
+
+  it("frames the lens by the focus depth setting", async () => {
+    vi.mocked(libraryGraph).mockResolvedValue({
+      ...GRAPH,
+      links: [
+        { noteId: "n1", targetId: "t1", kind: "tag", source: "inline" },
+        { noteId: "n2", targetId: "t1", kind: "tag", source: "inline" },
+      ],
+    });
+    lib.selected = { id: "n1" };
+    const dimmed = (c: HTMLElement) => c.querySelectorAll(".node.dim").length;
+    const { findByRole, container } = render(GraphView);
+    await findByRole("button", { name: "Note: Alpha" });
+    const two = dimmed(container);
+    graphPrefs.lensHops = 1;
+    await waitFor(() => expect(dimmed(container)).toBeGreaterThanOrEqual(two));
+    expect(dimmed(container)).toBeGreaterThan(two);
   });
 
   it("works from the keyboard", async () => {

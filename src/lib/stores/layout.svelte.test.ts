@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("$lib/api/client", () => ({
+  getSetting: vi.fn(async () => null),
+  setSetting: vi.fn(async () => {}),
+}));
+
 type Query = { matches: boolean; listeners: Set<() => void> };
 
 let width = 1440;
@@ -166,6 +171,31 @@ describe("pane widths", () => {
     expect(clampPane(LIST_PANE, 900)).toBe(420);
   });
 
+  it("raises both maximums when the limit is wide and saves the choice", async () => {
+    const { layout, NAV_PANE, LIST_PANE } = await import("./layout.svelte");
+    const { setSetting } = await import("$lib/api/client");
+    expect(layout.navPane.max).toBe(NAV_PANE.max);
+    expect(layout.listPane.max).toBe(LIST_PANE.max);
+    layout.setPaneMax("wide");
+    expect(layout.navPane).toEqual({ ...NAV_PANE, max: 400 });
+    expect(layout.listPane).toEqual({ ...LIST_PANE, max: 560 });
+    expect(setSetting).toHaveBeenLastCalledWith("layout.paneMax", "wide");
+    layout.setPaneMax("default");
+    expect(layout.navPane.max).toBe(300);
+  });
+
+  it("reads a saved limit and ignores an unknown one", async () => {
+    const { getSetting } = await import("$lib/api/client");
+    vi.mocked(getSetting).mockResolvedValueOnce("wide");
+    const { layout } = await import("./layout.svelte");
+    await layout.initPaneMax();
+    expect(layout.paneMax).toBe("wide");
+    vi.mocked(getSetting).mockResolvedValueOnce("huge");
+    layout.paneMax = "default";
+    await layout.initPaneMax();
+    expect(layout.paneMax).toBe("default");
+  });
+
   it("snaps a pane collapsed below half its minimum", async () => {
     const { dragWidth, NAV_PANE, LIST_PANE } = await import("./layout.svelte");
     expect(dragWidth(NAV_PANE, 89)).toEqual({ width: 180, collapsed: true });
@@ -265,5 +295,14 @@ describe("layout shortcuts", () => {
     expect(layoutShortcut(key("s", { metaKey: true }), true)).toBeNull();
     expect(layoutShortcut(key("s", { ctrlKey: true }), true)).toBeNull();
     expect(layoutShortcut(key("s", { ctrlKey: true, altKey: true }), false)).toBeNull();
+  });
+});
+
+describe("LAYOUT_DEFAULTS defaults", () => {
+  it("starts every field at its default", async () => {
+    const mod = await import("./layout.svelte");
+    const { LAYOUT_DEFAULTS, layout } = mod;
+    expect(LAYOUT_DEFAULTS.paneMax).toBe("default");
+    expect(layout.paneMax).toBe("default");
   });
 });

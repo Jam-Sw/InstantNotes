@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { contexting } from "$lib/stores/contexting.svelte";
-  import { renderContext, type ContextImageMode } from "$lib/contexting-format";
+  import { DEFAULT_IMAGE_MODE, DEFAULT_SOURCE_LINE, renderContext, type ContextImageMode } from "$lib/contexting-format";
   import { library } from "$lib/stores/library.svelte";
   import { shell } from "$lib/stores/shell.svelte";
   import { isWeb } from "$lib/api/runtime";
@@ -77,6 +77,9 @@
   <ToggleRow
     label="Add source line"
     checked={contexting.addSourceLine}
+    reset={contexting.addSourceLine !== DEFAULT_SOURCE_LINE
+      ? () => contexting.setAddSourceLine(DEFAULT_SOURCE_LINE)
+      : undefined}
     onchange={(v) => contexting.setAddSourceLine(v)}
   />
   {#if !isWeb}
@@ -92,6 +95,9 @@
     label="Images on copy"
     options={IMAGE_MODE_OPTIONS}
     value={contexting.imageMode}
+    reset={contexting.imageMode !== DEFAULT_IMAGE_MODE
+      ? () => contexting.setImageMode(DEFAULT_IMAGE_MODE)
+      : undefined}
     onchange={(v) => contexting.setImageMode(v)}
   />
 

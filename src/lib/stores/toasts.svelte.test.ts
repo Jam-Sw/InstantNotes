@@ -107,3 +107,48 @@ describe("toasts queue", () => {
     expect(toasts.items).toHaveLength(0);
   });
 });
+
+describe("toast time setting", () => {
+  it("loads a stored duration and uses it for new toasts", async () => {
+    const client = await import("$lib/api/client");
+    vi.spyOn(client, "getSetting").mockResolvedValue(10000);
+    const toasts = await load();
+    await toasts.init();
+    expect(toasts.durationMs).toBe(10000);
+    toasts.show("a");
+    await vi.advanceTimersByTimeAsync(9999);
+    expect(toasts.items).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(toasts.items).toHaveLength(0);
+  });
+
+  it("ignores a stored value that is not one of the choices", async () => {
+    const client = await import("$lib/api/client");
+    vi.spyOn(client, "getSetting").mockResolvedValue(1234);
+    const toasts = await load();
+    await toasts.init();
+    expect(toasts.durationMs).toBe(5000);
+  });
+
+  it("Stay never auto-dismisses, and an explicit duration still wins", async () => {
+    const client = await import("$lib/api/client");
+    const set = vi.spyOn(client, "setSetting").mockResolvedValue(undefined);
+    const toasts = await load();
+    toasts.setDuration(0);
+    expect(set).toHaveBeenCalledWith("toasts.durationMs", 0);
+    toasts.show("stays");
+    const timed = toasts.show("timed", undefined, 1000);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(toasts.items.map((t) => t.message)).toEqual(["stays"]);
+    expect(toasts.items.some((t) => t.id === timed)).toBe(false);
+  });
+});
+
+describe("TOAST_DEFAULTS defaults", () => {
+  it("starts every field at its default", async () => {
+    const mod = await import("./toasts.svelte");
+    const { TOAST_DEFAULTS, toasts } = mod;
+    expect(TOAST_DEFAULTS.durationMs).toBe(5000);
+    expect(toasts.durationMs).toBe(5000);
+  });
+});

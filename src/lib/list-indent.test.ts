@@ -46,4 +46,10 @@ describe("listIndentChanges", () => {
       { from: 10, insert: "  " },
     ]);
   });
+
+  it("indents and outdents by the given width", () => {
+    expect(listIndentChanges("- item", 2, 2, false, 4)).toEqual([{ from: 0, insert: "    " }]);
+    expect(listIndentChanges("    - item", 6, 6, true, 4)).toEqual([{ from: 0, to: 4 }]);
+    expect(listIndentChanges("  - item", 4, 4, true, 4)).toEqual([{ from: 0, to: 2 }]);
+  });
 });

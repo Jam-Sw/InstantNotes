@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { EditorView, keymap, placeholder as cmPlaceholder } from "@codemirror/view";
-  import { EditorState, type Extension, type StateEffect } from "@codemirror/state";
+  import { Compartment, EditorState, type Extension, type StateEffect } from "@codemirror/state";
   import {
     history,
     defaultKeymap,
@@ -13,7 +13,7 @@
   } from "@codemirror/commands";
   import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
   import { languages } from "@codemirror/language-data";
-  import { syntaxHighlighting } from "@codemirror/language";
+  import { indentUnit, syntaxHighlighting } from "@codemirror/language";
   import { highlightExtension } from "$lib/markdown-extensions";
   import { markdownHighlight } from "$lib/markdown-highlight";
   import { formatEdit, type FormatKind, type Sel } from "$lib/markdown-format";
@@ -25,6 +25,8 @@
     setAttachmentsBase,
     linkedImagePaths,
   } from "$lib/editor";
+  import { calcPrecision } from "$lib/editor/calc";
+  import { editorPrefs } from "$lib/stores/editor.svelte";
   import { linkPrefs } from "$lib/stores/links.svelte";
   import { listIndentChanges } from "$lib/list-indent";
   import {
@@ -69,6 +71,24 @@
   let emitted: string | undefined;
   let lastMarks: ActiveMarks | undefined;
   let lastPassage: string | undefined;
+  const spellComp = new Compartment();
+  const wrapComp = new Compartment();
+  const calcComp = new Compartment();
+  const indentComp = new Compartment();
+
+  const spellExt = () => EditorView.contentAttributes.of({ spellcheck: String(editorPrefs.spellcheck) });
+  const wrapExt = () => (editorPrefs.wrap ? EditorView.lineWrapping : []);
+  const calcExt = () => calcPrecision.of(editorPrefs.calcPrecision);
+  const indentExt = () => indentUnit.of(" ".repeat(editorPrefs.indentWidth));
+
+  function prefEffects(): StateEffect<unknown>[] {
+    return [
+      spellComp.reconfigure(spellExt()),
+      wrapComp.reconfigure(wrapExt()),
+      calcComp.reconfigure(calcExt()),
+      indentComp.reconfigure(indentExt()),
+    ];
+  }
 
   function publish(state: EditorState) {
     lastMarks = activeMarks(state);
@@ -118,7 +138,10 @@
             extensions: [highlightExtension],
           }),
           syntaxHighlighting(markdownHighlight),
-          EditorView.lineWrapping,
+          spellComp.of(spellExt()),
+          wrapComp.of(wrapExt()),
+          calcComp.of(calcExt()),
+          indentComp.of(indentExt()),
           cmPlaceholder(placeholder),
           EditorView.updateListener.of((u) => {
             if (u.docChanged && !applyingExternal) {
@@ -160,6 +183,7 @@
     const effects: StateEffect<unknown>[] = [
       setPreviewMode.of(previewMode),
       setLinkPrefs.of(linkPrefs.snapshot()),
+      ...prefEffects(),
     ];
     if (attachmentsBase !== null) {
       effects.push(setAttachmentsBase.of(attachmentsBase));
@@ -224,6 +248,16 @@
     if (view) {
       view.dispatch({ effects: setLinkPrefs.of(snap) });
     }
+  });
+
+  $effect(() => {
+    void [
+      editorPrefs.spellcheck,
+      editorPrefs.wrap,
+      editorPrefs.calcPrecision,
+      editorPrefs.indentWidth,
+    ];
+    view?.dispatch({ effects: prefEffects() });
   });
 
   function historyState(state: EditorState): EditHistory {
@@ -295,7 +329,7 @@
 
   function applyListIndent(v: EditorView, outdent: boolean): boolean {
     const { from, to } = v.state.selection.main;
-    const changes = listIndentChanges(v.state.doc.toString(), from, to, outdent);
+    const changes = listIndentChanges(v.state.doc.toString(), from, to, outdent, editorPrefs.indentWidth);
     if (changes.length === 0) return false;
     v.dispatch({ changes, scrollIntoView: true });
     return true;

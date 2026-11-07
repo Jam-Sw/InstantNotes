@@ -18,7 +18,7 @@ pub(crate) const SHORTCUT_LABEL: &str = if cfg!(target_os = "macos") {
     "Ctrl+Shift+Space"
 };
 
-fn shortcut() -> Shortcut {
+fn default_shortcut() -> Shortcut {
     let mods = match (cfg!(target_os = "macos"), cfg!(debug_assertions)) {
         (true, false) => Modifiers::ALT,
         (true, true) => Modifiers::ALT | Modifiers::SHIFT,
@@ -28,9 +28,29 @@ fn shortcut() -> Shortcut {
     Shortcut::new(Some(mods), Code::Space)
 }
 
+const SHORTCUT_SETTING: &str = "shortcuts.capture";
+
+fn resolve_shortcut(accelerator: &str) -> Result<Shortcut, String> {
+    let trimmed = accelerator.trim();
+    if trimmed.is_empty() {
+        return Ok(default_shortcut());
+    }
+    trimmed.parse::<Shortcut>().map_err(|e| e.to_string())
+}
+
+pub(crate) struct CaptureShortcut(Mutex<Shortcut>);
+
 pub(crate) fn register_shortcut(app: &tauri::App) -> Option<ShortcutFailure> {
     let wayland = cfg!(target_os = "linux") && std::env::var_os("WAYLAND_DISPLAY").is_some();
-    match app.global_shortcut().register(shortcut()) {
+    let saved = saved_setting(app.handle(), SHORTCUT_SETTING)
+        .and_then(|v| v.as_str().map(|s| s.trim().to_owned()))
+        .unwrap_or_default();
+    let (shortcut, label) = match resolve_shortcut(&saved) {
+        Ok(shortcut) if !saved.is_empty() => (shortcut, saved),
+        _ => (default_shortcut(), SHORTCUT_LABEL.to_string()),
+    };
+    app.manage(CaptureShortcut(Mutex::new(shortcut)));
+    match app.global_shortcut().register(shortcut) {
         Err(e) => {
             eprintln!("global shortcut registration failed: {e}");
             Some(false)
@@ -38,10 +58,42 @@ pub(crate) fn register_shortcut(app: &tauri::App) -> Option<ShortcutFailure> {
         Ok(()) if wayland => Some(true),
         Ok(()) => None,
     }
-    .map(|wayland| ShortcutFailure {
-        label: SHORTCUT_LABEL.to_string(),
-        wayland,
-    })
+    .map(|wayland| ShortcutFailure { label, wayland })
+}
+
+#[tauri::command]
+pub fn set_capture_shortcut(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    held: State<'_, CaptureShortcut>,
+    accelerator: String,
+) -> CmdResult<()> {
+    let next = resolve_shortcut(&accelerator).map_err(CmdError::validation)?;
+    let mut current = held
+        .0
+        .lock()
+        .map_err(|_| CmdError::storage("internal state lock poisoned"))?;
+    let shortcuts = app.global_shortcut();
+    let changed = *current != next || !shortcuts.is_registered(next);
+    if changed {
+        shortcuts
+            .register(next)
+            .map_err(|e| CmdError::validation(e.to_string()))?;
+    }
+    if let Err(e) = locked(&state)?.set_setting(
+        SHORTCUT_SETTING,
+        serde_json::Value::String(accelerator.trim().to_string()),
+    ) {
+        if changed && *current != next {
+            let _ = shortcuts.unregister(next);
+        }
+        return Err(e.into());
+    }
+    if *current != next {
+        let _ = shortcuts.unregister(*current);
+        *current = next;
+    }
+    Ok(())
 }
 
 #[derive(Default)]
@@ -255,7 +307,8 @@ mod focus {
 #[cfg(test)]
 mod tests {
     use super::{
-        asks_for_capture, median_ms, panel_origin, push_capture_sample, CAPTURE_SAMPLE_CAP,
+        asks_for_capture, default_shortcut, median_ms, panel_origin, push_capture_sample,
+        resolve_shortcut, CAPTURE_SAMPLE_CAP,
     };
     use std::collections::VecDeque;
     use tauri::{PhysicalPosition, PhysicalSize};
@@ -302,5 +355,15 @@ mod tests {
             PhysicalSize::new(560, 160),
         );
         assert_eq!(tight, PhysicalPosition::new(0, 0));
+    }
+
+    #[test]
+    fn an_empty_accelerator_means_the_default_and_a_bad_one_is_refused() {
+        assert_eq!(resolve_shortcut(""), Ok(default_shortcut()));
+        assert_eq!(resolve_shortcut("  "), Ok(default_shortcut()));
+        assert!(resolve_shortcut("Ctrl+Shift+K").is_ok());
+        assert_ne!(resolve_shortcut("Ctrl+Shift+K"), Ok(default_shortcut()));
+        assert!(resolve_shortcut("Ctrl+Shift+Nonsense").is_err());
+        assert!(resolve_shortcut("Ctrl+").is_err());
     }
 }

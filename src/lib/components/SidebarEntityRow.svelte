@@ -220,9 +220,12 @@
     }
   }
   @media (prefers-reduced-motion: reduce) {
-    .entity-rename-input.invalid {
+    :global(:root:not([data-motion="full"])) .entity-rename-input.invalid {
       animation: none;
     }
+  }
+  :global(:root[data-motion="off"]) .entity-rename-input.invalid {
+    animation: none;
   }
   .entity-error {
     margin: 2px 0 4px;

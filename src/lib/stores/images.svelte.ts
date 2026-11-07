@@ -10,10 +10,14 @@ const KEY_LINKED_FOLDERS = "images.linkedFolders";
 const MIN_HEIGHT = 120;
 const MAX_HEIGHT = 900;
 export const DEFAULT_MAX_HEIGHT = 420;
+export const IMAGE_DEFAULTS: { storage: ImageStorage; maxPreviewHeight: number } = {
+  storage: "copy",
+  maxPreviewHeight: DEFAULT_MAX_HEIGHT,
+};
 
 class ImagePrefs {
-  storage = $state<ImageStorage>("copy");
-  maxPreviewHeight = $state(DEFAULT_MAX_HEIGHT);
+  storage = $state<ImageStorage>(IMAGE_DEFAULTS.storage);
+  maxPreviewHeight = $state(IMAGE_DEFAULTS.maxPreviewHeight);
   linkedFolders = $state<string[]>([]);
 
   #loaded = false;

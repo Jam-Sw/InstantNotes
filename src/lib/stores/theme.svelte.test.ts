@@ -263,3 +263,107 @@ describe("custom themes", () => {
     expect(JSON.parse(theme.serialize("terminal")).id).toBe("terminal");
   });
 });
+
+describe("appearance tweaks", () => {
+  it("loads valid values and drops invalid ones", async () => {
+    settings({
+      "theme.motion": "off",
+      "theme.density": "roomy",
+      "theme.leading": "loose",
+      "theme.scrollbars": true,
+      "theme.accent": "#112233",
+    });
+    const theme = await load();
+    await theme.init();
+    expect([theme.motion, theme.density, theme.leading, theme.scrollbars, theme.accent]).toEqual([
+      "off",
+      "roomy",
+      "loose",
+      true,
+      "#112233",
+    ]);
+
+    settings({
+      "theme.motion": "x",
+      "theme.density": "x",
+      "theme.leading": "x",
+      "theme.scrollbars": "yes",
+      "theme.accent": "not a color",
+    });
+    vi.resetModules();
+    const fresh = await load();
+    await fresh.init();
+    expect([fresh.motion, fresh.density, fresh.leading, fresh.scrollbars, fresh.accent]).toEqual([
+      "system",
+      "default",
+      "default",
+      false,
+      null,
+    ]);
+  });
+
+  it("defaults leave the theme's own metrics and no data attributes", async () => {
+    const theme = await load();
+    await theme.init();
+    const root = document.documentElement;
+    expect(root.style.getPropertyValue("--density")).toBe(String(theme.activeTheme.metrics.density));
+    expect(root.style.getPropertyValue("--leading")).toBe(theme.activeTheme.metrics.leading ?? "1.5");
+    expect(root.dataset.motion).toBeUndefined();
+    expect(root.dataset.scrollbars).toBeUndefined();
+  });
+
+  it("setters apply to the document, persist and reach the boot snapshot", async () => {
+    localStorage.clear();
+    const theme = await load();
+    await theme.init();
+    const root = document.documentElement;
+    theme.setMotion("full");
+    expect(root.dataset.motion).toBe("full");
+    theme.setMotion("system");
+    expect(root.dataset.motion).toBeUndefined();
+    theme.setDensity("compact");
+    expect(root.style.getPropertyValue("--density")).toBe(String(theme.activeTheme.metrics.density * 0.85));
+    theme.setLeading("tight");
+    expect(root.style.getPropertyValue("--leading")).toBe("1.35");
+    theme.setScrollbars(true);
+    expect(root.dataset.scrollbars).toBe("");
+    theme.setAccent("#abcdef");
+    expect(root.style.getPropertyValue("--accent")).toBe("#abcdef");
+    theme.setAccent(null);
+    expect(root.style.getPropertyValue("--accent")).toBe(theme.activeTheme.dark!.accent);
+    theme.setAccent("#abcdef");
+    const snapshot = JSON.parse(localStorage.getItem(BOOT_KEY) ?? "null");
+    expect(snapshot.dark.vars["--accent"]).toBe("#abcdef");
+    expect(snapshot.dark.vars["--leading"]).toBe("1.35");
+    expect(mockSetSetting).toHaveBeenCalledWith("theme.density", "compact");
+    expect(mockSetSetting).toHaveBeenCalledWith("theme.accent", null);
+    theme.setScrollbars(false);
+    expect(root.dataset.scrollbars).toBeUndefined();
+  });
+
+  it("reducedMotion follows the setting, and the media query only on System", async () => {
+    const mod = await import("./theme.svelte");
+    await mod.theme.init();
+    const query = vi.fn(() => ({ matches: true }));
+    Object.defineProperty(window, "matchMedia", { configurable: true, value: query });
+    expect(mod.reducedMotion()).toBe(true);
+    mod.theme.setMotion("full");
+    expect(mod.reducedMotion()).toBe(false);
+    mod.theme.setMotion("off");
+    expect(mod.reducedMotion()).toBe(true);
+    query.mockClear();
+    mod.theme.setMotion("full");
+    mod.reducedMotion();
+    expect(query).not.toHaveBeenCalled();
+  });
+});
+
+describe("THEME_DEFAULTS defaults", () => {
+  it("starts every field at its default", async () => {
+    const mod = await import("./theme.svelte");
+    const { THEME_DEFAULTS, theme } = mod;
+    const expected = { mode: "auto", bodyFontId: null, motion: "system", density: "default", leading: "default", scrollbars: false, accent: null };
+    expect(THEME_DEFAULTS).toEqual(expected);
+    for (const [k, v] of Object.entries(expected)) expect(theme[k as keyof typeof expected]).toBe(v);
+  });
+});

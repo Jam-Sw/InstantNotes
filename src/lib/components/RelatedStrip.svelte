@@ -152,9 +152,12 @@
     }
   }
   @media (prefers-reduced-motion: reduce) {
-    .related-card {
+    :global(:root:not([data-motion="full"])) .related-card {
       animation: none;
     }
+  }
+  :global(:root[data-motion="off"]) .related-card {
+    animation: none;
   }
   .related-card-head {
     display: flex;

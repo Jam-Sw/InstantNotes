@@ -3,7 +3,7 @@
   import { openUrl } from "$lib/api/client";
   import { modKey } from "$lib/platform";
   import { linkPrefs } from "$lib/stores/links.svelte";
-  import type { LinkOpenWith, LinkUnderline } from "$lib/editor/link-prefs";
+  import { DEFAULT_LINK_PREFS, type LinkOpenWith, type LinkUnderline } from "$lib/editor/link-prefs";
   import SegmentedRow from "$lib/components/settings/SegmentedRow.svelte";
   import ToggleRow from "$lib/components/settings/ToggleRow.svelte";
 
@@ -58,6 +58,9 @@
     label="Open links with"
     options={OPEN_WITH_OPTIONS}
     value={linkPrefs.openWith}
+    reset={linkPrefs.openWith !== DEFAULT_LINK_PREFS.openWith
+      ? () => linkPrefs.setOpenWith(DEFAULT_LINK_PREFS.openWith)
+      : undefined}
     onchange={(v) => linkPrefs.setOpenWith(v)}
   />
 
@@ -65,18 +68,27 @@
     label="Underline"
     options={UNDERLINE_OPTIONS}
     value={linkPrefs.underline}
+    reset={linkPrefs.underline !== DEFAULT_LINK_PREFS.underline
+      ? () => linkPrefs.setUnderline(DEFAULT_LINK_PREFS.underline)
+      : undefined}
     onchange={(v) => linkPrefs.setUnderline(v)}
   />
 
   <ToggleRow
     label="Show destination on hover"
     checked={linkPrefs.tooltip}
+    reset={linkPrefs.tooltip !== DEFAULT_LINK_PREFS.tooltip
+      ? () => linkPrefs.setTooltip(DEFAULT_LINK_PREFS.tooltip)
+      : undefined}
     onchange={(v) => linkPrefs.setTooltip(v)}
   />
 
   <ToggleRow
     label="Mark external links with ↗"
     checked={linkPrefs.externalIndicator}
+    reset={linkPrefs.externalIndicator !== DEFAULT_LINK_PREFS.externalIndicator
+      ? () => linkPrefs.setExternalIndicator(DEFAULT_LINK_PREFS.externalIndicator)
+      : undefined}
     onchange={(v) => linkPrefs.setExternalIndicator(v)}
   />
 </div>

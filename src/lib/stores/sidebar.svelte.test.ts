@@ -331,6 +331,33 @@ describe("what is saved", () => {
     expect(sidebar.state).toBe("detail");
   });
 
+  it("keeps saved wide widths when the limit is wide and drops them when it is not", async () => {
+    saved({ "layout.paneMax": "wide", "layout.navWidth": 380, "layout.listWidth": 540 });
+    const wide = await load();
+    await wide.init();
+    expect([wide.navWidth, wide.listWidth]).toEqual([380, 540]);
+    vi.resetModules();
+    saved({ "layout.navWidth": 380, "layout.listWidth": 540 });
+    const narrow = await load();
+    await narrow.init();
+    expect([narrow.navWidth, narrow.listWidth]).toEqual([220, 300]);
+  });
+
+  it("lets a drag reach the wide maximum and refits widths when the limit goes back", async () => {
+    const sidebar = await load();
+    const { layout } = await import("./layout.svelte");
+    at(sidebar, 1800);
+    layout.setPaneMax("wide");
+    sidebar.resizeNav(380);
+    sidebar.resizeList(540);
+    expect([sidebar.navWidth, sidebar.listWidth]).toEqual([380, 540]);
+    layout.setPaneMax("default");
+    sidebar.refitPanes();
+    expect([sidebar.navWidth, sidebar.listWidth]).toEqual([300, 420]);
+    expect(mockSetSetting).toHaveBeenCalledWith("layout.navWidth", 300);
+    expect(mockSetSetting).toHaveBeenCalledWith("layout.listWidth", 420);
+  });
+
   it("ignores saved values that are out of range or not the right kind", async () => {
     saved({ "layout.large": "yes", "layout.expanded": 3, "layout.navWidth": 20, "layout.listWidth": "wide" });
     const sidebar = await load();

@@ -8,13 +8,14 @@
   import { captureShortcut, modKey } from "$lib/platform";
   import { isWeb } from "$lib/api/runtime";
   import { layout } from "$lib/stores/layout.svelte";
+  import { reducedMotion } from "$lib/stores/theme.svelte";
   import { sidebar } from "$lib/stores/sidebar.svelte";
+  import { listPrefs } from "$lib/stores/list.svelte";
   import { formatDate, formatExact } from "$lib/format";
   import { parseHighlightSegments } from "$lib/highlight";
   import SearchField from "$lib/components/SearchField.svelte";
   import type { Note, ShortcutFailure } from "$lib/api/types";
 
-  const RECENT = 5;
   const HITS = 6;
 
   let { appVersion, onOpenUpdate }: { appVersion: string; onOpenUpdate: () => void } =
@@ -41,10 +42,10 @@
       const notes = await listNotes({
         sortBy: "lastOpenedAt",
         sortOrder: "desc",
-        limit: RECENT * 2,
+        limit: listPrefs.recentCount * 2,
         bodyChars: 0,
       });
-      recent = notes.filter((n) => n.lastOpenedAt).slice(0, RECENT);
+      recent = notes.filter((n) => n.lastOpenedAt).slice(0, listPrefs.recentCount);
     } catch {
       recent = [];
     }
@@ -53,6 +54,7 @@
   $effect(() => {
     if (!listAway) return;
     void library.notes;
+    void listPrefs.recentCount;
     untrack(() => void loadRecent());
   });
 
@@ -80,10 +82,7 @@
     }
   }
 
-  const still = () =>
-    layout.resizing ||
-    (typeof window.matchMedia === "function" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const still = () => layout.resizing || reducedMotion();
 
   function reveal(node: Element) {
     const grow = slide(node, { duration: still() ? 0 : 240, easing: cubicOut });

@@ -4,11 +4,13 @@ import SettingsBackups from "./SettingsBackups.svelte";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   backupNow,
+  getSetting,
   inspectBackup,
   listBackups,
   openBackupsFolder,
   restoreBackup,
   setBackupsAutomatic,
+  setSetting,
 } from "$lib/api/client";
 import { exportVaultToFolder } from "$lib/vault-export";
 import { confirmDialog } from "$lib/stores/confirm.svelte";
@@ -22,6 +24,8 @@ vi.mock("$lib/vault-export", () => ({
 }));
 vi.mock("$lib/api/client", () => ({
   backupNow: vi.fn(),
+  getSetting: vi.fn(),
+  setSetting: vi.fn(),
   inspectBackup: vi.fn(),
   listBackups: vi.fn(),
   openBackupsFolder: vi.fn(),
@@ -53,6 +57,8 @@ beforeEach(() => {
   vi.mocked(open).mockReset();
   vi.mocked(listBackups).mockReset();
   vi.mocked(backupNow).mockReset();
+  vi.mocked(getSetting).mockReset().mockResolvedValue(undefined);
+  vi.mocked(setSetting).mockReset().mockResolvedValue(undefined);
   vi.mocked(inspectBackup).mockReset();
   vi.mocked(restoreBackup).mockReset().mockResolvedValue(undefined);
   vi.mocked(setBackupsAutomatic).mockReset().mockResolvedValue(undefined);
@@ -81,6 +87,43 @@ describe("SettingsBackups on the desktop", () => {
     expect(getByText("1 KB")).toBeTruthy();
     expect(getByText(/^Last backup /)).toBeTruthy();
     expect(getAllByRole("switch")[0].getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("keeps the standard retention and a daily schedule by default, under More", async () => {
+    vi.mocked(listBackups).mockResolvedValue(EMPTY);
+    const { findByText, getByText, getByRole } = render(SettingsBackups);
+    await findByText(/No backups yet/);
+
+    expect(getByText("More").closest("details")?.open).toBe(false);
+    expect(getByRole("radio", { name: "Standard" }).getAttribute("aria-checked")).toBe("true");
+    expect(getByRole("radio", { name: "Daily" }).getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("shows the saved retention and schedule", async () => {
+    vi.mocked(listBackups).mockResolvedValue(EMPTY);
+    vi.mocked(getSetting).mockImplementation(async (key: string) =>
+      key === "backups.keep" ? "long" : key === "backups.everyHours" ? 168 : undefined,
+    );
+    const { findByText, getByRole } = render(SettingsBackups);
+    await findByText(/No backups yet/);
+
+    await waitFor(() =>
+      expect(getByRole("radio", { name: "Long" }).getAttribute("aria-checked")).toBe("true"),
+    );
+    expect(getByRole("radio", { name: "Weekly" }).getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("saves the retention and the schedule", async () => {
+    vi.mocked(listBackups).mockResolvedValue(EMPTY);
+    const { findByText, getByRole } = render(SettingsBackups);
+    await findByText(/No backups yet/);
+
+    await fireEvent.click(getByRole("radio", { name: "Short" }));
+    expect(setSetting).toHaveBeenLastCalledWith("backups.keep", "short");
+    await fireEvent.click(getByRole("radio", { name: "6 hours" }));
+    expect(setSetting).toHaveBeenLastCalledWith("backups.everyHours", 6);
+    await fireEvent.click(getByRole("radio", { name: "Weekly" }));
+    expect(setSetting).toHaveBeenLastCalledWith("backups.everyHours", 168);
   });
 
   it("flips the automatic setting", async () => {
@@ -176,5 +219,24 @@ describe("SettingsBackups on the desktop", () => {
     await waitFor(() =>
       expect(toasts.items.map((t) => t.message)).toEqual([expect.stringContaining("disk full")]),
     );
+  });
+});
+
+describe("SettingsBackups reset", () => {
+  it("resets retention and schedule to the defaults", async () => {
+    vi.mocked(listBackups).mockResolvedValue(EMPTY);
+    const { findByText, getByRole, queryAllByRole } = render(SettingsBackups);
+    await findByText(/No backups yet/);
+    expect(queryAllByRole("button", { name: "Reset" })).toHaveLength(0);
+
+    await fireEvent.click(getByRole("radio", { name: "Short" }));
+    await fireEvent.click(getByRole("radio", { name: "Weekly" }));
+    const buttons = queryAllByRole("button", { name: "Reset" });
+    expect(buttons).toHaveLength(2);
+    await fireEvent.click(buttons[0]);
+    expect(setSetting).toHaveBeenLastCalledWith("backups.keep", "standard");
+    await fireEvent.click(queryAllByRole("button", { name: "Reset" })[0]);
+    expect(setSetting).toHaveBeenLastCalledWith("backups.everyHours", 24);
+    expect(queryAllByRole("button", { name: "Reset" })).toHaveLength(0);
   });
 });

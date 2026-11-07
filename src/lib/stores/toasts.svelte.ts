@@ -1,4 +1,8 @@
-const AUTO_DISMISS_MS = 5000;
+import { getSetting, setSetting } from "$lib/api/client";
+
+const KEY_DURATION = "toasts.durationMs";
+export const DURATIONS = [3000, 5000, 10000, 0];
+export const TOAST_DEFAULTS = { durationMs: 5000 };
 const MAX_VISIBLE = 3;
 
 interface ToastAction {
@@ -14,13 +18,31 @@ interface ToastItem {
 
 class ToastStore {
   items = $state<ToastItem[]>([]);
+  durationMs = $state(TOAST_DEFAULTS.durationMs);
 
   #nextId = 0;
   #timers = new Map<string, ReturnType<typeof setTimeout>>();
   #remaining = new Map<string, number>();
   #startedAt = new Map<string, number>();
 
-  show(message: string, action?: ToastAction, duration = AUTO_DISMISS_MS): string {
+  async init(): Promise<void> {
+    try {
+      const ms = await getSetting<number>(KEY_DURATION);
+      if (typeof ms === "number" && DURATIONS.includes(ms)) this.durationMs = ms;
+    } catch {
+    }
+  }
+
+  setDuration(ms: number): void {
+    this.durationMs = ms;
+    void setSetting(KEY_DURATION, ms);
+  }
+
+  get #default(): number {
+    return this.durationMs || Infinity;
+  }
+
+  show(message: string, action?: ToastAction, duration = this.#default): string {
     const id = `toast-${++this.#nextId}`;
     const next = [...this.items, { id, message, action }];
     if (next.length > MAX_VISIBLE) {
@@ -49,13 +71,13 @@ class ToastStore {
     clearTimeout(timer);
     this.#timers.delete(id);
     const started = this.#startedAt.get(id) ?? Date.now();
-    const remaining = this.#remaining.get(id) ?? AUTO_DISMISS_MS;
+    const remaining = this.#remaining.get(id) ?? this.#default;
     this.#remaining.set(id, Math.max(0, remaining - (Date.now() - started)));
   }
 
   resume(id: string): void {
     if (!this.items.some((t) => t.id === id)) return;
-    this.#schedule(id, this.#remaining.get(id) ?? AUTO_DISMISS_MS);
+    this.#schedule(id, this.#remaining.get(id) ?? this.#default);
   }
 
   #schedule(id: string, ms: number): void {

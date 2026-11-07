@@ -1,11 +1,10 @@
 <script lang="ts">
   import { toasts } from "$lib/stores/toasts.svelte";
   import { fly } from "svelte/transition";
+  import { reducedMotion } from "$lib/stores/theme.svelte";
 
-  const reduceMotion =
-    typeof matchMedia !== "undefined" &&
-    matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const flyDuration = reduceMotion ? 0 : 160;
+  void toasts.init();
+  const flyDuration = $derived(reducedMotion() ? 0 : 160);
 </script>
 
 <div class="toast-stack" role="status" aria-live="polite">

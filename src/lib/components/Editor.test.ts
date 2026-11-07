@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, cleanup } from "@testing-library/svelte";
 import { EditorView } from "@codemirror/view";
+import { indentUnit } from "@codemirror/language";
 import { undo } from "@codemirror/commands";
 import Editor from "./Editor.svelte";
+import { editorPrefs } from "$lib/stores/editor.svelte";
 
 vi.mock("$lib/api/client", () => ({
   getAttachmentsDir: vi.fn().mockResolvedValue("/data/attachments"),
@@ -13,7 +15,12 @@ vi.mock("$lib/api/client", () => ({
   setSetting: vi.fn().mockResolvedValue(undefined),
 }));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  editorPrefs.spellcheck = false;
+  editorPrefs.wrap = true;
+  editorPrefs.indentWidth = 2;
+});
 
 interface EditorHandle {
   insertText: (t: string) => void;
@@ -106,5 +113,29 @@ describe("Editor focus", () => {
     const view = findView(container);
     expect(view.hasFocus).toBe(true);
     expect(view.state.selection.main.anchor).toBe(0);
+  });
+});
+
+describe("Editor live preferences", () => {
+  it("starts with spellcheck off and wrapping on, today's behaviour", () => {
+    const { container } = render(Editor, { value: "Hello" });
+    const content = container.querySelector(".cm-content") as HTMLElement;
+    expect(content.getAttribute("spellcheck")).toBe("false");
+    expect(content.classList.contains("cm-lineWrapping")).toBe(true);
+  });
+
+  it("applies spellcheck, wrap and indent changes without remounting", async () => {
+    const { container } = render(Editor, { value: "Hello" });
+    const view = findView(container);
+    const content = container.querySelector(".cm-content") as HTMLElement;
+    editorPrefs.setSpellcheck(true);
+    editorPrefs.setWrap(false);
+    editorPrefs.setIndentWidth(4);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(findView(container)).toBe(view);
+    expect(content.getAttribute("spellcheck")).toBe("true");
+    expect(content.classList.contains("cm-lineWrapping")).toBe(false);
+    expect(view.state.facet(indentUnit)).toBe("    ");
   });
 });

@@ -10,6 +10,7 @@
     type Command,
   } from "$lib/commands";
   import { listNotes, searchNotes } from "$lib/api/client";
+  import { listPrefs } from "$lib/stores/list.svelte";
   import { stripSentinels } from "$lib/highlight";
   import type { SearchResult } from "$lib/api/types";
   import { library } from "$lib/stores/library.svelte";
@@ -27,7 +28,6 @@
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
 
-  const RECENT_NOTES_LIMIT = 5;
   const NOTE_SEARCH_LIMIT = 8;
   const NOTE_SEARCH_DEBOUNCE_MS = 120;
 
@@ -124,7 +124,7 @@
   async function loadRecentNotes() {
     const token = ++recentToken;
     try {
-      const notes = await listNotes({ limit: RECENT_NOTES_LIMIT });
+      const notes = await listNotes({ limit: listPrefs.recentCount });
       if (token !== recentToken) return;
       recentNotes = notes.map((n) => ({
         noteId: n.id,

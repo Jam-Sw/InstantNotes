@@ -9,6 +9,8 @@ import {
   foldNotes,
   getNote,
   getOrCreateWorkspace,
+  getSetting,
+  setSetting,
   listNotes,
   listTags,
   restoreNotes,
@@ -86,6 +88,8 @@ vi.mock("$lib/api/client", () => {
     setWorkspaceColor: vi.fn(),
     setWorkspaceFlag: vi.fn(),
     workspaceTagSlices: vi.fn().mockResolvedValue([]),
+    getSetting: vi.fn().mockResolvedValue(undefined),
+    setSetting: vi.fn().mockResolvedValue(undefined),
   };
 });
 
@@ -679,6 +683,62 @@ function mkWorkspace(id: string, name: string): WorkspaceWithCount {
     noteCount: 0,
   };
 }
+
+describe("reopen last note", () => {
+  it("remembers opened notes and reopens the last one at startup only when on", async () => {
+    const library = await load();
+    const { listPrefs } = await import("$lib/stores/list.svelte");
+    await selectNote(library, "n1");
+    expect(setSetting).not.toHaveBeenCalledWith("list.lastNote", "n1");
+    await library.reopenLast();
+    expect(getSetting).not.toHaveBeenCalledWith("list.lastNote");
+
+    listPrefs.reopenLast = true;
+    await selectNote(library, "n2");
+    expect(setSetting).toHaveBeenLastCalledWith("list.lastNote", "n2");
+  });
+
+  it("opens the stored note when nothing is selected, and skips one in the trash", async () => {
+    const { listPrefs } = await import("$lib/stores/list.svelte");
+    listPrefs.reopenLast = true;
+    vi.mocked(getSetting).mockResolvedValueOnce("n3");
+    mockGetNote.mockResolvedValueOnce(mkNote("n3", { isDeleted: true }));
+    const library = await load();
+    await library.reopenLast();
+    expect(library.selected).toBeNull();
+
+    vi.mocked(getSetting).mockResolvedValueOnce("n4");
+    mockGetNote.mockResolvedValueOnce(mkNote("n4")).mockResolvedValueOnce(mkNote("n4"));
+    await library.reopenLast();
+    expect(library.selected?.id).toBe("n4");
+  });
+});
+
+describe("list sort preference", () => {
+  it("sends the chosen sort to listNotes and omits it at the defaults", async () => {
+    const library = await load();
+    const { listPrefs } = await import("$lib/stores/list.svelte");
+    await library.refresh();
+    expect(mockListNotes).toHaveBeenLastCalledWith({ bodyChars: 512 });
+
+    listPrefs.sortBy = "title";
+    listPrefs.sortOrder = "asc";
+    await library.refresh();
+    expect(mockListNotes).toHaveBeenLastCalledWith({
+      sortBy: "title",
+      sortOrder: "asc",
+      bodyChars: 512,
+    });
+
+    listPrefs.previewChars = 300;
+    await library.refresh();
+    expect(mockListNotes).toHaveBeenLastCalledWith({
+      sortBy: "title",
+      sortOrder: "asc",
+      bodyChars: 1200,
+    });
+  });
+});
 
 describe("scoped tag filter (chips inside a workspace)", () => {
   it("composes with the workspace filter, toggles off, and resets on switch", async () => {

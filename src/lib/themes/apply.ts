@@ -35,7 +35,17 @@ function tokensFor(theme: Theme, variant: Variant): TokenSet {
   return (v === "dark" ? theme.dark : theme.light) as TokenSet;
 }
 
-export function themeToVars(theme: Theme, variant: Variant): Record<string, string> {
+export interface ThemeTweaks {
+  density?: number;
+  leading?: string;
+  accent?: string;
+}
+
+export function themeToVars(
+  theme: Theme,
+  variant: Variant,
+  tweaks: ThemeTweaks = {},
+): Record<string, string> {
   const tokens = tokensFor(theme, variant);
   const vars: Record<string, string> = {};
   for (const key of TOKEN_KEYS) {
@@ -56,6 +66,14 @@ export function themeToVars(theme: Theme, variant: Variant): Record<string, stri
   vars["--shadow-lg"] = theme.metrics.shadowLg ?? "0 18px 50px rgba(0, 0, 0, 0.4)";
   vars["--leading"] = theme.metrics.leading ?? "1.5";
   vars["--tracking"] = theme.metrics.tracking ?? "0";
+  if (tweaks.density) vars["--density"] = String(theme.metrics.density * tweaks.density);
+  if (tweaks.leading) vars["--leading"] = tweaks.leading;
+  if (tweaks.accent) {
+    vars["--accent"] = tweaks.accent;
+    vars["--accent-text"] = tweaks.accent;
+    vars["--accent-soft"] = `color-mix(in srgb, ${tweaks.accent} 18%, transparent)`;
+    vars["--focus"] = tweaks.accent;
+  }
   return vars;
 }
 
@@ -63,8 +81,9 @@ export function applyTheme(
   theme: Theme,
   variant: Variant,
   root: HTMLElement = document.documentElement,
+  tweaks: ThemeTweaks = {},
 ): void {
-  const vars = themeToVars(theme, variant);
+  const vars = themeToVars(theme, variant, tweaks);
   for (const [name, value] of Object.entries(vars)) {
     root.style.setProperty(name, value);
   }

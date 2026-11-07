@@ -467,11 +467,17 @@
     border-color: var(--accent);
   }
   @media (prefers-reduced-motion: reduce) {
-    .sticky {
+    :global(:root:not([data-motion="full"])) .sticky {
       transition: none;
     }
-    .sticky:hover:not(:disabled) {
+    :global(:root:not([data-motion="full"])) .sticky:hover:not(:disabled) {
       transform: none;
     }
+  }
+  :global(:root[data-motion="off"]) .sticky {
+    transition: none;
+  }
+  :global(:root[data-motion="off"]) .sticky:hover:not(:disabled) {
+    transform: none;
   }
 </style>

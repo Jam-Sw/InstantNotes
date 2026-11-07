@@ -117,6 +117,27 @@ describe("SettingsView", () => {
     ).toBeTruthy();
   });
 
+  it("finds a page by a row label", async () => {
+    const { getByRole, getByLabelText } = open();
+    const filter = getByLabelText("Find a setting");
+    await fireEvent.input(filter, { target: { value: "spellcheck" } });
+    const results = getByRole("region", { name: "Search results" });
+    expect(within(results).getByRole("button", { name: /Editor/ })).toBeTruthy();
+    await fireEvent.input(filter, { target: { value: "flag" } });
+    expect(within(results).getByRole("button", { name: /Appearance/ })).toBeTruthy();
+  });
+
+  it("opens the List, Graph and Behavior pages", async () => {
+    const { getByRole } = open();
+    for (const name of ["List", "Graph", "Behavior"]) {
+      await fireEvent.click(getByRole("button", { name: new RegExp(`^${name}`) }));
+      expect(
+        within(getByRole("navigation", { name: "Breadcrumb" })).getByText(name),
+      ).toBeTruthy();
+      shell.settingsPage = "home";
+    }
+  });
+
   it("lists matches with their description in the main pane and opens one on a click", async () => {
     const { getByRole, getByLabelText } = open();
     const filter = getByLabelText("Find a setting") as HTMLInputElement;

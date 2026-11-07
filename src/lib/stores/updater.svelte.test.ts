@@ -233,6 +233,83 @@ describe("the automatic schedule", () => {
   });
 });
 
+describe("the check interval setting", () => {
+  const HOUR = 60 * 60 * 1000;
+
+  function saved(value: unknown) {
+    mockGetSetting.mockImplementation(async (key: string) =>
+      key === "updates.checkInterval" ? value : undefined,
+    );
+  }
+
+  it("defaults to every 6 hours", async () => {
+    const updater = await load();
+    expect(updater.checkInterval).toBe("6h");
+  });
+
+  it("checks once at startup and never again when set to startup", async () => {
+    saved("startup");
+    mockCheck.mockResolvedValue(null);
+    const updater = await load();
+    updater.start();
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(mockCheck).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(48 * HOUR);
+    expect(mockCheck).toHaveBeenCalledTimes(1);
+    updater.stop();
+  });
+
+  it("repeats daily when set to daily", async () => {
+    saved("daily");
+    mockCheck.mockResolvedValue(null);
+    const updater = await load();
+    updater.start();
+    await vi.advanceTimersByTimeAsync(8_000);
+    await vi.advanceTimersByTimeAsync(23 * HOUR);
+    expect(mockCheck).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(HOUR);
+    expect(mockCheck).toHaveBeenCalledTimes(2);
+    updater.stop();
+  });
+
+  it("never checks on its own when set to never, but a manual check still works", async () => {
+    saved("never");
+    mockCheck.mockResolvedValue(null);
+    const updater = await load();
+    updater.start();
+    await vi.advanceTimersByTimeAsync(48 * HOUR);
+    expect(mockCheck).not.toHaveBeenCalled();
+    await updater.checkNow({ manual: true });
+    expect(mockCheck).toHaveBeenCalledTimes(1);
+    updater.stop();
+  });
+
+  it("ignores an unknown saved value", async () => {
+    saved("hourly");
+    mockCheck.mockResolvedValue(null);
+    const updater = await load();
+    updater.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(updater.checkInterval).toBe("6h");
+    updater.stop();
+  });
+
+  it("saves a change and reschedules at once", async () => {
+    mockCheck.mockResolvedValue(null);
+    const updater = await load();
+    updater.start();
+    await vi.advanceTimersByTimeAsync(8_000);
+    updater.setCheckInterval("daily");
+    expect(mockSetSetting).toHaveBeenCalledWith("updates.checkInterval", "daily");
+    await vi.advanceTimersByTimeAsync(6 * HOUR);
+    expect(mockCheck).toHaveBeenCalledTimes(1);
+    updater.setCheckInterval("never");
+    await vi.advanceTimersByTimeAsync(48 * HOUR);
+    expect(mockCheck).toHaveBeenCalledTimes(1);
+    updater.stop();
+  });
+});
+
 describe("the visible prompt", () => {
   it("announces an automatic find with a toast that stays until dismissed, once per version", async () => {
     mockCheck.mockResolvedValue(mkUpdate());
@@ -299,5 +376,14 @@ describe("the last check", () => {
     expect(updater.lastCheckedAt).toBe("2026-10-12T08:00:00.000Z");
     expect(mockSetSetting).not.toHaveBeenCalled();
     updater.stop();
+  });
+});
+
+describe("UPDATER_DEFAULTS defaults", () => {
+  it("starts every field at its default", async () => {
+    const mod = await import("./updater.svelte");
+    const { UPDATER_DEFAULTS, updater } = mod;
+    expect(UPDATER_DEFAULTS.checkInterval).toBe("6h");
+    expect(updater.checkInterval).toBe("6h");
   });
 });

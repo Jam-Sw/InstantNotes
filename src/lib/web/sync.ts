@@ -6,7 +6,10 @@ import type { SyncDevice, SyncJoinRequest, SyncServerStatus, SyncStage } from "$
 const API = "/sync/v1/";
 const HEADERS = { "X-InstantNotes": "1" };
 const QUIET_MS = 300;
-const RETRY_MS = 30_000;
+const DELAY_KEY = "sync.delayMs";
+const RETRY_KEY = "sync.retrySec";
+const DELAY_CHOICES = [300, 2_000, 10_000];
+const RETRY_CHOICES = [10, 30, 60, 300];
 const OPEN_TRIES = 10;
 const OPEN_RETRY_MS = 300;
 const WAIT_SECONDS = 25;
@@ -65,6 +68,7 @@ let allowRemovals = false;
 let starting: Promise<void> | null = null;
 let legacyWaitUntil = 0;
 let joining: string | null = null;
+let soonToken = 0;
 
 function changed(): void {
   emit("vault:status");
@@ -242,12 +246,29 @@ async function exclusive<T>(work: () => Promise<T>): Promise<T> {
   return result;
 }
 
+async function choice(key: string, allowed: number[], fallback: number): Promise<number> {
+  try {
+    const value = await setting(key);
+    return typeof value === "number" && allowed.includes(value) ? value : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+async function retryMs(): Promise<number> {
+  return (await choice(RETRY_KEY, RETRY_CHOICES, 30)) * 1000;
+}
+
 export function syncSoon(): void {
-  if (timer) clearTimeout(timer);
-  timer = setTimeout(() => {
-    timer = null;
-    void syncNow();
-  }, QUIET_MS);
+  const mine = ++soonToken;
+  void choice(DELAY_KEY, DELAY_CHOICES, QUIET_MS).then((ms) => {
+    if (mine !== soonToken) return;
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      void syncNow();
+    }, ms);
+  });
 }
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -267,7 +288,7 @@ async function watchChanges(): Promise<void> {
       }
     } catch (e) {
       since = 0;
-      if ((e as Failure).status !== 410) await pause(RETRY_MS);
+      if ((e as Failure).status !== 410) await pause(await retryMs());
     }
   }
 }
@@ -296,7 +317,7 @@ async function watchJoins(): Promise<void> {
     try {
       const key = await getKey();
       if (!key) {
-        await pause(RETRY_MS);
+        await pause(await retryMs());
         continue;
       }
       const pending = await api<Pending[]>(`keys/requests?wait=${WAIT_SECONDS}`, {}, WAIT_SECONDS);
@@ -308,7 +329,7 @@ async function watchJoins(): Promise<void> {
         await pause(JOIN_REPEAT_MS);
       }
     } catch {
-      await pause(RETRY_MS);
+      await pause(await retryMs());
     }
   }
 }
@@ -362,7 +383,7 @@ async function waitForApproval(id: string, recipient: string): Promise<void> {
     } catch (e) {
       if (joining !== id) return;
       if ((e as Failure).status !== 404) {
-        await pause(RETRY_MS);
+        await pause(await retryMs());
         continue;
       }
       status.stage = "needsKey";

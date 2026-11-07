@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { isWeb } from "$lib/api/runtime";
-  import { imagePrefs, IMAGE_HEIGHT_RANGE, type ImageStorage } from "$lib/stores/images.svelte";
+  import { imagePrefs, IMAGE_DEFAULTS, IMAGE_HEIGHT_RANGE, type ImageStorage } from "$lib/stores/images.svelte";
   import {
     getLibraryStats,
     getAttachmentsDir,
@@ -87,6 +87,7 @@
     label="When adding an image"
     options={STORAGE_OPTIONS}
     value={imagePrefs.storage}
+    reset={imagePrefs.storage !== IMAGE_DEFAULTS.storage ? () => imagePrefs.setStorage(IMAGE_DEFAULTS.storage) : undefined}
     onchange={(v) => imagePrefs.setStorage(v)}
   />
   {#if imagePrefs.storage === "link"}
@@ -115,6 +116,9 @@
   <span class="group-label">Preview</span>
   <PrefRow
     label="Maximum height in the note"
+    reset={imagePrefs.maxPreviewHeight !== IMAGE_DEFAULTS.maxPreviewHeight
+      ? () => imagePrefs.setMaxPreviewHeight(IMAGE_DEFAULTS.maxPreviewHeight)
+      : undefined}
   >
     {#snippet control()}
       <div class="slider-cell">
@@ -187,19 +191,6 @@
     color: var(--text-tertiary);
     font-size: 12px;
     line-height: 1.5;
-  }
-  .slider-cell {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-shrink: 0;
-  }
-  .slider-val {
-    font-family: var(--font-meta);
-    font-size: 12px;
-    color: var(--text-secondary);
-    min-width: 44px;
-    text-align: right;
   }
   .attach-card {
     margin-top: 8px;

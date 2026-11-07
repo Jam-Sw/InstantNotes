@@ -146,6 +146,32 @@ the code default. The editor keeps `editor.zoom`, `editor.showExactTime`,
 stored false is kept) and `editor.sourceMode` (the Markdown marks shown,
 default false); the two are independent since 0.10.1. `backups.automatic`
 (default true) is whether the daily backup runs (§12).
+`theme.motion` (`system`, `full`, `off`), `theme.density` and `theme.leading`
+(`compact`/`roomy`, `tight`/`loose`, each defaulting to the theme's own
+metric), `theme.scrollbars` (default false) and `theme.accent` (a hex or
+swatch name, default none) are shared visual settings; `toasts.durationMs`
+(3000, 5000, 10000, or 0 to stay; default 5000) is per device.
+`list.sortBy` (`updatedAt`, `createdAt`, `lastOpenedAt`, `title`; default
+`updatedAt`) and `list.sortOrder` (`desc`, `asc`; default `desc`) order the note
+list, pinned notes first; `list.previewChars` (40 to 300, default 90) is the
+row preview length and `list.recentCount` (3 to 20, default 5) the recent notes
+shown on the welcome screen and in the palette. `list.reopenLast` (default
+false) reopens `list.lastNote`, the id of the last opened note, at startup when
+it still exists and is not in the trash. `graph.labels` (`focus`, `all`,
+`none`; default `focus`), `graph.nodeSize` and `graph.spread` (0.5 to 2,
+default 1) and `graph.lensHops` (1, 2, 3; default 2) shape the graph. All are
+per device.
+The editor also keeps `editor.spellcheck` (default false), `editor.wrap`
+(default true), `editor.calcPrecision` (`short`, `long`; default `short`),
+`editor.autosaveMs` (150, 400, 1000; default 400) and `editor.indentWidth`
+(2, 4; default 2). `shortcuts.capture` (an accelerator; empty means the
+built-in one), `window.closeToTray` (default true in release builds, false in
+debug), `updates.checkInterval` (`startup`, `6h`, `daily`, `never`; default
+`6h`), `confirm.level` (`always`, `permanent`; default `always`),
+`backups.keep` (`short` 3/2/2, `standard` 7/5/6, `long` 14/12/12 daily,
+weekly, monthly copies; default `standard`), `backups.everyHours` (6, 24, 168;
+default 24) and `layout.paneMax` (`default`, `wide`; default `default`) are
+desktop-only and per device.
 `diagnostics.crashReports` (default false) is whether new crash reports are
 brought up at launch, and `diagnostics.lastPromptAt` the `madeAt` of the
 newest report already offered (API.md §13.1).
@@ -306,6 +332,9 @@ Settings, all device-local:
   server's change feed.
 - `sync.mergeReview`: the "Review merge" list left by a join.
 - `sync.legacy`: `imported` or `done`, the move of a 0.9.5 web library.
+- `sync.delayMs` (300, 2000, 10000; default 300) and `sync.retrySec` (10, 30,
+  60, 300; default 30): the quiet time before a push and the wait before a
+  retry, web only.
 - `sync.settingsBase`: the shared settings as this device last agreed them
   with the server, the base of the next merge. Cleared with the other bases.
 

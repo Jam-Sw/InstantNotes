@@ -3,11 +3,13 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import {
     backupNow,
+    getSetting,
     inspectBackup,
     listBackups,
     openBackupsFolder,
     restoreBackup,
     setBackupsAutomatic,
+    setSetting,
   } from "$lib/api/client";
   import { EVENTS, listen } from "$lib/api/events";
   import { isWeb } from "$lib/api/runtime";
@@ -17,11 +19,31 @@
   import { formatBytes, formatExact } from "$lib/format";
   import { exportArchiveDownload, exportVaultToFolder } from "$lib/vault-export";
   import PrefRow from "$lib/components/settings/PrefRow.svelte";
+  import SegmentedRow from "$lib/components/settings/SegmentedRow.svelte";
   import ToggleRow from "$lib/components/settings/ToggleRow.svelte";
+
+  type Keep = "short" | "standard" | "long";
+  type Every = "6" | "24" | "168";
+
+  const KEEP_OPTIONS: { value: Keep; label: string }[] = [
+    { value: "short", label: "Short" },
+    { value: "standard", label: "Standard" },
+    { value: "long", label: "Long" },
+  ];
+
+  const EVERY_OPTIONS: { value: Every; label: string }[] = [
+    { value: "6", label: "6 hours" },
+    { value: "24", label: "Daily" },
+    { value: "168", label: "Weekly" },
+  ];
 
   let list = $state<BackupList | null>(null);
   let busy = $state(false);
   let exporting = $state(false);
+  let keep = $state<Keep>("standard");
+  let every = $state<Every>("24");
+  let keepTouched = false;
+  let everyTouched = false;
 
   const errorMessage = (e: unknown) =>
     e instanceof Error ? e.message : typeof e === "object" && e && "message" in e ? String(e.message) : String(e);
@@ -37,6 +59,16 @@
   onMount(() => {
     if (isWeb) return;
     void refresh();
+    void getSetting<string>("backups.keep")
+      .then((v) => {
+        if (!keepTouched && (v === "short" || v === "standard" || v === "long")) keep = v;
+      })
+      .catch(() => {});
+    void getSetting<number>("backups.everyHours")
+      .then((v) => {
+        if (!everyTouched && (v === 6 || v === 24 || v === 168)) every = String(v) as Every;
+      })
+      .catch(() => {});
     const unlisten = listen(EVENTS.BACKUPS_CHANGED, () => void refresh());
     return () => void unlisten.then((off) => off());
   });
@@ -50,6 +82,18 @@
       toasts.show(`Couldn't change automatic backups: ${errorMessage(e)}`);
       void refresh();
     }
+  }
+
+  function setKeep(v: Keep) {
+    keepTouched = true;
+    keep = v;
+    void setSetting("backups.keep", v);
+  }
+
+  function setEvery(v: Every) {
+    everyTouched = true;
+    every = v;
+    void setSetting("backups.everyHours", Number(v));
   }
 
   async function runBackupNow() {
@@ -149,6 +193,24 @@
       {/snippet}
     </PrefRow>
 
+    <details class="more">
+      <summary>More</summary>
+      <SegmentedRow
+        label="Keep backups"
+        options={KEEP_OPTIONS}
+        value={keep}
+        reset={keep !== "standard" ? () => setKeep("standard") : undefined}
+        onchange={setKeep}
+      />
+      <SegmentedRow
+        label="Back up every"
+        options={EVERY_OPTIONS}
+        value={every}
+        reset={every !== "24" ? () => setEvery("24") : undefined}
+        onchange={setEvery}
+      />
+    </details>
+
     <span class="group-label">Restore</span>
     {#if list && list.backups.length > 0}
       <ul class="backup-list" aria-label="Backups">
@@ -192,6 +254,9 @@
     margin: 0 0 6px;
     font-size: 18px;
     font-weight: 600;
+  }
+  .more {
+    margin-top: 12px;
   }
   .group-label {
     display: block;

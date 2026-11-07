@@ -10,9 +10,11 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.11.2]
 ### Added
 - `calc` fences compute each line (`x = 3*4`, `;` silences, `%` comments, `format long`); inline `` `=expr` `` shares the note's variables; matrices, ranges and `sum`, `mean`, `std`, `det`, `inv` and more.
+- `calc` plots: `linspace`, `figure`, `plot`, `plot3`, `hold on|off` draw under the fence through `src/lib/graphics` (Graph's projection and controls); drag pans or orbits, Ctrl+wheel zooms, double-click resets.
 - Table cells starting with `=` compute: `=Price*Qty` by header, `=sum(above)`, `=mean(B2:B5)`, `=sum(Price(:))`; sheets take the same formulas.
 - Around this note in the status bar: notes sharing uncommon words or tags with the paragraph under the cursor (`related_notes`, MCP `find_related`, `suggest.related`); Not related hides a pair.
 - Fold into one: fold notes into the open note, archiving the sources; Undo or activity Revert restores them (`fold_notes`, `undo_fold`, MCP `fold_notes`).
+- Settings: List, Graph and Behavior pages; More per page; Reset on changed rows; search matches row labels; `theme.motion|density|leading|scrollbars|accent`, `toasts.durationMs`, `list.*` (incl. `list.reopenLast`: reopen the last note at startup), `graph.*`, `editor.spellcheck|wrap|calcPrecision|autosaveMs|indentWidth`, `shortcuts.capture`, `window.closeToTray`, `updates.checkInterval`, `confirm.level`, `backups.keep|everyHours`, `layout.paneMax`, `sync.delayMs|retrySec`.
 - Settings > Import takes an Obsidian vault or a Notion export on every desktop platform (`import_obsidian`, `import_notion`).
 
 ### Changed

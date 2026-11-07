@@ -1,19 +1,44 @@
 <script lang="ts">
-  import { theme, type ThemeMode } from "$lib/stores/theme.svelte";
+  import { theme, THEME_DEFAULTS, type Density, type Leading, type Motion, type ThemeMode } from "$lib/stores/theme.svelte";
   import { effectiveVariant } from "$lib/themes/apply";
   import { exportTheme, importTheme } from "$lib/themes/share";
   import { BODY_FONTS, type BodyFontId } from "$lib/themes/fonts";
   import type { Theme, TokenSet } from "$lib/themes/types";
-  import { toasts } from "$lib/stores/toasts.svelte";
+  import { toasts, DURATIONS, TOAST_DEFAULTS } from "$lib/stores/toasts.svelte";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
   import SegmentedRow from "$lib/components/settings/SegmentedRow.svelte";
   import PrefRow from "$lib/components/settings/PrefRow.svelte";
+  import ToggleRow from "$lib/components/settings/ToggleRow.svelte";
+  import ColorPicker from "$lib/components/ColorPicker.svelte";
 
   const MODE_OPTIONS: { value: ThemeMode; label: string }[] = [
     { value: "auto", label: "Auto" },
     { value: "light", label: "Light" },
     { value: "dark", label: "Dark" },
   ];
+
+  const MOTION_OPTIONS: { value: Motion; label: string }[] = [
+    { value: "system", label: "System" },
+    { value: "full", label: "Full" },
+    { value: "off", label: "Off" },
+  ];
+
+  const DENSITY_OPTIONS: { value: Density; label: string }[] = [
+    { value: "compact", label: "Compact" },
+    { value: "default", label: "Default" },
+    { value: "roomy", label: "Roomy" },
+  ];
+
+  const LEADING_OPTIONS: { value: Leading; label: string }[] = [
+    { value: "tight", label: "Tight" },
+    { value: "default", label: "Default" },
+    { value: "loose", label: "Loose" },
+  ];
+
+  const TOAST_OPTIONS = DURATIONS.map((ms) => ({
+    value: String(ms),
+    label: ms ? `${ms / 1000} s` : "Stay",
+  }));
 
   function previewTokens(t: Theme): TokenSet {
     const v = effectiveVariant(t, theme.resolvedVariant);
@@ -68,10 +93,51 @@
     label="Light or dark"
     options={MODE_OPTIONS}
     value={theme.mode}
+    reset={theme.mode !== THEME_DEFAULTS.mode ? () => theme.setMode(THEME_DEFAULTS.mode) : undefined}
     onchange={(v) => theme.setMode(v)}
   />
 
-  <PrefRow label="Body font">
+  <SegmentedRow
+    label="Motion"
+    options={MOTION_OPTIONS}
+    value={theme.motion}
+    reset={theme.motion !== THEME_DEFAULTS.motion ? () => theme.setMotion(THEME_DEFAULTS.motion) : undefined}
+    onchange={(v) => theme.setMotion(v)}
+  />
+
+  <SegmentedRow
+    label="Density"
+    options={DENSITY_OPTIONS}
+    value={theme.density}
+    reset={theme.density !== THEME_DEFAULTS.density ? () => theme.setDensity(THEME_DEFAULTS.density) : undefined}
+    onchange={(v) => theme.setDensity(v)}
+  />
+
+  <ToggleRow
+    label="Scrollbars"
+    checked={theme.scrollbars}
+    reset={theme.scrollbars !== THEME_DEFAULTS.scrollbars
+      ? () => theme.setScrollbars(THEME_DEFAULTS.scrollbars)
+      : undefined}
+    onchange={(v) => theme.setScrollbars(v)}
+  />
+
+  <SegmentedRow
+    label="Toast time"
+    options={TOAST_OPTIONS}
+    value={String(toasts.durationMs)}
+    reset={toasts.durationMs !== TOAST_DEFAULTS.durationMs
+      ? () => toasts.setDuration(TOAST_DEFAULTS.durationMs)
+      : undefined}
+    onchange={(v) => toasts.setDuration(Number(v))}
+  />
+
+  <PrefRow
+    label="Body font"
+    reset={theme.bodyFontId !== THEME_DEFAULTS.bodyFontId
+      ? () => theme.setBodyFont(THEME_DEFAULTS.bodyFontId)
+      : undefined}
+  >
     {#snippet control()}
       <select
         class="select"
@@ -141,6 +207,25 @@
       </div>
     {/each}
   </div>
+
+  <details class="more">
+    <summary>More</summary>
+    <SegmentedRow
+      label="Line height"
+      options={LEADING_OPTIONS}
+      value={theme.leading}
+      reset={theme.leading !== THEME_DEFAULTS.leading ? () => theme.setLeading(THEME_DEFAULTS.leading) : undefined}
+      onchange={(v) => theme.setLeading(v)}
+    />
+    <PrefRow
+      label="Accent"
+      reset={theme.accent !== THEME_DEFAULTS.accent ? () => theme.setAccent(THEME_DEFAULTS.accent) : undefined}
+    >
+      {#snippet control()}
+        <ColorPicker label="Accent" none="Theme" value={theme.accent} onpick={(c) => theme.setAccent(c)} />
+      {/snippet}
+    </PrefRow>
+  </details>
 </div>
 
 <style>

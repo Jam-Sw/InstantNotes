@@ -141,6 +141,7 @@
       body: "The agent may reconnect",
       confirmLabel: "End Session",
       tone: "danger",
+      recoverable: true,
     });
     if (!ok) return;
     try {
