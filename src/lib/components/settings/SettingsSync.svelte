@@ -79,12 +79,12 @@
 
   function chooseDelay(v: string) {
     delay = v;
-    void setSetting("sync.delayMs", Number(v));
+    void setSetting("sync.delayMs", Number(v)).catch(() => toasts.show("Couldn't save setting"));
   }
 
   function chooseRetry(v: string) {
     retry = v;
-    void setSetting("sync.retrySec", Number(v));
+    void setSetting("sync.retrySec", Number(v)).catch(() => toasts.show("Couldn't save setting"));
   }
 
   onMount(() => {

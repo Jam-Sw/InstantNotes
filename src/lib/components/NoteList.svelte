@@ -2,7 +2,8 @@
   import { library, type StatusFilter } from "$lib/stores/library.svelte";
   import { agents } from "$lib/stores/agents.svelte";
   import { formatDate, formatExact, preview, sheetPreview } from "$lib/format";
-  import { captureShortcut, modKey, shiftKey } from "$lib/platform";
+  import { modKey, shiftKey } from "$lib/platform";
+  import { captureKeys } from "$lib/stores/capture-keys.svelte";
   import { isWeb } from "$lib/api/runtime";
   import { parseHighlightSegments } from "$lib/highlight";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
@@ -354,7 +355,7 @@
           {:else}
             <p class="empty-title">No notes yet</p>
             {#if !layout.touch && !isWeb}
-              <p class="empty-hint">Capture anywhere: <kbd>{captureShortcut}</kbd></p>
+              <p class="empty-hint">Capture anywhere: <kbd>{captureKeys.label}</kbd></p>
             {/if}
             <button class="action primary" onclick={() => void library.newNote()}>New note</button>
           {/if}

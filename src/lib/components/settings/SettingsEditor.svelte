@@ -5,6 +5,7 @@
   import ToggleRow from "$lib/components/settings/ToggleRow.svelte";
   import SegmentedRow from "$lib/components/settings/SegmentedRow.svelte";
   import { getSetting, setSetting } from "$lib/api/client";
+  import { toasts } from "$lib/stores/toasts.svelte";
   import {
     parseSuggestSetting,
     RELATED_SUGGEST_KEY,
@@ -38,12 +39,12 @@
 
   function saveTagSuggest(next: SuggestSetting) {
     tagSuggest = next;
-    void setSetting(TAG_SUGGEST_KEY, next);
+    void setSetting(TAG_SUGGEST_KEY, next).catch(() => toasts.show("Couldn't save setting"));
   }
 
   function saveRelatedSuggest(next: SuggestSetting) {
     relatedSuggest = next;
-    void setSetting(RELATED_SUGGEST_KEY, next);
+    void setSetting(RELATED_SUGGEST_KEY, next).catch(() => toasts.show("Couldn't save setting"));
   }
 
   onMount(() => {

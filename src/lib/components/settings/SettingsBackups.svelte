@@ -87,13 +87,13 @@
   function setKeep(v: Keep) {
     keepTouched = true;
     keep = v;
-    void setSetting("backups.keep", v);
+    void setSetting("backups.keep", v).catch(() => toasts.show("Couldn't save setting"));
   }
 
   function setEvery(v: Every) {
     everyTouched = true;
     every = v;
-    void setSetting("backups.everyHours", Number(v));
+    void setSetting("backups.everyHours", Number(v)).catch(() => toasts.show("Couldn't save setting"));
   }
 
   async function runBackupNow() {

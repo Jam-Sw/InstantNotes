@@ -5,6 +5,7 @@
   import { confirmDialog, CONFIRM_DEFAULTS, type ConfirmLevel } from "$lib/stores/confirm.svelte";
   import { layout, LAYOUT_DEFAULTS, type PaneMax } from "$lib/stores/layout.svelte";
   import { sidebar } from "$lib/stores/sidebar.svelte";
+  import { captureKeys } from "$lib/stores/capture-keys.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
   import { updater, UPDATER_DEFAULTS, type CheckInterval } from "$lib/stores/updater.svelte";
   import PrefRow from "$lib/components/settings/PrefRow.svelte";
@@ -67,6 +68,7 @@
       try {
         await setCaptureShortcut(next);
         savedShortcut = next;
+        captureKeys.custom = next;
       } catch (e) {
         toasts.show(`Couldn't set shortcut: ${errorMessage(e)}`);
         shortcut = savedShortcut;
@@ -78,7 +80,7 @@
   function setTray(on: boolean) {
     trayTouched = true;
     closeToTray = on;
-    void setSetting(KEY_TRAY, on);
+    void setSetting(KEY_TRAY, on).catch(() => toasts.show("Couldn't save setting"));
   }
 
   function setPaneMax(v: PaneMax) {

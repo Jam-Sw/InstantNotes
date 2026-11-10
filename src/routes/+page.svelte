@@ -30,6 +30,7 @@
   import { editorPrefs } from "$lib/stores/editor.svelte";
   import { imagePrefs } from "$lib/stores/images.svelte";
   import { sidebar } from "$lib/stores/sidebar.svelte";
+  import { captureKeys } from "$lib/stores/capture-keys.svelte";
   import { graphPrefs } from "$lib/stores/graph.svelte";
   import { listPrefs } from "$lib/stores/list.svelte";
   import { linkPrefs as linkPrefsStore } from "$lib/stores/links.svelte";
@@ -174,6 +175,7 @@
       .then(() => library.reopenLast());
     void editorPrefs.init();
     void graphPrefs.init();
+    captureKeys.init();
     void listReady.then(() => {
       if (Object.keys(listPrefs.sort()).length > 0) void library.refresh();
     });

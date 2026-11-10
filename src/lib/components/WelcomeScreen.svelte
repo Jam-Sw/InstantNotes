@@ -5,7 +5,8 @@
   import { getShortcutFailure, listNotes } from "$lib/api/client";
   import { library } from "$lib/stores/library.svelte";
   import { updater } from "$lib/stores/updater.svelte";
-  import { captureShortcut, modKey } from "$lib/platform";
+  import { modKey } from "$lib/platform";
+  import { captureKeys } from "$lib/stores/capture-keys.svelte";
   import { isWeb } from "$lib/api/runtime";
   import { layout } from "$lib/stores/layout.svelte";
   import { reducedMotion } from "$lib/stores/theme.svelte";
@@ -133,7 +134,7 @@
       {/if}
     </h2>
     <p>
-      Select a note{#if !isWeb && !shortcutConflict?.wayland}, or capture with <kbd>{captureShortcut}</kbd>{/if}
+      Select a note{#if !isWeb && !shortcutConflict?.wayland}, or capture with <kbd>{captureKeys.label}</kbd>{/if}
     </p>
     {#if layout.touch}
       <p class="hint-line">Commands and themes: command button</p>
