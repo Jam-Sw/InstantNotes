@@ -1,0 +1,20 @@
+CHANGELOG.md
+  s_103540a1b46cd4::t_7f5d8e4daa17c5 26
+  s_103540a1b46cd4::t_5250be30ac8884 12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "06cf3cacaf0280a7f3150c13f7c67fa97bbf0101",
+  "prompts": {},
+  "sessions": {
+    "s_103540a1b46cd4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f947a33d-2a27-446a-97ae-b47c0ef478e6",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
