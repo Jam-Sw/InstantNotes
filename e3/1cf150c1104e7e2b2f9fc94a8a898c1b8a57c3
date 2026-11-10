@@ -1,0 +1,26 @@
+src/lib/graphics/plotly-spec.ts
+  s_103540a1b46cd4::t_da510b187f1fcb 249
+src/lib/calc/plot.ts
+  s_103540a1b46cd4::t_bd5072c36a4416 446
+src/lib/graphics/controls.ts
+  s_103540a1b46cd4::t_6aecf190458aee 207
+  s_103540a1b46cd4::t_f2f1da0979b684 192
+src/lib/graphics/figure-view.ts
+  s_103540a1b46cd4::t_0a00c7563de0e8 172-188,294,356,388
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e31cf150c1104e7e2b2f9fc94a8a898c1b8a57c3",
+  "prompts": {},
+  "sessions": {
+    "s_103540a1b46cd4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f947a33d-2a27-446a-97ae-b47c0ef478e6",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
