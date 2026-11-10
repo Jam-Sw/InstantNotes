@@ -2,6 +2,7 @@ import {
   CalcError,
   CELL_REF,
   colVector,
+  errorText,
   evaluate,
   isMatrix,
   matrix,
@@ -94,8 +95,7 @@ export function evaluateGrid(
       const v = evaluate(text(r, c).slice(1), scopeFor(r, c));
       result = { text: formatValue(v, precision), error: false, value: v };
     } catch (e) {
-      if (!(e instanceof CalcError)) throw e;
-      result = { text: e.message, error: true, value: null };
+      result = { text: errorText(e), error: true, value: null };
     }
     out.set(k, result);
     state.set(k, 2);

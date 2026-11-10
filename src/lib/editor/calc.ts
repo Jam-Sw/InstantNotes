@@ -1,9 +1,9 @@
 import { Facet, StateField, type EditorState } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
 import type { SyntaxNode } from "@lezer/common";
-import { CalcError, compileLine, runBlock, type Precision, type Scope, type Value } from "$lib/calc/engine";
+import { compileLine, errorText, runBlock, type Precision, type Scope, type Value } from "$lib/calc/engine";
 import { formatGrid, formatValue } from "$lib/calc/format";
-import { evaluateGrid, isFormula } from "$lib/calc/table";
+import { cellKey, evaluateGrid, isFormula } from "$lib/calc/table";
 import { Figures, type Figure } from "$lib/calc/plot";
 
 interface CalcPart {
@@ -48,8 +48,7 @@ function part(value: Value, precision: Precision): CalcPart {
 }
 
 function errorPart(e: unknown): CalcPart {
-  if (!(e instanceof CalcError)) throw e;
-  return { text: e.message, error: true, grid: null };
+  return { text: errorText(e), error: true, grid: null };
 }
 
 function runLine(src: string, env: Env): CalcPart[] {
@@ -127,20 +126,30 @@ function scanTable(node: SyntaxNode, state: EditorState, env: Env, items: CalcIt
   let r = 0;
   for (let row = node.firstChild; row; row = row.nextSibling) {
     if (row.name !== "TableHeader" && row.name !== "TableRow") continue;
-    const texts: string[] = [];
+    const cols: (SyntaxNode | null)[] = [];
+    let pending: SyntaxNode | null = null;
+    let first = true;
     for (let cell = row.firstChild; cell; cell = cell.nextSibling) {
-      if (cell.name !== "TableCell") continue;
-      const text = state.doc.sliceString(cell.from, cell.to);
-      if (isFormula(text)) cells.push({ r, c: texts.length, from: cell.from, to: cell.to });
-      texts.push(text);
+      if (cell.name === "TableCell") pending = cell;
+      else if (cell.name === "TableDelimiter") {
+        if (!first || pending) cols.push(pending);
+        pending = null;
+      } else continue;
+      first = false;
     }
+    if (pending) cols.push(pending);
+    const texts = cols.map((cell) => (cell ? state.doc.sliceString(cell.from, cell.to) : ""));
+    texts.forEach((text, c) => {
+      const cell = cols[c];
+      if (cell && isFormula(text)) cells.push({ r, c, from: cell.from, to: cell.to });
+    });
     grid.push(texts);
     r++;
   }
   if (cells.length === 0) return;
   const results = evaluateGrid(grid, true, env, env.precision);
   for (const cell of cells) {
-    const out = results.get(cell.r * 4096 + cell.c);
+    const out = results.get(cellKey(cell.r, cell.c));
     if (!out) continue;
     const parts = out.error
       ? [{ text: out.text, error: true, grid: null }]

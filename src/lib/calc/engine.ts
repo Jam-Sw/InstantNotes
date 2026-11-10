@@ -197,6 +197,7 @@ function toMlMatrix(v: Value, what: string): MlMatrix {
   if (hasComplex(v)) fail(`${what}: complex matrix isn't supported here`);
   if (typeof v === "number") return new MlMatrix([[v]]);
   if (!isMatrix(v)) fail(`${what} needs a matrix`);
+  if (v.data.length === 0) fail(`${what}: matrix is empty`);
   const rows: number[][] = new Array(v.rows);
   for (let i = 0; i < v.rows; i++) {
     rows[i] = Array.from(v.data.subarray(i * v.cols, (i + 1) * v.cols));
@@ -683,6 +684,28 @@ function colMajorRead(m: Matrix, k: number): { re: number; im: number } {
 
 const ENDS: number[] = [];
 
+const MAX_CALL_DEPTH = 256;
+const MAX_CALLS = 500_000;
+let callDepth = 0;
+let callCount = 0;
+let callBudgetHeld = false;
+
+function enterCall(): void {
+  if (callDepth === 0 && !callBudgetHeld) callCount = 0;
+  if (callDepth >= MAX_CALL_DEPTH) fail("too much recursion");
+  if (++callCount > MAX_CALLS) fail(`call limit exceeded (${MAX_CALLS} calls)`);
+  callDepth++;
+}
+
+export function errorText(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+function isMask(arg: Value, size: number): boolean {
+  if (!isMatrix(arg) || arg.imag || arg.data.length !== size) return false;
+  return arg.data.some((x) => x === 0) && arg.data.every((x) => x === 0 || x === 1);
+}
+
 function indexList(arg: Value, size: number, what: string): Int32Array {
   const src = flat(arg);
   let isMask = src.length === size && size > 0;
@@ -807,7 +830,8 @@ function assignIndexed(target: Value | undefined, args: Arg[], rhs: Value, scope
         : (() => {
             ENDS.push(total);
             try {
-              return indexList(args[0](scope), Math.max(total, 1_000_000), "index");
+              const idx = args[0](scope);
+              return indexList(idx, isMask(idx, total) ? total : Math.max(total, 1_000_000), "index");
             } finally {
               ENDS.pop();
             }
@@ -851,7 +875,8 @@ function assignIndexed(target: Value | undefined, args: Arg[], rhs: Value, scope
     if (a === ":") return Int32Array.from({ length: cur }, (_, i) => i);
     ENDS.push(cur);
     try {
-      return indexList(a(scope), Math.max(cur, 1_000_000), what);
+      const idx = a(scope);
+      return indexList(idx, isMask(idx, cur) ? cur : Math.max(cur, 1_000_000), what);
     } finally {
       ENDS.pop();
     }
@@ -3981,7 +4006,12 @@ class Parser {
                 get: (nm) => (locals.has(nm) ? locals.get(nm) : (capturedScope.get(nm) ?? callerScope.get(nm))),
                 set: (nm, val) => locals.set(nm, val),
               };
-              return body.multi ? body.multi(inner, nargout) : [body.fn(inner)];
+              enterCall();
+              try {
+                return body.multi ? body.multi(inner, nargout) : [body.fn(inner)];
+              } finally {
+                callDepth--;
+              }
             },
           };
           return handle;
@@ -4001,7 +4031,7 @@ class Parser {
           const v = callerScope.get(name);
           if (v && isFnHandle(v)) return v.call(callArgs, callerScope, nargout);
           if (!builtin) fail(`undefined: ${name}`);
-          return builtin(callArgs, callerScope, nargout);
+          return wrapMathError(name, () => builtin(callArgs, callerScope, nargout));
         },
       }),
     };
@@ -4078,7 +4108,7 @@ class Parser {
           if (a === ":") fail(`${name} doesn't take ":"`);
           values[i] = a(s);
         }
-        return builtin(values, s, nargout);
+        return wrapMathError(name, () => builtin(values, s, nargout));
       };
       return {
         draw: DRAWING.has(name) && builtin !== undefined,
@@ -4528,6 +4558,20 @@ export function runBlock(
   scope: Scope,
   initialPrecision: Precision = "short",
 ): { precision: Precision; outcomes: BlockLineOutcome[] } {
+  callCount = 0;
+  callBudgetHeld = true;
+  try {
+    return runLines(lines, scope, initialPrecision);
+  } finally {
+    callBudgetHeld = false;
+  }
+}
+
+function runLines(
+  lines: readonly string[],
+  scope: Scope,
+  initialPrecision: Precision,
+): { precision: Precision; outcomes: BlockLineOutcome[] } {
   let precision = initialPrecision;
   const needsStructured = lines.some((ln) => BLOCK_TRIGGER_RE.test(stripMatlabComment(ln)));
   if (!needsStructured) {
@@ -4547,8 +4591,7 @@ export function runBlock(
           }
         }
       } catch (e) {
-        if (!(e instanceof CalcError)) throw e;
-        outcomes.push({ line: i, precision, error: e.message });
+        outcomes.push({ line: i, precision, error: errorText(e) });
       }
     }
     return { precision, outcomes };
@@ -4565,12 +4608,11 @@ export function runBlock(
     const clauses = splitTopLevelClauses(lines);
     ast = parseBlockAst(clauses);
   } catch (e) {
-    if (!(e instanceof CalcError)) throw e;
     const errLine = Math.max(
       0,
       lines.findIndex((l) => l.trim().length > 0),
     );
-    outcomes.push({ line: errLine, precision, error: e.message });
+    outcomes.push({ line: errLine, precision, error: errorText(e) });
     return { precision, outcomes };
   }
 
@@ -4704,13 +4746,18 @@ export function runBlock(
                 },
                 set: (nm, val) => locals.set(nm, val),
               };
+              enterCall();
               fnCallDepth++;
+              const outerLoops = loopDepth;
+              loopDepth = 0;
               try {
                 execNodes(node.body, fnScope);
               } catch (sig) {
                 if (!(sig instanceof ControlSignal && sig.kind === "return")) throw sig;
               } finally {
+                loopDepth = outerLoops;
                 fnCallDepth--;
+                callDepth--;
               }
               if (node.outputs.length === 0) return [locals.get("ans") ?? 0];
               return node.outputs.map((outName) => locals.get(outName) ?? 0);
@@ -4728,8 +4775,7 @@ export function runBlock(
       execNodes([node], scope);
     } catch (e) {
       if (e instanceof ControlSignal && e.kind === "return") break;
-      if (!(e instanceof CalcError)) throw e;
-      outcomes.push({ line: node.line, precision, error: e.message });
+      outcomes.push({ line: node.line, precision, error: errorText(e) });
     }
   }
 
