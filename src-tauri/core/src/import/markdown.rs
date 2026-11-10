@@ -286,11 +286,25 @@ fn parse_inline(rest: &str) -> Option<(usize, Inline<'_>)> {
         return Some((skip + 2 + end + 2, Inline::Wiki { embed, inner }));
     }
     let body = after.strip_prefix('[')?;
-    let close = body.find("](")?;
-    let text = &body[..close];
-    if text.contains('\n') {
+    let mut nested = 0usize;
+    let mut close = None;
+    for (at, c) in body.char_indices() {
+        match c {
+            '[' => nested += 1,
+            ']' if nested == 0 => {
+                close = Some(at);
+                break;
+            }
+            ']' => nested -= 1,
+            '\n' => return None,
+            _ => {}
+        }
+    }
+    let close = close?;
+    if !body[close + 1..].starts_with('(') {
         return None;
     }
+    let text = &body[..close];
     let target_start = &body[close + 2..];
     let mut depth = 0usize;
     let mut end = None;
