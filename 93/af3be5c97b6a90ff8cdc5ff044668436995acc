@@ -1,0 +1,42 @@
+src/lib/stores/editor.svelte.ts
+  s_f18d87e295811f::t_eb1fddf3656817 10,47,58,71,82,90,112,148-150
+  s_f18d87e295811f::t_075fb57e56b6d1 151-152
+src/lib/components/settings/SettingsEditor.svelte
+  s_f18d87e295811f::t_eb1fddf3656817 81-88
+src/lib/title-field.test.ts
+  s_f18d87e295811f::t_be7844334332d7 2
+src/lib/components/NoteEditor.svelte
+  s_f18d87e295811f::t_e5c66569f4109b 497
+  s_f18d87e295811f::t_83b9975a3598db 767
+  s_f18d87e295811f::t_64f259fdc60a13 647-649,651,654-655,657-663
+  s_f18d87e295811f::t_857810db1c6cea 43,234-249,289-319,321-327,428,430,656,664-685,709,721-723,726
+  s_f18d87e295811f::t_7d55476f5081bd 700,706,708,711-713,717-720
+  s_f18d87e295811f::t_2b5ffce8054ab0 42
+  s_f18d87e295811f::t_abb93fb3c5cf60 320
+CHANGELOG.md
+  s_f18d87e295811f::t_857810db1c6cea 23
+src/lib/components/NoteEditor.test.ts
+  s_f18d87e295811f::t_857810db1c6cea 38,95,101,107
+src/lib/stores/editor.svelte.test.ts
+  s_f18d87e295811f::t_eb1fddf3656817 179,184,204
+  s_f18d87e295811f::t_2538dad09b5295 73
+src/lib/components/settings/SettingsEditor.test.ts
+  s_f18d87e295811f::t_eb1fddf3656817 22,105-110
+  s_f18d87e295811f::t_3bb07ff9b0a73a 111-112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "93af3be5c97b6a90ff8cdc5ff044668436995acc",
+  "prompts": {},
+  "sessions": {
+    "s_f18d87e295811f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "54619576-5a20-46e6-874d-9992a67d352f",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
