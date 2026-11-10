@@ -1,0 +1,121 @@
+src/plugins/assist/index.test.ts
+  s_7786ade5abf5b4::t_c47f4cfa73ad76 155-160,166-171,177-183,185,187-190,418-419
+  s_7786ade5abf5b4::t_22968a9f35ca2b 1-4,8,11-13,19-22,24-28,30-33,42-46,60-66,68-78,85-87,89-91,112-119,121-136,141-147,149-154
+  s_7786ade5abf5b4::t_7d4687cf5003d8 5,92-111,244-333,359
+  s_7786ade5abf5b4::t_1dd40a29c44d0e 7,14-18,191-196,198-214,216-237,334-336,340-342,344-351,354-356,358,360-372,376-387,393-396,405-406,408-410,414-417
+  s_7786ade5abf5b4::t_eacc8d24cad97d 9-10,34-38,47-51,53-59,79-84,137-140,161-165,172-176,238-240,337-339,388-392,397-404,411-413
+  s_7786ade5abf5b4::t_ca7a12223cbf32 6,23,29,39-41,52,67,88,120,148,184,186,197,215,241-243,343,352-353,357,373-375,407
+src-tauri/src/shell/plugins.rs
+  s_7786ade5abf5b4::t_eacc8d24cad97d 57-66,68,70-87,92,103-112
+  s_7786ade5abf5b4::t_e1f58ce6035b92 1-50,52-56,67,69,88-91,93-102,113-144
+  s_7786ade5abf5b4::t_01452435afdd5a 51
+package.json
+  s_7786ade5abf5b4::t_e1f58ce6035b92 65
+  s_7786ade5abf5b4::t_7bcd4ebae348e4 50
+src/lib/plugin/index.ts
+  s_7786ade5abf5b4::t_a13929cee0f256 1,9-14,16,27-32
+src-tauri/src/lib.rs
+  s_7786ade5abf5b4::t_eacc8d24cad97d 298
+  s_7786ade5abf5b4::t_e1f58ce6035b92 99-100,296-297
+src/lib/editor/ghost.test.ts
+  s_7786ade5abf5b4::t_1dd40a29c44d0e 1,3-5,7-13,17-21,23-86,99-112,114-141
+  s_7786ade5abf5b4::t_010010a2214132 2,6,14-16,22,87-98
+  s_7786ade5abf5b4::t_2ddc8056d7d52a 113
+src/lib/editor/plugins.ts
+  s_7786ade5abf5b4::t_a8fd0eee123c92 459-461,463-469,472,476-484,486-491,496-501,504-506,508-510,514-517,533
+  s_7786ade5abf5b4::t_ce0e58f4bd39f2 7,242,470-471,473-475,502-503,518-519,530
+  s_7786ade5abf5b4::t_ca7a12223cbf32 2,43,120-121,233,297,301,363,390,416,436,440,458,462,485,549
+  s_7786ade5abf5b4::t_a13929cee0f256 8,12,20,30,56,72-78,82,86,127,135,162,170,234-241,243-245,254,257-264,282,292-296,298,306,308,333,335-336,340-341,346,360,364-371,373-389,391-395,402-403,406-415,417-435,437-439,441,507,511-513
+  s_7786ade5abf5b4::t_7d4687cf5003d8 70,122,231,299,520-529,531-532
+  s_7786ade5abf5b4::t_35e601288f6a55 58-69,136-142,163-169,226-230,266-270,283-287,352-358,492-495
+  s_7786ade5abf5b4::t_c9ec3efb7518c0 71,123,232,300,534
+src/lib/api/client.ts
+  s_7786ade5abf5b4::t_eacc8d24cad97d 230-231
+  s_7786ade5abf5b4::t_e1f58ce6035b92 233
+  s_7786ade5abf5b4::t_9598aa2faff70b 229,232
+src/plugins/calc/index.ts
+  s_7786ade5abf5b4::t_1840315e2df65b 82-83
+src/lib/plugin/types.ts
+  s_7786ade5abf5b4::t_35e601288f6a55 4-8,11-15,67-70,74-78,91-94,135-141
+  s_7786ade5abf5b4::t_a13929cee0f256 10,20,29-33,35-36,44,48,90,95,102-103,108,111-112,131,144
+  s_7786ade5abf5b4::t_b4761c507646dd 34,66,71-72,83-89,96-101,120-125,142-143,145-148,150
+  s_7786ade5abf5b4::t_ce0e58f4bd39f2 50-51
+  s_7786ade5abf5b4::t_ca7a12223cbf32 119,134,149
+  s_7786ade5abf5b4::t_e43666b10696c1 49,151
+src/lib/components/settings/FileRow.svelte
+  s_7786ade5abf5b4::t_b4761c507646dd 1-49
+src/lib/components/settings/SettingsEditor.test.ts
+  s_7786ade5abf5b4::t_cd78d8f80d3755 129-145
+src-tauri/src/shell/mod.rs
+  s_7786ade5abf5b4::t_e1f58ce6035b92 11
+src/lib/editor/constructs/plugin.ts
+  s_7786ade5abf5b4::t_a8fd0eee123c92 137
+  s_7786ade5abf5b4::t_ce0e58f4bd39f2 2,129
+  s_7786ade5abf5b4::t_ca7a12223cbf32 23,147
+  s_7786ade5abf5b4::t_1840315e2df65b 47,136,138-142
+  s_7786ade5abf5b4::t_9598aa2faff70b 45-46
+  s_7786ade5abf5b4::t_231f95c1d133b9 143-144
+src/lib/editor/ghost.ts
+  s_7786ade5abf5b4::t_a8fd0eee123c92 3,5,7-15,17-70,75-91,98-102,104-108,120,126,157,163,169-177,179
+  s_7786ade5abf5b4::t_ca7a12223cbf32 1-2,16,103,139,152,178
+  s_7786ade5abf5b4::t_3d3fb2247d6cce 4
+  s_7786ade5abf5b4::t_ce0e58f4bd39f2 6,109,168
+  s_7786ade5abf5b4::t_35e601288f6a55 71-74,92-97,110-119,121-125,127-138,140-151,153-156,158-162,164-167
+src/lib/editor/index.ts
+  s_7786ade5abf5b4::t_ce0e58f4bd39f2 27,51
+src/lib/components/settings/SettingsEditor.svelte
+  s_7786ade5abf5b4::t_1840315e2df65b 6,22,24,194-204,206-212
+  s_7786ade5abf5b4::t_b4761c507646dd 9-10,23,172-193,205
+src/lib/editor/ARCHITECTURE.md
+  s_7786ade5abf5b4::t_cd78d8f80d3755 81-85,87
+  s_7786ade5abf5b4::t_b1a81dcf0d0280 73-80,90
+  s_7786ade5abf5b4::t_eacc8d24cad97d 86
+src/lib/stores/plugins.svelte.test.ts
+  s_7786ade5abf5b4::t_1dd40a29c44d0e 50-65,90-99
+  s_7786ade5abf5b4::t_7d4687cf5003d8 5-6,11-12,26-27,66-89
+src-tauri/Cargo.toml
+  s_7786ade5abf5b4::t_e1f58ce6035b92 51
+src/plugins/assist/index.ts
+  s_7786ade5abf5b4::t_3d3fb2247d6cce 1-11,71-78,80,82-84,86,89-111,113-115,119-126,133-134,136-140,144-157,175-176,199,202-214,216-219,221-227,229-237,240-243,246-248,250-256,258-277,279-284,286-301,304,343-357,365-367,370
+  s_7786ade5abf5b4::t_ca7a12223cbf32 43,48,59,65,135,142,187,193,220,228,238-239,244,249,257,285,302-303
+  s_7786ade5abf5b4::t_eacc8d24cad97d 53,67,79,81,85,87-88,112,116-118,127-132,141,143,166-172,183-186,188-190,245,329-342,358-364
+  s_7786ade5abf5b4::t_22968a9f35ca2b 17,55,165
+  s_7786ade5abf5b4::t_1840315e2df65b 12-16,18-42,44-47,49-52,54,56-58,60-64,66,68-70,158-164,173-174,177-182,191-192,194-198,200-201,215,278,305-328,368-369,371-373
+CHANGELOG.md
+  s_7786ade5abf5b4::t_eacc8d24cad97d 15
+src/lib/components/Editor.svelte
+  s_7786ade5abf5b4::t_a8fd0eee123c92 29,83
+src/lib/editor/theme.ts
+  s_7786ade5abf5b4::t_a8fd0eee123c92 145-149
+  s_7786ade5abf5b4::t_22968a9f35ca2b 124-128
+  s_7786ade5abf5b4::t_1840315e2df65b 108-122,129-144,150-151
+  s_7786ade5abf5b4::t_3d3fb2247d6cce 123
+src/lib/components/settings/TextRow.svelte
+  s_7786ade5abf5b4::t_b4761c507646dd 1-50
+src/lib/stores/plugins.svelte.ts
+  s_7786ade5abf5b4::t_ca7a12223cbf32 1,5,21,50,85
+  s_7786ade5abf5b4::t_b4761c507646dd 2,4,8,13-18,32-41,45,49,51-57,59,62,84,86-89,135
+  s_7786ade5abf5b4::t_eacc8d24cad97d 19-20,22-31,65-73,90-114,118,122,124
+  s_7786ade5abf5b4::t_a13929cee0f256 7,63-64
+  s_7786ade5abf5b4::t_e43ca315443f36 6
+package-lock.json
+  s_7786ade5abf5b4::t_a4b6eabe895e64 29,44,2974-2983,4277-4299,4987-4995
+src-tauri/Cargo.lock
+  s_7786ade5abf5b4::t_53fb4ae8f03fbc 2806
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b437e537150fea48636b8f1634485eb88dee1822",
+  "prompts": {},
+  "sessions": {
+    "s_7786ade5abf5b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "df8ca25e-cc76-4839-8e50-9a735fcbeb22",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
