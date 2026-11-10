@@ -1,0 +1,35 @@
+src/lib/components/settings/SettingsEditor.svelte
+  s_103540a1b46cd4::t_06b5046f9f3882 42
+  s_103540a1b46cd4::t_0a00c7563de0e8 8,47
+src/lib/components/WelcomeScreen.svelte
+  s_103540a1b46cd4::t_0a00c7563de0e8 8-9,137
+src/lib/components/settings/SettingsBackups.svelte
+  s_103540a1b46cd4::t_0a00c7563de0e8 90,96
+src/lib/stores/capture-keys.svelte.ts
+  s_103540a1b46cd4::t_4bcee58d0a4850 1-27
+src/lib/components/settings/SettingsBehavior.svelte
+  s_103540a1b46cd4::t_0a00c7563de0e8 8,71,83
+src/routes/+page.svelte
+  s_103540a1b46cd4::t_bbb50bafe294a1 178
+  s_103540a1b46cd4::t_ffce754898f407 33
+src/lib/components/NoteList.svelte
+  s_103540a1b46cd4::t_0a00c7563de0e8 5-6,358
+src/lib/components/settings/SettingsSync.svelte
+  s_103540a1b46cd4::t_0a00c7563de0e8 82,87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4bb7c724fa934f12243b7973943ef0d3b6c821d6",
+  "prompts": {},
+  "sessions": {
+    "s_103540a1b46cd4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f947a33d-2a27-446a-97ae-b47c0ef478e6",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
