@@ -35,7 +35,6 @@ vi.mock("$lib/stores/editor.svelte", () => ({
     showExactTime: false,
     spellcheck: false,
     wrap: true,
-    calcPrecision: "short",
     indentWidth: 2,
     toggleToolbar: vi.fn(),
     toggleSourceMode: vi.fn(),

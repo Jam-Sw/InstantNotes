@@ -11,6 +11,7 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 - `calc`, `matlab` and `m` fences compute each line (`x = 3*4`, `;` silences, `%` comments, `format long`); inline `` `=expr` `` shares the note's variables; matrices, ranges and `sum`, `mean`, `std`, `det`, `inv` and more.
 - `calc` plots: `linspace`, `figure`, `plot`, `plot3`, `hold on|off` draw under the fence through `src/lib/graphics` (Graph's projection and controls); drag pans or orbits, Ctrl+wheel zooms, double-click resets.
+- Plugin contract `src/lib/plugin/types.ts`: a folder `src/plugins/<id>/` default-exports a `Plugin` (claims `fences`, `inline`, `cells`; `prefs`; `theme`; `block`; one `run(regions, prefs)` returning views); `pluginField` and `PluginSpec` replace `calcField` and `CalcSpec`. Calc is `src/plugins/calc`; Settings > Editor > More > Calc (`plugin.calc.enabled`, default on) switches it off in notes and sheets; `editor.calcPrecision` becomes `plugin.calc.precision`.
 - Table cells starting with `=` compute: `=Price*Qty` by header, `=sum(above)`, `=mean(B2:B5)`, `=sum(Price(:))`; sheets take the same formulas.
 - Around this note in the status bar: notes sharing uncommon words or tags with the paragraph under the cursor (`related_notes`, MCP `find_related`, `suggest.related`); Not related hides a pair.
 - Fold into one: fold notes into the open note, archiving the sources; Undo or activity Revert restores them (`fold_notes`, `undo_fold`, MCP `fold_notes`).

@@ -1,5 +1,4 @@
 import { getSetting, setSetting } from "$lib/api/client";
-import type { Precision } from "$lib/calc/engine";
 
 const KEY_ZOOM = "editor.zoom";
 const KEY_TOOLBAR = "editor.toolbarOpen";
@@ -8,7 +7,6 @@ const KEY_EXACT_TIME = "editor.showExactTime";
 const KEY_WIDTH = "editor.width";
 const KEY_SPELLCHECK = "editor.spellcheck";
 const KEY_WRAP = "editor.wrap";
-const KEY_CALC_PRECISION = "editor.calcPrecision";
 const KEY_AUTOSAVE = "editor.autosaveMs";
 const KEY_INDENT = "editor.indentWidth";
 const MIN = 0.7;
@@ -20,7 +18,6 @@ export type EditorWidth = "readable" | "wide" | "full";
 export type AutosaveMs = 150 | 400 | 1000;
 export type IndentWidth = 2 | 4;
 
-const isPrecision = (v: unknown): v is Precision => v === "short" || v === "long";
 const isAutosave = (v: unknown): v is AutosaveMs => v === 150 || v === 400 || v === 1000;
 const isIndent = (v: unknown): v is IndentWidth => v === 2 || v === 4;
 
@@ -46,7 +43,6 @@ export const EDITOR_DEFAULTS: {
   width: EditorWidth;
   spellcheck: boolean;
   wrap: boolean;
-  calcPrecision: Precision;
   autosaveMs: AutosaveMs;
   indentWidth: IndentWidth;
 } = {
@@ -57,7 +53,6 @@ export const EDITOR_DEFAULTS: {
   width: "readable",
   spellcheck: false,
   wrap: true,
-  calcPrecision: "short",
   autosaveMs: 400,
   indentWidth: 2,
 };
@@ -70,7 +65,6 @@ class EditorPrefs {
   width = $state<EditorWidth>(EDITOR_DEFAULTS.width);
   spellcheck = $state(EDITOR_DEFAULTS.spellcheck);
   wrap = $state(EDITOR_DEFAULTS.wrap);
-  calcPrecision = $state<Precision>(EDITOR_DEFAULTS.calcPrecision);
   autosaveMs = $state<AutosaveMs>(EDITOR_DEFAULTS.autosaveMs);
   indentWidth = $state<IndentWidth>(EDITOR_DEFAULTS.indentWidth);
 
@@ -81,7 +75,7 @@ class EditorPrefs {
     if (this.#loaded) return;
     this.#loaded = true;
     try {
-      const [z, open, source, exact, width, spell, wrap, precision, autosave, indent] = await Promise.all([
+      const [z, open, source, exact, width, spell, wrap, autosave, indent] = await Promise.all([
         getSetting<number>(KEY_ZOOM),
         getSetting<boolean>(KEY_TOOLBAR),
         getSetting<boolean>(KEY_SOURCE),
@@ -89,7 +83,6 @@ class EditorPrefs {
         getSetting<string>(KEY_WIDTH),
         getSetting<boolean>(KEY_SPELLCHECK),
         getSetting<boolean>(KEY_WRAP),
-        getSetting<string>(KEY_CALC_PRECISION),
         getSetting<number>(KEY_AUTOSAVE),
         getSetting<number>(KEY_INDENT),
       ]);
@@ -111,7 +104,6 @@ class EditorPrefs {
       }
       if (!this.#touched.has(KEY_SPELLCHECK) && typeof spell === "boolean") this.spellcheck = spell;
       if (!this.#touched.has(KEY_WRAP) && typeof wrap === "boolean") this.wrap = wrap;
-      if (!this.#touched.has(KEY_CALC_PRECISION) && isPrecision(precision)) this.calcPrecision = precision;
       if (!this.#touched.has(KEY_AUTOSAVE) && isAutosave(autosave)) this.autosaveMs = autosave;
       if (!this.#touched.has(KEY_INDENT) && isIndent(indent)) this.indentWidth = indent;
     } catch {
@@ -145,11 +137,6 @@ class EditorPrefs {
   setWrap(v: boolean): void {
     this.wrap = v;
     this.#save(KEY_WRAP, v);
-  }
-
-  setCalcPrecision(v: Precision): void {
-    this.calcPrecision = v;
-    this.#save(KEY_CALC_PRECISION, v);
   }
 
   setAutosaveMs(v: AutosaveMs): void {

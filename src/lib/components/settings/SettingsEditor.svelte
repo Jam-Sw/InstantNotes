@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { editorPrefs, EDITOR_DEFAULTS, type EditorWidth, type AutosaveMs, type IndentWidth } from "$lib/stores/editor.svelte";
-  import type { Precision } from "$lib/calc/engine";
+  import { pluginPrefs } from "$lib/stores/plugins.svelte";
+  import { plugins } from "$lib/plugin";
   import ToggleRow from "$lib/components/settings/ToggleRow.svelte";
   import SegmentedRow from "$lib/components/settings/SegmentedRow.svelte";
   import { getSetting, setSetting } from "$lib/api/client";
@@ -21,10 +22,6 @@
     { value: "readable", label: "Readable" },
     { value: "wide", label: "Wide" },
     { value: "full", label: "Full width" },
-  ];
-  const precisions: { value: Precision; label: string }[] = [
-    { value: "short", label: "Short" },
-    { value: "long", label: "Long" },
   ];
   const autosaves: { value: string; label: string }[] = [
     { value: "150", label: "Instant" },
@@ -49,6 +46,7 @@
 
   onMount(() => {
     void editorPrefs.init();
+    void pluginPrefs.init();
     getSetting<unknown>(TAG_SUGGEST_KEY).then(
       (v) => (tagSuggest = parseSuggestSetting(v)),
       () => {},
@@ -149,15 +147,27 @@
       reset={editorPrefs.wrap !== EDITOR_DEFAULTS.wrap ? () => editorPrefs.setWrap(EDITOR_DEFAULTS.wrap) : undefined}
       onchange={(v) => editorPrefs.setWrap(v)}
     />
-    <SegmentedRow
-      label="Calc precision"
-      options={precisions}
-      value={editorPrefs.calcPrecision}
-      reset={editorPrefs.calcPrecision !== EDITOR_DEFAULTS.calcPrecision
-        ? () => editorPrefs.setCalcPrecision(EDITOR_DEFAULTS.calcPrecision)
-        : undefined}
-      onchange={(v) => editorPrefs.setCalcPrecision(v)}
-    />
+    {#each plugins as p (p.id)}
+      <ToggleRow
+        label={p.label}
+        checked={pluginPrefs.on(p)}
+        reset={pluginPrefs.on(p) ? undefined : () => pluginPrefs.setOn(p, true)}
+        onchange={(v) => pluginPrefs.setOn(p, v)}
+      />
+      {#if pluginPrefs.on(p)}
+        {#each p.prefs ?? [] as spec (spec.key)}
+          <SegmentedRow
+            label={spec.label}
+            options={[...spec.options]}
+            value={pluginPrefs.value(p, spec)}
+            reset={pluginPrefs.value(p, spec) !== spec.default
+              ? () => pluginPrefs.setValue(p, spec, spec.default)
+              : undefined}
+            onchange={(v) => pluginPrefs.setValue(p, spec, v)}
+          />
+        {/each}
+      {/if}
+    {/each}
     <SegmentedRow
       label="Autosave delay"
       options={autosaves}

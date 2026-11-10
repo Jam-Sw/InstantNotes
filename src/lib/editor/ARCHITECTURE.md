@@ -68,12 +68,16 @@ Each module is directly specified: purpose, construction, public surface.
 - `links.ts`, `images.ts`, `tasks.ts`, `blocks.ts`: behavior modules (open
   routing, paste/drop capture, toggle, marker backspace) plus their pure,
   tested helpers. State fields and effects keep their old names.
-- `calc.ts`: `calcField`, the one evaluation of every calc fence line, inline
-  `=expr` and table `=formula` in the document, in order, through
-  `src/lib/calc/` (the engine notes, tables and sheets share). Recomputed when
-  the document or its syntax tree changes; `constructs/calc.ts` only reads it.
-  Each calc fence gets its own `Figures`; its plots become one `figure` item at
-  the fence end, drawn by `src/lib/graphics/figure-view.ts`.
+- `plugins.ts`: `pluginField`, the host half of the plugin contract in
+  `src/lib/plugin/types.ts`. It finds the regions each enabled plugin claims
+  (fence languages, inline code by prefix, table cells by prefix), hands a
+  plugin all its regions in document order through its one `run(regions, prefs)`
+  and places the returned views. Recomputed when the document, its syntax tree
+  or the `pluginConfig` facet changes; `constructs/plugin.ts` only reads it and
+  draws text, grid and block views. A plugin is a folder `src/plugins/<id>/`
+  whose `index.ts` default-exports a `Plugin`; `src/lib/plugin/index.ts` finds
+  them by glob, `stores/plugins.svelte.ts` holds each one's switch and prefs
+  (`plugin.<id>.enabled`, `plugin.<id>.<key>`). `src/plugins/calc` is the first.
 - `theme.ts`: all kernel base themes in one place.
 - `index.ts`: `editorKernel(opts)`, the only entry point. Editor.svelte
   consumes this and nothing else from the kernel.

@@ -22,7 +22,9 @@
     type Range,
     type Sheet,
   } from "$lib/sheet/model";
-  import { cellKey, evaluateGrid } from "$lib/calc/table";
+  import { sheetViews } from "$lib/plugin";
+  import { cellAt as viewKey } from "$lib/plugin/types";
+  import { pluginPrefs } from "$lib/stores/plugins.svelte";
   import {
     clampSelection,
     coversFullCols,
@@ -85,7 +87,7 @@
   let editor = $state<HTMLTextAreaElement>();
 
   const rows = $derived(sheet.rows.length);
-  const computed = $derived(evaluateGrid(sheet.rows, false));
+  const computed = $derived(sheetViews(pluginPrefs.config, sheet.rows));
   const cols = $derived(sheet.cols.length);
   const range = $derived(rangeOf(sel));
   const tableWidth = $derived(ROW_HEAD_W + sheet.cols.reduce((sum, c) => sum + c.w, 0));
@@ -630,7 +632,7 @@
                   }}
                 ></textarea>
               {:else}
-                {@const out = computed.get(cellKey(r, c))}
+                {@const out = computed.get(viewKey(r, c))}
                 {#if out}
                   <span class="cell-text formula" class:error={out.error}>{out.text}</span>
                 {:else}

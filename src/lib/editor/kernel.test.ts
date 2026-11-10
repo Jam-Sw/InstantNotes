@@ -17,8 +17,9 @@ import { HrSpec } from "./constructs/hr";
 import { TaskSpec } from "./constructs/task";
 import { ImageSpec } from "./constructs/image";
 import { TagSpec } from "./constructs/tags";
-import { CalcSpec } from "./constructs/calc";
-import { calcField } from "./calc";
+import { PluginSpec } from "./constructs/plugin";
+import { pluginConfig, pluginField } from "./plugins";
+import calc from "../../plugins/calc";
 
 function makeScanner(): ConstructScanner {
   return new ConstructScanner(
@@ -34,7 +35,7 @@ function makeScanner(): ConstructScanner {
       new TaskSpec(),
       new ImageSpec((p) => `asset://${p}`),
     ],
-    [new TagSpec(), new CalcSpec()],
+    [new TagSpec(), new PluginSpec()],
   );
 }
 
@@ -45,7 +46,8 @@ function stateOf(doc: string): EditorState {
       markdown({ base: markdownLanguage, extensions: [highlightExtension] }),
       linkPrefsField,
       attachmentsBaseField,
-      calcField,
+      pluginField,
+      pluginConfig.of({ plugins: [calc], prefs: {} }),
     ],
   });
   ensureSyntaxTree(state, doc.length, 5000);

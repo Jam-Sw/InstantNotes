@@ -25,6 +25,7 @@
   import { parseVaultSynced } from "$lib/vault-mirror";
   import { theme } from "$lib/stores/theme.svelte";
   import { editorPrefs } from "$lib/stores/editor.svelte";
+  import { pluginPrefs } from "$lib/stores/plugins.svelte";
   import { imagePrefs } from "$lib/stores/images.svelte";
   import { linkPrefs } from "$lib/stores/links.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
@@ -95,6 +96,7 @@
   onMount(() => {
     void sticky.load(noteId);
     void editorPrefs.init();
+    void pluginPrefs.init();
     void imagePrefs.init();
     void linkPrefs.init();
     void agents.init();

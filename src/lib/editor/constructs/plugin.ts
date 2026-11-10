@@ -1,37 +1,36 @@
 import { Decoration, WidgetType } from "@codemirror/view";
-import { calcField, type CalcItem } from "../calc";
-import { sameFigure, type Figure } from "$lib/calc/plot";
-import { mountFigure, type FigureHandle } from "$lib/graphics/figure-view";
+import { pluginField, type PluginItem } from "../plugins";
+import type { Block, BlockHandle, Plugin } from "$lib/plugin/types";
 import type { Emit, ScanContext, TextSpec } from "../types";
 
-class CalcWidget extends WidgetType {
+class ViewWidget extends WidgetType {
   constructor(
-    readonly item: CalcItem,
+    readonly item: PluginItem,
     readonly attached: boolean,
   ) {
     super();
   }
 
-  eq(o: CalcWidget): boolean {
+  eq(o: ViewWidget): boolean {
     return o.item.key === this.item.key && o.attached === this.attached;
   }
 
   toDOM(): HTMLElement {
     const el = document.createElement("span");
-    el.className = this.attached ? "cm-calc cm-calc-attached" : "cm-calc";
-    for (const part of this.item.parts) {
+    el.className = this.attached ? "cm-plugin cm-plugin-attached" : "cm-plugin";
+    for (const view of this.item.views) {
       const span = document.createElement("span");
-      span.className = part.error ? "cm-calc-error" : "cm-calc-value";
-      if (part.grid) {
+      span.className = view.error ? "cm-plugin-error" : "cm-plugin-value";
+      if (view.grid) {
         const table = document.createElement("table");
-        table.className = "cm-calc-matrix";
-        for (const row of part.grid) {
+        table.className = "cm-plugin-grid";
+        for (const row of view.grid) {
           const tr = table.insertRow();
           for (const cell of row) tr.insertCell().textContent = cell;
         }
         span.appendChild(table);
       } else {
-        span.textContent = part.text;
+        span.textContent = view.text;
       }
       el.appendChild(span);
     }
@@ -43,39 +42,47 @@ class CalcWidget extends WidgetType {
   }
 }
 
-const mounted = new WeakMap<HTMLElement, Map<number, FigureHandle>>();
+const mounted = new WeakMap<HTMLElement, Map<number, BlockHandle>>();
 
-class FigureWidget extends WidgetType {
-  constructor(readonly figures: readonly Figure[]) {
+class BlockWidget extends WidgetType {
+  constructor(
+    readonly plugin: Plugin,
+    readonly blocks: readonly Block[],
+  ) {
     super();
   }
 
-  eq(o: FigureWidget): boolean {
+  eq(o: BlockWidget): boolean {
+    const same = this.plugin.block?.same;
     return (
-      o.figures.length === this.figures.length &&
-      o.figures.every((f, i) => sameFigure(f, this.figures[i]))
+      o.plugin === this.plugin &&
+      same !== undefined &&
+      o.blocks.length === this.blocks.length &&
+      o.blocks.every((b, i) => same(b.data, this.blocks[i].data))
     );
   }
 
-  #fill(el: HTMLElement, handles: Map<number, FigureHandle>): void {
-    const keep = new Set(this.figures.map((f) => f.id));
+  #fill(el: HTMLElement, handles: Map<number, BlockHandle>): void {
+    const mount = this.plugin.block?.mount;
+    if (!mount) return;
+    const keep = new Set(this.blocks.map((b) => b.id));
     for (const [id, h] of handles) {
       if (keep.has(id)) continue;
       h.destroy();
       h.el.remove();
       handles.delete(id);
     }
-    for (const f of this.figures) {
-      const h = handles.get(f.id);
-      if (h) h.update(f);
-      else handles.set(f.id, mountFigure(f));
+    for (const b of this.blocks) {
+      const h = handles.get(b.id);
+      if (h) h.update(b.data);
+      else handles.set(b.id, mount(b.data));
     }
-    el.replaceChildren(...this.figures.map((f) => (handles.get(f.id) as FigureHandle).el));
+    el.replaceChildren(...this.blocks.map((b) => (handles.get(b.id) as BlockHandle).el));
   }
 
   toDOM(): HTMLElement {
     const el = document.createElement("div");
-    el.className = "cm-figures";
+    el.className = "cm-plugin-blocks";
     el.contentEditable = "false";
     const stop = (e: Event) => e.stopPropagation();
     const block = (e: Event) => {
@@ -88,7 +95,7 @@ class FigureWidget extends WidgetType {
     for (const ev of ["dragstart", "selectstart"]) {
       el.addEventListener(ev, block);
     }
-    const handles = new Map<number, FigureHandle>();
+    const handles = new Map<number, BlockHandle>();
     mounted.set(el, handles);
     this.#fill(el, handles);
     return el;
@@ -111,15 +118,15 @@ class FigureWidget extends WidgetType {
   }
 }
 
-export class CalcSpec implements TextSpec {
+export class PluginSpec implements TextSpec {
   scan(text: string, offset: number, cx: ScanContext, emit: Emit): void {
-    const table = cx.state.field(calcField, false);
+    const table = cx.state.field(pluginField, false);
     if (!table || table.items.length === 0) return;
     const end = offset + text.length;
     for (const item of table.between(offset, end)) {
-      if (item.kind === "figure") {
+      if (item.kind === "block") {
         if (item.to < offset || item.to > end) continue;
-        emit.at(item.to, Decoration.widget({ widget: new FigureWidget(item.figures), side: 2 }));
+        emit.at(item.to, Decoration.widget({ widget: new BlockWidget(item.plugin, item.blocks), side: 2 }));
         continue;
       }
       if (item.kind !== "line" && cx.preview) {
@@ -128,12 +135,12 @@ export class CalcSpec implements TextSpec {
           owner,
           item.innerFrom,
           item.innerTo,
-          Decoration.replace({ widget: new CalcWidget(item, false) }),
+          Decoration.replace({ widget: new ViewWidget(item, false) }),
         );
         continue;
       }
       if (item.to < offset || item.to > end) continue;
-      emit.at(item.to, Decoration.widget({ widget: new CalcWidget(item, true), side: 1 }));
+      emit.at(item.to, Decoration.widget({ widget: new ViewWidget(item, true), side: 1 }));
     }
   }
 }

@@ -25,8 +25,9 @@
     setAttachmentsBase,
     linkedImagePaths,
   } from "$lib/editor";
-  import { calcPrecision } from "$lib/editor/calc";
+  import { pluginExtension } from "$lib/editor/plugins";
   import { editorPrefs } from "$lib/stores/editor.svelte";
+  import { pluginPrefs } from "$lib/stores/plugins.svelte";
   import { linkPrefs } from "$lib/stores/links.svelte";
   import { listIndentChanges } from "$lib/list-indent";
   import {
@@ -73,19 +74,19 @@
   let lastPassage: string | undefined;
   const spellComp = new Compartment();
   const wrapComp = new Compartment();
-  const calcComp = new Compartment();
+  const pluginComp = new Compartment();
   const indentComp = new Compartment();
 
   const spellExt = () => EditorView.contentAttributes.of({ spellcheck: String(editorPrefs.spellcheck) });
   const wrapExt = () => (editorPrefs.wrap ? EditorView.lineWrapping : []);
-  const calcExt = () => calcPrecision.of(editorPrefs.calcPrecision);
+  const pluginExt = () => pluginExtension(pluginPrefs.config);
   const indentExt = () => indentUnit.of(" ".repeat(editorPrefs.indentWidth));
 
   function prefEffects(): StateEffect<unknown>[] {
     return [
       spellComp.reconfigure(spellExt()),
       wrapComp.reconfigure(wrapExt()),
-      calcComp.reconfigure(calcExt()),
+      pluginComp.reconfigure(pluginExt()),
       indentComp.reconfigure(indentExt()),
     ];
   }
@@ -140,7 +141,7 @@
           syntaxHighlighting(markdownHighlight),
           spellComp.of(spellExt()),
           wrapComp.of(wrapExt()),
-          calcComp.of(calcExt()),
+          pluginComp.of(pluginExt()),
           indentComp.of(indentExt()),
           cmPlaceholder(placeholder),
           EditorView.updateListener.of((u) => {
@@ -254,7 +255,7 @@
     void [
       editorPrefs.spellcheck,
       editorPrefs.wrap,
-      editorPrefs.calcPrecision,
+      pluginPrefs.config,
       editorPrefs.indentWidth,
     ];
     view?.dispatch({ effects: prefEffects() });

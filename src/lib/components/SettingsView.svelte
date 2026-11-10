@@ -17,6 +17,7 @@
   import SettingsGraph from "$lib/components/settings/SettingsGraph.svelte";
   import SettingsBehavior from "$lib/components/settings/SettingsBehavior.svelte";
   import { getLibraryStats, getCaptureLatency, openUrl } from "$lib/api/client";
+  import { plugins } from "$lib/plugin";
   import type { DashboardStats } from "$lib/api/types";
   import { formatBytes } from "$lib/format";
   import { isMac } from "$lib/platform";
@@ -55,6 +56,11 @@
 
   const DESKTOP_ONLY: ReadonlySet<Page> = new Set<Page>(["import", "agents", "feedback", "behavior"]);
 
+  const pluginKeywords = plugins
+    .flatMap((p) => [p.label, ...(p.prefs ?? []).map((spec) => spec.label)])
+    .join(" ")
+    .toLowerCase();
+
   const GROUPS: Group[] = (
     [
     {
@@ -62,7 +68,7 @@
       entries: [
         { id: "home", title: "Overview", desc: "Stats, release notes", keywords: "dashboard stats release notes changelog" },
         { id: "appearance", title: "Appearance", desc: "Theme, mode, font", keywords: "theme dark light font color body font marker flag space marker motion density line height accent scrollbars toast time" },
-        { id: "editor", title: "Editor", desc: "Width, timestamps, toolbar, suggestions", keywords: "toolbar markdown save time width exact save time source tag suggestions strictness around this note spellcheck wrap lines autosave delay calc precision indent width" },
+        { id: "editor", title: "Editor", desc: "Width, timestamps, toolbar, suggestions", keywords: "toolbar markdown save time width exact save time source tag suggestions strictness around this note spellcheck wrap lines autosave delay indent width " + pluginKeywords },
         { id: "list", title: "List", desc: "Sort, reopen, preview, recent", keywords: "sort by order newest oldest reopen last note startup restore preview length recent notes" },
         { id: "graph", title: "Graph", desc: "Labels, size, spread, depth", keywords: "labels node size spread focus depth" },
         { id: "behavior", title: "Behavior", desc: "Shortcut, tray, updates, confirms", keywords: "capture shortcut close to tray check for updates confirm before pane width limit" },

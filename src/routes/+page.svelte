@@ -28,6 +28,7 @@
   import { library } from "$lib/stores/library.svelte";
   import { updater } from "$lib/stores/updater.svelte";
   import { editorPrefs } from "$lib/stores/editor.svelte";
+  import { pluginPrefs } from "$lib/stores/plugins.svelte";
   import { imagePrefs } from "$lib/stores/images.svelte";
   import { sidebar } from "$lib/stores/sidebar.svelte";
   import { captureKeys } from "$lib/stores/capture-keys.svelte";
@@ -174,6 +175,7 @@
       .then(() => listReady)
       .then(() => library.reopenLast());
     void editorPrefs.init();
+    void pluginPrefs.init();
     void graphPrefs.init();
     captureKeys.init();
     void listReady.then(() => {
@@ -205,6 +207,7 @@
     void listen(EVENTS.SETTINGS_CHANGED, () => {
       void theme.init();
       void editorPrefs.reload();
+      void pluginPrefs.reload();
       void graphPrefs.reload();
       void listPrefs.reload().then(() => library.refresh());
       void imagePrefs.reload();

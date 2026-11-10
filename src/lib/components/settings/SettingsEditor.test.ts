@@ -2,6 +2,8 @@ import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, fireEvent, cleanup } from "@testing-library/svelte";
 import SettingsEditor from "./SettingsEditor.svelte";
 import { editorPrefs } from "$lib/stores/editor.svelte";
+import { pluginPrefs } from "$lib/stores/plugins.svelte";
+import { plugins } from "$lib/plugin";
 import { setSetting } from "$lib/api/client";
 
 vi.mock("$lib/api/client", () => ({
@@ -17,9 +19,9 @@ beforeEach(() => {
   editorPrefs.sourceMode = false;
   editorPrefs.spellcheck = false;
   editorPrefs.wrap = true;
-  editorPrefs.calcPrecision = "short";
   editorPrefs.autosaveMs = 400;
   editorPrefs.indentWidth = 2;
+  for (const p of plugins) for (const spec of p.prefs ?? []) pluginPrefs.setValue(p, spec, spec.default);
   vi.mocked(setSetting).mockClear();
 });
 
@@ -103,7 +105,7 @@ describe("SettingsEditor", () => {
     const { findByRole } = render(SettingsEditor);
     expect((await findByRole("radio", { name: "Short" })).getAttribute("aria-checked")).toBe("true");
     await fireEvent.click(await findByRole("radio", { name: "Long" }));
-    expect(vi.mocked(setSetting)).toHaveBeenLastCalledWith("editor.calcPrecision", "long");
+    expect(vi.mocked(setSetting)).toHaveBeenLastCalledWith("plugin.calc.precision", "long");
     expect((await findByRole("radio", { name: "Normal" })).getAttribute("aria-checked")).toBe("true");
     await fireEvent.click(await findByRole("radio", { name: "Instant" }));
     expect(vi.mocked(setSetting)).toHaveBeenLastCalledWith("editor.autosaveMs", 150);

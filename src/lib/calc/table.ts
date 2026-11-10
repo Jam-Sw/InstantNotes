@@ -12,6 +12,7 @@ import {
   type Value,
 } from "./engine";
 import { formatValue } from "./format";
+import { cellAt } from "$lib/plugin/types";
 
 export interface CellOut {
   readonly text: string;
@@ -23,7 +24,7 @@ const FORMULA_RE = /^=\s*[\w(\[\-+.]/;
 
 export const isFormula = (text: string): boolean => FORMULA_RE.test(text);
 
-export const cellKey = (r: number, c: number): number => r * 4096 + c;
+export const cellKey = cellAt;
 
 const NUMBER_RE = /^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i;
 
