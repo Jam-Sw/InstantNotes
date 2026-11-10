@@ -1,0 +1,36 @@
+src/lib/editor/calc.ts
+  s_103540a1b46cd4::t_51b10bb5b74bff 152
+  s_103540a1b46cd4::t_609ea48fb5aeb4 129-131,133-138,140-145
+  s_103540a1b46cd4::t_6df686d0d0d15c 6
+  s_103540a1b46cd4::t_7b4ec850a65629 4,51
+src/lib/calc/engine.ts
+  s_103540a1b46cd4::t_ad3c3c67f4b39b 4760
+  s_103540a1b46cd4::t_238cecc5017996 4615
+  s_103540a1b46cd4::t_5035a6db68095a 4010-4014
+  s_103540a1b46cd4::t_070ab2053c7ee4 704-708
+  s_103540a1b46cd4::t_fc9c1003d0f9d7 687,689,703
+  s_103540a1b46cd4::t_7b4ec850a65629 688,690-702,4009,4560-4573,4594,4749,4751-4752,4758,4778
+  s_103540a1b46cd4::t_0ad014caf1920e 878-879
+  s_103540a1b46cd4::t_d600df89657275 4034
+  s_103540a1b46cd4::t_91c6a94ed69d7a 200
+  s_103540a1b46cd4::t_aa3db9cd7e9ce4 833-834
+  s_103540a1b46cd4::t_053bd15d5359fe 4111
+src/lib/calc/table.ts
+  s_103540a1b46cd4::t_7b4ec850a65629 5,98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6eca73348ed440381405e9e97ab8b49473e3812d",
+  "prompts": {},
+  "sessions": {
+    "s_103540a1b46cd4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f947a33d-2a27-446a-97ae-b47c0ef478e6",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
