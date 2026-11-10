@@ -189,7 +189,7 @@ export function attachControls(el: HTMLElement, options: ControlOptions): () => 
   }
 
   function onWheel(e: WheelEvent) {
-    const modZoom = e.ctrlKey || e.metaKey;
+    const modZoom = e.ctrlKey || (ctrlWheel === true && e.metaKey);
     if (ctrlWheel && !modZoom) return;
     e.preventDefault();
     touch?.("view");
@@ -204,7 +204,7 @@ export function attachControls(el: HTMLElement, options: ControlOptions): () => 
     const { x, y } = local(e);
     const lines = e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? 800 : 1;
     const delta = e.deltaY * lines;
-    const rate = modZoom ? (Math.abs(delta) < 40 ? 0.01 : 0.004) : 0.002;
+    const rate = modZoom ? (ctrlWheel && Math.abs(delta) >= 40 ? 0.004 : 0.01) : 0.002;
     const factor = Math.exp(-delta * rate);
     update({ orbit, view: zoomAt(view, clampZoom(view.k * factor), x, y) });
   }

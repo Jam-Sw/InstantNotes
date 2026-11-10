@@ -443,13 +443,7 @@ export class Figures {
     if (rows * cols > 16) this.#fail("at most 16 subplots per figure");
     const fig = this.#activeFigure();
     if (fig.rows !== rows || fig.cols !== cols) {
-      const onlyDefault =
-        fig.axes.size === 1 &&
-        fig.axes.get(1)?.spec.traces.length === 0 &&
-        !fig.axes.get(1)?.spec.title;
-      if (onlyDefault || fig.rows !== rows || fig.cols !== cols) {
-        fig.axes.clear();
-      }
+      fig.axes.clear();
       fig.rows = rows;
       fig.cols = cols;
     }

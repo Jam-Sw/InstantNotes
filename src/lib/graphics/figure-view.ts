@@ -169,6 +169,23 @@ function readLiveAxisRange(host: HTMLElement, axisKey: string, fallback?: [numbe
   return fallback ? [...fallback] : null;
 }
 
+function readLiveCamera(host: HTMLElement, sub: LiveSubplotState): void {
+  const key = sub.binding.sceneKey;
+  if (!key) return;
+  const full = (
+    host as unknown as {
+      _fullLayout?: Record<string, { camera?: { eye?: { x: number; y: number; z: number } } }>;
+    }
+  )._fullLayout;
+  const eye = full?.[key]?.camera?.eye;
+  if (!eye) return;
+  const radius = Math.hypot(eye.x, eye.y, eye.z);
+  if (!Number.isFinite(radius) || radius <= 0) return;
+  sub.radius = radius;
+  sub.elDeg = (Math.asin(eye.z / radius) * 180) / Math.PI;
+  sub.azDeg = (Math.atan2(eye.y, eye.x) * 180) / Math.PI + 90;
+}
+
 export interface FigureHandle {
   readonly el: HTMLElement;
   update(figure: Figure): void;
@@ -274,6 +291,7 @@ export function mountFigure(figure: Figure): FigureHandle {
             prev.yRange = yr;
           }
         } else if (b.kind === "scene" && b.sceneKey && moved) {
+          if (!pendingRelayout) readLiveCamera(plotHost!, prev);
           layoutRec[b.sceneKey] = {
             ...layoutRec[b.sceneKey],
             camera: {
@@ -335,6 +353,7 @@ export function mountFigure(figure: Figure): FigureHandle {
     if (!plotHost || !Number.isFinite(factor) || factor <= 0) return;
     moved = true;
     if (sub.binding.kind === "scene" && sub.binding.sceneKey) {
+      if (!pendingRelayout) readLiveCamera(plotHost, sub);
       sub.radius = Math.max(0.35, Math.min(12, sub.radius / factor));
       queueRelayout({
         [`${sub.binding.sceneKey}.camera.eye`]: cameraEyeFromView(sub.azDeg, sub.elDeg, sub.radius),
@@ -366,6 +385,7 @@ export function mountFigure(figure: Figure): FigureHandle {
     if (!plotHost) return;
     moved = true;
     if (sub.binding.kind === "scene" && sub.binding.sceneKey) {
+      if (!pendingRelayout) readLiveCamera(plotHost, sub);
       sub.azDeg -= dxPx * 0.55;
       sub.elDeg = Math.max(-88, Math.min(88, sub.elDeg + dyPx * 0.55));
       queueRelayout({

@@ -246,7 +246,7 @@ function subplotDomain(
   cols: number,
   hasTitle: boolean,
 ): { domainX: [number, number]; domainY: [number, number] } {
-  const gapX = cols > 1 ? Math.min(0.1, 0.08) : 0;
+  const gapX = cols > 1 ? 0.08 : 0;
   const gapY = rows > 1 ? Math.min(0.14, 0.11 + (hasTitle ? 0.03 : 0)) : 0;
   const cellW = (1 - gapX * (cols - 1)) / cols;
   const cellH = (1 - gapY * (rows - 1)) / rows;
