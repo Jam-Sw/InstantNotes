@@ -1,0 +1,73 @@
+knip.json
+  s_7786ade5abf5b4::t_f8e24ee6707637 24
+src/lib/stores/plugins.svelte.test.ts
+  s_7786ade5abf5b4::t_f8e24ee6707637 1-52
+src/lib/editor/constructs/plugin.ts
+  s_7786ade5abf5b4::t_f6ece8fc7710d4 1-146
+src/lib/editor/plugins.ts
+  s_7786ade5abf5b4::t_f2ba9a445cd74a 1-331
+CHANGELOG.md
+  s_7786ade5abf5b4::t_f8e24ee6707637 14
+src/lib/components/Editor.svelte
+  s_7786ade5abf5b4::t_51ea6367e42b64 28,30,77,82,89,144,258
+src/lib/plugin/index.ts
+  s_7786ade5abf5b4::t_f2ba9a445cd74a 1-25
+src/lib/plugin/types.ts
+  s_7786ade5abf5b4::t_f2ba9a445cd74a 1-73
+src/routes/+page.svelte
+  s_7786ade5abf5b4::t_a94e6533671873 31,178,210
+src/lib/editor/index.ts
+  s_7786ade5abf5b4::t_51ea6367e42b64 26-27,50-51
+src/lib/components/settings/SettingsEditor.test.ts
+  s_7786ade5abf5b4::t_0f89a2565d3376 5-6,24
+  s_7786ade5abf5b4::t_f5dc4581b9947d 108
+src/lib/editor/caret.ts
+  s_7786ade5abf5b4::t_51ea6367e42b64 16
+src/lib/editor/ARCHITECTURE.md
+  s_7786ade5abf5b4::t_f8e24ee6707637 71-80
+src/lib/editor/theme.ts
+  s_7786ade5abf5b4::t_51ea6367e42b64 83,91,94,101,104,108,117,122
+src/lib/calc/table.ts
+  s_7786ade5abf5b4::t_51ea6367e42b64 15,27
+src/lib/stores/plugins.svelte.ts
+  s_7786ade5abf5b4::t_51ea6367e42b64 1-78
+src/lib/components/sheet/SheetGrid.svelte
+  s_7786ade5abf5b4::t_51ea6367e42b64 25,27,90
+  s_7786ade5abf5b4::t_0f89a2565d3376 26,635
+src/lib/stores/editor.svelte.ts
+  s_7786ade5abf5b4::t_51ea6367e42b64 78
+src/plugins/calc/index.ts
+  s_7786ade5abf5b4::t_f6ece8fc7710d4 1-46,48-155
+  s_7786ade5abf5b4::t_51ea6367e42b64 47
+src/lib/editor/kernel.test.ts
+  s_7786ade5abf5b4::t_f5dc4581b9947d 20-22,38,49-50
+src/routes/sticky/+page.svelte
+  s_7786ade5abf5b4::t_a94e6533671873 28,99
+src/lib/components/SettingsView.svelte
+  s_7786ade5abf5b4::t_f5dc4581b9947d 59-63
+  s_7786ade5abf5b4::t_a94e6533671873 20,71
+src/lib/stores/editor.svelte.test.ts
+  s_7786ade5abf5b4::t_0f89a2565d3376 73
+  s_7786ade5abf5b4::t_f8e24ee6707637 143,202
+src/plugins/calc/index.test.ts
+  s_7786ade5abf5b4::t_f5dc4581b9947d 1-293
+src/lib/components/settings/SettingsEditor.svelte
+  s_7786ade5abf5b4::t_bca5e5bfba2b30 156
+  s_7786ade5abf5b4::t_51ea6367e42b64 4-5,49,150-155,157-170
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "66c3969a051a41edef478653806f2674aaeac070",
+  "prompts": {},
+  "sessions": {
+    "s_7786ade5abf5b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "df8ca25e-cc76-4839-8e50-9a735fcbeb22",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
