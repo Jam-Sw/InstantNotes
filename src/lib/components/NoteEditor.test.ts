@@ -35,6 +35,7 @@ vi.mock("$lib/stores/editor.svelte", () => ({
     showExactTime: false,
     spellcheck: false,
     wrap: true,
+    titleWrap: true,
     indentWidth: 2,
     toggleToolbar: vi.fn(),
     toggleSourceMode: vi.fn(),
@@ -91,19 +92,19 @@ describe("NoteEditor header", () => {
   it("names the open note in the header bar", () => {
     library.selected = note({});
     const { container } = render(NoteEditor);
-    expect(container.querySelector(".editor-header .header-title")?.textContent).toBe("Plan for the launch");
+    expect(container.querySelector<HTMLTextAreaElement>(".editor-header .title-input")?.value).toBe("Plan for the launch");
   });
 
   it("falls back to Untitled when the note has no title", () => {
     library.selected = note({ title: "" });
     const { container } = render(NoteEditor);
-    expect(container.querySelector(".editor-header .header-title")?.textContent).toBe("Untitled");
+    expect(container.querySelector<HTMLTextAreaElement>(".editor-header .title-input")?.placeholder).toBe("Untitled");
   });
 
   it("names a virtual release-notes note and offers none of its actions", () => {
     library.selected = note({ id: "update-release-notes", title: "Release notes 0.9.4" });
     const { container } = render(NoteEditor);
-    expect(container.querySelector(".editor-header .header-title")?.textContent).toBe("Release notes 0.9.4");
+    expect(container.querySelector<HTMLTextAreaElement>(".editor-header .title-input")?.value).toBe("Release notes 0.9.4");
     expect(container.querySelectorAll(".editor-header .icon-btn")).toHaveLength(0);
   });
 

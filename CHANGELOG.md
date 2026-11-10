@@ -20,6 +20,7 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 - Settings > Editor > Width: Readable (70 ch), Wide (110 ch) or Full (`editor.width`, `--measure`).
+- The note title is edited in the editor header bar (`.editor-header .title-input`); the tag and space row sits under it; phone width keeps the title in its own row. Settings > Editor > Wrap long titles (`editor.titleWrap`, default on) wraps or truncates it.
 - Merge review lists the fields that differ (Title, Tags, Spaces, Pin, Archive) with Keep on each side; Leave all as they are is Dismiss all.
 - Settings > Overview: status under the heading, stats in one strip, What's new renders inline code.
 - Toasts stack at the top of the window.

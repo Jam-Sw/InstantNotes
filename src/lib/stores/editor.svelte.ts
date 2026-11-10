@@ -7,6 +7,7 @@ const KEY_EXACT_TIME = "editor.showExactTime";
 const KEY_WIDTH = "editor.width";
 const KEY_SPELLCHECK = "editor.spellcheck";
 const KEY_WRAP = "editor.wrap";
+const KEY_TITLE_WRAP = "editor.titleWrap";
 const KEY_AUTOSAVE = "editor.autosaveMs";
 const KEY_INDENT = "editor.indentWidth";
 const MIN = 0.7;
@@ -43,6 +44,7 @@ export const EDITOR_DEFAULTS: {
   width: EditorWidth;
   spellcheck: boolean;
   wrap: boolean;
+  titleWrap: boolean;
   autosaveMs: AutosaveMs;
   indentWidth: IndentWidth;
 } = {
@@ -53,6 +55,7 @@ export const EDITOR_DEFAULTS: {
   width: "readable",
   spellcheck: false,
   wrap: true,
+  titleWrap: true,
   autosaveMs: 400,
   indentWidth: 2,
 };
@@ -65,6 +68,7 @@ class EditorPrefs {
   width = $state<EditorWidth>(EDITOR_DEFAULTS.width);
   spellcheck = $state(EDITOR_DEFAULTS.spellcheck);
   wrap = $state(EDITOR_DEFAULTS.wrap);
+  titleWrap = $state(EDITOR_DEFAULTS.titleWrap);
   autosaveMs = $state<AutosaveMs>(EDITOR_DEFAULTS.autosaveMs);
   indentWidth = $state<IndentWidth>(EDITOR_DEFAULTS.indentWidth);
 
@@ -75,7 +79,7 @@ class EditorPrefs {
     if (this.#loaded) return;
     this.#loaded = true;
     try {
-      const [z, open, source, exact, width, spell, wrap, autosave, indent] = await Promise.all([
+      const [z, open, source, exact, width, spell, wrap, titleWrap, autosave, indent] = await Promise.all([
         getSetting<number>(KEY_ZOOM),
         getSetting<boolean>(KEY_TOOLBAR),
         getSetting<boolean>(KEY_SOURCE),
@@ -83,6 +87,7 @@ class EditorPrefs {
         getSetting<string>(KEY_WIDTH),
         getSetting<boolean>(KEY_SPELLCHECK),
         getSetting<boolean>(KEY_WRAP),
+        getSetting<boolean>(KEY_TITLE_WRAP),
         getSetting<number>(KEY_AUTOSAVE),
         getSetting<number>(KEY_INDENT),
       ]);
@@ -104,6 +109,7 @@ class EditorPrefs {
       }
       if (!this.#touched.has(KEY_SPELLCHECK) && typeof spell === "boolean") this.spellcheck = spell;
       if (!this.#touched.has(KEY_WRAP) && typeof wrap === "boolean") this.wrap = wrap;
+      if (!this.#touched.has(KEY_TITLE_WRAP) && typeof titleWrap === "boolean") this.titleWrap = titleWrap;
       if (!this.#touched.has(KEY_AUTOSAVE) && isAutosave(autosave)) this.autosaveMs = autosave;
       if (!this.#touched.has(KEY_INDENT) && isIndent(indent)) this.indentWidth = indent;
     } catch {
@@ -137,6 +143,11 @@ class EditorPrefs {
   setWrap(v: boolean): void {
     this.wrap = v;
     this.#save(KEY_WRAP, v);
+  }
+
+  setTitleWrap(v: boolean): void {
+    this.titleWrap = v;
+    this.#save(KEY_TITLE_WRAP, v);
   }
 
   setAutosaveMs(v: AutosaveMs): void {

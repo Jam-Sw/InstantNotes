@@ -39,7 +39,8 @@
   import { NO_MARKS, type ActiveMarks } from "$lib/markdown-active";
   import { clientLabel } from "$lib/agent-activity";
   import { isSyntheticNoteId } from "$lib/synthetic";
-  import { autosize, singleLine } from "$lib/title-field";
+  import { singleLine } from "$lib/title-field";
+  import { layout } from "$lib/stores/layout.svelte";
 
   let tagInput = $state("");
   let workspaceInput = $state("");
@@ -230,6 +231,22 @@
     }
   }
 
+  type TitleEl = HTMLInputElement | HTMLTextAreaElement;
+
+  function titleInput(e: Event & { currentTarget: TitleEl }) {
+    const el = e.currentTarget;
+    const flat = singleLine(el.value);
+    if (flat !== el.value) el.value = flat;
+    if (el.parentElement) el.parentElement.dataset.value = flat || "Untitled";
+  }
+
+  function titleKey(e: KeyboardEvent & { currentTarget: TitleEl }) {
+    if (e.key !== "Enter" || e.isComposing) return;
+    e.preventDefault();
+    library.editTitle(e.currentTarget.value);
+    if (!isVirtual) editorRef?.focus();
+  }
+
   async function submitTag(e: Event) {
     e.preventDefault();
     await library.addTag(tagInput);
@@ -269,8 +286,45 @@
     </div>
   </div>
 {:else if library.selected}
-  <header class="pane-header editor-header" data-tauri-drag-region>
-    <span class="header-title" data-tauri-drag-region>{library.selected.title || "Untitled"}</span>
+  {#snippet titleField()}
+    <div
+      class="header-title"
+      class:wrap={editorPrefs.titleWrap}
+      data-value={library.selected?.title || "Untitled"}
+    >
+      {#if editorPrefs.titleWrap}
+        <textarea
+          class="title-input"
+          rows="1"
+          placeholder="Untitled"
+          value={library.selected?.title}
+          readonly={isVirtual}
+          oninput={titleInput}
+          onkeydown={titleKey}
+          onchange={(e) => library.editTitle(e.currentTarget.value)}
+          aria-label="Note title"
+        ></textarea>
+      {:else}
+        <input
+          class="title-input"
+          size="1"
+          placeholder="Untitled"
+          value={library.selected?.title}
+          readonly={isVirtual}
+          oninput={titleInput}
+          onkeydown={titleKey}
+          onchange={(e) => library.editTitle(e.currentTarget.value)}
+          aria-label="Note title"
+        />
+      {/if}
+    </div>
+  {/snippet}
+  <header
+    class="pane-header editor-header"
+    class:wrap={editorPrefs.titleWrap && !layout.phone}
+    data-tauri-drag-region
+  >
+    {#if !layout.phone}{@render titleField()}{/if}
     {#if !isVirtual}
       {#if library.selected.isDeleted}
         <div class="icon-group">
@@ -371,27 +425,9 @@
     class:wide={isSurface}
     style="--editor-zoom: {editorPrefs.zoom}; --image-max-height: {imagePrefs.maxPreviewHeight}px"
   >
+  {#if layout.phone || !isVirtual}
   <div class="doc-head">
-    <textarea
-      class="title-input"
-      rows="1"
-      value={library.selected.title}
-      readonly={isVirtual}
-      use:autosize={[library.selected.title, editorPrefs.zoom]}
-      oninput={(e) => {
-        const flat = singleLine(e.currentTarget.value);
-        if (flat !== e.currentTarget.value) e.currentTarget.value = flat;
-      }}
-      onkeydown={(e) => {
-        if (e.key === "Enter" && !e.isComposing) {
-          e.preventDefault();
-          library.editTitle(e.currentTarget.value);
-          if (!isVirtual) editorRef?.focus();
-        }
-      }}
-      onchange={(e) => library.editTitle(e.currentTarget.value)}
-      aria-label="Note title"
-    ></textarea>
+  {#if layout.phone}{@render titleField()}{/if}
   {#if !isVirtual}
   <div class="tag-bar">
     {#each library.selectedTags as tag (tag.id)}
@@ -458,6 +494,7 @@
   </div>
   {/if}
   </div>
+  {/if}
   {#if isBoard}
     <div class="editor-body board-body">
       {#key library.selected.id}
@@ -607,14 +644,45 @@
     background: var(--border);
   }
   .header-title {
-    flex: 1;
+    flex: 0 1 auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
     min-width: 0;
+    margin-right: auto;
     overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
     font-family: var(--font-ui);
-    font-size: 13px;
-    color: var(--text-secondary);
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.25;
+    letter-spacing: -0.012em;
+  }
+  .header-title::after {
+    content: attr(data-value) " ";
+    grid-area: 1 / 1;
+    visibility: hidden;
+    white-space: pre;
+  }
+  .header-title.wrap {
+    padding: 6px 0;
+  }
+  .header-title.wrap::after {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .editor-header.wrap {
+    height: auto;
+    min-height: calc(var(--chrome-h) + env(safe-area-inset-top));
+  }
+  .doc-head .header-title {
+    padding: 10px 0 4px;
+    font-size: 1.4em;
+    font-weight: 700;
+  }
+  :global(html[data-touch]) .header-title {
+    font-size: 16px;
+  }
+  :global(html[data-touch]) .doc-head .header-title {
+    font-size: max(16px, 1.4em);
   }
   .doc {
     flex: 1;
@@ -629,31 +697,34 @@
     width: 100%;
     max-width: calc(var(--measure) + 32px * var(--density));
     margin: 0 auto;
-    padding: 12px calc(16px * var(--density)) 0;
-    container-type: inline-size;
+    padding: 0 calc(16px * var(--density));
   }
   .doc.wide .doc-head {
     max-width: none;
   }
   .title-input {
-    display: block;
+    grid-area: 1 / 1;
     width: 100%;
+    min-width: 0;
+    margin: 0;
     padding: 0;
-    font-size: 1.7em;
-    font-weight: 700;
-    line-height: 1.25;
-    letter-spacing: -0.012em;
+    font: inherit;
+    letter-spacing: inherit;
+    color: var(--text);
     border: none;
     outline: none;
     background: transparent;
+    text-overflow: ellipsis;
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: text;
+  }
+  textarea.title-input {
+    height: 100%;
     resize: none;
     overflow: hidden;
+    white-space: pre-wrap;
     overflow-wrap: anywhere;
-  }
-  @container (max-width: 440px) {
-    .title-input {
-      font-size: 1.4em;
-    }
   }
   .action {
     padding: 4px 10px;
@@ -693,8 +764,7 @@
     flex-wrap: wrap;
     gap: 6px;
     align-items: center;
-    margin-top: 6px;
-    padding: 2px 0 8px;
+    padding: 2px 0 6px;
     border-bottom: 1px solid var(--border);
     font-family: var(--font-ui);
   }

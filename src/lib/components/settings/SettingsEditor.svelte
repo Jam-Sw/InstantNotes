@@ -78,6 +78,14 @@
       : undefined}
     onchange={(v) => editorPrefs.setSpellcheck(v)}
   />
+  <ToggleRow
+    label="Wrap long titles"
+    checked={editorPrefs.titleWrap}
+    reset={editorPrefs.titleWrap !== EDITOR_DEFAULTS.titleWrap
+      ? () => editorPrefs.setTitleWrap(EDITOR_DEFAULTS.titleWrap)
+      : undefined}
+    onchange={(v) => editorPrefs.setTitleWrap(v)}
+  />
 
   <span class="group-label">Timestamps</span>
   <ToggleRow

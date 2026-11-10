@@ -70,7 +70,7 @@ describe("editorPrefs", () => {
     const prefs = await load();
     await prefs.init();
     await prefs.init();
-    expect(mockGetSetting).toHaveBeenCalledTimes(9);
+    expect(mockGetSetting).toHaveBeenCalledTimes(10);
   });
 
   it("shows the toolbar by default, in the rendered view", async () => {
@@ -176,10 +176,12 @@ describe("editorPrefs", () => {
     const prefs = await load();
     prefs.setSpellcheck(true);
     prefs.setWrap(false);
+    prefs.setTitleWrap(false);
     prefs.setAutosaveMs(150);
     prefs.setIndentWidth(4);
     expect(mockSetSetting).toHaveBeenCalledWith("editor.spellcheck", true);
     expect(mockSetSetting).toHaveBeenCalledWith("editor.wrap", false);
+    expect(mockSetSetting).toHaveBeenCalledWith("editor.titleWrap", false);
     expect(mockSetSetting).toHaveBeenCalledWith("editor.autosaveMs", 150);
     expect(mockSetSetting).toHaveBeenCalledWith("editor.indentWidth", 4);
   });
@@ -199,7 +201,7 @@ describe("EDITOR_DEFAULTS defaults", () => {
   it("starts every field at its default", async () => {
     const mod = await import("./editor.svelte");
     const { EDITOR_DEFAULTS, editorPrefs } = mod;
-    const expected = { zoom: 1, toolbarOpen: true, sourceMode: false, showExactTime: false, width: "readable", spellcheck: false, wrap: true, autosaveMs: 400, indentWidth: 2 };
+    const expected = { zoom: 1, toolbarOpen: true, sourceMode: false, showExactTime: false, width: "readable", spellcheck: false, wrap: true, titleWrap: true, autosaveMs: 400, indentWidth: 2 };
     expect(EDITOR_DEFAULTS).toEqual(expected);
     for (const [k, v] of Object.entries(expected)) expect(editorPrefs[k as keyof typeof expected]).toBe(v);
   });

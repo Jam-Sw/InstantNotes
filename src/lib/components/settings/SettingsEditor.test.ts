@@ -19,6 +19,7 @@ beforeEach(() => {
   editorPrefs.sourceMode = false;
   editorPrefs.spellcheck = false;
   editorPrefs.wrap = true;
+  editorPrefs.titleWrap = true;
   editorPrefs.autosaveMs = 400;
   editorPrefs.indentWidth = 2;
   for (const p of plugins) for (const spec of p.prefs ?? []) pluginPrefs.setValue(p, spec, spec.default);
@@ -99,6 +100,14 @@ describe("SettingsEditor", () => {
     expect(sw.getAttribute("aria-checked")).toBe("true");
     await fireEvent.click(sw);
     expect(vi.mocked(setSetting)).toHaveBeenCalledWith("editor.wrap", false);
+  });
+
+  it("toggles wrap long titles, on by default, under editor.titleWrap", async () => {
+    const { findByRole } = render(SettingsEditor);
+    const sw = await findByRole("switch", { name: "Wrap long titles" });
+    expect(sw.getAttribute("aria-checked")).toBe("true");
+    await fireEvent.click(sw);
+    expect(vi.mocked(setSetting)).toHaveBeenCalledWith("editor.titleWrap", false);
   });
 
   it("saves calc precision, autosave delay and indent width under their own keys", async () => {
