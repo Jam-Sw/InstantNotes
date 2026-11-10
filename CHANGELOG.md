@@ -9,7 +9,7 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.11.2]
 ### Added
-- `calc` fences compute each line (`x = 3*4`, `;` silences, `%` comments, `format long`); inline `` `=expr` `` shares the note's variables; matrices, ranges and `sum`, `mean`, `std`, `det`, `inv` and more.
+- `calc`, `matlab` and `m` fences compute each line (`x = 3*4`, `;` silences, `%` comments, `format long`); inline `` `=expr` `` shares the note's variables; matrices, ranges and `sum`, `mean`, `std`, `det`, `inv` and more.
 - `calc` plots: `linspace`, `figure`, `plot`, `plot3`, `hold on|off` draw under the fence through `src/lib/graphics` (Graph's projection and controls); drag pans or orbits, Ctrl+wheel zooms, double-click resets.
 - Table cells starting with `=` compute: `=Price*Qty` by header, `=sum(above)`, `=mean(B2:B5)`, `=sum(Price(:))`; sheets take the same formulas.
 - Around this note in the status bar: notes sharing uncommon words or tags with the paragraph under the cursor (`related_notes`, MCP `find_related`, `suggest.related`); Not related hides a pair.
@@ -23,7 +23,7 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Settings > Overview: status under the heading, stats in one strip, What's new renders inline code.
 - Toasts stack at the top of the window.
 - Toasts, dialogs, empty states and the server sign-in pages use short labels; failures read `Couldn't <action>: <reason>`.
-- `tag_suggestion`, `space_suggestions` and `related_notes` share one corpus, rebuilt only when `PRAGMA data_version` changes.
+- `tag_suggestion`, `space_suggestions` and `related_notes` share one corpus; the app's read-only connection rebuilds it only when `PRAGMA data_version` changes.
 - Opening a note runs `get_note`, `tags_for_note` and `workspaces_for_note` in parallel; `search_notes` snippets only the returned rows; the list loads 512 body chars.
 - Typing skips a second `doc.toString()`, `wordCount` counts without splitting, `tag_suggestion` refetches 600 ms after a save.
 - Sync server `missing` and `commit` run in `spawn_blocking`; `search_notes` uses `prepare_cached`; upload checks `missing` as a `HashSet`.
