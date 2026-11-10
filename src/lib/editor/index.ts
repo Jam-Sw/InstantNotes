@@ -24,7 +24,7 @@ import { TaskSpec } from "./constructs/task";
 import { ImageSpec } from "./constructs/image";
 import { TagSpec } from "./constructs/tags";
 import { PluginSpec } from "./constructs/plugin";
-import { pluginField } from "./plugins";
+import { pluginField, typingField } from "./plugins";
 
 export interface EditorKernelOpts {
   openUrl: (url: string) => void;
@@ -48,7 +48,7 @@ export function editorKernel(opts: EditorKernelOpts): Extension {
       new ImageSpec(opts.convertSrc ?? (isWeb ? (path) => path : convertFileSrc)),
     ],
     textSpecs: [new TagSpec(), new PluginSpec()],
-    rescanOn: [linkPrefsField, attachmentsBaseField, pluginField],
+    rescanOn: [linkPrefsField, attachmentsBaseField, pluginField, typingField],
   });
 
   return [

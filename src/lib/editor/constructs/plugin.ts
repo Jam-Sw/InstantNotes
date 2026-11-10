@@ -1,5 +1,5 @@
 import { Decoration, WidgetType } from "@codemirror/view";
-import { pluginField, type PluginItem } from "../plugins";
+import { pluginField, typingField, type PluginItem } from "../plugins";
 import type { Block, BlockHandle, Plugin } from "$lib/plugin/types";
 import type { Emit, ScanContext, TextSpec } from "../types";
 
@@ -20,7 +20,7 @@ class ViewWidget extends WidgetType {
     el.className = this.attached ? "cm-plugin cm-plugin-attached" : "cm-plugin";
     for (const view of this.item.views) {
       const span = document.createElement("span");
-      span.className = view.error ? "cm-plugin-error" : "cm-plugin-value";
+      span.className = view.error ? "cm-plugin-error" : view.hint ? "cm-plugin-hint" : "cm-plugin-value";
       if (view.grid) {
         const table = document.createElement("table");
         table.className = "cm-plugin-grid";
@@ -41,6 +41,9 @@ class ViewWidget extends WidgetType {
     return false;
   }
 }
+
+const styleMark = Decoration.mark({ class: "cm-plugin-mark cm-plugin-mark-style" });
+const spellingMark = Decoration.mark({ class: "cm-plugin-mark cm-plugin-mark-spelling" });
 
 const mounted = new WeakMap<HTMLElement, Map<number, BlockHandle>>();
 
@@ -123,20 +126,25 @@ export class PluginSpec implements TextSpec {
     const table = cx.state.field(pluginField, false);
     if (!table || table.items.length === 0) return;
     const end = offset + text.length;
+    const typing = cx.state.field(typingField, false) ?? -1;
     for (const item of table.between(offset, end)) {
       if (item.kind === "block") {
         if (item.to < offset || item.to > end) continue;
         emit.at(item.to, Decoration.widget({ widget: new BlockWidget(item.plugin, item.blocks), side: 2 }));
         continue;
       }
+      if (item.kind === "mark") {
+        if (item.mark?.kind === "spelling" && typing === item.to) continue;
+        emit.mark(
+          Math.max(item.from, offset),
+          Math.min(item.to, end),
+          item.mark?.kind === "spelling" ? spellingMark : styleMark,
+        );
+        continue;
+      }
       if (item.kind !== "line" && cx.preview) {
         const owner = emit.construct(item.from, item.to, "span");
-        emit.hide(
-          owner,
-          item.innerFrom,
-          item.innerTo,
-          Decoration.replace({ widget: new ViewWidget(item, false) }),
-        );
+        emit.hide(owner, item.innerFrom, item.innerTo, Decoration.replace({ widget: new ViewWidget(item, false) }));
         continue;
       }
       if (item.to < offset || item.to > end) continue;

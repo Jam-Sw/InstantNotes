@@ -96,8 +96,8 @@ use commands::{
 use error::{CmdError, CmdResult};
 use shell::menu::{install as install_menus, run_command};
 use shell::{
-    agents::*, backups::*, capture::*, diagnostics::*, files::*, mirror::*, quit::*, server::*,
-    stickies::*, update::*, windows::*,
+    agents::*, backups::*, capture::*, diagnostics::*, files::*, mirror::*, plugins::*, quit::*,
+    server::*, stickies::*, update::*, windows::*,
 };
 
 pub fn run() {
@@ -293,6 +293,9 @@ pub fn run() {
             set_window_theme,
             export_theme_file,
             import_theme_file,
+            plugin_read_text,
+            plugin_http_post,
+            plugin_http_cancel,
             export_note_file,
             sheet_csv,
             save_attachment,

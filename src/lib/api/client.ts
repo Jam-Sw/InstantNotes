@@ -226,6 +226,11 @@ export const exportThemeFile = (path: string, contents: string) =>
 export const importThemeFile = (path: string) =>
   call<string>("import_theme_file", { path });
 
+export const pluginReadText = (path: string) => call<string>("plugin_read_text", { path });
+export const pluginHttpPost = (id: number, url: string, body: string) =>
+  call<string>("plugin_http_post", { id, url, body });
+export const pluginHttpCancel = (id: number) => call<void>("plugin_http_cancel", { id });
+
 export const exportNoteFile = (path: string, contents: string) =>
   call<void>("export_note_file", { path, contents });
 export const sheetCsv = (id: string) => call<string>("sheet_csv", { id });

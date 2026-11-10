@@ -3,8 +3,11 @@
   import { editorPrefs, EDITOR_DEFAULTS, type EditorWidth, type AutosaveMs, type IndentWidth } from "$lib/stores/editor.svelte";
   import { pluginPrefs } from "$lib/stores/plugins.svelte";
   import { plugins } from "$lib/plugin";
+  import type { PrefSpec } from "$lib/plugin/types";
   import ToggleRow from "$lib/components/settings/ToggleRow.svelte";
   import SegmentedRow from "$lib/components/settings/SegmentedRow.svelte";
+  import TextRow from "$lib/components/settings/TextRow.svelte";
+  import FileRow from "$lib/components/settings/FileRow.svelte";
   import { getSetting, setSetting } from "$lib/api/client";
   import { toasts } from "$lib/stores/toasts.svelte";
   import {
@@ -15,6 +18,9 @@
     TAG_SUGGEST_KEY,
     type SuggestSetting,
   } from "$lib/suggest-setting";
+
+  const isSwitch = (spec: PrefSpec): boolean =>
+    spec.options?.length === 2 && spec.options.every((o) => o.value === "on" || o.value === "off");
 
   let tagSuggest = $state<SuggestSetting>(SUGGEST_DEFAULT);
   let relatedSuggest = $state<SuggestSetting>(SUGGEST_DEFAULT);
@@ -163,16 +169,47 @@
         onchange={(v) => pluginPrefs.setOn(p, v)}
       />
       {#if pluginPrefs.on(p)}
-        {#each p.prefs ?? [] as spec (spec.key)}
-          <SegmentedRow
-            label={spec.label}
-            options={[...spec.options]}
-            value={pluginPrefs.value(p, spec)}
-            reset={pluginPrefs.value(p, spec) !== spec.default
-              ? () => pluginPrefs.setValue(p, spec, spec.default)
-              : undefined}
-            onchange={(v) => pluginPrefs.setValue(p, spec, v)}
-          />
+        {#each (p.prefs ?? []).filter((spec) => pluginPrefs.shown(p, spec)) as spec (spec.key)}
+          {#if spec.kind === "text"}
+            <TextRow
+              label={spec.label}
+              value={pluginPrefs.value(p, spec)}
+              placeholder={spec.placeholder}
+              reset={pluginPrefs.value(p, spec) !== spec.default
+                ? () => pluginPrefs.setValue(p, spec, spec.default)
+                : undefined}
+              onchange={(v) => pluginPrefs.setValue(p, spec, v)}
+            />
+          {:else if spec.kind === "file"}
+            <FileRow
+              label={spec.label}
+              value={pluginPrefs.value(p, spec)}
+              extensions={spec.extensions ?? []}
+              reset={pluginPrefs.value(p, spec) !== spec.default
+                ? () => pluginPrefs.setValue(p, spec, spec.default)
+                : undefined}
+              onchange={(v) => pluginPrefs.setValue(p, spec, v)}
+            />
+          {:else if isSwitch(spec)}
+            <ToggleRow
+              label={spec.label}
+              checked={pluginPrefs.value(p, spec) === "on"}
+              reset={pluginPrefs.value(p, spec) !== spec.default
+                ? () => pluginPrefs.setValue(p, spec, spec.default)
+                : undefined}
+              onchange={(v) => pluginPrefs.setValue(p, spec, v ? "on" : "off")}
+            />
+          {:else}
+            <SegmentedRow
+              label={spec.label}
+              options={[...(spec.options ?? [])]}
+              value={pluginPrefs.value(p, spec)}
+              reset={pluginPrefs.value(p, spec) !== spec.default
+                ? () => pluginPrefs.setValue(p, spec, spec.default)
+                : undefined}
+              onchange={(v) => pluginPrefs.setValue(p, spec, v)}
+            />
+          {/if}
         {/each}
       {/if}
     {/each}

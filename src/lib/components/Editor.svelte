@@ -26,6 +26,7 @@
     linkedImagePaths,
   } from "$lib/editor";
   import { pluginExtension } from "$lib/editor/plugins";
+  import { ghostExtension } from "$lib/editor/ghost";
   import { editorPrefs } from "$lib/stores/editor.svelte";
   import { pluginPrefs } from "$lib/stores/plugins.svelte";
   import { linkPrefs } from "$lib/stores/links.svelte";
@@ -79,7 +80,7 @@
 
   const spellExt = () => EditorView.contentAttributes.of({ spellcheck: String(editorPrefs.spellcheck) });
   const wrapExt = () => (editorPrefs.wrap ? EditorView.lineWrapping : []);
-  const pluginExt = () => pluginExtension(pluginPrefs.config);
+  const pluginExt = () => [pluginExtension(pluginPrefs.config), ghostExtension(pluginPrefs.config)];
   const indentExt = () => indentUnit.of(" ".repeat(editorPrefs.indentWidth));
 
   function prefEffects(): StateEffect<unknown>[] {

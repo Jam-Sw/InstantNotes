@@ -126,6 +126,23 @@ describe("SettingsEditor", () => {
   });
 });
 
+describe("SettingsEditor plugin rows", () => {
+  it("draws a switch, choices and a text field from a plugin's prefs, and shows conditional rows", async () => {
+    const { findByRole, queryByRole } = render(SettingsEditor);
+    const filler = await findByRole("switch", { name: "Filler words" });
+    expect(filler.getAttribute("aria-checked")).toBe("false");
+    await fireEvent.click(filler);
+    expect(vi.mocked(setSetting)).toHaveBeenLastCalledWith("plugin.assist.filler", "on");
+    expect(queryByRole("textbox", { name: "Model address" })).toBeNull();
+    await fireEvent.click(await findByRole("radio", { name: "Model" }));
+    expect(vi.mocked(setSetting)).toHaveBeenLastCalledWith("plugin.assist.complete", "model");
+    const address = await findByRole("textbox", { name: "Model address" });
+    await fireEvent.change(address, { target: { value: " http://127.0.0.1:8080 " } });
+    expect(vi.mocked(setSetting)).toHaveBeenLastCalledWith("plugin.assist.address", "http://127.0.0.1:8080");
+    expect(await findByRole("button", { name: "Choose" })).toBeTruthy();
+  });
+});
+
 describe("SettingsEditor reset", () => {
   it("shows Reset on a changed row and restores the default", async () => {
     const { findByRole, queryAllByRole, getByRole } = render(SettingsEditor);

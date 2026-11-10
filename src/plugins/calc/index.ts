@@ -79,6 +79,8 @@ function run(regions: readonly Region[], prefs: Prefs): Result[] {
         return { out: [{ at: 0, views: runLine(region.text.slice(1), env) }] };
       case "table":
         return table(region.rows, region.header, env);
+      case "prose":
+        return { out: [] };
     }
   });
 }

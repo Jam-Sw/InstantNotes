@@ -48,6 +48,7 @@ serde_json = { workspace = true }
 uuid = { workspace = true }
 tauri-plugin-dialog = "2"
 keyring = "4"
+reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 chrono = { workspace = true }
 tokio = { version = "1", features = ["net", "io-util", "time", "sync", "macros"] }
 zip = { version = "4", default-features = false, features = ["deflate-flate2-zlib-rs"] }

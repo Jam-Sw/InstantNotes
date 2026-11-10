@@ -70,14 +70,24 @@ Each module is directly specified: purpose, construction, public surface.
   tested helpers. State fields and effects keep their old names.
 - `plugins.ts`: `pluginField`, the host half of the plugin contract in
   `src/lib/plugin/types.ts`. It finds the regions each enabled plugin claims
-  (fence languages, inline code by prefix, table cells by prefix), hands a
-  plugin all its regions in document order through its one `run(regions, prefs)`
-  and places the returned views. Recomputed when the document, its syntax tree
-  or the `pluginConfig` facet changes; `constructs/plugin.ts` only reads it and
-  draws text, grid and block views. A plugin is a folder `src/plugins/<id>/`
+  (fence languages or `"*"` for unclaimed fences, inline code by prefix, table
+  cells by prefix, prose paragraphs with code and link targets blanked), hands
+  a plugin its regions in document order through its one
+  `run(regions, prefs, context)` and places the returned views and marks.
+  Results are kept per plugin: a plugin reruns only when its own regions
+  change, and an `isolated` plugin only for the regions whose text changed.
+  Recomputed when the document, its syntax tree or the `pluginConfig` facet
+  changes; `constructs/plugin.ts` only reads it and draws text, grid, hint and
+  block views and mark underlines; a tooltip on hover or with the caret inside
+  a mark offers its fixes. `ghost.ts` asks the first enabled plugin with
+  `complete` for text after a typing pause and draws it grey at the caret; Tab
+  or a click writes it, Escape or any other edit drops it. Plugins reach the
+  outside only through `context.host` (`readText`, `post`, `notify`,
+  `refresh`), backed by `plugin_read_text`, `plugin_http_post` and `plugin_http_cancel` in
+  `src-tauri/src/shell/plugins.rs`. A plugin is a folder `src/plugins/<id>/`
   whose `index.ts` default-exports a `Plugin`; `src/lib/plugin/index.ts` finds
   them by glob, `stores/plugins.svelte.ts` holds each one's switch and prefs
-  (`plugin.<id>.enabled`, `plugin.<id>.<key>`). `src/plugins/calc` is the first.
+  (`plugin.<id>.enabled`, `plugin.<id>.<key>`). `src/plugins/calc` is the first, `src/plugins/assist` the second.
 - `theme.ts`: all kernel base themes in one place.
 - `index.ts`: `editorKernel(opts)`, the only entry point. Editor.svelte
   consumes this and nothing else from the kernel.
