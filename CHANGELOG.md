@@ -37,6 +37,9 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `ConfirmDialog` Shift+Tab from Confirm moves to Cancel; `CommandPalette` Tab keeps focus in the input; web hides the Agents settings link.
 - Keeping the conflict copy in merge review (`settle_pair`) drops its `(conflict …)` title suffix and `#conflict` tag and keeps the original's pin.
 
+### Security
+- Dependencies: `dompurify` 3.4.18 and `@sveltejs/adapter-static` 3.0.11; `lodash-es` 4.18.1, `nanoid` 3.3.20 and 5.1.16 and `cookie` 0.7.2 through `overrides` in `package.json`, where the parent package pins an older one.
+
 ## [0.11.1] - 2026-11-01
 ### Fixed
 - "Library too new" no longer aborts the app: `SyncJoinDialog`'s mount called `list_sync_join_requests`, whose
