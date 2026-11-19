@@ -1,0 +1,26 @@
+src-tauri/core/tests/vault_sync_test.rs
+  s_acf8f274bdaea1::t_d797c35ee9e2a2 366-397
+  s_acf8f274bdaea1::t_cd12fd31d9ef88 365
+CHANGELOG.md
+  s_acf8f274bdaea1::t_5936ba07b6c864 39
+src-tauri/core/src/store/vault_sync.rs
+  s_acf8f274bdaea1::t_8cbc25b8e7974d 671-674
+  s_acf8f274bdaea1::t_7a182c57efc2e4 648-649,652
+  s_acf8f274bdaea1::t_a2ab6fb4d49234 606,610,613,618,621
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "89af950ff593288e88c1e84a15ef3b932bc1cacc",
+  "prompts": {},
+  "sessions": {
+    "s_acf8f274bdaea1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c018f144-aad1-49b9-81e4-52a92b27b7a6",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
