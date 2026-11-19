@@ -757,3 +757,14 @@ and stay in the text, `<aside>` callouts lose their tags and icon, and a page
 holding only its title (a database view) is skipped. In both, links to other
 pages become their text, and a note not opening with its file name as a `#`
 heading gets one, so it keeps the title it had.
+
+## 17. Plugins
+
+Desktop only. A plugin reaches these through `context.host` (`src/lib/plugin/types.ts`);
+in the web app `readText` is refused and `post` is a browser `fetch`.
+
+| Command | Purpose |
+| --- | --- |
+| `plugin_read_text` | Read the file at absolute `path` as text. Only `.dic`, `.aff` and `.txt`, up to 64 MB; bytes that are not UTF-8 are read as Latin-1. |
+| `plugin_http_post` | POST `body` as `application/json` to `url` (`http` or `https` only) under request `id` and return the reply text. Fails after 20 s, on a status outside 2xx, or on a reply over 1 MB. |
+| `plugin_http_cancel` | Drop the pending `plugin_http_post` with this `id`. |

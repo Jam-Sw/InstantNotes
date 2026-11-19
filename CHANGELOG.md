@@ -7,17 +7,17 @@ in-app updater, written for users. Newest first.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the app
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.11.2]
+## [0.11.2] - 2026-11-19
 ### Added
-- `calc`, `matlab` and `m` fences compute each line (`x = 3*4`, `;` silences, `%` comments, `format long`); inline `` `=expr` `` shares the note's variables; matrices, ranges and `sum`, `mean`, `std`, `det`, `inv` and more.
-- `calc` plots: `linspace`, `figure`, `plot`, `plot3`, `hold on|off` draw under the fence through `src/lib/graphics` (Graph's projection and controls); drag pans or orbits, Ctrl+wheel zooms, double-click resets.
-- Plugin contract `src/lib/plugin/types.ts`: a folder `src/plugins/<id>/` default-exports a `Plugin` (claims `fences`, `inline`, `cells`; `prefs`; `theme`; `block`; one `run(regions, prefs)` returning views); `pluginField` and `PluginSpec` replace `calcField` and `CalcSpec`. Calc is `src/plugins/calc`; Settings > Editor > More > Calc (`plugin.calc.enabled`, default on) switches it off in notes and sheets; `editor.calcPrecision` becomes `plugin.calc.precision`.
-- Assist plugin `src/plugins/assist` (Settings > Editor > More > Assist, `plugin.assist.*`): dotted underlines on repeated words, wordy phrases and (off by default) filler words, with the fix on hover or with the caret in the word; a `Calc is off` hint on a fence whose plugin is switched off; spelling marks from a Hunspell `.dic`/`.aff` the user picks (`nspell`, no dictionary shipped) with Ignored words; Autocomplete as grey text at the caret (Tab or click accepts, Escape drops), from words in the note and the dictionary or from a model at an address the user types (`POST /v1/completions`, no model shipped). Nothing is written until a fix or suggestion is accepted. Contract gains `prose` regions, `marks`, `hint` views, `fences: "*"`, `isolated`, `complete`, text and file prefs with `when`, and a `context` argument with `host` (`readText`, `post`, `notify`, `refresh`); plugin results are cached per plugin. New commands `plugin_read_text` (absolute `.dic`, `.aff`, `.txt`, 64 MB) `plugin_http_post` (http or https, 20 s, 1 MB reply) and `plugin_http_cancel`.
-- Table cells starting with `=` compute: `=Price*Qty` by header, `=sum(above)`, `=mean(B2:B5)`, `=sum(Price(:))`; sheets take the same formulas.
 - Around this note in the status bar: notes sharing uncommon words or tags with the paragraph under the cursor (`related_notes`, MCP `find_related`, `suggest.related`); Not related hides a pair.
-- Fold into one: fold notes into the open note, archiving the sources; Undo or activity Revert restores them (`fold_notes`, `undo_fold`, MCP `fold_notes`).
-- Settings: List, Graph and Behavior pages; More per page; Reset on changed rows; search matches row labels; `theme.motion|density|leading|scrollbars|accent`, `toasts.durationMs`, `list.*` (incl. `list.reopenLast`: reopen the last note at startup), `graph.*`, `editor.spellcheck|wrap|calcPrecision|autosaveMs|indentWidth`, `shortcuts.capture`, `window.closeToTray`, `updates.checkInterval`, `confirm.level`, `backups.keep|everyHours`, `layout.paneMax`, `sync.delayMs|retrySec`.
+- Fold into one: fold notes into the open note, archiving the sources; Undo (refused once the note has changed) or activity Revert restores them (`fold_notes`, `undo_fold`, MCP `fold_notes`).
+- `calc` and `m` fences compute each line (`x = 3*4`, `;` silences, `%` comments, `format long`); inline `` `=expr` `` shares the note's variables; matrices, ranges and `sum`, `mean`, `std`, `det`, `inv` and more.
+- `calc` plots: `linspace`, `figure`, `plot`, `plot3`, `hold on|off` draw under the fence through `src/lib/graphics` (Graph's projection and controls); drag pans or orbits, Ctrl+wheel zooms, double-click resets.
+- Table cells starting with `=` compute: `=Price*Qty` by header, `=sum(above)`, `=mean(B2:B5)`, `=sum(Price(:))`; sheets take the same formulas.
+- Assist plugin `src/plugins/assist` (`plugin.assist.*`): dotted underlines on repeated words, wordy phrases and (off by default) filler words, with the fix on hover; spelling from a Hunspell `.dic`/`.aff` the user picks (`nspell`, none shipped); grey autocomplete at the caret (Tab accepts, Escape drops) from note words, the dictionary or a model address the user types (`POST /v1/completions`, none shipped). Commands `plugin_read_text`, `plugin_http_post`, `plugin_http_cancel`.
+- Settings: List, Graph and Behavior pages; More per page; Reset on changed rows; search matches row labels; `theme.motion|density|leading|scrollbars|accent`, `toasts.durationMs`, `list.*` (incl. `list.reopenLast`: reopen the last note at startup), `graph.*`, `editor.spellcheck|wrap|autosaveMs|indentWidth`, `shortcuts.capture`, `window.closeToTray`, `updates.checkInterval`, `confirm.level`, `backups.keep|everyHours`, `layout.paneMax`, `sync.delayMs|retrySec`.
 - Settings > Import takes an Obsidian vault or a Notion export on every desktop platform (`import_obsidian`, `import_notion`).
+- Plugins: a folder `src/plugins/<id>/` default-exports a `Plugin` (`src/lib/plugin/types.ts`) that claims fences, inline code, table cells or prose and returns views from one `run`; each has a switch and prefs under `plugin.<id>.*` in Settings > Editor > More. Calc is `src/plugins/calc` (`plugin.calc.enabled`, `plugin.calc.precision`), in notes and sheets.
 
 ### Changed
 - Settings > Editor > Width: Readable (70 ch), Wide (110 ch) or Full (`editor.width`, `--measure`).
@@ -36,6 +36,7 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 - `ConfirmDialog` Shift+Tab from Confirm moves to Cancel; `CommandPalette` Tab keeps focus in the input; web hides the Agents settings link.
 - Keeping the conflict copy in merge review (`settle_pair`) drops its `(conflict …)` title suffix and `#conflict` tag and keeps the original's pin.
+- A failed `setSetting` in Settings > Backups, Behavior, Sync and Editor shows `Couldn't save setting` instead of failing silently.
 
 ### Security
 - Dependencies: `dompurify` 3.4.18 and `@sveltejs/adapter-static` 3.0.11; `lodash-es` 4.18.1, `nanoid` 3.3.20 and 5.1.16 and `cookie` 0.7.2 through `overrides` in `package.json`, where the parent package pins an older one.
