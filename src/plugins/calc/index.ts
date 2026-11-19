@@ -89,7 +89,7 @@ const plugin: Plugin = {
   id: "calc",
   label: "Calc",
   api: 1,
-  fences: ["calc", "matlab", "m"],
+  fences: ["calc", "m"],
   inline: { prefix: "=", test: isFormula },
   cells: { prefix: "=", test: isFormula },
   prefs: [

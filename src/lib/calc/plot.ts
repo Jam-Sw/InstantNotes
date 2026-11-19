@@ -91,7 +91,7 @@ export interface Figure {
   subplots?: SubplotSpec[];
 }
 
-export const MATLAB_COLORS = [
+export const PLOT_COLORS = [
   "#0072bd",
   "#d95319",
   "#edb120",

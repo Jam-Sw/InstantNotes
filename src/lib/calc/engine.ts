@@ -4206,7 +4206,7 @@ export interface BlockLineOutcome {
 const BLOCK_TRIGGER_RE =
   /(?:^|[;,\s])\b(?:for|while|if|elseif|else|switch|case|otherwise|function|end|endfor|endwhile|endif|endswitch|endfunction|break|continue|return)\b|\.\.\./;
 
-function stripMatlabComment(line: string): string {
+function stripComment(line: string): string {
   let i = 0;
   const n = line.length;
   let prevOperand = false;
@@ -4269,7 +4269,7 @@ function splitTopLevelClauses(lines: readonly string[]): RawClause[] {
   const joined: { text: string; line: number }[] = [];
   let acc = "";
   for (let idx = 0; idx < lines.length; idx++) {
-    const noComment = stripMatlabComment(lines[idx]).trimEnd();
+    const noComment = stripComment(lines[idx]).trimEnd();
     if (noComment.endsWith("...")) {
       acc += noComment.slice(0, -3) + " ";
       continue;
@@ -4573,7 +4573,7 @@ function runLines(
   initialPrecision: Precision,
 ): { precision: Precision; outcomes: BlockLineOutcome[] } {
   let precision = initialPrecision;
-  const needsStructured = lines.some((ln) => BLOCK_TRIGGER_RE.test(stripMatlabComment(ln)));
+  const needsStructured = lines.some((ln) => BLOCK_TRIGGER_RE.test(stripComment(ln)));
   if (!needsStructured) {
     const outcomes: BlockLineOutcome[] = [];
     for (let i = 0; i < lines.length; i++) {

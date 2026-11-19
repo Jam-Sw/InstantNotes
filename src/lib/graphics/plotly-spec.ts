@@ -1,4 +1,4 @@
-import { MATLAB_COLORS, type Figure, type SubplotSpec, type TraceSpec } from "$lib/calc/plot";
+import { PLOT_COLORS, type Figure, type SubplotSpec, type TraceSpec } from "$lib/calc/plot";
 import type { Config, Data, Layout } from "plotly.js-dist-min";
 
 export interface PlotTheme {
@@ -332,7 +332,7 @@ export function buildPlotlySpec(
           values: t.x ? Array.from(t.x) : [],
           labels: t.labels,
           domain: { x: domainX, y: domainY },
-          marker: { colors: MATLAB_COLORS },
+          marker: { colors: PLOT_COLORS },
           textinfo: "label+percent",
         } as Data);
       }
@@ -359,7 +359,7 @@ export function buildPlotlySpec(
         angularaxis: { gridcolor: theme.grid, linecolor: theme.grid, tickfont: { size: 10, color: theme.faint } },
       };
       sub.traces.forEach((t, ti) => {
-        const color = t.style?.color ?? MATLAB_COLORS[ti % MATLAB_COLORS.length];
+        const color = t.style?.color ?? PLOT_COLORS[ti % PLOT_COLORS.length];
         const name = legendLabels?.[ti] ?? t.style?.name;
         data.push({
           type: "scatterpolar",
@@ -433,7 +433,7 @@ export function buildPlotlySpec(
       };
 
       sub.traces.forEach((t, ti) => {
-        const color = t.style?.color ?? MATLAB_COLORS[ti % MATLAB_COLORS.length];
+        const color = t.style?.color ?? PLOT_COLORS[ti % PLOT_COLORS.length];
         const name = legendLabels?.[ti] ?? t.style?.name;
         const showTraceLegend = wantLegend && (Boolean(name) || sub.legend === true);
         if (t.kind === "surf" || t.kind === "surfc" || t.kind === "mesh") {
@@ -577,7 +577,7 @@ export function buildPlotlySpec(
     };
 
     sub.traces.forEach((t, ti) => {
-      const color = t.style?.color ?? MATLAB_COLORS[ti % MATLAB_COLORS.length];
+      const color = t.style?.color ?? PLOT_COLORS[ti % PLOT_COLORS.length];
       const name = legendLabels?.[ti] ?? t.style?.name;
       const showTraceLegend = wantLegend && (Boolean(name) || sub.legend === true);
 

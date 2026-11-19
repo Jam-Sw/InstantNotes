@@ -12,7 +12,7 @@ function makeFigures(code: string) {
 }
 
 describe("buildPlotlySpec", () => {
-  it("converts 2D MATLAB plots with LineSpec, labels, legend, grid, and limits", () => {
+  it("converts 2D plots with LineSpec, labels, legend, grid, and limits", () => {
     const [fig] = makeFigures(
       "x = linspace(0, 10, 50); plot(x, sin(x), 'r--o'); title('Wave'); xlabel('t'); ylabel('amp'); legend('sin'); grid on; xlim([0 10])",
     );
@@ -57,7 +57,7 @@ describe("buildPlotlySpec", () => {
     expect((specs[4].data[0] as Record<string, unknown>).type).toBe("pie");
   });
 
-  it("computes finite 3D camera eye coordinates from MATLAB azimuth and elevation", () => {
+  it("computes finite 3D camera eye coordinates from azimuth and elevation", () => {
     const eye = cameraEyeFromView(-37.5, 30, 2);
     expect(Math.hypot(eye.x, eye.y, eye.z)).toBeCloseTo(2, 5);
     expect(eye.z).toBeCloseTo(1, 5);

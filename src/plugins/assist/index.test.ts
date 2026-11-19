@@ -12,7 +12,7 @@ const NO_HOST = NO_CONTEXT.host;
 const SETTINGS = "Settings > Editor > More";
 const ON = { hints: "on", repeats: "on", wordy: "on", filler: "on" };
 const calcOff: Context = {
-  off: [{ label: "Calc", fences: ["calc", "matlab", "m"] }],
+  off: [{ label: "Calc", fences: ["calc", "m"] }],
   settings: SETTINGS,
   host: NO_HOST,
 };

@@ -212,9 +212,9 @@ describe("calc precision setting", () => {
   });
 });
 
-describe("matlab fences, multi-line control flow, and plot isolation", () => {
-  it("evaluates matlab and m fenced blocks and shares scope across fences", () => {
-    const doc = ["```matlab", "A = [3 1; 1 2]; b = [9; 8];", "x = A \\ b", "```", "", "```m", "sum(x)", "```"].join("\n");
+describe("calc fences, multi-line control flow, and plot isolation", () => {
+  it("evaluates calc and m fenced blocks and shares scope across fences", () => {
+    const doc = ["```calc", "A = [3 1; 1 2]; b = [9; 8];", "x = A \\ b", "```", "", "```m", "sum(x)", "```"].join("\n");
     const items = scan(doc);
     expect(texts(items)).toEqual(["[2; 3]", "5"]);
   });
@@ -229,7 +229,7 @@ describe("matlab fences, multi-line control flow, and plot isolation", () => {
       textSpecs: [new PluginSpec()],
       rescanOn: [pluginField],
     });
-    const doc = "heading\n\n```matlab\nplot([1 2 3], [4 5 6])\n```\n\ntrailing text";
+    const doc = "heading\n\n```calc\nplot([1 2 3], [4 5 6])\n```\n\ntrailing text";
     const view = new EditorView({
       state: EditorState.create({
         doc,
@@ -252,13 +252,13 @@ describe("matlab fences, multi-line control flow, and plot isolation", () => {
     }
   });
 
-  it("evaluates multi-line MATLAB control flow, functions, and plots natively", async () => {
+  it("evaluates multi-line control flow, functions, and plots natively", async () => {
     const { EditorView } = await import("@codemirror/view");
     const { previewKernel } = await import("$lib/editor/kernel");
     const { PluginSpec } = await import("$lib/editor/constructs/plugin");
     const { extension } = previewKernel({ specs: [], textSpecs: [new PluginSpec()], rescanOn: [pluginField] });
     const doc = [
-      "```matlab",
+      "```calc",
       "function y = sq(x)",
       "  y = x.^2;",
       "end",

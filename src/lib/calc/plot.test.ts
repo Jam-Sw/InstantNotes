@@ -237,7 +237,7 @@ describe("statements", () => {
   });
 });
 
-describe("MATLAB plot parity", () => {
+describe("plot parity", () => {
   it("parses LineSpec strings", () => {
     expect(parseLineSpec("r--o")).toEqual({ color: "#d95319", dash: "dash", marker: "circle" });
     expect(parseLineSpec("k:")).toEqual({ color: "#222222", dash: "dot" });

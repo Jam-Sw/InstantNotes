@@ -170,7 +170,7 @@ describe("draw hook", () => {
   });
 });
 
-describe("MATLAB parity", () => {
+describe("calc parity", () => {
   it("supports complex numbers, conjugate vs non-conjugate transpose, and complex functions", () => {
     const s = env();
     expect(run("z = 3 + 4i", s)).toBe("3 + 4i");
