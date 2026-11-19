@@ -1,0 +1,35 @@
+docs/API.md
+  s_acf8f274bdaea1::t_11476b6d33666c 760-770
+CHANGELOG.md
+  h_3524af15b776cc 10
+  s_acf8f274bdaea1::t_d01c96f89293e7 13
+  s_acf8f274bdaea1::t_bc94e13d3bcfd1 17
+  s_acf8f274bdaea1::t_6cc4929213c72d 18
+  s_acf8f274bdaea1::t_2e7f1b51f5bed4 20
+  s_acf8f274bdaea1::t_cdb24f3f48e1b3 39
+  s_acf8f274bdaea1::t_354c0f6e980063 12,14
+README.md
+  s_acf8f274bdaea1::t_80a3304f12ff09 27
+  s_acf8f274bdaea1::t_dc9aee6c7e8f5d 17-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a4cd8093606d7a579d7f2a5c12ca182dae66bd08",
+  "prompts": {},
+  "humans": {
+    "h_3524af15b776cc": {
+      "author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  },
+  "sessions": {
+    "s_acf8f274bdaea1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c018f144-aad1-49b9-81e4-52a92b27b7a6",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
