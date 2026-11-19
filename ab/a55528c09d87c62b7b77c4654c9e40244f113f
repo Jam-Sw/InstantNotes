@@ -1,0 +1,43 @@
+src/lib/graphics/plotly-spec.ts
+  s_acf8f274bdaea1::t_c08c682d079088 1,335,362,436,580
+src/lib/calc/engine.test.ts
+  s_acf8f274bdaea1::t_edae641b5e844c 173
+src/plugins/calc/index.ts
+  s_acf8f274bdaea1::t_697229c88e2a90 92
+src/lib/calc/plot.ts
+  s_acf8f274bdaea1::t_e557c5de8c9576 94
+src/lib/calc/engine.ts
+  s_acf8f274bdaea1::t_d27336eb4baf74 4209,4272,4576
+src/lib/calc/plot.test.ts
+  s_acf8f274bdaea1::t_6d6b7cd20db4f4 240
+src/plugins/calc/index.test.ts
+  s_acf8f274bdaea1::t_4971f0ae3fb33a 215-216
+  s_acf8f274bdaea1::t_4e17cfbb5fa4f4 217,232,261
+  s_acf8f274bdaea1::t_3d05417db7137e 255
+src/plugins/assist/index.test.ts
+  s_acf8f274bdaea1::t_d28445a4231d89 15
+src/lib/graphics/plotly-spec.test.ts
+  s_acf8f274bdaea1::t_d05afcb7af681f 60
+  s_acf8f274bdaea1::t_d71a6ad6b32c03 15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "aba55528c09d87c62b7b77c4654c9e40244f113f",
+  "prompts": {},
+  "humans": {
+    "h_3524af15b776cc": {
+      "author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  },
+  "sessions": {
+    "s_acf8f274bdaea1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c018f144-aad1-49b9-81e4-52a92b27b7a6",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
