@@ -36,6 +36,7 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 - `ConfirmDialog` Shift+Tab from Confirm moves to Cancel; `CommandPalette` Tab keeps focus in the input; web hides the Agents settings link.
 - Keeping the conflict copy in merge review (`settle_pair`) drops its `(conflict …)` title suffix and `#conflict` tag and keeps the original's pin.
+- `apply_manifest` keeps a tag or space colour from a synced manifest only when it is a swatch name or `#rrggbb` (`normalize_color`); anything else reads as no colour.
 - A failed `setSetting` in Settings > Backups, Behavior, Sync and Editor shows `Couldn't save setting` instead of failing silently.
 
 ### Security

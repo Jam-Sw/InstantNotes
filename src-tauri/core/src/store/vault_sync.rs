@@ -603,21 +603,22 @@ impl Store {
         let mut changed = false;
         let now = now_iso();
         for (name, tag) in &merged.tags {
+            let color = manifest_color(tag.color.as_deref());
             match self.find_tag(name)? {
                 None => {
                     let created = tag_get_or_create(&self.conn, name)?;
-                    if tag.color.is_some() {
+                    if color.is_some() {
                         self.conn.execute(
                             "UPDATE tags SET color = ?1, updated_at = ?2 WHERE id = ?3",
-                            params![tag.color, now, created.id],
+                            params![color, now, created.id],
                         )?;
                     }
                     changed = true;
                 }
-                Some(existing) if existing.color != tag.color => {
+                Some(existing) if existing.color != color => {
                     self.conn.execute(
                         "UPDATE tags SET color = ?1, updated_at = ?2 WHERE id = ?3",
-                        params![tag.color, now, existing.id],
+                        params![color, now, existing.id],
                     )?;
                     changed = true;
                 }
@@ -644,10 +645,11 @@ impl Store {
                     workspace_get_or_create(&self.conn, &space.name)?
                 }
             };
-            if existing.color != space.color || existing.flag != space.flag {
+            let color = manifest_color(space.color.as_deref());
+            if existing.color != color || existing.flag != space.flag {
                 self.conn.execute(
                     "UPDATE workspaces SET color = ?1, flag = ?2, updated_at = ?3 WHERE id = ?4",
-                    params![space.color, space.flag as i64, now, existing.id],
+                    params![color, space.flag as i64, now, existing.id],
                 )?;
                 changed = true;
             }
@@ -665,4 +667,8 @@ impl Store {
         }
         Ok(changed)
     }
+}
+
+fn manifest_color(raw: Option<&str>) -> Option<String> {
+    raw.and_then(domain::normalize_color)
 }
