@@ -718,7 +718,7 @@ class LibraryStore {
       await settle(outcome);
       toasts.show(message(outcome), {
         label: "Undo",
-        run: () => void this.#undoFold(outcome.before),
+        run: () => void this.#undoFold(outcome.before, outcome.note.updatedAt),
       });
       return true;
     } catch (e) {
@@ -760,12 +760,17 @@ class LibraryStore {
     );
   }
 
-  async #undoFold(before: NoteSnapshot[]): Promise<void> {
+  async #undoFold(before: NoteSnapshot[], foldedAt: string): Promise<void> {
     if (before.length === 0) return;
     const targetId = before[0].id;
     this.#collectPending();
     this.#saveQueue.cancelDebounce();
     await this.#saveQueue.flushIds([targetId]);
+    const current = await getNote(targetId).catch(() => null);
+    if (current && current.updatedAt !== foldedAt) {
+      toasts.show("Couldn't undo fold: note changed");
+      return;
+    }
     this.#saveQueue.drop([targetId]);
     try {
       const restored = await undoFold(before);

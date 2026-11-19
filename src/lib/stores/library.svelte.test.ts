@@ -1653,6 +1653,22 @@ describe("folding notes", () => {
     expect(mockUpdateNote).toHaveBeenCalledTimes(1);
   });
 
+  it("Undo leaves a target edited after the fold as it is", async () => {
+    const library = await load();
+    await selectNote(library, "n1");
+    mockGetNote.mockImplementation(async (id) => mkNote(id));
+    mockFoldNotes.mockResolvedValue(outcome);
+    await library.foldIds(["n1", "n2"]);
+
+    mockGetNote.mockImplementation(async (id) => mkNote(id, { updatedAt: "2026-01-02T00:00:00Z" }));
+    const { toasts } = await import("$lib/stores/toasts.svelte");
+    toasts.activate(toasts.items[0].id);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(mockUndoFold).not.toHaveBeenCalled();
+    expect(toasts.items.at(-1)?.message).toBe("Couldn't undo fold: note changed");
+  });
+
   it("a target edit that fails to save aborts the fold and surfaces the error", async () => {
     const library = await load();
     await selectNote(library, "n1");
