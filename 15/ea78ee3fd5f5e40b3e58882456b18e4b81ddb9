@@ -1,0 +1,27 @@
+src/lib/stores/library.svelte.ts
+  s_acf8f274bdaea1::t_8adb19f8f10ae7 721
+  s_acf8f274bdaea1::t_2c67d3bd80a8ac 763,769-773
+src/lib/stores/library.svelte.test.ts
+  s_acf8f274bdaea1::t_6a1857cfbb91fc 1656-1671
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "15ea78ee3fd5f5e40b3e58882456b18e4b81ddb9",
+  "prompts": {},
+  "humans": {
+    "h_3524af15b776cc": {
+      "author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  },
+  "sessions": {
+    "s_acf8f274bdaea1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c018f144-aad1-49b9-81e4-52a92b27b7a6",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
