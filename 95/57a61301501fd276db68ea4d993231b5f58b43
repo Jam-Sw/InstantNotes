@@ -1,0 +1,19 @@
+src-tauri/src/shell/plugins.rs
+  s_acf8f274bdaea1::t_ea5153140c566a 123-125,127-129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9557a61301501fd276db68ea4d993231b5f58b43",
+  "prompts": {},
+  "sessions": {
+    "s_acf8f274bdaea1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c018f144-aad1-49b9-81e4-52a92b27b7a6",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "jamubc <150970140+jamubc@users.noreply.github.com>"
+    }
+  }
+}
