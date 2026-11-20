@@ -7,7 +7,6 @@ use std::time::Duration;
 
 const FIRST_WAIT: Duration = Duration::from_secs(30);
 const EVERY: Duration = Duration::from_secs(60 * 60);
-const FRESH: chrono::Duration = chrono::Duration::hours(24);
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -74,12 +73,13 @@ fn entries(dir: &Path) -> Vec<(DateTime<Utc>, BackupEntry)> {
 }
 
 fn automatic(store: &Store) -> bool {
-    store
-        .get_setting(backup::AUTOMATIC_SETTING)
-        .ok()
-        .flatten()
+    setting(store, backup::AUTOMATIC_SETTING)
         .and_then(|v| v.as_bool())
         .unwrap_or(true)
+}
+
+fn setting(store: &Store, key: &str) -> Option<serde_json::Value> {
+    store.get_setting(key).ok().flatten()
 }
 
 fn list(app: &AppHandle) -> CmdResult<BackupList> {
@@ -96,7 +96,7 @@ fn list(app: &AppHandle) -> CmdResult<BackupList> {
     })
 }
 
-fn prune(dir: &Path) {
+fn prune(dir: &Path, retention: backup::Retention) {
     let names: Vec<String> = entries(dir)
         .into_iter()
         .filter_map(|(_, e)| {
@@ -105,7 +105,7 @@ fn prune(dir: &Path) {
                 .map(|n| n.to_string_lossy().into_owned())
         })
         .collect();
-    let (_, dropped) = backup::keep(Utc::now(), &names);
+    let (_, dropped) = backup::keep(Utc::now(), &names, retention);
     for name in dropped {
         let _ = std::fs::remove_file(dir.join(name));
     }
@@ -136,7 +136,13 @@ fn take_backup(app: &AppHandle) -> CmdResult<()> {
             ("bytes", &bytes.to_string()),
         ],
     );
-    prune(&dir);
+    let retention = backup::Retention::from_setting(
+        locked(&state)
+            .ok()
+            .and_then(|store| setting(&store, backup::KEEP_SETTING))
+            .as_ref(),
+    );
+    prune(&dir, retention);
     let _ = app.emit(events::BACKUPS_CHANGED, ());
     Ok(())
 }
@@ -147,16 +153,19 @@ fn backup_if_stale(app: &AppHandle) {
     let Ok(state) = library_state(app) else {
         return;
     };
-    let on = match locked(&state) {
-        Ok(store) => automatic(&store),
+    let (on, every) = match locked(&state) {
+        Ok(store) => (
+            automatic(&store),
+            backup::every_hours(setting(&store, backup::EVERY_SETTING).as_ref()),
+        ),
         Err(_) => return,
     };
     if !on {
         return;
     }
-    let fresh = entries(&dir)
-        .first()
-        .is_some_and(|(at, _)| Utc::now().signed_duration_since(*at) < FRESH);
+    let fresh = entries(&dir).first().is_some_and(|(at, _)| {
+        Utc::now().signed_duration_since(*at) < chrono::Duration::hours(every)
+    });
     if fresh {
         return;
     }

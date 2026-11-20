@@ -45,12 +45,12 @@ export function describeImport(outcome: ImportOutcome, space: string | null): st
   const n = outcome.imported;
   let line =
     n === 0
-      ? "Nothing new to import."
+      ? "Nothing new"
       : space && outcome.workspaceId
-        ? `Imported ${stickies(n)} into ${space}.`
-        : `Imported ${stickies(n)}.`;
+        ? `Imported ${stickies(n)} into ${space}`
+        : `Imported ${stickies(n)}`;
   if (outcome.skipped) {
-    line += ` ${outcome.skipped === 1 ? "1 was" : `${outcome.skipped} were`} already here.`;
+    line += ` · ${outcome.skipped} already imported`;
   }
   return line;
 }

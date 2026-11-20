@@ -5,8 +5,10 @@ import {
   countNotes,
   createNote,
   deleteWorkspace,
+  foldNotes,
   getNote,
   getOrCreateWorkspace,
+  getSetting,
   listNotes,
   listTags,
   listWorkspaces,
@@ -24,16 +26,19 @@ import {
   softDeleteNotes,
   restoreNotes,
   setNotesFlags,
+  setSetting,
   setTagColor,
   setWorkspaceColor,
   setWorkspaceFlag,
   destroyNotes as destroyNotesCmd,
   tagsForNote,
+  undoFold,
   updateNote,
   workspaceTagSlices,
   workspacesForNote,
 } from "$lib/api/client";
 import type {
+  FoldOutcome,
   Note,
   SearchResult,
   SpaceSuggestion,
@@ -60,8 +65,15 @@ import {
   type StatusFilter,
 } from "$lib/stores/library/navigation.svelte";
 import { toasts } from "$lib/stores/toasts.svelte";
+import { KEY_LAST_NOTE, listPrefs } from "$lib/stores/list.svelte";
+import { editorPrefs } from "$lib/stores/editor.svelte";
 import { announceOverwrite } from "$lib/stores/agents.svelte";
-import { mayHaveWritten, parseActivityLog, type AgentActivity } from "$lib/agent-activity";
+import {
+  mayHaveWritten,
+  parseActivityLog,
+  type AgentActivity,
+  type NoteSnapshot,
+} from "$lib/agent-activity";
 import { parseVaultSynced } from "$lib/vault-mirror";
 import { boardFromText } from "$lib/whiteboard/excalidraw";
 import { appendRows, parseSheet, serializeSheet } from "$lib/sheet/model";
@@ -71,52 +83,16 @@ import { groupSlices } from "$lib/space-colors";
 
 export type { StatusFilter } from "$lib/stores/library/navigation.svelte";
 
-const SEARCH_DEBOUNCE_MS = 150;
+const SEARCH_DEBOUNCE_MS = 80;
 const SUGGESTION_COUNT_DEBOUNCE_MS = 1500;
-const LIST_BODY_CHARS = 2048;
+const LIST_BODY_CHARS = 512;
 const LINKED_NOTE_WAIT_MS = 60_000;
 const TAG_SLICES_DEBOUNCE_MS = 400;
 
 class LibraryStore {
-  #nav = new NavigationModel();
+  nav = new NavigationModel();
 
-  get statusFilter(): StatusFilter {
-    return this.#nav.statusFilter;
-  }
-  set statusFilter(value: StatusFilter) {
-    this.#nav.statusFilter = value;
-  }
-  get activeWorkspaceId(): string | null {
-    return this.#nav.activeWorkspaceId;
-  }
-  set activeWorkspaceId(value: string | null) {
-    this.#nav.activeWorkspaceId = value;
-  }
-  get activeTagId(): string | null {
-    return this.#nav.activeTagId;
-  }
-  set activeTagId(value: string | null) {
-    this.#nav.activeTagId = value;
-  }
-  get scopedTagId(): string | null {
-    return this.#nav.scopedTagId;
-  }
-  set scopedTagId(value: string | null) {
-    this.#nav.scopedTagId = value;
-  }
   workspaceTags = $state<TagWithCount[]>([]);
-  get revisitMode(): boolean {
-    return this.#nav.revisitMode;
-  }
-  set revisitMode(value: boolean) {
-    this.#nav.revisitMode = value;
-  }
-  get graphMode(): boolean {
-    return this.#nav.graphMode;
-  }
-  set graphMode(value: boolean) {
-    this.#nav.graphMode = value;
-  }
   revisitCount = $state(0);
   suggestionCount = $state(0);
   suggestions = $state<SpaceSuggestion[]>([]);
@@ -140,6 +116,7 @@ class LibraryStore {
   }
 
   #saveQueue = new SaveQueue({
+    delayMs: () => editorPrefs.autosaveMs,
     onPersisted: async (id, updated) => {
       if (this.selected?.id === id) {
         const { body, surfaceData, contentKind } = this.selected;
@@ -244,7 +221,7 @@ class LibraryStore {
     if (isSyntheticNoteId(id)) return;
     await this.flushPendingEdits();
     if (this.#saveQueue.peek(id) !== undefined) {
-      toasts.show("Couldn't save this note, so it stays here for now.");
+      toasts.show("Not saved, can't pop out");
       return;
     }
     try {
@@ -283,7 +260,7 @@ class LibraryStore {
 
   async refresh(): Promise<void> {
     const token = ++this.#refreshToken;
-    if (isSyntheticSpaceId(this.activeWorkspaceId) && !this.searchText.trim()) {
+    if (isSyntheticSpaceId(this.nav.activeWorkspaceId) && !this.searchText.trim()) {
       this.searchResults = null;
       this.notes = [];
       this.workspaceTags = [];
@@ -297,7 +274,11 @@ class LibraryStore {
         if (token !== this.#refreshToken) return;
         this.searchResults = results;
       } else {
-        const notes = await listNotes({ ...this.#nav.filter(), bodyChars: LIST_BODY_CHARS });
+        const notes = await listNotes({
+          ...this.nav.filter(),
+          ...listPrefs.sort(),
+          bodyChars: Math.max(LIST_BODY_CHARS, listPrefs.previewChars * 4),
+        });
         if (token !== this.#refreshToken) return;
         this.searchResults = null;
         this.notes = notes;
@@ -308,10 +289,10 @@ class LibraryStore {
         }
       }
       this.error = null;
-      if (this.revisitMode && !this.searchResults) {
+      if (this.nav.revisitMode && !this.searchResults) {
         this.revisitCount = this.notes.length;
       }
-      if (this.activeWorkspaceId) {
+      if (this.nav.activeWorkspaceId) {
         void this.#refreshWorkspaceTags();
       } else if (this.workspaceTags.length > 0) {
         this.workspaceTags = [];
@@ -369,8 +350,8 @@ class LibraryStore {
     try {
       this.workspaces = await listWorkspaces();
       if (
-        this.activeWorkspaceId &&
-        !this.workspaces.some((w) => w.id === this.activeWorkspaceId)
+        this.nav.activeWorkspaceId &&
+        !this.workspaces.some((w) => w.id === this.nav.activeWorkspaceId)
       ) {
         this.selectWorkspace(null);
       }
@@ -381,7 +362,7 @@ class LibraryStore {
 
   setStatusFilter(filter: StatusFilter): void {
     this.#rememberOpen();
-    this.#nav.setStatus(filter);
+    this.nav.setStatus(filter);
     this.searchText = "";
     this.clearMultiSelect();
     void this.#enterView();
@@ -403,16 +384,16 @@ class LibraryStore {
     const id = this.selected?.id;
     const open = id && !isSyntheticNoteId(id) && this.multiSelected.size <= 1 ? id : null;
     this.#carried = open;
-    const key = this.#nav.viewKey();
+    const key = this.nav.viewKey();
     if (!key) return;
     if (open) this.#openByView.set(key, open);
     else this.#openByView.delete(key);
   }
 
   async #enterView(): Promise<void> {
-    const key = this.#nav.viewKey();
+    const key = this.nav.viewKey();
     await this.refresh();
-    if (!key || key !== this.#nav.viewKey()) return;
+    if (!key || key !== this.nav.viewKey()) return;
     if (this.selected || this.multiSelected.size > 0) return;
     const id = [this.#carried, this.#openByView.get(key)].find(
       (c) => c && this.notes.some((n) => n.id === c),
@@ -422,25 +403,25 @@ class LibraryStore {
 
   selectGraph(): void {
     this.#leaveView();
-    this.#nav.showGraph();
+    this.nav.showGraph();
     void this.refresh();
   }
 
   selectWorkspace(workspaceId: string | null): void {
     this.#leaveView();
-    this.#nav.showWorkspace(workspaceId);
+    this.nav.showWorkspace(workspaceId);
     void this.#enterView();
   }
 
   selectRevisit(): void {
     this.#leaveView();
-    this.#nav.showRevisit();
+    this.nav.showRevisit();
     void this.#enterView();
   }
 
   setTagFilter(tagId: string | null): void {
     this.#leaveView();
-    this.#nav.showTag(tagId);
+    this.nav.showTag(tagId);
     void this.#enterView();
   }
 
@@ -461,27 +442,27 @@ class LibraryStore {
 
   toggleScopedTag(tagId: string): void {
     this.#rememberOpen();
-    if (!this.#nav.toggleScopedTag(tagId)) return;
+    if (!this.nav.toggleScopedTag(tagId)) return;
     this.clearMultiSelect();
     void this.#enterView();
   }
 
   async #refreshWorkspaceTags(): Promise<void> {
-    const id = this.activeWorkspaceId;
+    const id = this.nav.activeWorkspaceId;
     if (!id) {
       this.workspaceTags = [];
       return;
     }
     try {
       const tags = await listWorkspaceTags(id);
-      if (this.activeWorkspaceId !== id) return;
+      if (this.nav.activeWorkspaceId !== id) return;
       this.workspaceTags = tags;
-      if (this.scopedTagId && !tags.some((t) => t.id === this.scopedTagId)) {
-        this.scopedTagId = null;
+      if (this.nav.scopedTagId && !tags.some((t) => t.id === this.nav.scopedTagId)) {
+        this.nav.scopedTagId = null;
         void this.refresh();
       }
     } catch (e) {
-      if (this.activeWorkspaceId !== id) return;
+      if (this.nav.activeWorkspaceId !== id) return;
       this.workspaceTags = [];
       if (!(e instanceof ApiError && e.code === ERROR_CODES.NOT_FOUND))
         this.#fail(e);
@@ -548,17 +529,28 @@ class LibraryStore {
       });
     });
     if (found) await this.select(id);
-    else toasts.show("That note isn't on this device yet.");
+    else toasts.show("Note not on this device yet");
+  }
+
+  async reopenLast(): Promise<void> {
+    if (!listPrefs.reopenLast || this.selected) return;
+    try {
+      const id = await getSetting<string>(KEY_LAST_NOTE);
+      if (typeof id !== "string" || this.selected) return;
+      const note = await getNote(id, false);
+      if (!note.isDeleted && !this.selected) await this.select(id);
+    } catch {
+    }
   }
 
   async select(id: string): Promise<void> {
-    this.graphMode = false;
+    this.nav.graphMode = false;
     this.#selection.reset([id], id);
     await this.#open(id);
   }
 
   selectVirtual(note: Note): void {
-    this.graphMode = false;
+    this.nav.graphMode = false;
     this.#collectPending();
     this.#saveQueue.flushDebounce();
     this.#selection.reset([note.id], note.id);
@@ -572,17 +564,20 @@ class LibraryStore {
     this.#collectPending();
     this.#saveQueue.flushDebounce();
     try {
-      const note = await getNote(id, true);
-      this.#saveQueue.known(note);
-      const queued = this.#saveQueue.peek(id);
-      this.selected = queued !== undefined ? { ...note, ...queued } : note;
-      [this.selectedTags, this.selectedWorkspaces] = await Promise.all([
+      const [note, tags, workspaces] = await Promise.all([
+        getNote(id, true),
         tagsForNote(id),
         workspacesForNote(id),
       ]);
+      this.#saveQueue.known(note);
+      const queued = this.#saveQueue.peek(id);
+      this.selected = queued !== undefined ? { ...note, ...queued } : note;
+      this.selectedTags = tags;
+      this.selectedWorkspaces = workspaces;
       this.error = null;
+      if (listPrefs.reopenLast && !isSyntheticNoteId(id)) void setSetting(KEY_LAST_NOTE, id).catch(() => {});
       void this.#refreshRevisitCount();
-      if (this.revisitMode) void this.refresh();
+      if (this.nav.revisitMode) void this.refresh();
     } catch (e) {
       this.#fail(e);
     }
@@ -645,6 +640,150 @@ class LibraryStore {
       this.selected = null;
       this.selectedTags = [];
       this.selectedWorkspaces = [];
+    }
+  }
+
+  get canBulkFold(): boolean {
+    if (this.nav.statusFilter === "trash" || this.multiSelected.size < 2) return false;
+    return this.canFoldIds([...this.multiSelected]);
+  }
+
+  canFoldIds(ids: string[]): boolean {
+    if (this.nav.statusFilter === "trash") return false;
+    const real = ids.filter((id) => !isSyntheticNoteId(id));
+    if (real.length < 2) return false;
+    return this.notes
+      .filter((n) => real.includes(n.id))
+      .every((n) => !n.isDeleted && n.contentKind === "document");
+  }
+
+  async bulkFold(): Promise<void> {
+    const ordered = this.visibleIds.filter((id) => this.multiSelected.has(id));
+    const rest = [...this.multiSelected].filter((id) => !ordered.includes(id));
+    await this.foldIds([...ordered, ...rest]);
+  }
+
+  async foldIds(ids: string[]): Promise<void> {
+    const unique = [...new Set(ids)].filter((id) => !isSyntheticNoteId(id));
+    if (unique.length < 2) return;
+    const docIds: string[] = [];
+    for (const id of unique) {
+      const cached = this.notes.find((n) => n.id === id);
+      const note = cached ?? (await getNote(id, false).catch(() => null));
+      if (!note || note.isDeleted || note.contentKind !== "document") {
+        toasts.show("Text notes only");
+        return;
+      }
+      docIds.push(id);
+    }
+    const [targetId, ...sourceIds] = docIds;
+    if (!targetId || sourceIds.length === 0) return;
+    await this.#fold(
+      unique,
+      targetId,
+      sourceIds,
+      async () => {
+        await Promise.all([
+          this.refresh(),
+          this.refreshTags(),
+          this.refreshWorkspaces(),
+          this.#refreshRevisitCount(),
+        ]);
+        await this.select(targetId);
+      },
+      (outcome) => {
+        const n = outcome.foldedIds.length;
+        return `Folded ${n} ${n === 1 ? "note" : "notes"} into “${outcome.note.title || "Untitled"}”`;
+      },
+    );
+  }
+
+  async #fold(
+    allIds: string[],
+    targetId: string,
+    sourceIds: string[],
+    settle: (outcome: FoldOutcome) => Promise<void>,
+    message: (outcome: FoldOutcome) => string,
+  ): Promise<boolean> {
+    if (!(await this.#popInAll(allIds))) return false;
+    this.#collectPending();
+    this.#saveQueue.cancelDebounce();
+    await this.#saveQueue.flushIds(allIds);
+    if (this.#saveQueue.peek(targetId) !== undefined) return false;
+    this.#saveQueue.drop(sourceIds);
+    try {
+      const outcome = await foldNotes(targetId, sourceIds);
+      this.#saveQueue.known(outcome.note);
+      this.error = null;
+      await settle(outcome);
+      toasts.show(message(outcome), {
+        label: "Undo",
+        run: () => void this.#undoFold(outcome.before, outcome.note.updatedAt),
+      });
+      return true;
+    } catch (e) {
+      this.#fail(e);
+      return false;
+    }
+  }
+
+  async foldIntoSelected(sourceId: string, sourceTitle?: string): Promise<boolean> {
+    const target = this.selected;
+    if (
+      !target ||
+      target.isDeleted ||
+      target.contentKind !== "document" ||
+      isSyntheticNoteId(target.id) ||
+      isSyntheticNoteId(sourceId) ||
+      target.id === sourceId
+    ) {
+      return false;
+    }
+    return this.#fold(
+      [target.id, sourceId],
+      target.id,
+      [sourceId],
+      async (outcome) => {
+        if (this.selected?.id === outcome.note.id) {
+          this.selected = outcome.note;
+          [this.selectedTags, this.selectedWorkspaces] = await Promise.all([
+            tagsForNote(outcome.note.id),
+            workspacesForNote(outcome.note.id),
+          ]);
+        }
+        void this.refresh();
+        void this.refreshTags();
+        void this.refreshWorkspaces();
+        void this.#refreshRevisitCount();
+      },
+      () => `Folded “${sourceTitle || "Untitled"}” into this note`,
+    );
+  }
+
+  async #undoFold(before: NoteSnapshot[], foldedAt: string): Promise<void> {
+    if (before.length === 0) return;
+    const targetId = before[0].id;
+    this.#collectPending();
+    this.#saveQueue.cancelDebounce();
+    await this.#saveQueue.flushIds([targetId]);
+    const current = await getNote(targetId).catch(() => null);
+    if (current && current.updatedAt !== foldedAt) {
+      toasts.show("Couldn't undo fold: note changed");
+      return;
+    }
+    this.#saveQueue.drop([targetId]);
+    try {
+      const restored = await undoFold(before);
+      this.#saveQueue.known(restored);
+      await Promise.all([
+        this.refresh(),
+        this.refreshTags(),
+        this.refreshWorkspaces(),
+        this.#refreshRevisitCount(),
+      ]);
+      if (this.selected?.id === restored.id) await this.#open(restored.id);
+    } catch {
+      toasts.show("Couldn't undo fold");
     }
   }
 
@@ -739,24 +878,24 @@ class LibraryStore {
 
   async newNote(body?: string): Promise<string | null> {
     try {
-      const activeTag = this.activeTagId
-        ? this.tags.find((t) => t.id === this.activeTagId)
+      const activeTag = this.nav.activeTagId
+        ? this.tags.find((t) => t.id === this.nav.activeTagId)
         : null;
 
-      if (isSyntheticSpaceId(this.activeWorkspaceId)) {
-        this.activeWorkspaceId = null;
+      if (isSyntheticSpaceId(this.nav.activeWorkspaceId)) {
+        this.nav.activeWorkspaceId = null;
       }
 
       const note = await createNote({
         ...(activeTag ? { tags: [activeTag.name] } : {}),
         ...(body ? { body } : {}),
       });
-      if (this.activeWorkspaceId) {
-        await addNoteToWorkspace(note.id, this.activeWorkspaceId);
+      if (this.nav.activeWorkspaceId) {
+        await addNoteToWorkspace(note.id, this.nav.activeWorkspaceId);
       }
-      this.statusFilter = "active";
-      this.revisitMode = false;
-      if (!activeTag) this.activeTagId = null;
+      this.nav.statusFilter = "active";
+      this.nav.revisitMode = false;
+      if (!activeTag) this.nav.activeTagId = null;
       this.searchText = "";
       void this.refresh();
       await this.select(note.id);
@@ -782,13 +921,13 @@ class LibraryStore {
     const ws = this.workspaces.find((w) => w.id === id);
     try {
       const memberIds = await deleteWorkspace(id);
-      if (this.activeWorkspaceId === id) this.selectWorkspace(null);
+      if (this.nav.activeWorkspaceId === id) this.selectWorkspace(null);
       if (this.selected) {
         this.selectedWorkspaces = await workspacesForNote(this.selected.id);
       }
       await this.refreshWorkspaces();
       if (ws) {
-        toasts.show(`Deleted "${ws.name}" - notes are kept`, {
+        toasts.show(`Deleted "${ws.name}"`, {
           label: "Undo",
           run: () => void this.#undoWorkspaceDelete(ws.name, memberIds),
         });
@@ -811,11 +950,11 @@ class LibraryStore {
       const failedCount = results.filter((r) => r.status === "rejected").length;
       if (failedCount > 0) {
         toasts.show(
-          `Restored "${name}" without ${failedCount} of ${memberIds.length} notes.`,
+          `Restored "${name}", ${failedCount} of ${memberIds.length} notes missing`,
         );
       }
     } catch {
-      toasts.show(`Couldn't restore "${name}".`);
+      toasts.show(`Couldn't restore "${name}"`);
     }
   }
 
@@ -1008,13 +1147,11 @@ class LibraryStore {
     await this.refresh();
     const failedCount = results.filter((r) => r.status === "rejected").length;
     if (failedCount === 0) return;
-    const message =
+    toasts.show(
       failedCount === ids.length
-        ? ids.length === 1
-          ? "Couldn't restore. It may already be gone."
-          : "Couldn't restore. The notes may already be gone."
-        : `Couldn't restore ${failedCount} of ${ids.length} notes.`;
-    toasts.show(message);
+        ? "Couldn't restore"
+        : `Couldn't restore ${failedCount} of ${ids.length} notes`,
+    );
   }
 
   async #adoptExternal(entries: AgentActivity[]): Promise<void> {

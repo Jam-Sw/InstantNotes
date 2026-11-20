@@ -90,7 +90,7 @@ describe("the Agents Space", () => {
     const doing = { tool: "get_note", status: "ok", titles: ["Roadmap"], noteCount: 1 } as AgentActivity;
     const live = buildAgentNotes(convs, (s) => (s === "s1" ? doing : null));
     expect(live[0].body).toBe("Reading “Roadmap”");
-    expect(live[1].body).toBe("Connected. Nothing asked yet.");
+    expect(live[1].body).toBe("Connected, no calls");
     expect(buildAgentNotes(convs)[0].body).toBe("3 changes · 5 reads · 1 failed");
   });
 

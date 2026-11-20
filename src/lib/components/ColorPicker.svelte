@@ -5,10 +5,12 @@
   let {
     value,
     label = "Color",
+    none = "None",
     onpick,
   }: {
     value: string | null;
     label?: string;
+    none?: string;
     onpick: (color: string | null) => void;
   } = $props();
 
@@ -93,7 +95,7 @@
       tabindex={-1}
       onclick={() => pick(null)}
     >
-      <span class="mark none" aria-hidden="true"></span>None
+      <span class="mark none" aria-hidden="true"></span>{none}
     </button>
     <button
       class="act"
@@ -237,8 +239,11 @@
     opacity: 0.45;
   }
   @media (prefers-reduced-motion: reduce) {
-    .dot:hover {
+    :global(:root:not([data-motion="full"])) .dot:hover {
       transform: none;
     }
+  }
+  :global(:root[data-motion="off"]) .dot:hover {
+    transform: none;
   }
 </style>

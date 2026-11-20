@@ -36,7 +36,7 @@ describe("UpdateNote", () => {
     updater.deltaState = "ready";
     const { getByText } = render(UpdateNote);
     expect(
-      getByText("The download is 1.2 MB larger than v0.9.0."),
+      getByText("Download: 1.2 MB larger than v0.9.0"),
     ).toBeTruthy();
   });
 
@@ -53,7 +53,7 @@ describe("UpdateNote", () => {
     const done = vi.spyOn(updater, "acknowledge").mockImplementation(() => {});
     const { getByText } = render(UpdateNote);
 
-    expect(getByText(/is installed/)).toBeTruthy();
+    expect(getByText(/installed$/)).toBeTruthy();
     await fireEvent.click(getByText("Restart now"));
     expect(restart).toHaveBeenCalledTimes(1);
     await fireEvent.click(getByText("Later"));

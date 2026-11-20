@@ -5,6 +5,9 @@ const stores = vi.hoisted(() => ({
   library: {
     selected: null as Note | null,
     selectedTags: [] as { id: string; name: string }[],
+    canBulkFold: false,
+    multiSelected: new Set<string>(),
+    bulkFold: vi.fn(),
     isSticky: vi.fn((_id: string) => false),
     newNote: vi.fn(),
     newWhiteboard: vi.fn(),
@@ -138,6 +141,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   stores.library.selected = null;
   stores.library.selectedTags = [];
+  stores.library.canBulkFold = false;
+  stores.library.multiSelected = new Set<string>();
   stores.library.isSticky.mockImplementation(() => false);
   stores.sidebar.collapsed = false;
   stores.sidebar.hidden = false;
@@ -393,10 +398,10 @@ describe("the commands every surface shares", () => {
     expect(stores.shell.openSettings).toHaveBeenCalledWith("backups");
     await find(commands, "data.export").run();
     expect(stores.vaultExport.exportVaultToFolder).toHaveBeenCalledOnce();
-    expect(stores.toasts.show).toHaveBeenLastCalledWith(expect.stringContaining("Exported."));
+    expect(stores.toasts.show).toHaveBeenLastCalledWith("Exported as Markdown");
     await find(commands, "data.backupNow").run();
     expect(stores.client.backupNow).toHaveBeenCalledOnce();
-    expect(stores.toasts.show).toHaveBeenLastCalledWith(expect.stringContaining("Backed up."));
+    expect(stores.toasts.show).toHaveBeenLastCalledWith(expect.stringContaining("Backed up"));
   });
 
   it("reports an export that was refused and says nothing about one that was cancelled", async () => {
@@ -452,6 +457,16 @@ describe("the commands every surface shares", () => {
     stores.library.selected = note();
     void find(buildCommands(), "note.export").run();
     expect(stores.exportSelectedNote).toHaveBeenCalledOnce();
+  });
+
+  it("offers folding the selection when multiple notes can be folded", () => {
+    expect(ids(buildCommands())).not.toContain("note.foldSelection");
+    stores.library.canBulkFold = true;
+    stores.library.multiSelected = new Set(["n1", "n2", "n3"]);
+    const cmd = find(buildCommands(), "note.foldSelection");
+    expect(cmd.title).toBe("Fold 3 notes into one");
+    void cmd.run();
+    expect(stores.library.bulkFold).toHaveBeenCalledOnce();
   });
 });
 

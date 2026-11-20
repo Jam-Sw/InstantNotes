@@ -2,19 +2,36 @@
   import { MergeView } from "@codemirror/merge";
   import { EditorState } from "@codemirror/state";
   import { EditorView } from "@codemirror/view";
+  import type { Note } from "$lib/api/types";
   import { library } from "$lib/stores/library.svelte";
   import { mergeSpace } from "$lib/stores/merge-space.svelte";
-  import { COPIES_NOTE_ID, reasonLine } from "$lib/merge/space";
+  import {
+    baseTitle,
+    copiedAt,
+    COPIES_NOTE_ID,
+    differenceLabel,
+    differences,
+    ownTags,
+    sideNames,
+    type Labels,
+  } from "$lib/merge/space";
   import { formatExact, preview } from "$lib/format";
 
   const pair = $derived(mergeSpace.pairFor(library.selected?.id));
   const showCopies = $derived(library.selected?.id === COPIES_NOTE_ID);
   const left = $derived(pair ? mergeSpace.known[pair.a] : undefined);
   const right = $derived(pair ? mergeSpace.known[pair.b] : undefined);
+  const leftLabels = $derived<Labels>((pair && mergeSpace.labels[pair.a]) || { tags: [], spaces: [] });
+  const rightLabels = $derived<Labels>((pair && mergeSpace.labels[pair.b]) || { tags: [], spaces: [] });
+  const names = $derived(pair ? sideNames(pair.reason) : ["", ""]);
+  const diff = $derived(
+    left && right && pair ? differences(left, right, leftLabels, rightLabels, pair.reason) : [],
+  );
   const leftBody = $derived(left?.body);
   const rightBody = $derived(right?.body);
+  const textDiffers = $derived(leftBody !== rightBody);
   const title = $derived(
-    showCopies ? "Exact copies combined" : left?.title || right?.title || "Untitled",
+    showCopies ? "Exact copies combined" : baseTitle(left?.title || right?.title || "") || "Untitled",
   );
 
   let busy = $state(false);
@@ -48,6 +65,62 @@
   }
 </script>
 
+{#snippet chips(items: string[], other: string[], prefix: string)}
+  {#if items.length === 0}
+    <span class="none">None</span>
+  {:else}
+    {#each items as item (item)}
+      <span class="chip" class:only={!other.includes(item)}>{prefix}{item}</span>
+    {/each}
+  {/if}
+{/snippet}
+
+{#snippet side(note: Note, labels: Labels, otherLabels: Labels, name: string, otherName: string, keepId: string)}
+  {@const copied = copiedAt(note.title)}
+  <div class="side">
+    <div class="side-head">
+      <div class="side-text">
+        <span class="side-name">{name}</span>
+        <span class="side-date">Edited {formatExact(note.updatedAt)}</span>
+        {#if copied}<span class="side-date">Copied {copied}</span>{/if}
+      </div>
+      <div class="side-keep">
+        <button
+          class="btn"
+          disabled={busy}
+          aria-label="Keep {name.toLowerCase()}"
+          onclick={() => pair && run(() => mergeSpace.settle(pair, keepId))}>Keep</button
+        >
+        <span class="side-trash">{otherName} → Trash</span>
+      </div>
+    </div>
+    {#if diff.some((d) => d !== "text")}
+      <dl class="fields">
+        {#if diff.includes("title")}
+          <dt>Title</dt>
+          <dd>{baseTitle(note.title) || "Untitled"}</dd>
+        {/if}
+        {#if diff.includes("tags")}
+          <dt>Tags</dt>
+          <dd>{@render chips(ownTags(labels), ownTags(otherLabels), "#")}</dd>
+        {/if}
+        {#if diff.includes("Spaces")}
+          <dt>Spaces</dt>
+          <dd>{@render chips(labels.spaces, otherLabels.spaces, "")}</dd>
+        {/if}
+        {#if diff.includes("pin")}
+          <dt>Pin</dt>
+          <dd>{note.isPinned ? "Pinned" : "Not pinned"}</dd>
+        {/if}
+        {#if diff.includes("archive")}
+          <dt>Archive</dt>
+          <dd>{note.isArchived ? "Archived" : "Not archived"}</dd>
+        {/if}
+      </dl>
+    {/if}
+  </div>
+{/snippet}
+
 <div class="merge-note">
   <div class="column" class:wide={!!pair}>
     <div class="head">
@@ -55,16 +128,12 @@
       <button
         class="btn quiet"
         disabled={busy}
-        title="Empty this list and keep every note as it is now"
-        onclick={() => run(() => mergeSpace.clear())}>Leave all as they are</button
+        onclick={() => run(() => mergeSpace.clear())}>Dismiss all</button
       >
     </div>
 
     {#if showCopies}
-      <p class="lead">
-        These notes were on both devices, word for word, so each one is a single note now. The
-        spare copy went to the Trash. Undo brings it back as its own note.
-      </p>
+      <p class="lead">Identical, merged</p>
       <ul class="copies">
         {#each mergeSpace.review.combined as copy (copy.trashed)}
           {@const kept = mergeSpace.known[copy.kept]}
@@ -80,46 +149,30 @@
         {/each}
       </ul>
     {:else if pair}
-      <p class="lead">
-        <span class="reason">{reasonLine(pair.reason)}.</span>
-        Both notes are kept until you choose. The one you don't keep goes to the Trash, where you can
-        restore it.
-      </p>
-      <div class="both">
+      <div class="summary">
+        <span class="reason">{left && right ? differenceLabel(diff) : "One note is missing"}</span>
         <button
           class="btn primary"
           disabled={busy}
           onclick={() => run(() => mergeSpace.settle(pair, null))}>Keep both</button
         >
-        <span class="both-note">Already the case. Choosing it takes the pair off this list.</span>
       </div>
 
       {#if left && right}
         <div class="compare">
           <div class="sides">
-            <div class="side">
-              <div class="side-text">
-                <span class="side-name">This one</span>
-                <span class="side-date">Edited {formatExact(left.updatedAt)}</span>
-              </div>
-              <button class="btn" disabled={busy} onclick={() => run(() => mergeSpace.settle(pair, pair.a))}
-                >Keep this one</button
-              >
-            </div>
-            <div class="side">
-              <div class="side-text">
-                <span class="side-name">That one</span>
-                <span class="side-date">Edited {formatExact(right.updatedAt)}</span>
-              </div>
-              <button class="btn" disabled={busy} onclick={() => run(() => mergeSpace.settle(pair, pair.b))}
-                >Keep that one</button
-              >
-            </div>
+            {@render side(left, leftLabels, rightLabels, names[0], names[1], pair.a)}
+            {@render side(right, rightLabels, leftLabels, names[1], names[0], pair.b)}
           </div>
-          <div class="panes" bind:this={host}></div>
+          {#if textDiffers}
+            <div class="panes" bind:this={host}></div>
+          {:else}
+            <div class="same">
+              <span class="same-label">Text (same)</span>
+              <div class="same-body">{left.body || "Empty note"}</div>
+            </div>
+          {/if}
         </div>
-      {:else}
-        <p class="lead muted">One of these notes is no longer in the library. Keep both to take the pair off this list.</p>
       {/if}
     {/if}
   </div>
@@ -161,23 +214,16 @@
     line-height: var(--leading);
     color: var(--text-secondary);
   }
-  .reason {
-    color: var(--text);
-    font-weight: 500;
-  }
-  .muted {
-    color: var(--text-tertiary);
-  }
-  .both {
+  .summary {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 14px;
+    gap: 12px;
+    margin-top: 10px;
   }
-  .both-note {
-    font-size: 12.5px;
-    color: var(--text-tertiary);
+  .reason {
+    color: var(--text);
+    font-weight: 500;
   }
   .copies {
     margin: 16px 0 0;
@@ -225,20 +271,91 @@
   }
   .side {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: column;
     gap: 10px;
     min-width: 0;
-    padding: 10px 12px 10px 14px;
+    padding: 10px 12px 12px 14px;
   }
   .side + .side {
     border-left: 1px solid var(--border);
   }
+  .side-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .side-keep {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 3px;
+  }
+  .side-trash {
+    font-family: var(--font-meta);
+    font-size: 11px;
+    color: var(--text-tertiary);
+    white-space: nowrap;
+  }
   @container (max-width: 560px) {
-    .side {
+    .side-head {
       flex-direction: column;
+    }
+    .side-keep {
       align-items: flex-start;
     }
+  }
+  .fields {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 6px 12px;
+    margin: 0;
+  }
+  .fields dt {
+    font-size: 12px;
+    color: var(--text-tertiary);
+  }
+  .fields dd {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 0;
+    min-width: 0;
+    color: var(--text);
+  }
+  .chip {
+    padding: 0 7px;
+    border-radius: 99px;
+    border: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .chip.only {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent-text);
+  }
+  .none {
+    font-size: 12px;
+    color: var(--text-tertiary);
+  }
+  .same {
+    padding: 10px 14px 12px;
+  }
+  .same-label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 12px;
+    color: var(--text-tertiary);
+  }
+  .same-body {
+    max-height: 320px;
+    overflow-y: auto;
+    font-family: var(--font-body);
+    line-height: var(--leading);
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
   .side-text {
     display: flex;

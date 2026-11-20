@@ -28,10 +28,14 @@
   import { library } from "$lib/stores/library.svelte";
   import { updater } from "$lib/stores/updater.svelte";
   import { editorPrefs } from "$lib/stores/editor.svelte";
+  import { pluginPrefs } from "$lib/stores/plugins.svelte";
   import { imagePrefs } from "$lib/stores/images.svelte";
   import { sidebar } from "$lib/stores/sidebar.svelte";
+  import { captureKeys } from "$lib/stores/capture-keys.svelte";
+  import { graphPrefs } from "$lib/stores/graph.svelte";
+  import { listPrefs } from "$lib/stores/list.svelte";
   import { linkPrefs as linkPrefsStore } from "$lib/stores/links.svelte";
-  import { theme } from "$lib/stores/theme.svelte";
+  import { reducedMotion, theme } from "$lib/stores/theme.svelte";
   import { contexting } from "$lib/stores/contexting.svelte";
   import { agents } from "$lib/stores/agents.svelte";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
@@ -62,7 +66,7 @@
   $effect(() => {
     if (updateSpace.visible) return;
     if (
-      isUpdateSpaceId(library.activeWorkspaceId) ||
+      isUpdateSpaceId(library.nav.activeWorkspaceId) ||
       isVirtualNoteId(library.selected?.id)
     ) {
       library.selectWorkspace(null);
@@ -84,7 +88,7 @@
 
   $effect(() => {
     if (mergeSpace.visible) return;
-    if (isMergeSpaceId(library.activeWorkspaceId) || isMergeNoteId(library.selected?.id)) {
+    if (isMergeSpaceId(library.nav.activeWorkspaceId) || isMergeNoteId(library.selected?.id)) {
       library.selectWorkspace(null);
     }
   });
@@ -95,7 +99,7 @@
     agentsSpace.open();
   };
   $effect(() => {
-    agents.setWatching(!shell.settingsOpen && isAgentsSpaceId(library.activeWorkspaceId));
+    agents.setWatching(!shell.settingsOpen && isAgentsSpaceId(library.nav.activeWorkspaceId));
   });
 
   layout.onLeave = () => library.clearMultiSelect();
@@ -117,7 +121,7 @@
   });
 
   const view = $derived(
-    `${library.graphMode}|${library.revisitMode}|${library.activeTagId}|${library.activeWorkspaceId}|${shell.settingsOpen}`,
+    `${library.nav.graphMode}|${library.nav.revisitMode}|${library.nav.activeTagId}|${library.nav.activeWorkspaceId}|${shell.settingsOpen}`,
   );
   let lastView: string | undefined;
   $effect(() => {
@@ -130,26 +134,23 @@
   });
 
   const drawer = $derived(sidebar.narrow);
-  const onePane = $derived(layout.phone && !library.graphMode);
+  const onePane = $derived(layout.phone && !library.nav.graphMode);
   const showList = $derived(!onePane || layout.pane === "list");
   const showEditor = $derived(!onePane || layout.pane === "note");
   const backButton = $derived(onePane && layout.pane === "note");
   const listOverlay = $derived(sidebar.listOverlay);
   const listHidden = $derived(sidebar.listHidden);
   const navTrack = $derived(sidebar.navTrack);
-  const listTrack = $derived(library.graphMode ? 0 : sidebar.listTrack);
+  const listTrack = $derived(library.nav.graphMode ? 0 : sidebar.listTrack);
   const columns = $derived(
     layout.phone ? "minmax(0, 1fr)" : `${navTrack}px ${listTrack}px minmax(0, 1fr)`,
   );
-  const listToggleShown = $derived(!layout.phone && !library.graphMode);
+  const listToggleShown = $derived(!layout.phone && !library.nav.graphMode);
   const editorEdge = $derived(listToggleShown && !sidebar.navInline && !sidebar.listInline);
   const listX = $derived(navTrack + listTrack);
   let animate = $state(false);
   let dragging = $state<"nav" | "list" | null>(null);
 
-  const reducedMotion = () =>
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const motion = (ms: number) => (reducedMotion() || layout.resizing ? 0 : ms);
 
   function onListClick(e: MouseEvent) {
@@ -167,8 +168,19 @@
 
   onMount(() => {
     if (isMac && !isWeb) document.documentElement.dataset.chrome = "overlay";
-    void library.init().then(() => library.openLinked(location.hash));
+    const listReady = listPrefs.init();
+    void library
+      .init()
+      .then(() => library.openLinked(location.hash))
+      .then(() => listReady)
+      .then(() => library.reopenLast());
     void editorPrefs.init();
+    void pluginPrefs.init();
+    void graphPrefs.init();
+    captureKeys.init();
+    void listReady.then(() => {
+      if (Object.keys(listPrefs.sort()).length > 0) void library.refresh();
+    });
     void imagePrefs.init();
     void sidebar.init().then(() => {
       requestAnimationFrame(() => requestAnimationFrame(() => (animate = true)));
@@ -177,7 +189,7 @@
     void contexting.init();
     void agents.init();
     void mergeSpace.init();
-    const warmEditor = setTimeout(() => void import("$lib/components/NoteEditor.svelte"), 800);
+    const warmEditor = setTimeout(() => void import("$lib/components/NoteEditor.svelte"), 300);
     const warmViews = setTimeout(() => {
       void import("$lib/components/SettingsView.svelte");
       void import("$lib/components/GraphView.svelte");
@@ -195,6 +207,9 @@
     void listen(EVENTS.SETTINGS_CHANGED, () => {
       void theme.init();
       void editorPrefs.reload();
+      void pluginPrefs.reload();
+      void graphPrefs.reload();
+      void listPrefs.reload().then(() => library.refresh());
       void imagePrefs.reload();
       void linkPrefsStore.reload();
     }).then((un) => (unlistenSettings = un));
@@ -313,7 +328,7 @@
       }
       return;
     }
-    if (library.graphMode) return;
+    if (library.nav.graphMode) return;
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault();
@@ -351,7 +366,7 @@
   }
 
   async function deleteSelection() {
-    if (library.statusFilter === "trash") {
+    if (library.nav.statusFilter === "trash") {
       await confirmBulkDestroy();
     } else {
       await library.bulkDelete();
@@ -396,13 +411,20 @@
     const what = ids.length === 1 ? "this note" : `these ${ids.length} notes`;
     const ok = await confirmDialog.ask({
       title: `Delete ${what} permanently?`,
-      body: "This action cannot be undone.",
       confirmLabel: "Delete Forever",
       tone: "danger",
     });
     if (ok) await library.destroyNotes(ids);
   }
 </script>
+
+{#snippet loadFailed(back?: () => void)}
+  <div class="load-failed" role="alert">
+    Couldn't load
+    <button class="card-btn" type="button" onclick={() => location.reload()}>Reload</button>
+    {#if back}<button class="card-btn" type="button" onclick={back}>Back</button>{/if}
+  </div>
+{/snippet}
 
 {#if shell.settingsOpen && !licenseSpace.locked}
   {#await import("$lib/components/SettingsView.svelte") then { default: SettingsView }}
@@ -415,6 +437,8 @@
         shell.closeSettings();
       }}
     />
+  {:catch}
+    {@render loadFailed(() => shell.closeSettings())}
   {/await}
 {:else}
   <div
@@ -435,10 +459,12 @@
         <Sidebar />
       </div>
     {/if}
-    {#if library.graphMode && !licenseSpace.locked}
+    {#if library.nav.graphMode && !licenseSpace.locked}
       <section class="graph-span">
         {#await import("$lib/components/GraphView.svelte") then { default: GraphView }}
           <GraphView />
+        {:catch}
+          {@render loadFailed()}
         {/await}
       </section>
     {:else}
@@ -458,6 +484,8 @@
           {#if !licenseSpace.locked && library.multiSelected.size <= 1 && library.selected && !isUpdateNoteId(library.selected.id) && !isAgentNoteId(library.selected.id) && !isMergeNoteId(library.selected.id)}
             {#await import("$lib/components/NoteEditor.svelte") then { default: NoteEditor }}
               <NoteEditor />
+            {:catch}
+              {@render loadFailed()}
             {/await}
           {:else}
             <div class="pane-header" data-tauri-drag-region></div>
@@ -470,6 +498,8 @@
             {:else if library.selected && isMergeNoteId(library.selected.id)}
               {#await import("$lib/components/MergeNote.svelte") then { default: MergeNote }}
                 <MergeNote />
+              {:catch}
+                {@render loadFailed()}
               {/await}
             {:else if library.selected}
               <UpdateNote />
@@ -491,14 +521,14 @@
         aria-label="Resize sidebar"
         aria-valuenow={sidebar.navWidth}
         aria-valuemin={NAV_PANE.min}
-        aria-valuemax={NAV_PANE.max}
+        aria-valuemax={layout.navPane.max}
         tabindex="0"
         onpointerdown={(e) => startDrag(e, "nav")}
         ondblclick={() => sidebar.resetWidth("nav")}
         onkeydown={(e) => onHandleKeydown(e, "nav")}
       ></div>
     {/if}
-    {#if sidebar.listInline && !library.graphMode && showList}
+    {#if sidebar.listInline && !library.nav.graphMode && showList}
       <div
         class="divider"
         class:dragging={dragging === "list"}
@@ -509,7 +539,7 @@
         aria-label="Resize note list"
         aria-valuenow={sidebar.listWidth}
         aria-valuemin={LIST_PANE.min}
-        aria-valuemax={LIST_PANE.max}
+        aria-valuemax={layout.listPane.max}
         tabindex="0"
         onpointerdown={(e) => startDrag(e, "list")}
         ondblclick={() => sidebar.resetWidth("list")}
@@ -527,7 +557,7 @@
         <Icon name="list" size={20} />
       </button>
     {/if}
-    {#if listOverlay && showList && sidebar.listOpen && !library.graphMode}
+    {#if listOverlay && showList && sidebar.listOpen && !library.nav.graphMode}
       <div
         class="drawer-scrim list-scrim"
         role="presentation"
@@ -582,6 +612,16 @@
 {/if}
 
 <style>
+  .load-failed {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 200px;
+    color: var(--text-secondary);
+    font-size: 13px;
+  }
   .layout {
     --pane-ms: 240ms;
     --pane-ease: cubic-bezier(0.2, 0, 0, 1);
@@ -720,6 +760,18 @@
   .layout[data-edge][data-nav] .list-toggle {
     left: calc(max(6px, var(--chrome-inset)) + env(safe-area-inset-left) + 40px);
   }
+  :global(html[data-touch]) .pane-nav {
+    top: calc(env(safe-area-inset-top) + (var(--chrome-h) - 44px) / 2);
+  }
+  :global(html[data-touch]) .layout[data-edge][data-nav] .list-toggle {
+    left: calc(max(6px, var(--chrome-inset)) + env(safe-area-inset-left) + 48px);
+  }
+  :global(html[data-touch]) .layout:not(.phone) > .editor-pane > :global(.pane-header) {
+    padding-left: 54px;
+  }
+  :global(html[data-touch]) .layout[data-edge][data-nav] > .editor-pane > :global(.pane-header) {
+    padding-left: calc(max(6px, var(--chrome-inset)) + env(safe-area-inset-left) + 96px);
+  }
 
   .drawer-scrim {
     position: absolute;
@@ -825,13 +877,21 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .layout.animate:not(.resizing),
-    .layout.animate:not(.resizing) .list-toggle,
-    .nav-slot,
-    .list-slot,
-    .layout[data-list-overlay] > .list-slot,
-    .layout[data-list-overlay] > .list-slot:not(.hidden) {
+    :global(:root:not([data-motion="full"])) .layout.animate:not(.resizing),
+    :global(:root:not([data-motion="full"])) .layout.animate:not(.resizing) .list-toggle,
+    :global(:root:not([data-motion="full"])) .nav-slot,
+    :global(:root:not([data-motion="full"])) .list-slot,
+    :global(:root:not([data-motion="full"])) .layout[data-list-overlay] > .list-slot,
+    :global(:root:not([data-motion="full"])) .layout[data-list-overlay] > .list-slot:not(.hidden) {
       transition: none;
     }
+  }
+  :global(:root[data-motion="off"]) .layout.animate:not(.resizing),
+  :global(:root[data-motion="off"]) .layout.animate:not(.resizing) .list-toggle,
+  :global(:root[data-motion="off"]) .nav-slot,
+  :global(:root[data-motion="off"]) .list-slot,
+  :global(:root[data-motion="off"]) .layout[data-list-overlay] > .list-slot,
+  :global(:root[data-motion="off"]) .layout[data-list-overlay] > .list-slot:not(.hidden) {
+    transition: none;
   }
 </style>

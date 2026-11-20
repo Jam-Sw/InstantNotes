@@ -22,16 +22,16 @@ export function describeVaultStatus(s: VaultStatus): { line: string; tone: Vault
   if (!s.reachable) {
     const why = s.unreachable ?? "";
     const reason = why.startsWith("vault folder not found")
-      ? "Offline: the folder can't be found."
+      ? "Offline: folder not found"
       : why.startsWith("vault folder has no")
-        ? "Offline: the folder is there but empty. If it's a network drive, check that it's mounted."
-        : `Offline: ${why.replace(/\.?$/, ".")}`;
-    const waiting = s.pending > 0 ? ` ${notes(s.pending)} will sync when it's back.` : "";
+        ? "Offline: folder empty or not mounted"
+        : `Offline: ${why.replace(/\.$/, "")}`;
+    const waiting = s.pending > 0 ? ` · ${notes(s.pending)} waiting` : "";
     return { line: reason + waiting, tone: "warn" };
   }
   if (s.heldRemovals > 0) {
     return {
-      line: `Waiting: ${notes(s.heldRemovals)} went missing from the folder at once.`,
+      line: `Held: ${notes(s.heldRemovals)} missing from the folder`,
       tone: "warn",
     };
   }
@@ -55,29 +55,17 @@ function count(n: number, one: string, many: string): string {
 export function describeVaultReport(r: VaultReport): string[] {
   const lines: string[] = [];
   if (r.diverged.length) {
-    lines.push(
-      `${count(r.diverged.length, "file was", "files were")} edited outside InstantNotes: ${names(r.diverged)}`,
-    );
+    lines.push(`Edited outside (${r.diverged.length}): ${names(r.diverged)}`);
   }
   if (r.missing.length) {
-    lines.push(
-      `${count(r.missing.length, "note file is", "note files are")} missing: ${names(r.missing)}`,
-    );
+    lines.push(`Missing (${r.missing.length}): ${names(r.missing)}`);
   }
   if (r.orphans.length) {
-    lines.push(
-      `${count(r.orphans.length, "file is", "files are")} not notes InstantNotes wrote: ${names(r.orphans)}`,
-    );
+    lines.push(`Not from InstantNotes (${r.orphans.length}): ${names(r.orphans)}`);
   }
-  if (!r.manifestOk) lines.push("instantnotes.yaml does not match your tags and Spaces.");
+  if (!r.manifestOk) lines.push("instantnotes.yaml out of date");
 
-  if (lines.length === 0) {
-    lines.push(
-      r.checked === 1
-        ? "The 1 note matches its file."
-        : `All ${r.checked} notes match their files.`,
-    );
-  }
-  if (r.pending > 0) lines.push(`${r.pending} more ${r.pending === 1 ? "is" : "are"} still being written.`);
+  if (lines.length === 0) lines.push(count(r.checked, "note matches", "notes match"));
+  if (r.pending > 0) lines.push(`${r.pending} still writing`);
   return lines;
 }

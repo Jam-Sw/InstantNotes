@@ -122,6 +122,9 @@ export class ConstructScanner {
         lineSeen.add(lineFrom);
         always.push(deco.range(lineFrom));
       },
+      at(pos, deco) {
+        always.push(deco.range(pos));
+      },
     };
 
     const cx: ScanContext = { state, preview };

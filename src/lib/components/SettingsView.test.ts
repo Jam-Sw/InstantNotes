@@ -59,15 +59,15 @@ describe("SettingsView", () => {
     expect(getByRole("button", { name: /Feedback/ })).toBeTruthy();
   });
 
-  it("has no Import page where there is no Apple Stickies", () => {
-    const { queryByRole } = open();
-    expect(queryByRole("button", { name: /^Import/ })).toBeNull();
+  it("offers Obsidian and Notion import where there is no Apple Stickies", () => {
+    const { getByRole } = open();
+    expect(getByRole("button", { name: "Import" }).title).toBe("Obsidian, Notion");
   });
 
   it("shows the capture tile as unmeasured when no latency has been recorded", async () => {
     const { findByText } = open();
     const tile = (await findByText("Capture")).parentElement;
-    expect(tile?.textContent).toContain("-ms");
+    expect(tile?.textContent).toContain("–");
     expect(tile?.textContent).toContain("reveal to ready");
   });
 
@@ -117,12 +117,33 @@ describe("SettingsView", () => {
     ).toBeTruthy();
   });
 
+  it("finds a page by a row label", async () => {
+    const { getByRole, getByLabelText } = open();
+    const filter = getByLabelText("Find a setting");
+    await fireEvent.input(filter, { target: { value: "spellcheck" } });
+    const results = getByRole("region", { name: "Search results" });
+    expect(within(results).getByRole("button", { name: /Editor/ })).toBeTruthy();
+    await fireEvent.input(filter, { target: { value: "flag" } });
+    expect(within(results).getByRole("button", { name: /Appearance/ })).toBeTruthy();
+  });
+
+  it("opens the List, Graph and Behavior pages", async () => {
+    const { getByRole } = open();
+    for (const name of ["List", "Graph", "Behavior"]) {
+      await fireEvent.click(getByRole("button", { name: new RegExp(`^${name}`) }));
+      expect(
+        within(getByRole("navigation", { name: "Breadcrumb" })).getByText(name),
+      ).toBeTruthy();
+      shell.settingsPage = "home";
+    }
+  });
+
   it("lists matches with their description in the main pane and opens one on a click", async () => {
     const { getByRole, getByLabelText } = open();
     const filter = getByLabelText("Find a setting") as HTMLInputElement;
     await fireEvent.input(filter, { target: { value: "dark" } });
     const results = getByRole("region", { name: "Search results" });
-    expect(within(results).getByText("Theme, light or dark, and the body font.")).toBeTruthy();
+    expect(within(results).getByText("Theme, mode, font")).toBeTruthy();
     await fireEvent.click(within(results).getByRole("button", { name: /Appearance/ }));
     const crumb = getByRole("navigation", { name: "Breadcrumb" });
     expect(within(crumb).getByText("Appearance")).toBeTruthy();

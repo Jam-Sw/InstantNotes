@@ -46,7 +46,7 @@ describe("SettingsAbout on the desktop", () => {
 
     updater.status = "error";
     await rerender({ appVersion: "0.10.1" });
-    expect(getByText(/^Couldn't check\. Last checked /)).toBeTruthy();
+    expect(getByText(/^Couldn't check · last checked /)).toBeTruthy();
   });
 
   it("offers Show update while one is pending, and both buttons run commands", async () => {

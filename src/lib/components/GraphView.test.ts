@@ -11,6 +11,7 @@ import {
 } from "$lib/api/client";
 import { library } from "$lib/stores/library.svelte";
 import { toasts } from "$lib/stores/toasts.svelte";
+import { graphPrefs } from "$lib/stores/graph.svelte";
 import { listen } from "@tauri-apps/api/event";
 import type { LibraryGraph, SpaceSuggestion } from "$lib/api/types";
 
@@ -98,7 +99,13 @@ beforeEach(() => {
   });
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  graphPrefs.labels = "focus";
+  graphPrefs.nodeSize = 1;
+  graphPrefs.spread = 1;
+  graphPrefs.lensHops = 2;
+});
 
 describe("GraphView", () => {
   it("draws every connected note, tag, and Space as a button", async () => {
@@ -137,7 +144,7 @@ describe("GraphView", () => {
   it("says how many notes it leaves out, and when suggestions will start", async () => {
     const { findByText } = render(GraphView);
     expect(
-      await findByText(/2 notes with no tags or Spaces aren't shown\.\s+Suggestions start once two Spaces hold notes\./),
+      await findByText(/Hidden: 2 notes without tags or Spaces\s+· Suggestions need 2 Spaces with notes/),
     ).toBeTruthy();
   });
 
@@ -185,6 +192,43 @@ describe("GraphView", () => {
     expect(drawn()).toContain("Beta");
   });
 
+  it("labels every node, or none, by the labels setting", async () => {
+    graphPrefs.labels = "all";
+    const { findByRole, container } = render(GraphView);
+    await findByRole("button", { name: "Note: Alpha" });
+    const drawn = () => [...container.querySelectorAll("text")].map((t) => t.textContent);
+    expect(drawn()).toContain("Beta");
+    graphPrefs.labels = "none";
+    await waitFor(() => expect(drawn()).toEqual([]));
+  });
+
+  it("scales node discs by the node size setting", async () => {
+    const { findByRole } = render(GraphView);
+    const disc = async () =>
+      +(await findByRole("button", { name: "Note: Alpha" })).querySelector("circle:not(.agent-ring)")!.getAttribute("r")!;
+    const base = await disc();
+    graphPrefs.nodeSize = 2;
+    await waitFor(async () => expect(await disc()).toBeGreaterThan(base * 1.5));
+  });
+
+  it("frames the lens by the focus depth setting", async () => {
+    vi.mocked(libraryGraph).mockResolvedValue({
+      ...GRAPH,
+      links: [
+        { noteId: "n1", targetId: "t1", kind: "tag", source: "inline" },
+        { noteId: "n2", targetId: "t1", kind: "tag", source: "inline" },
+      ],
+    });
+    lib.selected = { id: "n1" };
+    const dimmed = (c: HTMLElement) => c.querySelectorAll(".node.dim").length;
+    const { findByRole, container } = render(GraphView);
+    await findByRole("button", { name: "Note: Alpha" });
+    const two = dimmed(container);
+    graphPrefs.lensHops = 1;
+    await waitFor(() => expect(dimmed(container)).toBeGreaterThanOrEqual(two));
+    expect(dimmed(container)).toBeGreaterThan(two);
+  });
+
   it("works from the keyboard", async () => {
     const { findByRole } = render(GraphView);
     await fireEvent.keyDown(await findByRole("button", { name: "Note: Beta" }), { key: "Enter" });
@@ -194,7 +238,7 @@ describe("GraphView", () => {
   it("explains itself when nothing is connected yet", async () => {
     vi.mocked(libraryGraph).mockResolvedValue({ ...GRAPH, links: [] });
     const { findByText } = render(GraphView);
-    expect(await findByText(/Tag notes or add them to Spaces/)).toBeTruthy();
+    expect(await findByText("No tagged notes or Spaces")).toBeTruthy();
   });
 
   it("redraws when notes, tags, or Spaces change", async () => {
@@ -242,7 +286,7 @@ describe("GraphView suggestions", () => {
     expect(row.textContent).toMatch(/84%/);
     expect(row.textContent).toMatch(/because #pasta, simmer, ragu/);
     expect(within(row).getByRole("button", { name: "Add “Lasagne” to Research" })).toBeTruthy();
-    expect(within(row).getByRole("button", { name: "Don't suggest Research for “Lasagne”" })).toBeTruthy();
+    expect(within(row).getByRole("button", { name: "Dismiss Research for “Lasagne”" })).toBeTruthy();
   });
 
   it("draws the suggested note, named for what it is suggested for", async () => {
@@ -264,14 +308,14 @@ describe("GraphView suggestions", () => {
 
   it("remembers a dismissal, changes nothing else, and can take it back", async () => {
     const { findByRole, queryByRole } = render(GraphView);
-    await fireEvent.click(await findByRole("button", { name: "Don't suggest Research for “Lasagne”" }));
+    await fireEvent.click(await findByRole("button", { name: "Dismiss Research for “Lasagne”" }));
     await waitFor(() => expect(dismissSpaceSuggestion).toHaveBeenCalledWith("n4", "s1"));
     expect(addNoteToWorkspace).not.toHaveBeenCalled();
     expect(queryByRole("complementary", { name: "Filing suggestions" })).toBeNull();
     expect(lib.refreshSuggestionCount).toHaveBeenCalled();
     await waitFor(() => expect(show).toHaveBeenCalled());
     const [message, action] = show.mock.calls[0];
-    expect(message).toBe('Won\'t suggest Research for "Lasagne"');
+    expect(message).toBe('Dismissed Research for "Lasagne"');
     action?.run();
     expect(restoreSpaceSuggestion).toHaveBeenCalledWith("n4", "s1");
     await waitFor(() => expect(spaceSuggestions).toHaveBeenCalledTimes(2));
@@ -292,7 +336,7 @@ describe("GraphView suggestions", () => {
     );
     const { findByRole, getByRole, getAllByRole } = render(GraphView);
     const panel = await findByRole("complementary", { name: "Filing suggestions" });
-    expect(panel.textContent).toMatch(/Where these belong\s*200/);
+    expect(panel.textContent).toMatch(/Suggestions\s*200/);
     expect(within(panel).getAllByRole("listitem")).toHaveLength(25);
     expect(getAllByRole("button", { name: /suggested for Research/ })).toHaveLength(25);
     await fireEvent.click(getByRole("button", { name: "Show 25 more" }));

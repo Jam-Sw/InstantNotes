@@ -59,7 +59,7 @@ export function buildUpdateNotes(view: UpdateView): Note[] {
       ...base,
       id: UPDATE_NOTE_ID,
       title: updateNoteTitle(view.currentVersion, view.version),
-      body: `Update InstantNotes from ${view.currentVersion} to ${view.version}.`,
+      body: `${view.currentVersion} → ${view.version}`,
     },
     {
       ...base,

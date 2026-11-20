@@ -67,6 +67,9 @@ developer-facing description and is never shown to users verbatim.
 | `space_suggestions` | Where each live note in no Space most likely belongs (section 4.1): `noteId`, `noteTitle`, `spaceId`, `spaceName`, `probability` (0 to 1), and up to three `reasons` (`label`, `kind` = `tag` or `word`), newest note first. Empty until two Spaces hold notes. |
 | `tag_suggestion` | The one tag a note (`noteId`) most likely wants, from the words it shares with tagged notes: `tag`, `probability`, and up to three `reasons` (words), or null. Never a tag the note already has; the same model as `space_suggestions`, with tags as the classes and words as the only evidence. Follows the `suggest.tags` setting (`enabled`, default true, and `showAt`, 0.3 to 0.9, default 0.5). App only: no MCP tool reads or changes it. |
 | `dismiss_space_suggestion` / `restore_space_suggestion` | "Not this one" for a (`noteId`, `spaceId`) pair, and its undo. Device-local (DATA_MODEL.md section 8); an unknown note or Space is `NOT_FOUND` on dismiss. Neither emits a library event: nothing about a note changed. |
+| `related_notes` | Up to `limit` (default 3) live notes (`noteId`, `title`, `excerpt`, `contentKind`, `createdAt`, `updatedAt`, `lastOpenedAt`, `score`, `reasons`) that share at least two uncommon words or tags with `noteId`, for the editor's Around this note strip. An optional `passage`, the paragraph under the cursor, weighs most. The score favours notes not opened for `REVISIT_AFTER_MS` (three days), counting a never-opened note from when it was created, so every note the Revisit view lists gets the full boost, and so does any note last opened over three days ago, which Revisit does not list. Reads the same features as `tag_suggestion` and `space_suggestions`, from one corpus that re-reads only notes changed since the last call. Follows `suggest.related` (`enabled`, default true, and `showAt`, 0.3 to 0.9, default 0.5). |
+| `dismiss_related_note` / `restore_related_note` | Not related for a (`noteId`, `relatedId`) pair in either order, and its undo (`related.dismissed`, DATA_MODEL.md section 8). Neither emits a library event. |
+| `fold_notes` / `undo_fold` | Atomically fold one or more document `sourceIds` into `intoId`: appends each source's prose (preserving manual titles as `## Title`), unions manual/inline tags and Spaces onto `intoId`, and archives the absorbed source notes (never trashing or destroying them). Returns `{ note, foldedIds, before }` so `undo_fold(before)` restores `intoId` and unarchives every source in one transaction. |
 
 `contentKind` is `document`, `whiteboard`, or `sheet`. `update_note` rejects
 turning a whiteboard or a sheet into anything else and `surfaceData` on a
@@ -605,6 +608,8 @@ traced as `resources/list` or `resources/read` (kind `read`).
 | --- | --- | --- |
 | `search_notes`, `list_notes`, `get_note`, `get_notes`, `list_tags`, `list_spaces` | read | `search_notes_page`, `list_notes` and `count_notes`, `get_note(id, false)`, `list_tags`, `list_workspaces` |
 | `suggest_space` | read | `space_suggestions` (section 4.1), for one note (`id`) or every unfiled note (`limit`, default 50, and `offset`): each with its Space, a probability, and the reasons. The same model the user sees in the Graph; it files nothing, and says so, so an agent that agrees calls `add_to_space`. |
+| `find_related` | read | `find_related_notes` when `id` (and optional `passage`) is given, ignoring `suggest.related` so an agent can ask even with the strip off, or `related_pairs` when `id` is omitted (`limit`, default 10). Returns `related` and `total`, plus the queried note's `id` and `title` when `id` was given; each pair item carries the note's `id` and `title` and the other note under `related`. Changes nothing, and points to `fold_notes` when two fragments are the same thought. |
+| `fold_notes` | write | `fold_notes(id, sourceIds)`: folds one or more document fragments into `id`, preserving custom titles, tags, and Spaces while archiving the absorbed fragments. Stores a multi-note `before` snapshot array in `agent_activity` so one-click Revert restores `id` and unarchives every folded note together. |
 | `create_note`, `update_note`, `append_to_note` | write | `create_note`, `update_note` with `expectedUpdatedAt` |
 | `edit_note` | write | `update_note` with the `updatedAt` just read: replaces one exact `oldText` that appears once in a document's body (0 or several matches are refused with the count). Retries on conflict like `append_to_note`. |
 | `append_sheet_rows` | write | `update_note` with `expectedUpdatedAt`, on a sheet's grid (`sheet.rs`): rows land after the last row holding data, a short row is padded, a wider one is refused, and the store derives the body. Retries on conflict like `append_to_note`. Returns the note view without its body plus `appended: { firstRow, count }` (spreadsheet numbering). |
@@ -696,7 +701,8 @@ instead of failing on a lock upgrade.
 
 ## 16. Import
 
-Settings > Import, shown on macOS. Its one source is Apple Stickies
+Settings > Import, on desktop. Its sources are Obsidian and Notion everywhere,
+and Apple Stickies on macOS
 (`openspec/changes/feat-stickies-import/design.md`).
 
 | Command | Purpose |
@@ -722,3 +728,43 @@ import does not fill Revisit. The settings key `import.stickies` maps each
 imported sticky's UUID to its note, written in the same transaction. A sticky
 whose note still exists, in the Trash or not, is not imported again; one whose
 note was destroyed for good is.
+
+| Command | Purpose |
+| --- | --- |
+| `obsidian_vaults` | The vault folders listed in Obsidian's `obsidian/obsidian.json` under the config folder (on Linux also the Flatpak and Snap ones), most recently used first, only those that exist. |
+| `scan_obsidian` | Read a vault `folder`: `{ folder, readable, notes, images, imported, titles }`, where `titles` are the first few file names not imported yet. |
+| `import_obsidian` | Import every note in `folder` not imported before, in one transaction, filed in `space`. Returns `{ imported, skipped, workspaceId }`. The `import.obsidian` record keys each note by its full path, so two vaults holding a `Welcome.md` each import both. |
+| `notion_exports` | The three newest `Export-*.zip` files in the Downloads folder. |
+| `scan_notion` | Read a Notion "Markdown & CSV" export at `path`, a zip or an unzipped folder, and preview it as `scan_obsidian` does. A zip, and the zips directly inside it, are unpacked into a fresh `instantnotes-notion-*` temporary folder, which `folder` then names; wrapper folders holding nothing but one folder are stepped into. |
+| `import_notion` | Import every page in `folder` not imported before, as `import_obsidian` does, then remove the temporary folder if `folder` is one, whether or not the import succeeded. `scan_notion` removes any `instantnotes-notion-*` folder left from an earlier preview before unpacking. |
+
+Both walk the folder and skip dot entries (`.obsidian`, `.trash`) and symlinks,
+reading `.md` and `.markdown` files up to 16 MiB. Unpacking skips symlinks, `__MACOSX`, and any
+entry whose path leaves the folder, and stops at 8 GiB or 200,000 files. Images
+go through the same checks as a sticky's, found by relative path (percent-decoded,
+never above the folder) or, for `![[name]]`, by file name anywhere in the vault,
+shortest path first.
+
+An Obsidian note: YAML frontmatter `tags` (or `tag`; a list or a comma or space
+separated string) become tags, `created` or `date` the created date, `aliases`, `cssclasses` and `position`
+are dropped, and other properties stay visible as `key: value` lines under
+the title. `[[Note|alias]]`
+becomes its alias, `[[Note#Heading]]` reads `Note > Heading`, embedded notes
+become their names, `%%comments%%` and `^block-ids` go, and a callout's
+`[!type] Title` becomes a bold title in its quote. A Notion page: its
+`Tags:`, `Created:`, and `Last edited time:` property lines give tags and dates
+and stay in the text, `<aside>` callouts lose their tags and icon, and a page
+holding only its title (a database view) is skipped. In both, links to other
+pages become their text, and a note not opening with its file name as a `#`
+heading gets one, so it keeps the title it had.
+
+## 17. Plugins
+
+Desktop only. A plugin reaches these through `context.host` (`src/lib/plugin/types.ts`);
+in the web app `readText` is refused and `post` is a browser `fetch`.
+
+| Command | Purpose |
+| --- | --- |
+| `plugin_read_text` | Read the file at absolute `path` as text. Only `.dic`, `.aff` and `.txt`, up to 64 MB; bytes that are not UTF-8 are read as Latin-1. |
+| `plugin_http_post` | POST `body` as `application/json` to `url` (`http` or `https` only) under request `id` and return the reply text. Fails after 20 s, on a status outside 2xx, or on a reply over 1 MB. |
+| `plugin_http_cancel` | Drop the pending `plugin_http_post` with this `id`. |

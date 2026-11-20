@@ -1,6 +1,7 @@
 import { getSetting, setSetting, setWindowVibrancy, setWindowTheme } from "$lib/api/client";
 import { isWeb } from "$lib/api/runtime";
-import { applyTheme } from "$lib/themes/apply";
+import { applyTheme, type ThemeTweaks } from "$lib/themes/apply";
+import { cssColor } from "$lib/space-colors";
 import { bootSnapshot, rememberBoot, windowBackground } from "$lib/themes/boot";
 import { BUILTIN_THEMES, DEFAULT_THEME_ID } from "$lib/themes/builtin";
 import { validateTheme } from "$lib/themes/validate";
@@ -9,6 +10,24 @@ import type { Theme, ThemeMaterial, Variant } from "$lib/themes/types";
 import { isMac } from "$lib/platform";
 
 export type ThemeMode = "auto" | "light" | "dark";
+export type Motion = "system" | "full" | "off";
+export type Density = "compact" | "default" | "roomy";
+export type Leading = "tight" | "default" | "loose";
+
+const DENSITY_SCALE: Record<Density, number> = { compact: 0.85, default: 1, roomy: 1.15 };
+const LEADING_VALUE: Record<Leading, string | undefined> = {
+  tight: "1.35",
+  default: undefined,
+  loose: "1.75",
+};
+
+export function reducedMotion(): boolean {
+  if (theme.motion !== "system") return theme.motion === "off";
+  return (
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
 
 const DEFAULT_MATERIAL: ThemeMaterial = "sidebar";
 
@@ -16,13 +35,41 @@ const KEY_ACTIVE = "theme.active";
 const KEY_MODE = "theme.mode";
 const KEY_CUSTOM = "theme.custom";
 const KEY_BODY_FONT = "theme.font.body";
+const KEY_MOTION = "theme.motion";
+const KEY_DENSITY = "theme.density";
+const KEY_LEADING = "theme.leading";
+const KEY_SCROLLBARS = "theme.scrollbars";
+const KEY_ACCENT = "theme.accent";
+
+export const THEME_DEFAULTS: {
+  mode: ThemeMode;
+  bodyFontId: BodyFontId | null;
+  motion: Motion;
+  density: Density;
+  leading: Leading;
+  scrollbars: boolean;
+  accent: string | null;
+} = {
+  mode: "auto",
+  bodyFontId: null,
+  motion: "system",
+  density: "default",
+  leading: "default",
+  scrollbars: false,
+  accent: null,
+};
 
 class ThemeStore {
   activeId = $state(DEFAULT_THEME_ID);
-  mode = $state<ThemeMode>("auto");
+  mode = $state<ThemeMode>(THEME_DEFAULTS.mode);
   customThemes = $state<Theme[]>([]);
-  bodyFontId = $state<BodyFontId | null>(null);
+  bodyFontId = $state<BodyFontId | null>(THEME_DEFAULTS.bodyFontId);
   systemDark = $state(true);
+  motion = $state<Motion>(THEME_DEFAULTS.motion);
+  density = $state<Density>(THEME_DEFAULTS.density);
+  leading = $state<Leading>(THEME_DEFAULTS.leading);
+  scrollbars = $state(THEME_DEFAULTS.scrollbars);
+  accent = $state<string | null>(THEME_DEFAULTS.accent);
 
   #initialized = false;
   #loaded = false;
@@ -56,12 +103,18 @@ class ThemeStore {
 
   async #load(): Promise<boolean> {
     try {
-      const [active, mode, custom, bodyFont] = await Promise.all([
-        getSetting<string>(KEY_ACTIVE),
-        getSetting<ThemeMode>(KEY_MODE),
-        getSetting<unknown[]>(KEY_CUSTOM),
-        getSetting<string>(KEY_BODY_FONT),
-      ]);
+      const [active, mode, custom, bodyFont, motion, density, leading, scrollbars, accent] =
+        await Promise.all([
+          getSetting<string>(KEY_ACTIVE),
+          getSetting<ThemeMode>(KEY_MODE),
+          getSetting<unknown[]>(KEY_CUSTOM),
+          getSetting<string>(KEY_BODY_FONT),
+          getSetting<string>(KEY_MOTION),
+          getSetting<string>(KEY_DENSITY),
+          getSetting<string>(KEY_LEADING),
+          getSetting<boolean>(KEY_SCROLLBARS),
+          getSetting<string>(KEY_ACCENT),
+        ]);
       if (Array.isArray(custom)) {
         this.customThemes = custom
           .map((c) => validateTheme(c))
@@ -73,14 +126,33 @@ class ThemeStore {
       if (bodyFont && BODY_FONTS.some((f) => f.id === bodyFont)) {
         this.bodyFontId = bodyFont as BodyFontId;
       }
+      if (motion === "system" || motion === "full" || motion === "off") this.motion = motion;
+      if (density && Object.hasOwn(DENSITY_SCALE, density)) this.density = density as Density;
+      if (leading && Object.hasOwn(LEADING_VALUE, leading)) this.leading = leading as Leading;
+      if (typeof scrollbars === "boolean") this.scrollbars = scrollbars;
+      this.accent = typeof accent === "string" && cssColor(accent) ? accent : null;
       return true;
     } catch {
       return false;
     }
   }
 
+  get #tweaks(): ThemeTweaks {
+    return {
+      density: DENSITY_SCALE[this.density],
+      leading: LEADING_VALUE[this.leading],
+      accent: cssColor(this.accent) ?? undefined,
+    };
+  }
+
   #apply(): void {
-    applyTheme(this.activeTheme, this.resolvedVariant);
+    const root = document.documentElement;
+    const tweaks = this.#tweaks;
+    applyTheme(this.activeTheme, this.resolvedVariant, root, tweaks);
+    if (this.motion === "system") delete root.dataset.motion;
+    else root.dataset.motion = this.motion;
+    if (this.scrollbars) root.dataset.scrollbars = "";
+    else delete root.dataset.scrollbars;
     let bodyFont: string | null = null;
     if (this.bodyFontId) {
       const font = BODY_FONTS.find((f) => f.id === this.bodyFontId);
@@ -89,7 +161,7 @@ class ThemeStore {
         document.documentElement.style.setProperty("--font-body", font.value);
       }
     }
-    if (this.#loaded) rememberBoot(bootSnapshot(this.activeTheme, this.mode, bodyFont));
+    if (this.#loaded) rememberBoot(bootSnapshot(this.activeTheme, this.mode, bodyFont, tweaks));
     void this.#syncVibrancy();
     void this.#syncWindowTheme();
   }
@@ -159,6 +231,36 @@ class ThemeStore {
     this.bodyFontId = id;
     this.#apply();
     void setSetting(KEY_BODY_FONT, id);
+  }
+
+  setMotion(motion: Motion): void {
+    this.motion = motion;
+    this.#apply();
+    void setSetting(KEY_MOTION, motion);
+  }
+
+  setDensity(density: Density): void {
+    this.density = density;
+    this.#apply();
+    void setSetting(KEY_DENSITY, density);
+  }
+
+  setLeading(leading: Leading): void {
+    this.leading = leading;
+    this.#apply();
+    void setSetting(KEY_LEADING, leading);
+  }
+
+  setScrollbars(on: boolean): void {
+    this.scrollbars = on;
+    this.#apply();
+    void setSetting(KEY_SCROLLBARS, on);
+  }
+
+  setAccent(color: string | null): void {
+    this.accent = color;
+    this.#apply();
+    void setSetting(KEY_ACCENT, color);
   }
 
   serialize(id: string = this.activeId): string {

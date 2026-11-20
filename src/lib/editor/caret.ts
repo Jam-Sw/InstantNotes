@@ -13,6 +13,7 @@ export class CaretGuard {
 
   #style(view: EditorView, event: MouseEvent): MouseSelectionStyle | null {
     if (event.button !== 0 || event.detail > 1) return null;
+    if (event.target instanceof Element && event.target.closest(".cm-plugin-blocks")) return null;
     if (!(view.state.field(previewModeField, false) ?? false)) return null;
     const start = this.#corrected(view, event);
     if (start === null) return null;

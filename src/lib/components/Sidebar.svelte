@@ -30,10 +30,10 @@
   let newSpaceInput = $state("");
   let allSpaces = $state(false);
   const shownSpaces = $derived(
-    allSpaces ? library.workspaces : spacesShown(library.workspaces, library.activeWorkspaceId),
+    allSpaces ? library.workspaces : spacesShown(library.workspaces, library.nav.activeWorkspaceId),
   );
   const foldedSpaces = $derived(
-    library.workspaces.length - spacesShown(library.workspaces, library.activeWorkspaceId).length,
+    library.workspaces.length - spacesShown(library.workspaces, library.nav.activeWorkspaceId).length,
   );
   let spacesHeader = $state<HTMLDivElement>();
   let tagsHeader = $state<HTMLDivElement>();
@@ -80,7 +80,7 @@
     const notes = `${tag.usageCount} note${tag.usageCount === 1 ? "" : "s"}`;
     const ok = await confirmDialog.ask({
       title: `Delete tag "#${tag.name}"?`,
-      body: `It will be removed from ${notes}; the notes are kept.`,
+      body: `Removed from ${notes}`,
       confirmLabel: "Delete Tag",
       tone: "danger",
     });
@@ -88,14 +88,14 @@
   }
 
   async function deleteTagRow(tag: TagWithCount): Promise<void> {
-    if (library.activeTagId === tag.id) {
+    if (library.nav.activeTagId === tag.id) {
       library.setTagFilter(null);
     }
     try {
       await deleteTag(tag.id);
     } catch (e) {
       const message = friendlyError(e);
-      toasts.show(`Couldn't delete #${tag.name}. ${message}`);
+      toasts.show(`Couldn't delete #${tag.name}: ${message}`);
     }
     await Promise.all([library.refreshTags(), library.refresh()]);
     queueMicrotask(() => tagsHeader?.focus());
@@ -129,19 +129,18 @@
   <nav class="sections">
     <button
       class="nav-item"
-      class:active={!library.activeWorkspaceId &&
-        !library.activeTagId &&
-        !library.revisitMode &&
-        !library.graphMode}
+      class:active={!library.nav.activeWorkspaceId &&
+        !library.nav.activeTagId &&
+        !library.nav.revisitMode &&
+        !library.nav.graphMode}
       onclick={() => library.selectWorkspace(null)}
     >
       All Notes
     </button>
-    {#if library.revisitCount > 0 || library.revisitMode}
+    {#if library.revisitCount > 0 || library.nav.revisitMode}
       <button
         class="nav-item"
-        class:active={library.revisitMode}
-        title="Captured notes you've never reopened"
+        class:active={library.nav.revisitMode}
         onclick={() => library.selectRevisit()}
       >
         <span>Revisit</span>
@@ -150,10 +149,10 @@
     {/if}
     <button
       class="nav-item"
-      class:active={library.graphMode}
+      class:active={library.nav.graphMode}
       title={library.suggestionCount > 0
-        ? `Your notes, tags, and Spaces, and how they connect. ${library.suggestionCount} ${library.suggestionCount === 1 ? "note" : "notes"} could be filed.`
-        : "Your notes, tags, and Spaces, and how they connect"}
+        ? `${library.suggestionCount} ${library.suggestionCount === 1 ? "note" : "notes"} could be filed`
+        : undefined}
       onclick={() => library.selectGraph()}
     >
       <span>Graph</span>
@@ -170,12 +169,12 @@
         count={updateSpace.notes.length}
         normalize={(s) => s.trim()}
         noun="Space"
-        active={library.activeWorkspaceId === UPDATE_SPACE_ID}
+        active={library.nav.activeWorkspaceId === UPDATE_SPACE_ID}
         editing={false}
         readonly
         onSelect={() =>
           library.selectWorkspace(
-            library.activeWorkspaceId === UPDATE_SPACE_ID ? null : UPDATE_SPACE_ID,
+            library.nav.activeWorkspaceId === UPDATE_SPACE_ID ? null : UPDATE_SPACE_ID,
           )}
         onStartRename={() => {}}
         onRename={async () => ({ ok: true as const })}
@@ -192,11 +191,11 @@
         count={mergeSpace.notes.length}
         normalize={(s) => s.trim()}
         noun="Space"
-        active={library.activeWorkspaceId === MERGE_SPACE_ID}
+        active={library.nav.activeWorkspaceId === MERGE_SPACE_ID}
         editing={false}
         readonly
         onSelect={() =>
-          library.activeWorkspaceId === MERGE_SPACE_ID
+          library.nav.activeWorkspaceId === MERGE_SPACE_ID
             ? library.selectWorkspace(null)
             : mergeSpace.open()}
         onStartRename={() => {}}
@@ -213,11 +212,11 @@
         count={agentsSpace.notes.length}
         normalize={(s) => s.trim()}
         noun="Space"
-        active={library.activeWorkspaceId === AGENTS_SPACE_ID}
+        active={library.nav.activeWorkspaceId === AGENTS_SPACE_ID}
         editing={false}
         readonly
         onSelect={() =>
-          library.activeWorkspaceId === AGENTS_SPACE_ID
+          library.nav.activeWorkspaceId === AGENTS_SPACE_ID
             ? library.selectWorkspace(null)
             : agentsSpace.open()}
         onStartRename={() => {}}
@@ -240,11 +239,11 @@
         count={ws.noteCount}
         normalize={(s) => s.trim()}
         noun="Space"
-        active={library.activeWorkspaceId === ws.id}
+        active={library.nav.activeWorkspaceId === ws.id}
         agent={agents.spaceActive(ws.name)}
         editing={renamingSpaceId === ws.id}
         onSelect={() =>
-          library.selectWorkspace(library.activeWorkspaceId === ws.id ? null : ws.id)}
+          library.selectWorkspace(library.nav.activeWorkspaceId === ws.id ? null : ws.id)}
         onStartRename={() => (renamingSpaceId = ws.id)}
         onRename={(name) => library.renameWorkspace(ws.id, name)}
         onDoneRename={() => (renamingSpaceId = null)}
@@ -259,8 +258,6 @@
           />
         {/snippet}
       </SidebarEntityRow>
-    {:else}
-      <div class="empty-hint">A place for one project or topic</div>
     {/each}
     {#if foldedSpaces > 0}
       <button class="spaces-more" aria-expanded={allSpaces} onclick={() => (allSpaces = !allSpaces)}>
@@ -285,18 +282,16 @@
         prefixColor={cssColor(tag.color)}
         normalize={normalizeTagInput}
         noun="Tag"
-        active={library.activeTagId === tag.id}
+        active={library.nav.activeTagId === tag.id}
         agent={agents.tagActive(tag.name)}
         editing={renamingTagId === tag.id}
         onSelect={() =>
-          library.setTagFilter(library.activeTagId === tag.id ? null : tag.id)}
+          library.setTagFilter(library.nav.activeTagId === tag.id ? null : tag.id)}
         onStartRename={() => (renamingTagId = tag.id)}
         onRename={(name) => renameTag(tag, name)}
         onDoneRename={() => (renamingTagId = null)}
         onMenu={(x, y) => (tagMenu = { x, y, tag })}
       />
-    {:else}
-      <div class="empty-hint">Type #tag in a note</div>
     {/each}
   </nav>
   </div>
@@ -422,11 +417,6 @@
   .nav-item.active .nav-count {
     color: var(--accent-text);
     opacity: 0.75;
-  }
-  .empty-hint {
-    padding: 4px 10px;
-    color: var(--text-tertiary);
-    font-size: 12px;
   }
   .update-star {
     color: #2ecc71;

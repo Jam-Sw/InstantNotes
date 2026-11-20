@@ -1,4 +1,4 @@
-import { effectiveVariant, themeToVars } from "./apply";
+import { effectiveVariant, themeToVars, type ThemeTweaks } from "./apply";
 import type { Theme, Variant } from "./types";
 
 const BOOT_KEY = "instantnotes.boot";
@@ -18,17 +18,22 @@ export interface BootSnapshot {
   dark: BootPalette;
 }
 
-function palette(theme: Theme, variant: Variant): BootPalette {
-  return { variant: effectiveVariant(theme, variant), vars: themeToVars(theme, variant) };
+function palette(theme: Theme, variant: Variant, tweaks: ThemeTweaks): BootPalette {
+  return { variant: effectiveVariant(theme, variant), vars: themeToVars(theme, variant, tweaks) };
 }
 
-export function bootSnapshot(theme: Theme, mode: BootMode, bodyFont: string | null): BootSnapshot {
+export function bootSnapshot(
+  theme: Theme,
+  mode: BootMode,
+  bodyFont: string | null,
+  tweaks: ThemeTweaks = {},
+): BootSnapshot {
   return {
     themeId: theme.id,
     mode,
     bodyFont,
-    light: palette(theme, "light"),
-    dark: palette(theme, "dark"),
+    light: palette(theme, "light", tweaks),
+    dark: palette(theme, "dark", tweaks),
   };
 }
 

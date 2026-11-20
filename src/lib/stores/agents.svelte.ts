@@ -268,7 +268,7 @@ class AgentsStore {
       const who = clientLabel(shown[0].client);
       const n = writes.length;
       toasts.show(
-        n > 0 ? `${who} made ${n} change${n === 1 ? "" : "s"}.` : `${who} made ${shown.length} calls.`,
+        n > 0 ? `${who}: ${n} change${n === 1 ? "" : "s"}` : `${who}: ${shown.length} calls`,
         { label: "Show", run: () => this.show() },
       );
       return;
@@ -291,15 +291,15 @@ class AgentsStore {
       const title = `“${row.titles[0] || "Untitled"}”`;
       const what =
         original && original.client !== "instantnotes"
-          ? `Reverted ${clientLabel(original.client)}'s change to ${title}.`
-          : `Put ${title} back.`;
+          ? `Reverted ${clientLabel(original.client)}: ${title}`
+          : `Reverted ${title}`;
       toasts.show(what, {
         label: "Undo",
         run: () => void this.revert(row.seq),
       });
       return true;
     } catch (e) {
-      toasts.show(`Couldn't revert. ${friendlyError(e, "That change was already reverted.")}`);
+      toasts.show(`Couldn't revert: ${friendlyError(e, "already reverted")}`);
       return false;
     }
   }
@@ -313,7 +313,7 @@ class AgentsStore {
       this.unseen = 0;
       void this.loadSessions();
     } catch {
-      toasts.show("Couldn't clear the agent history.");
+      toasts.show("Couldn't clear history");
     }
   }
 
@@ -360,7 +360,7 @@ export const agents = new AgentsStore();
 
 export function announceOverwrite(noteId: string, restore: () => void): void {
   const who = clientLabel(agents.lastWriter(noteId) ?? "");
-  toasts.show(`${who}'s change to this note was replaced by your typing.`, {
+  toasts.show(`Typed over ${who}'s change`, {
     label: "Restore theirs",
     run: restore,
   });

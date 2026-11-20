@@ -36,22 +36,58 @@ export function centroid(points: readonly Point3[]): Point3 {
   return { x: x / points.length, y: y / points.length, z: z / points.length };
 }
 
-export function projector(orbit: Orbit, pivot: Point3): (p: Point3) => Projected {
+function core(orbit: Orbit, pivot: Point3): (x: number, y: number, z: number, out: Projected) => void {
   const cy = Math.cos(orbit.yaw);
   const sy = Math.sin(orbit.yaw);
   const cp = Math.cos(orbit.pitch);
   const sp = Math.sin(orbit.pitch);
-  return (p) => {
-    const dx = p.x - pivot.x;
-    const dy = p.y - pivot.y;
-    const dz = p.z - pivot.z;
+  return (x, y, z, out) => {
+    const dx = x - pivot.x;
+    const dy = y - pivot.y;
+    const dz = z - pivot.z;
     const x1 = dx * cy + dz * sy;
     const z1 = dz * cy - dx * sy;
     const y2 = dy * cp - z1 * sp;
     const depth = Math.max(NEAREST, dy * sp + z1 * cp);
     const scale = EYE / (EYE + depth);
-    return { x: pivot.x + x1 * scale, y: pivot.y + y2 * scale, scale, depth };
+    out.x = pivot.x + x1 * scale;
+    out.y = pivot.y + y2 * scale;
+    out.scale = scale;
+    out.depth = depth;
   };
+}
+
+export function projector(orbit: Orbit, pivot: Point3): (p: Point3) => Projected {
+  const run = core(orbit, pivot);
+  return (p) => {
+    const out = { x: 0, y: 0, scale: 0, depth: 0 };
+    run(p.x, p.y, p.z, out);
+    return out;
+  };
+}
+
+export interface Projections {
+  x: Float64Array;
+  y: Float64Array;
+  depth: Float64Array;
+}
+
+export function projectInto(
+  orbit: Orbit,
+  pivot: Point3,
+  xs: Float64Array,
+  ys: Float64Array,
+  zs: Float64Array,
+  out: Projections,
+): void {
+  const run = core(orbit, pivot);
+  const p = { x: 0, y: 0, scale: 0, depth: 0 };
+  for (let i = 0; i < xs.length; i++) {
+    run(xs[i], ys[i], zs[i], p);
+    out.x[i] = p.x;
+    out.y[i] = p.y;
+    out.depth[i] = p.depth;
+  }
 }
 
 export function turn(orbit: Orbit, dx: number, dy: number): Orbit {

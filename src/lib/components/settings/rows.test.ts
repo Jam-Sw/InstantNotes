@@ -159,3 +159,29 @@ describe("ToggleRow", () => {
     expect(getByText(sub).id).toBe(describedBy);
   });
 });
+
+describe("row reset", () => {
+  it("shows no Reset without the prop", () => {
+    const { queryByRole } = render(SegmentedRow, segment());
+    expect(queryByRole("button", { name: "Reset" })).toBeNull();
+  });
+
+  it("calls reset from a segmented row", async () => {
+    const reset = vi.fn();
+    const { getByRole } = render(SegmentedRow, segment({ reset }));
+    await fireEvent.click(getByRole("button", { name: "Reset" }));
+    expect(reset).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls reset from a toggle row", async () => {
+    const reset = vi.fn();
+    const { getByRole } = render(ToggleRow, toggle({ reset }));
+    await fireEvent.click(getByRole("button", { name: "Reset" }));
+    expect(reset).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables Reset with a disabled row", () => {
+    const { getByRole } = render(ToggleRow, toggle({ reset: vi.fn(), disabled: true }));
+    expect((getByRole("button", { name: "Reset" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});

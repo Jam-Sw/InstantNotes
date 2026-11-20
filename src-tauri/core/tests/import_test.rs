@@ -229,6 +229,7 @@ fn item(id: &str, body: &str, created: u64, updated: u64) -> ImportItem {
     ImportItem {
         source_id: id.into(),
         body: body.into(),
+        tags: Vec::new(),
         created_at: at(created),
         updated_at: at(updated),
     }
@@ -270,6 +271,43 @@ fn imported_notes_keep_their_dates_titles_and_tags_and_land_in_the_space() {
         ["errands"]
     );
     assert!(notes.iter().any(|n| n.title == "Call the bank"));
+}
+
+#[test]
+fn imported_tags_are_normalized_attached_as_manual_and_blank_ones_dropped() {
+    let mut store = Store::open_in_memory().unwrap();
+    let mut page = item("Plans/Week.md", "Week plan", JAN, JAN);
+    page.tags = vec![
+        "Project".into(),
+        "#project".into(),
+        "   ".into(),
+        "daily  notes".into(),
+    ];
+    let outcome = store.import_notes("obsidian", vec![page], None).unwrap();
+    assert_eq!(outcome.imported, 1);
+    let note = store.list_notes(Default::default()).unwrap().remove(0);
+    let mut names: Vec<String> = store
+        .tags_for_note(&note.id)
+        .unwrap()
+        .into_iter()
+        .map(|t| t.name)
+        .collect();
+    names.sort();
+    assert_eq!(names, ["daily notes", "project"]);
+    let after_edit = store
+        .update_note(
+            &note.id,
+            instantnotes_core::types::UpdateNotePatch {
+                body: Some("Week plan, rewritten".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        store.tags_for_note(&after_edit.id).unwrap().len(),
+        2,
+        "imported tags are manual, so an edit keeps them"
+    );
 }
 
 #[test]
@@ -340,6 +378,7 @@ fn a_stickies_folder_lands_as_notes_once() {
                     Some(format!("![](attachments/copy-of-{name})"))
                 }),
                 source_id: s.id,
+                tags: Vec::new(),
                 created_at: s.created_at,
                 updated_at: s.updated_at,
             })

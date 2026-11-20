@@ -433,7 +433,7 @@ async fn callback(
         log("auth.callback.foreign", &[]);
         return statics::html(
             StatusCode::BAD_REQUEST,
-            statics::error_page("This sign-in was not started in this browser. Start again."),
+            statics::error_page("Sign-in not started in this browser"),
         );
     }
     match state.oidc.finish(&state.logins, &code, &login_state).await {
@@ -446,9 +446,7 @@ async fn callback(
             {
                 return statics::html(
                     StatusCode::FORBIDDEN,
-                    statics::error_page(
-                        "This server cannot give your account a library. Ask whoever runs it.",
-                    ),
+                    statics::error_page("No library for this account on this server"),
                 );
             }
             log(

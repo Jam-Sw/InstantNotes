@@ -9,13 +9,53 @@ pub const DIR: &str = "backups";
 pub const PENDING: &str = "pending-restore.db";
 pub const MARKER_SUFFIX: &str = ".restore";
 pub const AUTOMATIC_SETTING: &str = "backups.automatic";
+pub const KEEP_SETTING: &str = "backups.keep";
+pub const EVERY_SETTING: &str = "backups.everyHours";
 const PREFIX: &str = "instantnotes-";
 const EXT: &str = ".db";
 const BEFORE_RESTORE: &str = "-before-restore";
 const STAMP: &str = "%Y%m%d-%H%M%S";
-const DAILY_DAYS: i64 = 7;
-const WEEKLY_WEEKS: i64 = 5;
-const MONTHLY_MONTHS: i64 = 6;
+const EVERY_HOURS: [i64; 3] = [6, 24, 168];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Retention {
+    pub daily_days: i64,
+    pub weekly_weeks: i64,
+    pub monthly_months: i64,
+}
+
+impl Retention {
+    pub const SHORT: Retention = Retention {
+        daily_days: 3,
+        weekly_weeks: 2,
+        monthly_months: 2,
+    };
+    pub const STANDARD: Retention = Retention {
+        daily_days: 7,
+        weekly_weeks: 5,
+        monthly_months: 6,
+    };
+    pub const LONG: Retention = Retention {
+        daily_days: 14,
+        weekly_weeks: 12,
+        monthly_months: 12,
+    };
+
+    pub fn from_setting(saved: Option<&serde_json::Value>) -> Retention {
+        match saved.and_then(|v| v.as_str()) {
+            Some("short") => Retention::SHORT,
+            Some("long") => Retention::LONG,
+            _ => Retention::STANDARD,
+        }
+    }
+}
+
+pub fn every_hours(saved: Option<&serde_json::Value>) -> i64 {
+    saved
+        .and_then(|v| v.as_i64())
+        .filter(|h| EVERY_HOURS.contains(h))
+        .unwrap_or(EVERY_HOURS[1])
+}
 
 pub fn file_name(at: DateTime<Utc>) -> String {
     format!("{PREFIX}{}{EXT}", at.format(STAMP))
@@ -35,18 +75,27 @@ pub fn parse_name(name: &str) -> Option<DateTime<Utc>> {
     Some(naive.and_utc())
 }
 
-pub fn keep(now: DateTime<Utc>, names: &[String]) -> (Vec<String>, Vec<String>) {
+pub fn keep(
+    now: DateTime<Utc>,
+    names: &[String],
+    retention: Retention,
+) -> (Vec<String>, Vec<String>) {
+    let Retention {
+        daily_days,
+        weekly_weeks,
+        monthly_months,
+    } = retention;
     let mut kept = Vec::new();
     let mut dropped = Vec::new();
     let mut weekly: BTreeMap<(i32, u32), (DateTime<Utc>, String)> = BTreeMap::new();
     let mut monthly: BTreeMap<(i32, u32), (DateTime<Utc>, String)> = BTreeMap::new();
     let mut candidates: Vec<String> = Vec::new();
-    let weekly_end = Duration::days(DAILY_DAYS + WEEKLY_WEEKS * 7);
+    let weekly_end = Duration::days(daily_days + weekly_weeks * 7);
     let months_of = |at: DateTime<Utc>| at.year() as i64 * 12 + at.month() as i64;
     for name in names {
         let Some(at) = parse_name(name) else { continue };
         let age = now.signed_duration_since(at);
-        if age <= Duration::days(DAILY_DAYS) {
+        if age <= Duration::days(daily_days) {
             kept.push(name.clone());
             continue;
         }
@@ -63,7 +112,7 @@ pub fn keep(now: DateTime<Utc>, names: &[String]) -> (Vec<String>, Vec<String>) 
             continue;
         }
         let months_back = months_of(now) - months_of(at);
-        if months_back <= MONTHLY_MONTHS + (WEEKLY_WEEKS * 7 + DAILY_DAYS) / 30 {
+        if months_back <= monthly_months + (weekly_weeks * 7 + daily_days) / 30 {
             let slot = (at.year(), at.month());
             match monthly.get(&slot) {
                 Some((best, _)) if *best >= at => {}
@@ -265,7 +314,7 @@ mod tests {
         }
         names.push("instantnotes.db.backup-v11".to_string());
         names.push("notes.txt".to_string());
-        let (kept, dropped) = keep(now, &names);
+        let (kept, dropped) = keep(now, &names, Retention::STANDARD);
         let ages = |list: &[String]| -> Vec<i64> {
             list.iter()
                 .map(|n| now.signed_duration_since(parse_name(n).unwrap()).num_days())
@@ -306,10 +355,62 @@ mod tests {
     }
 
     #[test]
+    fn a_longer_retention_keeps_more_and_a_shorter_one_keeps_less() {
+        let now = at(2026, 10, 13, 12);
+        let names: Vec<String> = (0..400)
+            .map(|day| file_name(now - Duration::days(day) - Duration::hours(1)))
+            .collect();
+        let count = |r| keep(now, &names, r).0.len();
+        let (short, standard, long) = (
+            count(Retention::SHORT),
+            count(Retention::STANDARD),
+            count(Retention::LONG),
+        );
+        assert!(
+            short < standard && standard < long,
+            "{short} {standard} {long}"
+        );
+        let within = |r: Retention| {
+            keep(now, &names, r)
+                .0
+                .iter()
+                .filter(|n| {
+                    now.signed_duration_since(parse_name(n).unwrap())
+                        <= Duration::days(r.daily_days)
+                })
+                .count() as i64
+        };
+        assert_eq!(within(Retention::SHORT), 3);
+        assert_eq!(within(Retention::LONG), 14);
+    }
+
+    #[test]
+    fn retention_and_frequency_read_their_settings_with_today_as_the_fallback() {
+        use serde_json::json;
+        assert_eq!(Retention::from_setting(None), Retention::STANDARD);
+        assert_eq!(
+            Retention::from_setting(Some(&json!("odd"))),
+            Retention::STANDARD
+        );
+        assert_eq!(
+            Retention::from_setting(Some(&json!("short"))),
+            Retention::SHORT
+        );
+        assert_eq!(
+            Retention::from_setting(Some(&json!("long"))),
+            Retention::LONG
+        );
+        assert_eq!(every_hours(None), 24);
+        assert_eq!(every_hours(Some(&json!(5))), 24);
+        assert_eq!(every_hours(Some(&json!(6))), 6);
+        assert_eq!(every_hours(Some(&json!(168))), 168);
+    }
+
+    #[test]
     fn a_backup_from_the_future_is_kept() {
         let now = at(2026, 10, 13, 12);
         let name = file_name(now + Duration::days(2));
-        let (kept, dropped) = keep(now, std::slice::from_ref(&name));
+        let (kept, dropped) = keep(now, std::slice::from_ref(&name), Retention::STANDARD);
         assert_eq!(kept, vec![name]);
         assert!(dropped.is_empty());
     }

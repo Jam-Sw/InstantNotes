@@ -14,6 +14,7 @@ export interface Emit {
   hide(owner: number, from: number, to: number, deco?: Decoration): void;
   mark(from: number, to: number, deco: Decoration): void;
   line(lineFrom: number, deco: Decoration): void;
+  at(pos: number, deco: Decoration): void;
 }
 
 export interface ConstructSpec {

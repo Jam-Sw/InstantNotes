@@ -1,10 +1,12 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import Editor from "$lib/components/Editor.svelte";
   import FormatToolbar from "$lib/components/FormatToolbar.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import WhiteboardCanvas from "$lib/components/whiteboard/WhiteboardCanvas.svelte";
   import SheetGrid from "$lib/components/sheet/SheetGrid.svelte";
+  import RelatedStrip from "$lib/components/RelatedStrip.svelte";
   import { filledRows, parseSheet } from "$lib/sheet/model";
   import { library } from "$lib/stores/library.svelte";
   import { agents } from "$lib/stores/agents.svelte";
@@ -13,19 +15,32 @@
   import { confirmDialog } from "$lib/stores/confirm.svelte";
   import { openElsewhere } from "$lib/stores/open-elsewhere.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
-  import { importImageFile, pickLinkedImage, openUrl, popOutNote, tagSuggestion } from "$lib/api/client";
+  import {
+    dismissRelatedNote,
+    importImageFile,
+    openUrl,
+    pickLinkedImage,
+    popOutNote,
+    relatedNotes,
+    restoreRelatedNote,
+    tagSuggestion,
+  } from "$lib/api/client";
+  import { EVENTS, listen } from "$lib/api/events";
+  import { keepOrder } from "$lib/related";
+  import { debounce } from "$lib/debounce";
   import { isWeb } from "$lib/api/runtime";
   import { modKey, shiftKey } from "$lib/platform";
   import { theme } from "$lib/stores/theme.svelte";
   import { effectiveVariant } from "$lib/themes/apply";
   import { attachmentMarkdown } from "$lib/editor/images";
   import { formatDate, formatExact, wordCount } from "$lib/format";
-  import type { TagSuggestion } from "$lib/api/types";
+  import type { RelatedNote, TagSuggestion } from "$lib/api/types";
   import type { FormatKind } from "$lib/markdown-format";
   import { NO_MARKS, type ActiveMarks } from "$lib/markdown-active";
   import { clientLabel } from "$lib/agent-activity";
   import { isSyntheticNoteId } from "$lib/synthetic";
-  import { autosize, singleLine } from "$lib/title-field";
+  import { singleLine } from "$lib/title-field";
+  import { layout } from "$lib/stores/layout.svelte";
 
   let tagInput = $state("");
   let workspaceInput = $state("");
@@ -52,23 +67,135 @@
   const lastWriter = $derived(library.selected ? agents.lastWriter(library.selected.id) : null);
   const writer = $derived(lastWriter === "instantnotes" ? null : lastWriter);
   let suggestedTag = $state<TagSuggestion | null>(null);
+  let passage = $state("");
+  let related = $state<RelatedNote[]>([]);
+  let relatedShown = $state(false);
+  let relatedToken = 0;
+  let lastRelatedId: string | undefined;
 
   const selectedId = $derived(library.selected?.id);
   const selectedVersion = $derived(library.selected?.updatedAt);
   const selectedTagKey = $derived(library.selectedTags.map((t) => t.id).join(","));
+  const noRelated = $derived(
+    Boolean(isVirtual || library.selected?.isDeleted || library.selected?.isArchived),
+  );
 
-  $effect(() => {
-    const id = selectedId;
-    void selectedVersion;
-    void selectedTagKey;
-    suggestedTag = null;
-    if (!id || isVirtual) return;
-    tagSuggestion(id).then(
-      (tag) => {
-        if (library.selected?.id === id) suggestedTag = tag;
+  function refreshRelated(id: string, currentPassage: string) {
+    const token = ++relatedToken;
+    const trimmed = currentPassage.trim();
+    relatedNotes(id, trimmed || undefined).then(
+      (list) => {
+        if (token !== relatedToken || library.selected?.id !== id) return;
+        related = keepOrder(related, list);
+        if (list.length > 0) relatedShown = true;
       },
       () => {},
     );
+  }
+
+  const refreshRelatedSoon = debounce((id: string, currentPassage: string) => {
+    refreshRelated(id, currentPassage);
+  }, 600);
+
+  function refreshOpenRelated() {
+    const id = library.selected?.id;
+    if (id && !noRelated) refreshRelated(id, passage);
+  }
+
+  $effect(() => {
+    const id = selectedId;
+    const currentPassage = passage;
+    const excluded = noRelated;
+    void selectedVersion;
+    void selectedTagKey;
+    if (!id || excluded || id !== lastRelatedId) {
+      lastRelatedId = id;
+      related = [];
+      relatedShown = false;
+      refreshRelatedSoon.cancel();
+      if (id && !excluded) refreshRelated(id, currentPassage);
+      return;
+    }
+    refreshRelatedSoon(id, currentPassage);
+  });
+
+  onMount(() => {
+    const unlisteners: Array<() => void> = [];
+    const onExternal = () => {
+      const id = library.selected?.id;
+      if (id && !noRelated) {
+        refreshRelatedSoon(id, passage);
+      }
+    };
+    void listen(EVENTS.SETTINGS_CHANGED, onExternal).then(
+      (u) => unlisteners.push(u),
+      () => {},
+    );
+    void listen(EVENTS.NOTES_CHANGED, onExternal).then(
+      (u) => unlisteners.push(u),
+      () => {},
+    );
+    return () => {
+      refreshRelatedSoon.cancel();
+      refreshTagSoon.cancel();
+      for (const u of unlisteners) u();
+    };
+  });
+
+  async function foldRelated(note: RelatedNote) {
+    const ok = await library.foldIntoSelected(note.noteId, note.title);
+    if (ok) {
+      related = related.filter((r) => r.noteId !== note.noteId);
+      refreshOpenRelated();
+    }
+  }
+
+  async function dismissRelated(note: RelatedNote) {
+    const noteId = library.selected?.id;
+    if (!noteId) return;
+    const title = note.title || "Untitled";
+    related = related.filter((r) => r.noteId !== note.noteId);
+    try {
+      await dismissRelatedNote(noteId, note.noteId);
+      toasts.show(`Hidden: “${title}”`, {
+        label: "Undo",
+        run: () => void restoreRelatedNote(noteId, note.noteId).then(refreshOpenRelated, () => {}),
+      });
+    } catch {
+      toasts.show(`Couldn't hide “${title}”`);
+    }
+    refreshOpenRelated();
+  }
+
+  let tagToken = 0;
+  let lastTagId: string | undefined;
+
+  function refreshTag(id: string) {
+    const token = ++tagToken;
+    tagSuggestion(id).then(
+      (tag) => {
+        if (token === tagToken && library.selected?.id === id) suggestedTag = tag;
+      },
+      () => {},
+    );
+  }
+
+  const refreshTagSoon = debounce((id: string) => refreshTag(id), 600);
+
+  $effect(() => {
+    const id = selectedId;
+    const virtual = isVirtual;
+    void selectedVersion;
+    void selectedTagKey;
+    if (!id || virtual || id !== lastTagId) {
+      lastTagId = id;
+      refreshTagSoon.cancel();
+      tagToken++;
+      suggestedTag = null;
+      if (id && !virtual) refreshTag(id);
+      return;
+    }
+    refreshTagSoon(id);
   });
   $effect(() => {
     const want = library.focusRequest;
@@ -100,8 +227,24 @@
       const name = await importImageFile(picked);
       editorRef?.insertText(attachmentMarkdown(name));
     } catch (e) {
-      toasts.show(`Couldn't add image. ${e instanceof Error ? e.message : String(e)}`);
+      toasts.show(`Couldn't add image: ${e instanceof Error ? e.message : String(e)}`);
     }
+  }
+
+  type TitleEl = HTMLInputElement | HTMLTextAreaElement;
+
+  function titleInput(e: Event & { currentTarget: TitleEl }) {
+    const el = e.currentTarget;
+    const flat = singleLine(el.value);
+    if (flat !== el.value) el.value = flat;
+    if (el.parentElement) el.parentElement.dataset.value = flat || "Untitled";
+  }
+
+  function titleKey(e: KeyboardEvent & { currentTarget: TitleEl }) {
+    if (e.key !== "Enter" || e.isComposing) return;
+    e.preventDefault();
+    library.editTitle(e.currentTarget.value);
+    if (!isVirtual) editorRef?.focus();
   }
 
   async function submitTag(e: Event) {
@@ -121,7 +264,6 @@
     if (!id) return;
     const ok = await confirmDialog.ask({
       title: "Delete this note permanently?",
-      body: "This action cannot be undone.",
       confirmLabel: "Delete Forever",
       tone: "danger",
     });
@@ -138,15 +280,51 @@
       <path d="M10 4h9a2 2 0 0 1 2 2v9M13 11l7-7M15 4h5v5" />
     </svg>
     <h2>{library.selected.title || "Untitled"}</h2>
-    <p>This note is open as a sticky. Edit it there, or bring it back here.</p>
     <div class="popped-actions">
       <button class="action" onclick={() => void popOutNote(id)}>Show Sticky</button>
       <button class="action primary" onclick={() => void library.popIn(id)}>Bring Back</button>
     </div>
   </div>
 {:else if library.selected}
-  <header class="pane-header editor-header" data-tauri-drag-region>
-    <span class="header-title" data-tauri-drag-region>{library.selected.title || "Untitled"}</span>
+  {#snippet titleField()}
+    <div
+      class="header-title"
+      class:wrap={editorPrefs.titleWrap}
+      data-value={library.selected?.title || "Untitled"}
+    >
+      {#if editorPrefs.titleWrap}
+        <textarea
+          class="title-input"
+          rows="1"
+          placeholder="Untitled"
+          value={library.selected?.title}
+          readonly={isVirtual}
+          oninput={titleInput}
+          onkeydown={titleKey}
+          onchange={(e) => library.editTitle(e.currentTarget.value)}
+          aria-label="Note title"
+        ></textarea>
+      {:else}
+        <input
+          class="title-input"
+          size="1"
+          placeholder="Untitled"
+          value={library.selected?.title}
+          readonly={isVirtual}
+          oninput={titleInput}
+          onkeydown={titleKey}
+          onchange={(e) => library.editTitle(e.currentTarget.value)}
+          aria-label="Note title"
+        />
+      {/if}
+    </div>
+  {/snippet}
+  <header
+    class="pane-header editor-header"
+    class:wrap={editorPrefs.titleWrap && !layout.phone}
+    data-tauri-drag-region
+  >
+    {#if !layout.phone}{@render titleField()}{/if}
     {#if !isVirtual}
       {#if library.selected.isDeleted}
         <div class="icon-group">
@@ -247,27 +425,9 @@
     class:wide={isSurface}
     style="--editor-zoom: {editorPrefs.zoom}; --image-max-height: {imagePrefs.maxPreviewHeight}px"
   >
+  {#if layout.phone || !isVirtual}
   <div class="doc-head">
-    <textarea
-      class="title-input"
-      rows="1"
-      value={library.selected.title}
-      readonly={isVirtual}
-      use:autosize={[library.selected.title, editorPrefs.zoom]}
-      oninput={(e) => {
-        const flat = singleLine(e.currentTarget.value);
-        if (flat !== e.currentTarget.value) e.currentTarget.value = flat;
-      }}
-      onkeydown={(e) => {
-        if (e.key === "Enter" && !e.isComposing) {
-          e.preventDefault();
-          library.editTitle(e.currentTarget.value);
-          if (!isVirtual) editorRef?.focus();
-        }
-      }}
-      onchange={(e) => library.editTitle(e.currentTarget.value)}
-      aria-label="Note title"
-    ></textarea>
+  {#if layout.phone}{@render titleField()}{/if}
   {#if !isVirtual}
   <div class="tag-bar">
     {#each library.selectedTags as tag (tag.id)}
@@ -318,7 +478,6 @@
     {#if suggestion}
       <button
         class="chip suggest-chip"
-        title="Suggested from this note's tags and words"
         onclick={() => library.addSelectedToWorkspace(suggestion.spaceName)}
       >
         + {suggestion.spaceName}
@@ -335,6 +494,7 @@
   </div>
   {/if}
   </div>
+  {/if}
   {#if isBoard}
     <div class="editor-body board-body">
       {#key library.selected.id}
@@ -367,11 +527,12 @@
         bind:this={editorRef}
         value={library.selected.body}
         docKey={library.selected.id}
-        placeholder="Start writing… use #tags to organize"
+        placeholder="Start writing…"
         previewMode={!editorPrefs.sourceMode}
         onchange={(v) => library.editBody(v)}
         onactive={(a) => (active = a)}
         onhistory={(h) => (history = h)}
+        onpassage={(p) => (passage = p)}
       />
     </div>
   {/if}
@@ -386,6 +547,16 @@
     >
       {#if library.saveState === "saving"}<span class="save-dot"></span>Saving…{:else if library.saveState === "failed"}Not saved{:else}Saved · {editorPrefs.showExactTime ? formatExact(library.selected.updatedAt) : formatDate(library.selected.updatedAt)}{/if}
     </span>
+    {/if}
+    {#if !noRelated}
+      <RelatedStrip
+        {related}
+        keepOpen={relatedShown}
+        canFold={!isSurface && !library.selected.isDeleted && !isVirtual}
+        onOpen={(id) => void library.select(id)}
+        onFold={(note) => void foldRelated(note)}
+        onDismiss={(note) => void dismissRelated(note)}
+      />
     {/if}
     {#if library.error}
       <span class="error">{library.error}</span>
@@ -428,11 +599,6 @@
     margin: 4px 0 0;
     font-size: 16px;
     color: var(--text);
-  }
-  .popped-out p {
-    margin: 0;
-    font-size: 13px;
-    max-width: 300px;
   }
   .popped-actions {
     display: flex;
@@ -478,14 +644,45 @@
     background: var(--border);
   }
   .header-title {
-    flex: 1;
+    flex: 0 1 auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
     min-width: 0;
+    margin-right: auto;
     overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
     font-family: var(--font-ui);
-    font-size: 13px;
-    color: var(--text-secondary);
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.25;
+    letter-spacing: -0.012em;
+  }
+  .header-title::after {
+    content: attr(data-value) " ";
+    grid-area: 1 / 1;
+    visibility: hidden;
+    white-space: pre;
+  }
+  .header-title.wrap {
+    padding: 6px 0;
+  }
+  .header-title.wrap::after {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .editor-header.wrap {
+    height: auto;
+    min-height: calc(var(--chrome-h) + env(safe-area-inset-top));
+  }
+  .doc-head .header-title {
+    padding: 10px 0 4px;
+    font-size: 1.4em;
+    font-weight: 700;
+  }
+  :global(html[data-touch]) .header-title {
+    font-size: 16px;
+  }
+  :global(html[data-touch]) .doc-head .header-title {
+    font-size: max(16px, 1.4em);
   }
   .doc {
     flex: 1;
@@ -500,31 +697,34 @@
     width: 100%;
     max-width: calc(var(--measure) + 32px * var(--density));
     margin: 0 auto;
-    padding: 12px calc(16px * var(--density)) 0;
-    container-type: inline-size;
+    padding: 0 calc(16px * var(--density));
   }
   .doc.wide .doc-head {
     max-width: none;
   }
   .title-input {
-    display: block;
+    grid-area: 1 / 1;
     width: 100%;
+    min-width: 0;
+    margin: 0;
     padding: 0;
-    font-size: 1.7em;
-    font-weight: 700;
-    line-height: 1.25;
-    letter-spacing: -0.012em;
+    font: inherit;
+    letter-spacing: inherit;
+    color: var(--text);
     border: none;
     outline: none;
     background: transparent;
+    text-overflow: ellipsis;
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: text;
+  }
+  textarea.title-input {
+    height: 100%;
     resize: none;
     overflow: hidden;
+    white-space: pre-wrap;
     overflow-wrap: anywhere;
-  }
-  @container (max-width: 440px) {
-    .title-input {
-      font-size: 1.4em;
-    }
   }
   .action {
     padding: 4px 10px;
@@ -564,8 +764,7 @@
     flex-wrap: wrap;
     gap: 6px;
     align-items: center;
-    margin-top: 6px;
-    padding: 2px 0 8px;
+    padding: 2px 0 6px;
     border-bottom: 1px solid var(--border);
     font-family: var(--font-ui);
   }
@@ -639,13 +838,20 @@
     overflow: hidden;
   }
   .status-bar {
+    position: relative;
     display: flex;
+    align-items: center;
     justify-content: space-between;
+    gap: 16px;
     padding: 6px 16px;
     border-top: 1px solid var(--border);
     color: var(--text-tertiary);
     font-size: 11px;
     font-family: var(--font-meta);
+  }
+  .status-bar > span:not(.error) {
+    flex: none;
+    white-space: nowrap;
   }
   .error {
     color: var(--danger);

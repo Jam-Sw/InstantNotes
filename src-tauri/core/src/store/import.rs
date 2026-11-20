@@ -39,6 +39,12 @@ impl Store {
                     last_opened_at: Some(&now),
                 },
             )?;
+            for name in &item.tags {
+                if domain::normalize_tag_name(name).is_some() {
+                    let tag = tag_get_or_create(&tx, name)?;
+                    attach_tag(&tx, &id, &tag.id, "manual")?;
+                }
+            }
             if let Some(name) = space {
                 if workspace.is_none() {
                     workspace = Some(workspace_get_or_create(&tx, name)?);

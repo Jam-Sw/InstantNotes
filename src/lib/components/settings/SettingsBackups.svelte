@@ -3,11 +3,13 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import {
     backupNow,
+    getSetting,
     inspectBackup,
     listBackups,
     openBackupsFolder,
     restoreBackup,
     setBackupsAutomatic,
+    setSetting,
   } from "$lib/api/client";
   import { EVENTS, listen } from "$lib/api/events";
   import { isWeb } from "$lib/api/runtime";
@@ -17,11 +19,31 @@
   import { formatBytes, formatExact } from "$lib/format";
   import { exportArchiveDownload, exportVaultToFolder } from "$lib/vault-export";
   import PrefRow from "$lib/components/settings/PrefRow.svelte";
+  import SegmentedRow from "$lib/components/settings/SegmentedRow.svelte";
   import ToggleRow from "$lib/components/settings/ToggleRow.svelte";
+
+  type Keep = "short" | "standard" | "long";
+  type Every = "6" | "24" | "168";
+
+  const KEEP_OPTIONS: { value: Keep; label: string }[] = [
+    { value: "short", label: "Short" },
+    { value: "standard", label: "Standard" },
+    { value: "long", label: "Long" },
+  ];
+
+  const EVERY_OPTIONS: { value: Every; label: string }[] = [
+    { value: "6", label: "6 hours" },
+    { value: "24", label: "Daily" },
+    { value: "168", label: "Weekly" },
+  ];
 
   let list = $state<BackupList | null>(null);
   let busy = $state(false);
   let exporting = $state(false);
+  let keep = $state<Keep>("standard");
+  let every = $state<Every>("24");
+  let keepTouched = false;
+  let everyTouched = false;
 
   const errorMessage = (e: unknown) =>
     e instanceof Error ? e.message : typeof e === "object" && e && "message" in e ? String(e.message) : String(e);
@@ -30,13 +52,23 @@
     try {
       list = await listBackups();
     } catch (e) {
-      toasts.show(`Couldn't read the backups. ${errorMessage(e)}`);
+      toasts.show(`Couldn't read backups: ${errorMessage(e)}`);
     }
   }
 
   onMount(() => {
     if (isWeb) return;
     void refresh();
+    void getSetting<string>("backups.keep")
+      .then((v) => {
+        if (!keepTouched && (v === "short" || v === "standard" || v === "long")) keep = v;
+      })
+      .catch(() => {});
+    void getSetting<number>("backups.everyHours")
+      .then((v) => {
+        if (!everyTouched && (v === 6 || v === 24 || v === 168)) every = String(v) as Every;
+      })
+      .catch(() => {});
     const unlisten = listen(EVENTS.BACKUPS_CHANGED, () => void refresh());
     return () => void unlisten.then((off) => off());
   });
@@ -47,9 +79,21 @@
     try {
       await setBackupsAutomatic(on);
     } catch (e) {
-      toasts.show(`Couldn't change the setting. ${errorMessage(e)}`);
+      toasts.show(`Couldn't change automatic backups: ${errorMessage(e)}`);
       void refresh();
     }
+  }
+
+  function setKeep(v: Keep) {
+    keepTouched = true;
+    keep = v;
+    void setSetting("backups.keep", v).catch(() => toasts.show("Couldn't save setting"));
+  }
+
+  function setEvery(v: Every) {
+    everyTouched = true;
+    every = v;
+    void setSetting("backups.everyHours", Number(v)).catch(() => toasts.show("Couldn't save setting"));
   }
 
   async function runBackupNow() {
@@ -57,9 +101,9 @@
     busy = true;
     try {
       list = await backupNow();
-      toasts.show("Backed up. The copy is in the backups folder.");
+      toasts.show("Backed up");
     } catch (e) {
-      toasts.show(`Couldn't back up. ${errorMessage(e)}`);
+      toasts.show(`Couldn't back up: ${errorMessage(e)}`);
     } finally {
       busy = false;
     }
@@ -71,17 +115,16 @@
     try {
       const found = await inspectBackup(path);
       const when = found.madeAt ? formatExact(found.madeAt) : "an unknown time";
-      const notes = `${found.notes} ${found.notes === 1 ? "note" : "notes"}`;
       const ok = await confirmDialog.ask({
         title: `Restore the library from ${when}?`,
-        body: `That copy holds ${notes}. InstantNotes restarts, keeps today's library as a backup, and turns sync off; turn it back on in Settings > Sync when ready.`,
+        body: `${found.notes} ${found.notes === 1 ? "note" : "notes"} · restarts the app and turns sync off`,
         confirmLabel: "Restore and restart",
         tone: "danger",
       });
       if (!ok) return;
       await restoreBackup(path);
     } catch (e) {
-      toasts.show(`Couldn't restore. ${errorMessage(e)}`);
+      toasts.show(`Couldn't restore: ${errorMessage(e)}`);
     } finally {
       busy = false;
     }
@@ -95,7 +138,7 @@
         filters: [{ name: "InstantNotes library", extensions: ["db"] }],
       });
     } catch (e) {
-      toasts.show(`Couldn't open the file picker. ${errorMessage(e)}`);
+      toasts.show(`Couldn't open file picker: ${errorMessage(e)}`);
       return;
     }
     if (!path || typeof path !== "string") return;
@@ -106,7 +149,7 @@
     try {
       await openBackupsFolder();
     } catch (e) {
-      toasts.show(`Couldn't open the folder. ${errorMessage(e)}`);
+      toasts.show(`Couldn't open backups folder: ${errorMessage(e)}`);
     }
   }
 
@@ -116,13 +159,9 @@
     try {
       const result = isWeb ? await exportArchiveDownload() : await exportVaultToFolder();
       if ("ok" in result && result.ok) {
-        toasts.show(
-          isWeb
-            ? "Exported. The download holds every note as a plain Markdown file."
-            : "Exported. Every note is now a plain Markdown file in the folder you chose.",
-        );
+        toasts.show("Exported");
       } else if ("error" in result) {
-        toasts.show(`Couldn't export. ${result.error}`);
+        toasts.show(`Couldn't export: ${result.error}`);
       }
     } finally {
       exporting = false;
@@ -133,19 +172,11 @@
 <div class="backups-pane">
   {#if isWeb}
     <h2>Export</h2>
-    <p class="section-hint">
-      Your notes are kept on the server and on every signed-in device. Take a copy whenever you like.
-    </p>
   {:else}
     <h2>Backups</h2>
-    <p class="section-hint">
-      A copy of your library is made every day and kept beside it. Images stay in the attachments folder;
-      the Markdown export carries them.
-    </p>
 
     <ToggleRow
       label="Automatic backups"
-      sub="Once a day, while InstantNotes is open. A week of daily copies is kept, then one a week, then one a month."
       checked={list?.automatic ?? true}
       disabled={!list}
       onchange={(on) => void setAutomatic(on)}
@@ -153,7 +184,7 @@
 
     <PrefRow
       label="Back up now"
-      sub={!list ? "" : list.lastAt ? `Last backup ${formatExact(list.lastAt)}.` : "No backup yet."}
+      sub={list?.lastAt ? `Last backup ${formatExact(list.lastAt)}` : ""}
     >
       {#snippet control()}
         <button class="primary-btn" disabled={busy || !list} onclick={() => void runBackupNow()}>
@@ -161,6 +192,24 @@
         </button>
       {/snippet}
     </PrefRow>
+
+    <details class="more">
+      <summary>More</summary>
+      <SegmentedRow
+        label="Keep backups"
+        options={KEEP_OPTIONS}
+        value={keep}
+        reset={keep !== "standard" ? () => setKeep("standard") : undefined}
+        onchange={setKeep}
+      />
+      <SegmentedRow
+        label="Back up every"
+        options={EVERY_OPTIONS}
+        value={every}
+        reset={every !== "24" ? () => setEvery("24") : undefined}
+        onchange={setEvery}
+      />
+    </details>
 
     <span class="group-label">Restore</span>
     {#if list && list.backups.length > 0}
@@ -176,7 +225,7 @@
         {/each}
       </ul>
     {:else if list}
-      <p class="fine-print">No backups yet. The first one is made a few seconds after launch.</p>
+      <p class="fine-print">No backups yet</p>
     {/if}
     <div class="row-actions">
       <button class="card-btn" disabled={busy} onclick={() => void restoreFromFile()}>
@@ -188,12 +237,7 @@
     <span class="group-label">Export</span>
   {/if}
 
-  <PrefRow
-    label="Export everything as Markdown"
-    sub={isWeb
-      ? "A .zip with every note, tag, Space and image, as the folder export writes them."
-      : "A snapshot of every note, tag, Space, and attachment, written once to a folder you choose."}
-  >
+  <PrefRow label="Export everything as Markdown">
     {#snippet control()}
       <button class="primary-btn" disabled={exporting} onclick={() => void runExport()}>
         {exporting ? "Exporting…" : isWeb ? "Download…" : "Export a copy…"}
@@ -211,11 +255,8 @@
     font-size: 18px;
     font-weight: 600;
   }
-  .section-hint {
-    color: var(--text-secondary);
-    font-size: 13px;
-    line-height: 1.5;
-    margin: 0 0 20px;
+  .more {
+    margin-top: 12px;
   }
   .group-label {
     display: block;
@@ -265,16 +306,6 @@
     color: var(--text-tertiary);
     font-size: 12px;
     margin: 8px 0 0;
-  }
-  .card-btn {
-    padding: 6px 12px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--accent);
-    font-size: 13px;
-  }
-  .card-btn:hover:not(:disabled) {
-    background: var(--bg-hover);
   }
   .card-btn:disabled {
     opacity: 0.6;

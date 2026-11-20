@@ -128,7 +128,7 @@ describe("agents presence", () => {
     expect(await agents.revert(write.seq)).toBe(true);
     expect(agents.recent.find((e) => e.seq === write.seq)?.revertedAt).toBe(99);
     const toast = toasts.items.at(-1)!;
-    expect(toast.message).toBe("Reverted Claude Code's change to “Plan”.");
+    expect(toast.message).toBe("Reverted Claude Code: “Plan”");
     expect(toast.action?.label).toBe("Undo");
     const before = toasts.items.length;
     agents.play([revertRow]);
@@ -146,7 +146,7 @@ describe("agents presence", () => {
     );
     agents.play(burst);
     expect(toasts.items).toHaveLength(1);
-    expect(toasts.items[0].message).toBe("Claude Code made 5 changes.");
+    expect(toasts.items[0].message).toBe("Claude Code: 5 changes");
     expect(toasts.items[0].action?.label).toBe("Show");
     expect(agents.unseen).toBe(5);
     agents.show = vi.fn();

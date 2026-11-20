@@ -22,10 +22,13 @@ import type {
   CreateNoteInput,
   DashboardStats,
   FeedbackInput,
+  FoldOutcome,
   ImportOutcome,
+  FolderScan,
   Note,
   NoteFilter,
   NoteTitle,
+  RelatedNote,
   SearchResult,
   ShortcutFailure,
   SpaceSuggestion,
@@ -96,6 +99,16 @@ export const dismissSpaceSuggestion = (noteId: string, spaceId: string) =>
   call<void>("dismiss_space_suggestion", { noteId, spaceId });
 export const restoreSpaceSuggestion = (noteId: string, spaceId: string) =>
   call<void>("restore_space_suggestion", { noteId, spaceId });
+export const relatedNotes = (noteId: string, passage?: string | null, limit?: number) =>
+  call<RelatedNote[]>("related_notes", { noteId, passage: passage ?? null, limit });
+export const dismissRelatedNote = (noteId: string, relatedId: string) =>
+  call<void>("dismiss_related_note", { noteId, relatedId });
+export const restoreRelatedNote = (noteId: string, relatedId: string) =>
+  call<void>("restore_related_note", { noteId, relatedId });
+export const foldNotes = (intoId: string, sourceIds: string[]) =>
+  call<FoldOutcome>("fold_notes", { intoId, sourceIds });
+export const undoFold = (before: NoteSnapshot[]) =>
+  call<Note>("undo_fold", { before });
 export const listNotes = (filter: NoteFilter = {}) =>
   call<Note[]>("list_notes", { filter });
 export const countNotes = (filter: NoteFilter = {}) =>
@@ -213,6 +226,11 @@ export const exportThemeFile = (path: string, contents: string) =>
 export const importThemeFile = (path: string) =>
   call<string>("import_theme_file", { path });
 
+export const pluginReadText = (path: string) => call<string>("plugin_read_text", { path });
+export const pluginHttpPost = (id: number, url: string, body: string) =>
+  call<string>("plugin_http_post", { id, url, body });
+export const pluginHttpCancel = (id: number) => call<void>("plugin_http_cancel", { id });
+
 export const exportNoteFile = (path: string, contents: string) =>
   call<void>("export_note_file", { path, contents });
 export const sheetCsv = (id: string) => call<string>("sheet_csv", { id });
@@ -252,6 +270,9 @@ export const inspectBackup = (path: string) =>
   call<BackupInspection>("inspect_backup", { path });
 export const restoreBackup = (path: string) => call<void>("restore_backup", { path });
 export const openBackupsFolder = () => call<void>("open_backups_folder");
+
+export const setCaptureShortcut = (accelerator: string) =>
+  call<void>("set_capture_shortcut", { accelerator });
 
 export const reportFrontendError = (message: string, stack: string | null, where: string) =>
   call<void>("report_frontend_error", { message, stack, where });
@@ -299,6 +320,14 @@ export const stickiesLocation = () => call<string | null>("stickies_location");
 export const scanStickies = (folder: string) => call<StickiesScan>("scan_stickies", { folder });
 export const importStickies = (folder: string, ids: string[], space: string | null) =>
   call<ImportOutcome>("import_stickies", { folder, ids, space });
+export const obsidianVaults = () => call<string[]>("obsidian_vaults");
+export const scanObsidian = (folder: string) => call<FolderScan>("scan_obsidian", { folder });
+export const importObsidian = (folder: string, space: string | null) =>
+  call<ImportOutcome>("import_obsidian", { folder, space });
+export const notionExports = () => call<string[]>("notion_exports");
+export const scanNotion = (path: string) => call<FolderScan>("scan_notion", { path });
+export const importNotion = (folder: string, space: string | null) =>
+  call<ImportOutcome>("import_notion", { folder, space });
 
 export const getLibraryStats = () => call<DashboardStats>("library_stats");
 export const submitFeedback = (input: FeedbackInput) =>

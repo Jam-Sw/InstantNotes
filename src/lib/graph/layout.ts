@@ -133,6 +133,7 @@ export interface LayoutRun {
 export function startLayout(
   graph: Graph,
   previous?: Map<string, { x: number; y: number; z: number }>,
+  spread = 1,
 ): LayoutRun {
   const nodes: SimNode[] = graph.nodes.map((n) => {
     const known = previous?.get(n.id);
@@ -154,13 +155,13 @@ export function startLayout(
       "link",
       forceLink<SimNode, SimLink>(links)
         .id((d) => d.id)
-        .distance((l) => (l.kind === "suggested" ? 80 : 46))
+        .distance((l) => (l.kind === "suggested" ? 80 : 46) * spread)
         .strength((l) => (l.kind === "suggested" ? 0.25 : 0.7)),
     )
     .force(
       "charge",
       forceManyBody<SimNode>()
-        .strength((d) => (d.kind === "note" ? -60 : -260))
+        .strength((d) => (d.kind === "note" ? -60 : -260) * spread)
         .theta(1.2),
     )
     .force("collide", forceCollide<SimNode>((d) => nodeRadius(d) + 3))

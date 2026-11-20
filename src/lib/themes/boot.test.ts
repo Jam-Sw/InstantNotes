@@ -139,3 +139,14 @@ describe("windowBackground", () => {
     expect(windowBackground(lightOnly, "dark")).toBe(manuscript.light!.bg.toLowerCase());
   });
 });
+
+describe("bootSnapshot tweaks", () => {
+  it("carries the accent, density and leading tweaks into both palettes", () => {
+    const snap = bootSnapshot(manuscript, "auto", null, { density: 1.15, leading: "1.35", accent: "#00ff00" });
+    for (const p of [snap.light, snap.dark]) {
+      expect(p.vars["--accent"]).toBe("#00ff00");
+      expect(p.vars["--leading"]).toBe("1.35");
+      expect(p.vars["--density"]).toBe(String(manuscript.metrics.density * 1.15));
+    }
+  });
+});

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { render, cleanup } from "@testing-library/svelte";
+import { render, cleanup, fireEvent, waitFor, within } from "@testing-library/svelte";
 import SettingsSync from "./SettingsSync.svelte";
-import { getSyncServerStatus, getVaultStatus, listSyncDevices } from "$lib/api/client";
+import { getSetting, getSyncServerStatus, getVaultStatus, listSyncDevices, setSetting } from "$lib/api/client";
 import type { SyncServerStatus } from "$lib/api/types";
 
 vi.mock("$lib/api/runtime", () => ({ clientId: "tab-1", isWeb: true }));
@@ -15,10 +15,12 @@ vi.mock("$lib/api/client", () => ({
   connectSyncServer: vi.fn(),
   disconnectSyncServer: vi.fn(),
   enterRecoveryKey: vi.fn(),
+  getSetting: vi.fn(),
   getSyncServerStatus: vi.fn(),
   getVaultStatus: vi.fn(),
   listSyncDevices: vi.fn(),
   revokeSyncDevice: vi.fn(),
+  setSetting: vi.fn(),
   setSyncEncryption: vi.fn(),
   setVaultFolder: vi.fn(),
   showRecoveryKey: vi.fn(),
@@ -70,6 +72,8 @@ beforeEach(() => {
   vi.mocked(getSyncServerStatus).mockReset();
   vi.mocked(getVaultStatus).mockReset();
   vi.mocked(listSyncDevices).mockReset().mockResolvedValue([]);
+  vi.mocked(getSetting).mockReset().mockResolvedValue(null);
+  vi.mocked(setSetting).mockReset().mockResolvedValue(undefined);
 });
 
 describe("SettingsSync on the web", () => {
@@ -89,5 +93,58 @@ describe("SettingsSync on the web", () => {
 
     expect(await findByRole("button", { name: "Set up" })).toBeTruthy();
     expect(queryByRole("radio", { name: "Off" })).toBeNull();
+  });
+
+  it("shows the default sync and retry delays", async () => {
+    const { findByRole } = showing(CONNECTED);
+
+    expect((await findByRole("radio", { name: "300 ms" })).getAttribute("aria-checked")).toBe("true");
+    const retry = within(await findByRole("radiogroup", { name: "Retry delay" }));
+    expect(retry.getByRole("radio", { name: "30 s" }).getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("restores the saved delays", async () => {
+    vi.mocked(getSetting).mockImplementation(async (key: string) =>
+      (key === "sync.delayMs" ? 10000 : 300) as never,
+    );
+    const { findByRole } = showing(CONNECTED);
+
+    const delay = within(await findByRole("radiogroup", { name: "Sync delay" })).getByRole("radio", { name: "10 s" });
+    const retry = within(await findByRole("radiogroup", { name: "Retry delay" })).getByRole("radio", { name: "5 min" });
+    await waitFor(() => expect(delay.getAttribute("aria-checked")).toBe("true"));
+    expect(retry.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("saves a chosen sync delay", async () => {
+    const { findByRole } = showing(CONNECTED);
+
+    await fireEvent.click(await findByRole("radio", { name: "2 s" }));
+    expect(setSetting).toHaveBeenCalledWith("sync.delayMs", 2000);
+  });
+
+  it("saves a chosen retry delay", async () => {
+    const { findByRole } = showing(CONNECTED);
+
+    const group = within(await findByRole("radiogroup", { name: "Retry delay" }));
+    await fireEvent.click(group.getByRole("radio", { name: "1 min" }));
+    expect(setSetting).toHaveBeenCalledWith("sync.retrySec", 60);
+  });
+});
+
+describe("SettingsSync web reset", () => {
+  it("resets the sync and retry delays", async () => {
+    const { findByRole, queryAllByRole } = showing(CONNECTED);
+
+    const delay = within(await findByRole("radiogroup", { name: "Sync delay" }));
+    await fireEvent.click(delay.getByRole("radio", { name: "10 s" }));
+    const retry = within(await findByRole("radiogroup", { name: "Retry delay" }));
+    await fireEvent.click(retry.getByRole("radio", { name: "1 min" }));
+    expect(queryAllByRole("button", { name: "Reset" })).toHaveLength(2);
+
+    await fireEvent.click(queryAllByRole("button", { name: "Reset" })[0]);
+    expect(setSetting).toHaveBeenLastCalledWith("sync.delayMs", 300);
+    await fireEvent.click(queryAllByRole("button", { name: "Reset" })[0]);
+    expect(setSetting).toHaveBeenLastCalledWith("sync.retrySec", 30);
+    expect(queryAllByRole("button", { name: "Reset" })).toHaveLength(0);
   });
 });

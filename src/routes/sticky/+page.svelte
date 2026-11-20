@@ -25,6 +25,7 @@
   import { parseVaultSynced } from "$lib/vault-mirror";
   import { theme } from "$lib/stores/theme.svelte";
   import { editorPrefs } from "$lib/stores/editor.svelte";
+  import { pluginPrefs } from "$lib/stores/plugins.svelte";
   import { imagePrefs } from "$lib/stores/images.svelte";
   import { linkPrefs } from "$lib/stores/links.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
@@ -57,7 +58,7 @@
       await setStickyLevel(next);
     } catch {
       level = previous;
-      toasts.show("Couldn't change where the sticky sits.");
+      toasts.show("Couldn't change level");
     }
   }
 
@@ -79,7 +80,7 @@
 
   const header = $derived(
     sticky.note
-      ? `Created ${formatExact(sticky.note.createdAt)}\nEdited ${formatExact(sticky.note.updatedAt)}\nDouble-click to ${collapsed ? "expand" : "collapse"}`
+      ? `Created ${formatExact(sticky.note.createdAt)}\nEdited ${formatExact(sticky.note.updatedAt)}`
       : "",
   );
 
@@ -88,13 +89,14 @@
       await popInNote(noteId);
       await openLibrary();
     } catch (e) {
-      toasts.show(e instanceof Error ? e.message : "Couldn't bring the note back.");
+      toasts.show(e instanceof Error ? e.message : "Couldn't bring back");
     }
   }
 
   onMount(() => {
     void sticky.load(noteId);
     void editorPrefs.init();
+    void pluginPrefs.init();
     void imagePrefs.init();
     void linkPrefs.init();
     void agents.init();

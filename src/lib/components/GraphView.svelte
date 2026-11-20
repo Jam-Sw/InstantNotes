@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import {
     addNoteToWorkspace,
     dismissSpaceSuggestion,
@@ -13,6 +13,7 @@
   import { library } from "$lib/stores/library.svelte";
   import { agents } from "$lib/stores/agents.svelte";
   import { toasts } from "$lib/stores/toasts.svelte";
+  import { graphPrefs } from "$lib/stores/graph.svelte";
   import { debounce } from "$lib/debounce";
   import {
     buildGraph,
@@ -22,6 +23,7 @@
     type Graph,
     type GraphNode,
   } from "$lib/graph/layout";
+  import { attachControls } from "$lib/graphics/controls";
   import {
     FRONT,
     centreView,
@@ -31,29 +33,22 @@
     fog,
     mix3,
     mixView,
-    pinch,
     projector,
     reach,
     ring,
     turn,
-    wheelKind,
-    zoomAt,
     type Orbit,
     type Point3,
     type View,
-    type WheelKind,
-  } from "$lib/graph/projection";
+  } from "$lib/graphics/projection";
   import { clampLabel, nodeLabel, placeLabels } from "$lib/graph/labels";
 
   const FRAME_BUDGET_MS = 12;
   const KIND_LABEL = { note: "Note", tag: "Tag", space: "Space" } as const;
-  const LENS_HOPS = 2;
   const KEY_TURN = 20;
   const PAGE = 25;
-  const TAP_SLOP = 5;
   const DOUBLE_MS = 300;
   const GLIDE_MS = 320;
-  const WHEEL_GAP_MS = 200;
   const RING_MARGIN = 30;
   const PIVOT_ARM = 14;
 
@@ -74,10 +69,6 @@
   let glideFrame: number | null = null;
   let pendingOpen: ReturnType<typeof setTimeout> | null = null;
   let lastTap: { id: string | null; at: number } | null = null;
-  let wheelLatch: { kind: WheelKind; at: number } | null = null;
-  const pointers = new Map<number, { x: number; y: number }>();
-  let pressedAt = { x: 0, y: 0 };
-  let panning = false;
   let dragged = false;
   let positions = new Map<string, { x: number; y: number; z: number }>();
   let frame: number | null = null;
@@ -109,15 +100,17 @@
   const currentId = $derived(
     library.selected && byId.has(library.selected.id) ? library.selected.id : null,
   );
+  const around = $derived(
+    graph && lens && currentId ? neighbors(graph, currentId, graphPrefs.lensHops) : null,
+  );
   const lit = $derived.by(() => {
     if (!graph) return null;
     if (hovered) return neighbors(graph, hovered);
-    return currentId && lens ? neighbors(graph, currentId, LENS_HOPS) : null;
+    return around;
   });
 
   const framed = $derived.by(() => {
     const nodes = graph?.nodes ?? [];
-    const around = graph && lens && currentId ? neighbors(graph, currentId, LENS_HOPS) : null;
     return around ? nodes.filter((n) => around.has(n.id)) : nodes;
   });
   const aim = $derived.by((): Point3 => {
@@ -159,7 +152,7 @@
       const p = projected.get(n.id)!;
       const x = view.x + p.x * view.k;
       const y = view.y + p.y * view.k;
-      const r = nodeRadius(n) * p.scale * view.k;
+      const r = nodeRadius(n) * graphPrefs.nodeSize * p.scale * view.k;
       discs.push({ x, y, r });
       if (!showLabel(n)) continue;
       const focus =
@@ -174,6 +167,7 @@
   });
 
   function showLabel(n: GraphNode): boolean {
+    if (graphPrefs.labels !== "focus") return graphPrefs.labels === "all";
     return n.kind !== "note" || !!named?.has(n.id);
   }
 
@@ -210,7 +204,7 @@
 
   function settle(built: Graph) {
     if (frame !== null) cancelRaf(frame);
-    const run = startLayout(built, positions);
+    const run = startLayout(built, positions, graphPrefs.spread);
     const step = () => {
       frame = null;
       const started = performance.now();
@@ -333,7 +327,7 @@
         run: () => void removeNoteFromWorkspace(s.noteId, s.spaceId).catch(() => reload()),
       });
     } catch {
-      toasts.show(`Couldn't file "${s.noteTitle}" in ${s.spaceName}.`);
+      toasts.show(`Couldn't file "${s.noteTitle}" in ${s.spaceName}`);
       reload();
     }
   }
@@ -344,12 +338,12 @@
     try {
       await dismissSpaceSuggestion(s.noteId, s.spaceId);
       void library.refreshSuggestionCount();
-      toasts.show(`Won't suggest ${s.spaceName} for "${s.noteTitle}"`, {
+      toasts.show(`Dismissed ${s.spaceName} for "${s.noteTitle}"`, {
         label: "Undo",
         run: () => void restoreSpaceSuggestion(s.noteId, s.spaceId).then(() => reload(), () => reload()),
       });
     } catch {
-      toasts.show(`Couldn't dismiss the suggestion for "${s.noteTitle}".`);
+      toasts.show(`Couldn't dismiss suggestion for "${s.noteTitle}"`);
       reload();
     }
   }
@@ -361,71 +355,6 @@
 
   const percent = (p: number) => `${Math.round(p * 100)}%`;
   const because = (s: SpaceSuggestion) => s.reasons.map((r) => r.label).join(", ");
-
-  function local(e: PointerEvent | WheelEvent) {
-    const rect = host.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  }
-
-  function onPointerDown(e: PointerEvent) {
-    if (e.button > 2) return;
-    const at = local(e);
-    pointers.set(e.pointerId, at);
-    if (pointers.size === 1) {
-      pressedAt = at;
-      panning = e.button !== 0 || e.shiftKey;
-      dragged = false;
-    } else {
-      dragged = true;
-      grabbing = true;
-      for (const id of pointers.keys()) host.setPointerCapture?.(id);
-    }
-  }
-
-  function onPointerMove(e: PointerEvent) {
-    const before = pointers.get(e.pointerId);
-    if (!before) return;
-    const at = local(e);
-    if (pointers.size >= 2) {
-      const ids = [...pointers.keys()].slice(0, 2);
-      if (!ids.includes(e.pointerId)) return;
-      const pair = () => ids.map((id) => pointers.get(id)!) as [typeof at, typeof at];
-      const was = pair();
-      pointers.set(e.pointerId, at);
-      stopGlide();
-      userMoved = true;
-      view = pinch(view, was, pair());
-      return;
-    }
-    pointers.set(e.pointerId, at);
-    if (!dragged) {
-      if (Math.hypot(at.x - pressedAt.x, at.y - pressedAt.y) < TAP_SLOP) return;
-      dragged = true;
-      grabbing = true;
-      host.setPointerCapture?.(e.pointerId);
-    }
-    userMoved = true;
-    const dx = at.x - before.x;
-    const dy = at.y - before.y;
-    if (panning) {
-      stopGlide();
-      view = { ...view, x: view.x + dx, y: view.y + dy };
-    } else orbit = turn(orbit, dx, dy);
-  }
-
-  function onPointerUp(e: PointerEvent) {
-    const tapped = !dragged && pointers.size === 1 && pointers.has(e.pointerId);
-    release(e);
-    if (tapped && e.button === 0 && !(e.target as Element).closest(".node") && isDouble(null)) {
-      resetView();
-    }
-  }
-
-  function release(e: PointerEvent) {
-    pointers.delete(e.pointerId);
-    if (pointers.size === 0) grabbing = false;
-    if (pointers.size === 1) panning = false;
-  }
 
   function onHostKey(e: KeyboardEvent) {
     if ((e.key === "Home" || e.key === "0") && !e.altKey && !e.ctrlKey && !e.metaKey) {
@@ -445,22 +374,10 @@
     orbit = turn(orbit, step[0], step[1]);
   }
 
-  function onWheel(e: WheelEvent) {
-    e.preventDefault();
-    userMoved = true;
-    stopGlide();
-    const latched = wheelLatch && e.timeStamp - wheelLatch.at < WHEEL_GAP_MS ? wheelLatch.kind : null;
-    const kind = e.ctrlKey ? "zoom" : (latched ?? wheelKind(e));
-    wheelLatch = { kind, at: e.timeStamp };
-    if (kind === "pan") {
-      view = { ...view, x: view.x - e.deltaX, y: view.y - e.deltaY };
-      return;
-    }
-    const { x, y } = local(e);
-    const lines = e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? 800 : 1;
-    const factor = Math.exp(-e.deltaY * lines * (e.ctrlKey ? 0.01 : 0.002));
-    view = zoomAt(view, clampZoom(view.k * factor), x, y);
-  }
+  $effect(() => {
+    void graphPrefs.spread;
+    untrack(redraw);
+  });
 
   onMount(() => {
     const measure = () => {
@@ -471,14 +388,34 @@
     const observer =
       typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
     observer?.observe(host);
-    host.addEventListener("wheel", onWheel, { passive: false });
+    const detach = attachControls(host, {
+      mode: "3d",
+      camera: () => ({ orbit, view }),
+      update: (next) => {
+        orbit = next.orbit;
+        view = next.view;
+      },
+      touch: (kind) => {
+        userMoved = true;
+        if (kind === "view") stopGlide();
+      },
+      drag: (state) => {
+        dragged = state.dragged;
+        grabbing = state.grabbing;
+      },
+      tap: (e) => {
+        if (e.button === 0 && !(e.target as Element).closest(".node") && isDouble(null)) {
+          resetView();
+        }
+      },
+    });
     const unlisten = Promise.all(
       LIBRARY_CHANGED_EVENTS.map((event) => listen(event, () => reload())),
     );
     void load();
     return () => {
       observer?.disconnect();
-      host.removeEventListener("wheel", onWheel);
+      detach();
       reload.cancel();
       cancelOpen();
       stopGlide();
@@ -519,20 +456,13 @@
       class="graph-host"
       class:panning={grabbing}
       bind:this={host}
-      onpointerdown={onPointerDown}
-      onpointermove={onPointerMove}
-      onpointerup={onPointerUp}
-      onpointercancel={release}
       onkeydown={onHostKey}
       oncontextmenu={(e) => e.preventDefault()}
     >
       {#if failed}
-        <p class="graph-empty">The graph couldn't load. Your notes are fine; try again in a moment.</p>
+        <p class="graph-empty">Graph couldn't load</p>
       {:else if graph && graph.nodes.length === 0}
-        <p class="graph-empty">
-          Nothing to draw yet. Tag notes or add them to Spaces, and they appear here, linked by
-          what they share.
-        </p>
+        <p class="graph-empty">No tagged notes or Spaces</p>
       {:else if graph}
         <svg {width} {height} role="group" aria-label="Notes, tags, and Spaces">
           <g transform="translate({view.x} {view.y}) scale({view.k})">
@@ -557,7 +487,7 @@
             {/each}
             {#each painted as n (n.id)}
               {@const p = projected.get(n.id)!}
-              {@const r = nodeRadius(n) * p.scale}
+              {@const r = nodeRadius(n) * graphPrefs.nodeSize * p.scale}
               {@const shown = shade(n, p.depth)}
               <g
                 class="node {n.kind}"
@@ -619,7 +549,7 @@
     {#if shown.length > 0}
       <aside class="suggestions" aria-label="Filing suggestions">
         <h3>
-          Where these belong
+          Suggestions
           <span class="sug-count">{suggestions.length}</span>
         </h3>
         <ul>
@@ -631,12 +561,12 @@
               onfocusin={() => (hovered = s.noteId)}
               onfocusout={() => (hovered = null)}
             >
-              <button class="sug-note" title="Open the note" onclick={() => void library.select(s.noteId)}>
+              <button class="sug-note" onclick={() => void library.select(s.noteId)}>
                 {s.noteTitle || "Untitled"}
               </button>
               <p class="sug-verdict">
                 <span class="sug-space">{s.spaceName}</span>
-                <span class="sug-pct" title="How sure the suggestion is">{percent(s.probability)}</span>
+                <span class="sug-pct" title="Confidence">{percent(s.probability)}</span>
               </p>
               {#if s.reasons.length > 0}
                 <p class="sug-why">because {because(s)}</p>
@@ -651,10 +581,10 @@
                 </button>
                 <button
                   class="sug-dismiss"
-                  aria-label="Don't suggest {s.spaceName} for “{s.noteTitle || 'Untitled'}”"
+                  aria-label="Dismiss {s.spaceName} for “{s.noteTitle || 'Untitled'}”"
                   onclick={() => void dismiss(s)}
                 >
-                  Not this
+                  Dismiss
                 </button>
               </p>
             </li>
@@ -678,10 +608,9 @@
         <li><svg width="22" height="8" aria-hidden="true"><line class="edge suggested" x1="1" y1="4" x2="21" y2="4" /></svg>suggested Space</li>      </ul>
       {#if graph.unconnectedNotes > 0}
         <span class="foot-note">
-          {plural(graph.unconnectedNotes, "note", "notes")} with no tags or Spaces
-          {graph.unconnectedNotes === 1 ? "isn't" : "aren't"} shown.
+          Hidden: {plural(graph.unconnectedNotes, "note", "notes")} without tags or Spaces
           {#if graph.populatedSpaces < 2}
-            Suggestions start once two Spaces hold notes.
+            · Suggestions need 2 Spaces with notes
           {/if}
         </span>
       {/if}
@@ -726,6 +655,20 @@
   }
   .bar-btn:hover {
     background: var(--bg-hover);
+  }
+  @media (max-width: 599px) {
+    .graph-counts {
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+    .bar-actions {
+      flex: none;
+    }
+    .bar-btn {
+      white-space: nowrap;
+    }
   }
   .graph-body {
     display: flex;
@@ -889,6 +832,11 @@
     border-left: 1px solid var(--divider);
     padding: 10px 12px 12px;
     font-size: 12.5px;
+  }
+  @media (max-width: 599px) {
+    .suggestions {
+      max-width: 40%;
+    }
   }
   .suggestions h3 {
     display: flex;

@@ -78,6 +78,20 @@ describe("agent activity", () => {
       "Adding rows to “Groceries”",
     );
     expect(describeActivity(entry({ tool: "suggest_space" }))).toBe("Looking for where notes belong");
+    expect(describeActivity(entry({ tool: "find_related" }))).toBe(
+      "Looking for notes related to “Groceries”",
+    );
+    expect(describeActivity(entry({ tool: "find_related", titles: [], noteIds: [] }))).toBe(
+      "Looking for related notes",
+    );
+    expect(
+      describeActivity(
+        entry({ tool: "fold_notes", kind: "write", noteCount: 3, titles: ["Groceries", "Milk", "Eggs"] }),
+      ),
+    ).toBe("Folding 2 notes into “Groceries”");
+    expect(describeActivity(entry({ tool: "fold_notes", status: "error", error: "x" }))).toBe(
+      "Tried to fold notes, but it failed",
+    );
     expect(describeActivity(entry({ tool: "resources/read" }))).toBe("Reading “Groceries”");
     expect(describeActivity(entry({ tool: "resources/list" }))).toBe("Looking through your notes");
     expect(

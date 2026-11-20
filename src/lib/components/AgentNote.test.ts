@@ -191,10 +191,6 @@ describe("AgentNote", () => {
   it("says so when the agent has written nothing to its scratchpad", async () => {
     const { getByRole, getByText } = render(AgentNote);
     await fireEvent.click(getByRole("button", { name: /Scratchpad/ }));
-    expect(
-      getByText(
-        "It has written nothing to its scratchpad. An agent's working notes, plans and memory land here, never in your notes.",
-      ),
-    ).toBeTruthy();
+    expect(getByText("Scratchpad empty")).toBeTruthy();
   });
 });

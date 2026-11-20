@@ -1,3 +1,5 @@
+import { listPrefs } from "$lib/stores/list.svelte";
+
 const timeFormat = new Intl.DateTimeFormat([], { hour: "numeric", minute: "2-digit" });
 const shortDateFormat = new Intl.DateTimeFormat([], { month: "short", day: "numeric" });
 const exactFormat = new Intl.DateTimeFormat([], {
@@ -34,8 +36,9 @@ export function formatBytes(n: number): string {
 export function preview(body: string): string {
   const head = body.length > 1024 ? body.slice(0, 1024) : body;
   const collapsed = head.replace(/\s+/g, " ").trim();
-  if (head === body || collapsed.length > 90) return collapsed.slice(0, 90);
-  return body.replace(/\s+/g, " ").trim().slice(0, 90);
+  const max = listPrefs.previewChars;
+  if (head === body || collapsed.length > max) return collapsed.slice(0, max);
+  return body.replace(/\s+/g, " ").trim().slice(0, max);
 }
 
 export function sheetPreview(body: string): string {
@@ -45,10 +48,12 @@ export function sheetPreview(body: string): string {
     .flatMap((line) => line.replace(/^\|/, "").replace(/\|$/, "").split(/(?<!\\)\|/))
     .map((cell) => cell.replace(/\\\|/g, "|").replace(/<br>/g, " ").trim())
     .filter(Boolean);
-  return cells.join(" · ").slice(0, 90);
+  return cells.join(" · ").slice(0, listPrefs.previewChars);
 }
 
 export function wordCount(body: string): number {
-  const trimmed = body.trim();
-  return trimmed ? trimmed.split(/\s+/).length : 0;
+  let n = 0;
+  const words = /\S+/g;
+  while (words.exec(body)) n++;
+  return n;
 }

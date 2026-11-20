@@ -50,6 +50,7 @@ function main(argv) {
   const confPath = join(root, "src-tauri", "tauri.conf.json");
   const cargoPath = join(root, "src-tauri", "Cargo.toml");
   const lockPath = join(root, "src-tauri", "Cargo.lock");
+  const serverCargoPath = join(root, "src-tauri", "server", "Cargo.toml");
 
   const current = readJsonVersion(readFileSync(pkgPath, "utf8"));
   const confCurrent = readJsonVersion(readFileSync(confPath, "utf8"));
@@ -69,14 +70,16 @@ function main(argv) {
   rewriteFile(confPath, (t) => bumpJsonVersion(t, next));
   rewriteFile(cargoPath, (t) => bumpPackageVersion(t, "instantnotes", next));
   rewriteFile(lockPath, (t) => bumpPackageVersion(t, "instantnotes", next));
+  rewriteFile(serverCargoPath, (t) => bumpPackageVersion(t, "instantnotes-server", next));
+  rewriteFile(lockPath, (t) => bumpPackageVersion(t, "instantnotes-server", next));
 
   console.log(`bumped ${current} -> ${next} in:`);
-  console.log("  package.json, package-lock.json, src-tauri/tauri.conf.json, src-tauri/Cargo.toml, src-tauri/Cargo.lock");
+  console.log("  package.json, package-lock.json, src-tauri/tauri.conf.json, src-tauri/Cargo.toml, src-tauri/server/Cargo.toml, src-tauri/Cargo.lock");
   console.log("");
   console.log("next:");
   console.log(`  1. add a "## [${next}]" section to CHANGELOG.md`);
   console.log(`  2. git commit -am "chore: bump version to ${next}"`);
-  console.log(`  3. git tag v${next} && git push origin v${next}   # CI builds, signs, publishes`);
+  console.log(`  3. merge the ${next}-pre PR into main; that merge runs release.yml`);
 }
 
 const argv1 = process.argv[1] ?? "";

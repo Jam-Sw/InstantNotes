@@ -1,4 +1,5 @@
-use instantnotes_core::store::activity::{ActivityRecord, NoteSnapshot};
+use instantnotes_core::store::activity::{ActivityRecord, Before};
+use instantnotes_core::store::fold_ids;
 use instantnotes_core::Store;
 use serde_json::Value;
 use std::time::Instant;
@@ -29,16 +30,27 @@ pub(crate) struct Scope {
     tag: Option<String>,
     query: Option<String>,
     pub(crate) id: Option<String>,
+    pub(crate) source_ids: Vec<String>,
 }
 
 impl Scope {
     pub(crate) fn of(args: &Value) -> Scope {
         let field = |k: &str| args.get(k).and_then(Value::as_str).map(str::to_string);
+        let source_ids = args
+            .get("sourceIds")
+            .and_then(Value::as_array)
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
         Scope {
             space: field("space"),
             tag: field("tag"),
             query: field("query"),
             id: field("id"),
+            source_ids,
         }
     }
 }
@@ -48,7 +60,7 @@ pub(crate) struct Trace {
     tool: &'static str,
     kind: Kind,
     scope: Scope,
-    before: Option<Option<NoteSnapshot>>,
+    before: Option<Before>,
 }
 
 impl Trace {
@@ -66,9 +78,24 @@ impl Trace {
         if self.kind != Kind::Write {
             return;
         }
+        if let Some(id) = self
+            .scope
+            .id
+            .as_deref()
+            .filter(|_| !self.scope.source_ids.is_empty())
+        {
+            let snaps: Vec<_> = fold_ids(id, &self.scope.source_ids)
+                .iter()
+                .filter_map(|nid| store.snapshot_note(nid).ok().flatten())
+                .collect();
+            if snaps.len() >= 2 {
+                self.before = Some(Before::Many(snaps));
+                return;
+            }
+        }
         self.before = match &self.scope.id {
-            Some(id) => store.snapshot_note(id).ok(),
-            None => Some(None),
+            Some(id) => store.snapshot_note(id).ok().map(Before::One),
+            None => Some(Before::One(None)),
         };
     }
 
@@ -146,19 +173,33 @@ fn touched_notes(result: &Value) -> Vec<(String, String)> {
         Some((id.to_string(), title.to_string()))
     };
     if let Some(one) = pair(result) {
-        return vec![one];
+        let mut out = vec![one];
+        if let Some(folded) = result.get("folded").and_then(Value::as_array) {
+            out.extend(folded.iter().filter_map(pair));
+        }
+        return out;
     }
-    ["notes", "results", "suggestions"]
+    ["notes", "results", "suggestions", "related"]
         .iter()
         .filter_map(|k| result.get(*k).and_then(Value::as_array))
         .flatten()
-        .filter_map(pair)
+        .flat_map(|item| {
+            let mut found = Vec::new();
+            if let Some(p) = pair(item) {
+                found.push(p);
+            }
+            if let Some(related) = item.get("related").and_then(&pair) {
+                found.push(related);
+            }
+            found
+        })
         .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use instantnotes_core::store::activity::NoteSnapshot;
     use serde_json::json;
 
     fn snapshot(id: &str) -> NoteSnapshot {
@@ -218,7 +259,7 @@ mod tests {
     #[test]
     fn a_write_keeps_its_snapshot_and_the_note_s_new_updated_at() {
         let mut t = trace("update_note", Kind::Write, json!({ "id": "n1" }));
-        t.before = Some(Some(snapshot("n1")));
+        t.before = Some(Before::One(Some(snapshot("n1"))));
         let result =
             Ok(json!({ "id": "n1", "title": "After", "updatedAt": "2026-09-02T00:00:00.000000Z" }));
         let rec = record_for(t, "s1", "codex", &result, 3);
@@ -229,7 +270,7 @@ mod tests {
             rec.after_updated_at.as_deref(),
             Some("2026-09-02T00:00:00.000000Z")
         );
-        assert_eq!(rec.before, Some(Some(snapshot("n1"))));
+        assert_eq!(rec.before, Some(Before::One(Some(snapshot("n1")))));
     }
 
     #[test]
@@ -248,7 +289,7 @@ mod tests {
     #[test]
     fn a_failed_write_drops_its_snapshot() {
         let mut t = trace("update_note", Kind::Write, json!({ "id": "n1" }));
-        t.before = Some(Some(snapshot("n1")));
+        t.before = Some(Before::One(Some(snapshot("n1"))));
         let rec = record_for(t, "s1", "codex", &Err("CONFLICT: changed".into()), 2);
         assert_eq!(rec.status, "error");
         assert_eq!(rec.before, None);

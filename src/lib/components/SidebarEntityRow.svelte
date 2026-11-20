@@ -132,9 +132,7 @@
     class:active
     data-agent={agent ? "read" : null}
     bind:this={selectButton}
-    title={readonly
-      ? countLabel
-      : `${countLabel} · Double-click renames, right-click for options`}
+    title={countLabel}
     onclick={onSelect}
     ondblclick={readonly ? undefined : onStartRename}
     oncontextmenu={readonly ? undefined : onContextMenu}
@@ -222,9 +220,12 @@
     }
   }
   @media (prefers-reduced-motion: reduce) {
-    .entity-rename-input.invalid {
+    :global(:root:not([data-motion="full"])) .entity-rename-input.invalid {
       animation: none;
     }
+  }
+  :global(:root[data-motion="off"]) .entity-rename-input.invalid {
+    animation: none;
   }
   .entity-error {
     margin: 2px 0 4px;

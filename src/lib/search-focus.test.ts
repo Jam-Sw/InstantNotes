@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { stores } = vi.hoisted(() => ({
   stores: {
-    library: { graphMode: true },
+    library: { nav: { graphMode: true } },
     layout: { phone: false, back: vi.fn() },
     shell: { closeSettings: vi.fn() },
     sidebar: { revealList: vi.fn() },
@@ -24,7 +24,7 @@ function mountList(query: string, inert = false): HTMLInputElement {
 }
 
 beforeEach(() => {
-  stores.library.graphMode = true;
+  stores.library.nav.graphMode = true;
   stores.layout.phone = false;
 });
 
@@ -40,7 +40,7 @@ describe("focusing search", () => {
     expect(stores.sidebar.revealList).toHaveBeenCalledOnce();
     expect(stores.layout.back).not.toHaveBeenCalled();
     expect(stores.shell.closeSettings).toHaveBeenCalledOnce();
-    expect(stores.library.graphMode).toBe(false);
+    expect(stores.library.nav.graphMode).toBe(false);
     expect(document.activeElement).toBe(input);
     expect([input.selectionStart, input.selectionEnd]).toEqual([0, 5]);
   });
@@ -52,7 +52,7 @@ describe("focusing search", () => {
     expect(await focusSearch()).toBe(true);
     expect(document.activeElement).toBe(input);
     expect(stores.sidebar.revealList).not.toHaveBeenCalled();
-    expect(stores.library.graphMode).toBe(true);
+    expect(stores.library.nav.graphMode).toBe(true);
   });
 
   it("waits for a hidden list to become focusable", async () => {

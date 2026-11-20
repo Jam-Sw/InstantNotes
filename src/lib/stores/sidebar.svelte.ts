@@ -7,6 +7,7 @@ import {
   dragWidth,
   hasList,
   hasNav,
+  layout,
   paneState,
   resolveLayout,
   stepWidth,
@@ -102,6 +103,7 @@ class SidebarState {
     if (this.#loaded) return;
     this.#loaded = true;
     try {
+      await layout.initPaneMax();
       const [large, expanded, nav, list, legacyWidth, legacyNav, legacyList] = await Promise.all([
         getSetting<string>(KEYS.large),
         getSetting<string>(KEYS.expanded),
@@ -119,11 +121,11 @@ class SidebarState {
       else if (migrated) this.states.large = migrated;
       if (isState(expanded)) this.states.expanded = expanded;
       else if (migrated) this.states.expanded = migrated;
-      if (typeof nav === "number" && nav >= NAV_PANE.min && nav <= NAV_PANE.max) this.navWidth = nav;
+      if (typeof nav === "number" && nav >= NAV_PANE.min && nav <= layout.navPane.max) this.navWidth = nav;
       else if (typeof legacyWidth === "number" && legacyWidth >= 150 && legacyWidth <= 420) {
-        this.navWidth = clampPane(NAV_PANE, legacyWidth);
+        this.navWidth = clampPane(layout.navPane, legacyWidth);
       }
-      if (typeof list === "number" && list >= LIST_PANE.min && list <= LIST_PANE.max) {
+      if (typeof list === "number" && list >= LIST_PANE.min && list <= layout.listPane.max) {
         this.listWidth = list;
       }
     } catch {
@@ -214,13 +216,13 @@ class SidebarState {
   }
 
   resizeNav(raw: number): void {
-    const result = dragWidth(NAV_PANE, raw, this.#room("nav"));
+    const result = dragWidth(layout.navPane, raw, this.#room("nav"));
     this.snapping = result.collapsed ? "nav" : null;
     if (!result.collapsed) this.navWidth = result.width;
   }
 
   resizeList(raw: number): void {
-    const result = dragWidth(LIST_PANE, raw, this.#room("list"));
+    const result = dragWidth(layout.listPane, raw, this.#room("list"));
     this.snapping = result.collapsed ? "list" : null;
     if (!result.collapsed) this.listWidth = result.width;
   }
@@ -243,9 +245,16 @@ class SidebarState {
     this.#saveWidth(pane);
   }
 
+  refitPanes(): void {
+    this.navWidth = clampPane(layout.navPane, this.navWidth);
+    this.listWidth = clampPane(layout.listPane, this.listWidth);
+    this.#saveWidth("nav");
+    this.#saveWidth("list");
+  }
+
   stepPane(pane: Pane, direction: -1 | 1): void {
-    if (pane === "nav") this.navWidth = stepWidth(NAV_PANE, this.navWidth, direction, this.#room("nav"));
-    else this.listWidth = stepWidth(LIST_PANE, this.listWidth, direction, this.#room("list"));
+    if (pane === "nav") this.navWidth = stepWidth(layout.navPane, this.navWidth, direction, this.#room("nav"));
+    else this.listWidth = stepWidth(layout.listPane, this.listWidth, direction, this.#room("list"));
     this.#saveWidth(pane);
   }
 }

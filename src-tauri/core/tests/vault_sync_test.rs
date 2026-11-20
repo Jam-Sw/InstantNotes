@@ -363,6 +363,39 @@ fn a_tag_color_cleared_on_one_device_clears_on_the_other() {
 }
 
 #[test]
+fn a_manifest_edited_by_hand_keeps_only_colors_the_app_accepts() {
+    let (share, mut a, mut b) = pair();
+    let ws = a.s().get_or_create_workspace("Garden").unwrap();
+    a.s()
+        .set_workspace_color(&ws.id, Some("green".into()))
+        .unwrap();
+    let tag = a.s().get_or_create_tag("work").unwrap();
+    a.s().set_tag_color(&tag.id, Some("red".into())).unwrap();
+    settle(&mut a, &mut b);
+
+    let path = share.path().join("instantnotes.yaml");
+    let text = fs::read_to_string(&path)
+        .unwrap()
+        .replace("color: green", "color: 'red; background: url(x)'")
+        .replace("color: red", "color: ' BLUE '");
+    assert!(text.contains("url(x)") && text.contains("BLUE"), "{text}");
+    fs::write(&path, text).unwrap();
+    settle(&mut a, &mut b);
+
+    for d in [&a, &b] {
+        let s = d.s();
+        let garden = s.find_workspace("Garden").unwrap().unwrap();
+        assert_eq!(garden.color, None, "an invalid colour reads as none");
+        let work = s.find_tag("work").unwrap().unwrap();
+        assert_eq!(
+            work.color.as_deref(),
+            Some("blue"),
+            "a valid one is normalised"
+        );
+    }
+}
+
+#[test]
 fn an_unmounted_share_changes_nothing_and_edits_wait_for_it() {
     let parent = tempfile::tempdir().unwrap();
     let share = parent.path().join("share");

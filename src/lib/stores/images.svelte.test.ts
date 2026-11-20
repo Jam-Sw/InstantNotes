@@ -103,3 +103,13 @@ describe("imagePrefs", () => {
     expect(mockSetSetting).toHaveBeenCalledWith("images.maxPreviewHeight", 900);
   });
 });
+
+describe("IMAGE_DEFAULTS defaults", () => {
+  it("starts every field at its default", async () => {
+    const mod = await import("./images.svelte");
+    const { IMAGE_DEFAULTS, imagePrefs } = mod;
+    expect(IMAGE_DEFAULTS).toEqual({ storage: "copy", maxPreviewHeight: 420 });
+    expect(imagePrefs.storage).toBe("copy");
+    expect(imagePrefs.maxPreviewHeight).toBe(420);
+  });
+});

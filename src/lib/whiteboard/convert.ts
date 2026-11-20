@@ -6,7 +6,7 @@ export async function confirmConvertToWhiteboard(): Promise<boolean> {
   if (!note || note.isDeleted || note.contentKind === "whiteboard") return false;
   const ok = await confirmDialog.ask({
     title: "Turn this note into a whiteboard?",
-    body: "Its text moves onto the board as a text block, and stays searchable. A whiteboard can't be turned back into a text note.",
+    body: "Can't be turned back into text",
     confirmLabel: "Make Whiteboard",
   });
   if (!ok) return false;

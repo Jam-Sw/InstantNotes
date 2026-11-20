@@ -29,6 +29,12 @@ fn locked<'a>(
         .map_err(|_| CmdError::storage("internal state lock poisoned"))
 }
 
+fn saved_setting(app: &AppHandle, key: &str) -> Option<serde_json::Value> {
+    let state = library_state(app).ok()?;
+    let store = locked(&state).ok()?;
+    store.get_setting(key).ok().flatten()
+}
+
 pub(crate) fn close_session() {
     if let Some(path) = LIBRARY_DB.get() {
         Store::mark_session_closed(path);
@@ -90,8 +96,8 @@ use commands::{
 use error::{CmdError, CmdResult};
 use shell::menu::{install as install_menus, run_command};
 use shell::{
-    agents::*, backups::*, capture::*, diagnostics::*, files::*, mirror::*, quit::*, server::*,
-    stickies::*, update::*, windows::*,
+    agents::*, backups::*, capture::*, diagnostics::*, files::*, mirror::*, plugins::*, quit::*,
+    server::*, stickies::*, update::*, windows::*,
 };
 
 pub fn run() {
@@ -224,26 +230,19 @@ pub fn run() {
             });
 
             if let Some(library) = app.get_webview_window("library") {
-                #[cfg(not(debug_assertions))]
-                {
-                    let handle = library.clone();
-                    library.on_window_event(move |event| {
-                        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let handle = library.clone();
+                library.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        if shell::windows::close_to_tray(handle.app_handle()) {
                             api.prevent_close();
                             let _ = handle.hide();
+                        } else {
+                            handle.app_handle().exit(0);
                         }
-                    });
-                }
+                    }
+                });
                 #[cfg(debug_assertions)]
-                {
-                    let handle = library.app_handle().clone();
-                    library.on_window_event(move |event| {
-                        if let tauri::WindowEvent::CloseRequested { .. } = event {
-                            handle.exit(0);
-                        }
-                    });
-                    let _ = library.set_focus();
-                }
+                let _ = library.set_focus();
             }
 
             restore_stickies(app.handle());
@@ -294,6 +293,9 @@ pub fn run() {
             set_window_theme,
             export_theme_file,
             import_theme_file,
+            plugin_read_text,
+            plugin_http_post,
+            plugin_http_cancel,
             export_note_file,
             sheet_csv,
             save_attachment,
@@ -307,6 +309,11 @@ pub fn run() {
             tag_suggestion,
             dismiss_space_suggestion,
             restore_space_suggestion,
+            related_notes,
+            dismiss_related_note,
+            restore_related_note,
+            fold_notes,
+            undo_fold,
             unused_attachments,
             remove_unused_attachments,
             library_stats,
@@ -314,6 +321,7 @@ pub fn run() {
             list_backups,
             backup_now,
             set_backups_automatic,
+            set_capture_shortcut,
             inspect_backup,
             restore_backup,
             open_backups_folder,
@@ -349,6 +357,12 @@ pub fn run() {
             stickies_location,
             scan_stickies,
             import_stickies,
+            obsidian_vaults,
+            scan_obsidian,
+            import_obsidian,
+            notion_exports,
+            scan_notion,
+            import_notion,
             submit_feedback,
             open_feedback_log,
             open_url,

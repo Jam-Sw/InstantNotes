@@ -9,9 +9,9 @@
   async function copy() {
     try {
       await navigator.clipboard.writeText(recoveryKey);
-      toasts.show("Copied the recovery key.");
+      toasts.show("Copied");
     } catch {
-      toasts.show("Couldn't copy. Select the key and copy it instead.");
+      toasts.show("Couldn't copy");
     }
   }
 
@@ -47,9 +47,6 @@
     </svg>
     <code class="key" aria-label="Recovery key">{recoveryKey}</code>
   </div>
-  <p class="print-only print-note">
-    Keep this somewhere safe. With it, a new device can read your notes when no device you use is left.
-  </p>
   <div class="actions">
     <button class="card-btn" onclick={copy}>Copy</button>
     <button class="card-btn" onclick={download}>Download</button>
@@ -87,16 +84,6 @@
     gap: 8px;
     margin-top: 10px;
   }
-  .card-btn {
-    padding: 6px 12px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--accent);
-    font-size: 13px;
-  }
-  .card-btn:hover {
-    background: var(--bg-hover);
-  }
   .print-only {
     display: none;
   }
@@ -122,10 +109,6 @@
       margin: 0 0 16px;
       font-size: 18px;
       font-weight: 600;
-    }
-    .print-note {
-      margin: 16px 0 0;
-      font-size: 12px;
     }
     .sheet {
       border-color: #000;

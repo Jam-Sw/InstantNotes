@@ -22,7 +22,7 @@ describe("OtherTabScreen", () => {
     tab.elsewhere = true;
     await tick();
     expect(getByRole("alertdialog")).toBeTruthy();
-    expect(getByText("InstantNotes is open in another tab.")).toBeTruthy();
+    expect(getByText("Open in another tab")).toBeTruthy();
   });
 
   it("moves the library here when Use here is pressed", async () => {

@@ -127,10 +127,10 @@ describe("SettingsImages", () => {
     await fireEvent.click(await findByRole("button", { name: "Remove unused…" }));
 
     const ask = vi.mocked(confirmDialog.ask).mock.calls[0][0];
-    expect(ask.body).toMatch(/Trash/);
+    expect(ask.body).toBe("Deleted for good");
     expect(vi.mocked(removeUnusedAttachments)).toHaveBeenCalledTimes(1);
     expect(await findByText("None")).toBeTruthy();
-    expect(show).toHaveBeenCalledWith("Removed 2 unused images (2 KB).");
+    expect(show).toHaveBeenCalledWith("Removed 2 unused images (2 KB)");
   });
 
   it("does nothing when the confirm is declined", async () => {
@@ -159,6 +159,20 @@ describe("SettingsImages", () => {
 
   it("says no folders are allowed yet when the list is empty", async () => {
     const { findByText } = render(SettingsImages);
-    expect(await findByText("No folders yet.", { exact: false })).toBeTruthy();
+    expect(await findByText("No folders")).toBeTruthy();
+  });
+});
+
+describe("SettingsImages reset", () => {
+  it("resets storage and preview height", async () => {
+    const { getByRole, getByLabelText, queryAllByRole } = render(SettingsImages);
+    expect(queryAllByRole("button", { name: "Reset" })).toHaveLength(0);
+    await fireEvent.click(getByRole("radio", { name: "Link original" }));
+    await fireEvent.input(getByLabelText("Maximum image preview height"), { target: { value: "600" } });
+    const buttons = queryAllByRole("button", { name: "Reset" });
+    expect(buttons).toHaveLength(2);
+    for (const b of buttons) await fireEvent.click(b);
+    expect(imagePrefs.storage).toBe("copy");
+    expect(imagePrefs.maxPreviewHeight).toBe(DEFAULT_MAX_HEIGHT);
   });
 });

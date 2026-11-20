@@ -57,16 +57,16 @@ describe("the page's words", () => {
 
   it("says what an import did, and where", () => {
     expect(describeImport({ imported: 12, skipped: 0, workspaceId: "w" }, "Apple Stickies")).toBe(
-      "Imported 12 stickies into Apple Stickies.",
+      "Imported 12 stickies into Apple Stickies",
     );
     expect(describeImport({ imported: 1, skipped: 0, workspaceId: null }, null)).toBe(
-      "Imported 1 sticky.",
+      "Imported 1 sticky",
     );
     expect(describeImport({ imported: 2, skipped: 1, workspaceId: "w" }, "Work")).toBe(
-      "Imported 2 stickies into Work. 1 was already here.",
+      "Imported 2 stickies into Work · 1 already imported",
     );
     expect(describeImport({ imported: 0, skipped: 3, workspaceId: null }, "Work")).toBe(
-      "Nothing new to import. 3 were already here.",
+      "Nothing new · 3 already imported",
     );
   });
 });

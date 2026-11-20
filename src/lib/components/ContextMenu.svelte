@@ -132,6 +132,8 @@
     display: flex;
     flex-direction: column;
     min-width: 150px;
+    max-height: calc(100dvh - 16px);
+    overflow-y: auto;
     padding: 4px;
     background: var(--bg);
     border: 1px solid var(--border);

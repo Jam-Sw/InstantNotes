@@ -1,4 +1,5 @@
 import { debounce } from "$lib/debounce";
+import { EDITOR_DEFAULTS } from "$lib/stores/editor.svelte";
 import {
   withMapEntry,
   withoutMapKeys,
@@ -22,6 +23,7 @@ export interface SaveQueueDeps {
   onError: (e: unknown) => void;
   onOverwrote?: (id: string, theirs: string) => void;
   onMerged?: (id: string, added: string[][]) => void;
+  delayMs?: () => number;
 }
 
 type DiskVersion = Pick<Note, "updatedAt" | "body" | "contentKind"> & {
@@ -38,14 +40,19 @@ export class SaveQueue {
   #retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
   #disk = new Map<string, DiskVersion>();
 
-  #debounced = debounce((id: string, edit: QueuedEdit) => {
-    void this.#persist(id, edit, true);
-  }, 400);
+  #delay: number = EDITOR_DEFAULTS.autosaveMs;
+  #debounced = this.#makeDebounced(EDITOR_DEFAULTS.autosaveMs);
 
   #deps: SaveQueueDeps;
 
   constructor(deps: SaveQueueDeps) {
     this.#deps = deps;
+  }
+
+  #makeDebounced(ms: number) {
+    return debounce((id: string, edit: QueuedEdit) => {
+      void this.#persist(id, edit, true);
+    }, ms);
   }
 
   peek(id: string): QueuedEdit | undefined {
@@ -109,6 +116,12 @@ export class SaveQueue {
 
   queue(id: string, edit: QueuedEdit): void {
     this.#unsaved = withMapEntry(this.#unsaved, id, edit);
+    const ms = this.#deps.delayMs?.() ?? EDITOR_DEFAULTS.autosaveMs;
+    if (ms !== this.#delay) {
+      this.#debounced.flush();
+      this.#delay = ms;
+      this.#debounced = this.#makeDebounced(ms);
+    }
     this.#debounced(id, edit);
   }
 

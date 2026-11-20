@@ -1,5 +1,6 @@
 import type { ErrorCode } from "./error-codes";
 import type { FeedbackCategory } from "$lib/feedback";
+import type { NoteSnapshot } from "$lib/agent-activity";
 
 type ContentKind ="document" | "whiteboard" | "sheet";
 
@@ -255,6 +256,15 @@ export interface StickiesScan {
   stickies: StickyPreview[];
 }
 
+export interface FolderScan {
+  folder: string;
+  readable: boolean;
+  notes: number;
+  images: number;
+  imported: number;
+  titles: string[];
+}
+
 export interface ImportOutcome {
   imported: number;
   skipped: number;
@@ -290,4 +300,22 @@ export interface SpaceSuggestion {
 interface SuggestionReason {
   label: string;
   kind: "tag" | "word";
+}
+
+export interface RelatedNote {
+  noteId: string;
+  title: string;
+  excerpt: string;
+  contentKind: ContentKind;
+  createdAt: string;
+  updatedAt: string;
+  lastOpenedAt?: string | null;
+  score: number;
+  reasons: string[];
+}
+
+export interface FoldOutcome {
+  note: Note;
+  foldedIds: string[];
+  before: NoteSnapshot[];
 }

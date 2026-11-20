@@ -1,24 +1,44 @@
 <script lang="ts">
-  import { theme, type ThemeMode } from "$lib/stores/theme.svelte";
+  import { theme, THEME_DEFAULTS, type Density, type Leading, type Motion, type ThemeMode } from "$lib/stores/theme.svelte";
   import { effectiveVariant } from "$lib/themes/apply";
   import { exportTheme, importTheme } from "$lib/themes/share";
   import { BODY_FONTS, type BodyFontId } from "$lib/themes/fonts";
   import type { Theme, TokenSet } from "$lib/themes/types";
-  import { toasts } from "$lib/stores/toasts.svelte";
+  import { toasts, DURATIONS, TOAST_DEFAULTS } from "$lib/stores/toasts.svelte";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
   import SegmentedRow from "$lib/components/settings/SegmentedRow.svelte";
   import PrefRow from "$lib/components/settings/PrefRow.svelte";
+  import ToggleRow from "$lib/components/settings/ToggleRow.svelte";
+  import ColorPicker from "$lib/components/ColorPicker.svelte";
 
   const MODE_OPTIONS: { value: ThemeMode; label: string }[] = [
     { value: "auto", label: "Auto" },
     { value: "light", label: "Light" },
     { value: "dark", label: "Dark" },
   ];
-  const MODE_SUB: Record<ThemeMode, string> = {
-    auto: "Follows the system appearance.",
-    light: "Always the light variant.",
-    dark: "Always the dark variant.",
-  };
+
+  const MOTION_OPTIONS: { value: Motion; label: string }[] = [
+    { value: "system", label: "System" },
+    { value: "full", label: "Full" },
+    { value: "off", label: "Off" },
+  ];
+
+  const DENSITY_OPTIONS: { value: Density; label: string }[] = [
+    { value: "compact", label: "Compact" },
+    { value: "default", label: "Default" },
+    { value: "roomy", label: "Roomy" },
+  ];
+
+  const LEADING_OPTIONS: { value: Leading; label: string }[] = [
+    { value: "tight", label: "Tight" },
+    { value: "default", label: "Default" },
+    { value: "loose", label: "Loose" },
+  ];
+
+  const TOAST_OPTIONS = DURATIONS.map((ms) => ({
+    value: String(ms),
+    label: ms ? `${ms / 1000} s` : "Stay",
+  }));
 
   function previewTokens(t: Theme): TokenSet {
     const v = effectiveVariant(t, theme.resolvedVariant);
@@ -45,19 +65,18 @@
   async function onImport() {
     const r = await importTheme();
     if ("cancelled" in r) return;
-    toasts.show(r.ok ? `Imported “${r.name}”.` : `Couldn't import. ${r.error}`);
+    toasts.show(r.ok ? `Imported “${r.name}”` : `Couldn't import: ${r.error}`);
   }
 
   async function onExport(id: string) {
     const r = await exportTheme(id);
     if ("cancelled" in r) return;
-    toasts.show(r.ok ? `Saved “${r.name}” as a theme file.` : `Couldn't export. ${r.error}`);
+    toasts.show(r.ok ? `Exported “${r.name}”` : `Couldn't export: ${r.error}`);
   }
 
   async function onRemove(t: Theme) {
     const ok = await confirmDialog.ask({
       title: `Remove “${t.name}”?`,
-      body: "The imported theme is removed from this list. A file you exported is not touched.",
       confirmLabel: "Remove",
       tone: "danger",
     });
@@ -65,35 +84,64 @@
   }
 
   const fontId = $derived<BodyFontId | "theme">(theme.bodyFontId ?? "theme");
-  const fontSubId = "appearance-body-font-sub";
 </script>
 
 <div class="appearance-pane">
   <h2>Appearance</h2>
-  <p class="section-hint">
-    Pick a theme, choose light or dark, and set the font notes are written
-    in. Themes are files you can share: export the one you use, or import one
-    someone made.
-  </p>
 
   <SegmentedRow
     label="Light or dark"
-    sub={MODE_SUB[theme.mode]}
     options={MODE_OPTIONS}
     value={theme.mode}
+    reset={theme.mode !== THEME_DEFAULTS.mode ? () => theme.setMode(THEME_DEFAULTS.mode) : undefined}
     onchange={(v) => theme.setMode(v)}
+  />
+
+  <SegmentedRow
+    label="Motion"
+    options={MOTION_OPTIONS}
+    value={theme.motion}
+    reset={theme.motion !== THEME_DEFAULTS.motion ? () => theme.setMotion(THEME_DEFAULTS.motion) : undefined}
+    onchange={(v) => theme.setMotion(v)}
+  />
+
+  <SegmentedRow
+    label="Density"
+    options={DENSITY_OPTIONS}
+    value={theme.density}
+    reset={theme.density !== THEME_DEFAULTS.density ? () => theme.setDensity(THEME_DEFAULTS.density) : undefined}
+    onchange={(v) => theme.setDensity(v)}
+  />
+
+  <ToggleRow
+    label="Scrollbars"
+    checked={theme.scrollbars}
+    reset={theme.scrollbars !== THEME_DEFAULTS.scrollbars
+      ? () => theme.setScrollbars(THEME_DEFAULTS.scrollbars)
+      : undefined}
+    onchange={(v) => theme.setScrollbars(v)}
+  />
+
+  <SegmentedRow
+    label="Toast time"
+    options={TOAST_OPTIONS}
+    value={String(toasts.durationMs)}
+    reset={toasts.durationMs !== TOAST_DEFAULTS.durationMs
+      ? () => toasts.setDuration(TOAST_DEFAULTS.durationMs)
+      : undefined}
+    onchange={(v) => toasts.setDuration(Number(v))}
   />
 
   <PrefRow
     label="Body font"
-    sub="The font notes are written and read in. “Theme default” lets each theme choose."
-    subId={fontSubId}
+    reset={theme.bodyFontId !== THEME_DEFAULTS.bodyFontId
+      ? () => theme.setBodyFont(THEME_DEFAULTS.bodyFontId)
+      : undefined}
   >
     {#snippet control()}
       <select
         class="select"
         aria-label="Body font"
-        aria-describedby={fontSubId}
         value={fontId}
         onchange={(e) => {
           const v = e.currentTarget.value;
@@ -159,10 +207,25 @@
       </div>
     {/each}
   </div>
-  <p class="fine-print">
-    Switch themes without leaving the keyboard: the command palette lists them
-    under Themes, and “Toggle light/dark” flips the appearance.
-  </p>
+
+  <details class="more">
+    <summary>More</summary>
+    <SegmentedRow
+      label="Line height"
+      options={LEADING_OPTIONS}
+      value={theme.leading}
+      reset={theme.leading !== THEME_DEFAULTS.leading ? () => theme.setLeading(THEME_DEFAULTS.leading) : undefined}
+      onchange={(v) => theme.setLeading(v)}
+    />
+    <PrefRow
+      label="Accent"
+      reset={theme.accent !== THEME_DEFAULTS.accent ? () => theme.setAccent(THEME_DEFAULTS.accent) : undefined}
+    >
+      {#snippet control()}
+        <ColorPicker label="Accent" none="Theme" value={theme.accent} onpick={(c) => theme.setAccent(c)} />
+      {/snippet}
+    </PrefRow>
+  </details>
 </div>
 
 <style>
@@ -173,12 +236,6 @@
     margin: 0 0 6px;
     font-size: 18px;
     font-weight: 600;
-  }
-  .section-hint {
-    color: var(--text-secondary);
-    font-size: 13px;
-    line-height: 1.5;
-    margin: 0 0 20px;
   }
   .group-label {
     display: block;
@@ -353,11 +410,5 @@
   }
   .mini.danger {
     color: var(--danger);
-  }
-  .fine-print {
-    margin: 14px 0 0;
-    color: var(--text-tertiary);
-    font-size: 12px;
-    line-height: 1.5;
   }
 </style>

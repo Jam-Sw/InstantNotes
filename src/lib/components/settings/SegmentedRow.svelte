@@ -7,6 +7,7 @@
     options,
     value,
     disabled = false,
+    reset = undefined,
     onchange,
   }: {
     label: string;
@@ -14,6 +15,7 @@
     options: Option[];
     value: T;
     disabled?: boolean;
+    reset?: () => void;
     onchange: (v: T) => void;
   } = $props();
 
@@ -41,7 +43,7 @@
   }
 </script>
 
-<PrefRow {label} {sub} {subId} {disabled}>
+<PrefRow {label} {sub} {subId} {disabled} {reset}>
   {#snippet control()}
     <div
       class="seg"

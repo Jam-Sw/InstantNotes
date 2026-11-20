@@ -125,6 +125,13 @@ pub fn conflict_title(title: &str, stamp: &str) -> String {
     format!("{} (conflict {stamp})", title.trim())
 }
 
+pub fn strip_conflict_title(title: &str) -> &str {
+    match title.rfind(" (conflict ") {
+        Some(at) if title.ends_with(')') => &title[..at],
+        _ => title,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -317,5 +324,10 @@ mod tests {
             conflict_title(" Plan ", "2026-10-07 14:03"),
             "Plan (conflict 2026-10-07 14:03)"
         );
+        assert_eq!(
+            strip_conflict_title("Plan (conflict 2026-10-07 14:03)"),
+            "Plan"
+        );
+        assert_eq!(strip_conflict_title("Plan (draft)"), "Plan (draft)");
     }
 }

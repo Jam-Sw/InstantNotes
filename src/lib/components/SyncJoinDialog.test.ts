@@ -38,7 +38,7 @@ async function send(requests: SyncJoinRequest[]) {
 }
 
 const title = (name: string) => (_: string, el: Element | null) =>
-  el?.tagName === "H2" && el.textContent === `${name} wants to join.`;
+  el?.tagName === "H2" && el.textContent === `Join request: ${name}`;
 
 afterEach(cleanup);
 
@@ -72,7 +72,7 @@ describe("SyncJoinDialog", () => {
     await send([LAPTOP]);
     expect(getByRole("alertdialog")).toBeTruthy();
     expect(getByText(title("Work laptop"))).toBeTruthy();
-    expect(getByText("Do these words match the ones on it?")).toBeTruthy();
+    expect(getByText("Words match?")).toBeTruthy();
     const words = getByRole("list", { name: "Words" }).querySelectorAll(".word");
     expect([...words].map((w) => w.textContent)).toEqual(LAPTOP.words);
   });

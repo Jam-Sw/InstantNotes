@@ -154,7 +154,7 @@ fn percent_decode(value: &str) -> Option<String> {
 pub fn normalize_address(input: &str) -> Result<String, String> {
     let trimmed = input.trim().trim_end_matches('/');
     if trimmed.is_empty() {
-        return Err("Type your server's address.".into());
+        return Err("Server address required".into());
     }
     let address = if trimmed.contains("://") {
         trimmed.to_string()

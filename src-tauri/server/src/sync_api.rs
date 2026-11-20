@@ -236,9 +236,11 @@ async fn missing(
     Json(body): Json<Shas>,
 ) -> Response {
     let c = signed_in!(state, peer, headers);
-    match c.store.missing(&body.shas) {
-        Ok(missing) => Json(json!({ "missing": missing })).into_response(),
-        Err(e) => e.into_response(),
+    let store = Arc::clone(&c.store);
+    match tokio::task::spawn_blocking(move || store.missing(&body.shas)).await {
+        Ok(Ok(missing)) => Json(json!({ "missing": missing })).into_response(),
+        Ok(Err(e)) => e.into_response(),
+        Err(_) => Refused::Storage("blob check panicked".into()).into_response(),
     }
 }
 
@@ -388,12 +390,16 @@ async fn commit(
     Json(body): Json<CommitBody>,
 ) -> Response {
     let c = signed_in!(state, peer, headers);
-    match c
-        .store
-        .commit(body.epoch, &body.ops, &c.grant.id, body.reset)
+    let store = Arc::clone(&c.store);
+    let device = c.grant.id.clone();
+    match tokio::task::spawn_blocking(move || {
+        store.commit(body.epoch, &body.ops, &device, body.reset)
+    })
+    .await
     {
-        Ok(head) => Json(json!({ "head": head })).into_response(),
-        Err(e) => e.into_response(),
+        Ok(Ok(head)) => Json(json!({ "head": head })).into_response(),
+        Ok(Err(e)) => e.into_response(),
+        Err(_) => Refused::Storage("commit panicked".into()).into_response(),
     }
 }
 

@@ -11,7 +11,10 @@ export type SettingsPage =
   | "vault"
   | "backups"
   | "agents"
-  | "import";
+  | "import"
+  | "list"
+  | "graph"
+  | "behavior";
 
 class ShellStore {
   settingsOpen = $state(false);

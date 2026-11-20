@@ -2,14 +2,6 @@ import type { Note, Tag } from "$lib/api/types";
 
 export const DEFAULT_TEMPLATE = `<note title="{title}">\ntags: {tags}\n{content}\n</note>`;
 
-export const TEMPLATE_VARS = [
-  "{title}",
-  "{tags}",
-  "{date}",
-  "{content}",
-  "{id}",
-  "{copied}",
-] as const;
 
 export const DEFAULT_SOURCE_LINE = true;
 

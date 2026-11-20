@@ -5,10 +5,10 @@
   import { markerPrefs } from "$lib/stores/markers.svelte";
   import { MARKER_MODES, type MarkerMode } from "$lib/space-colors";
 
-  const OPTIONS: { value: MarkerMode; label: string; sub: string }[] = [
-    { value: "color", label: "Color", sub: "A filled disc in the space's color." },
-    { value: "flag", label: "Flag", sub: "A small flag in the space's color." },
-    { value: "both", label: "Both", sub: "The disc and the flag together." },
+  const OPTIONS: { value: MarkerMode; label: string }[] = [
+    { value: "color", label: "Color" },
+    { value: "flag", label: "Flag" },
+    { value: "both", label: "Both" },
   ];
 
   const EXAMPLE = {
@@ -61,11 +61,7 @@
 
 <div class="markers-pane">
   <span class="group-label">Space marker</span>
-  <p class="section-hint">
-    How each Space is marked in the sidebar. Right-click a Space to give it a color, or to show its
-    flag whatever you pick here. Tags with a color add a ring of slices around the Space's color, one
-    slice per tag, sized by how many of its notes carry the tag. Previewed with {subject.name}.
-  </p>
+  <p class="section-hint">Preview: {subject.name}</p>
 
   <div class="cards" role="radiogroup" aria-label="Space marker" bind:this={group}>
     {#each OPTIONS as o, i (o.value)}
@@ -88,7 +84,6 @@
           />
         </span>
         <span class="card-label">{o.label}</span>
-        <span class="card-sub">{o.sub}</span>
       </button>
     {/each}
   </div>
@@ -149,9 +144,5 @@
     font-size: 13px;
     font-weight: 600;
     color: var(--text);
-  }
-  .card-sub {
-    font-size: 11px;
-    color: var(--text-secondary);
   }
 </style>

@@ -10,7 +10,22 @@ export async function pickFolder(options: {
   try {
     picked = await open({ directory: true, multiple: false, ...options });
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "Could not open the folder picker." };
+    return { error: e instanceof Error ? e.message : "Folder picker failed" };
+  }
+  if (!picked || typeof picked !== "string") return { cancelled: true };
+  return { path: picked };
+}
+
+export async function pickFile(options: {
+  title: string;
+  defaultPath?: string;
+  filters: { name: string; extensions: string[] }[];
+}): Promise<FolderChoice> {
+  let picked: string | string[] | null;
+  try {
+    picked = await open({ directory: false, multiple: false, ...options });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "File picker failed" };
   }
   if (!picked || typeof picked !== "string") return { cancelled: true };
   return { path: picked };

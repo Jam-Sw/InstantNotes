@@ -81,7 +81,7 @@ describe("SyncServer on the web, first device", () => {
   it("offers to set up this server instead of asking for an address", async () => {
     const { findByText, queryByRole } = showing(OFF);
 
-    expect(await findByText("This server has no library yet.")).toBeTruthy();
+    expect(await findByText("No library on this server")).toBeTruthy();
     expect(queryByRole("textbox", { name: "Server address" })).toBeNull();
   });
 
@@ -92,7 +92,7 @@ describe("SyncServer on the web, first device", () => {
     await fireEvent.click(await findByRole("button", { name: "Set up" }));
 
     expect(connectSyncServer).toHaveBeenCalledWith(location.host, true);
-    expect(await findByText(/If you lose this recovery key/)).toBeTruthy();
+    expect(await findByText("Lost key and devices mean lost notes")).toBeTruthy();
   });
 
   it("sets up this server without encryption when the switch is turned off first", async () => {
@@ -100,7 +100,7 @@ describe("SyncServer on the web, first device", () => {
     const { findByRole, getByRole, getByText } = showing(OFF);
 
     await fireEvent.click(await findByRole("switch", { name: "End-to-end encryption" }));
-    expect(getByText(/Your server can read your notes/)).toBeTruthy();
+    expect(getByText("The server can read notes")).toBeTruthy();
     expect(ask).not.toHaveBeenCalled();
     await fireEvent.click(getByRole("button", { name: "Set up" }));
 
@@ -128,7 +128,7 @@ describe("SyncServer on the web, signing out", () => {
       expect(ask).toHaveBeenCalledWith(
         expect.objectContaining({
           title: "Sign out of this browser?",
-          body: "This browser's copy of your notes is removed. They stay on your server and your other devices.",
+          body: "Removes this browser's copy",
         }),
       ),
     );

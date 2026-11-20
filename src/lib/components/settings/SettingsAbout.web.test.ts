@@ -20,7 +20,7 @@ describe("SettingsAbout in the web app", () => {
     expect(getByText("Server version")).toBeTruthy();
     expect(getByText("Web app")).toBeTruthy();
     expect(getByText("The web app updates with your server")).toBeTruthy();
-    expect(queryByText("Capture readiness")).toBeNull();
+    expect(queryByText("Capture latency (median)")).toBeNull();
     expect(queryByRole("button", { name: "Check for updates" })).toBeNull();
     expect(queryByRole("button", { name: "Open data folder" })).toBeNull();
     expect(queryByRole("button", { name: "Send feedback" })).toBeNull();

@@ -128,7 +128,7 @@
       if (openLibraryAfter) await openLibrary();
       await hidePanel(!openLibraryAfter);
     } catch {
-      errorMsg = "Couldn't save — your text is kept here.";
+      errorMsg = "Not saved";
     } finally {
       saving = false;
       saved = false;

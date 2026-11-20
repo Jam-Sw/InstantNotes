@@ -23,6 +23,8 @@ import { HrSpec } from "./constructs/hr";
 import { TaskSpec } from "./constructs/task";
 import { ImageSpec } from "./constructs/image";
 import { TagSpec } from "./constructs/tags";
+import { PluginSpec } from "./constructs/plugin";
+import { pluginField, typingField } from "./plugins";
 
 export interface EditorKernelOpts {
   openUrl: (url: string) => void;
@@ -45,8 +47,8 @@ export function editorKernel(opts: EditorKernelOpts): Extension {
       new TaskSpec(),
       new ImageSpec(opts.convertSrc ?? (isWeb ? (path) => path : convertFileSrc)),
     ],
-    textSpecs: [new TagSpec()],
-    rescanOn: [linkPrefsField, attachmentsBaseField],
+    textSpecs: [new TagSpec(), new PluginSpec()],
+    rescanOn: [linkPrefsField, attachmentsBaseField, pluginField, typingField],
   });
 
   return [

@@ -452,7 +452,7 @@ impl<R: Remote> ServerSync<R> {
         if shas.is_empty() {
             return Ok(());
         }
-        let missing = self.remote.missing(&shas).await?;
+        let missing: HashSet<String> = self.remote.missing(&shas).await?.into_iter().collect();
         let blobs: Vec<(String, Vec<u8>)> = sealed
             .iter()
             .filter_map(|s| match (&s.sha, &s.bytes) {

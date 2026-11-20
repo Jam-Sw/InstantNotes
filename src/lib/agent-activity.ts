@@ -52,6 +52,7 @@ export interface NoteSnapshot {
   updatedAt: string;
   tags: [string, string][];
   spaces: string[];
+  surfaceData?: string | null;
 }
 
 export function parseAccess(value: unknown): AgentAccess {
@@ -220,6 +221,8 @@ export function describeActivity(e: AgentActivity): string {
       return "Looking through your notes";
     case "suggest_space":
       return "Looking for where notes belong";
+    case "find_related":
+      return e.titles[0] ? `Looking for notes related to ${title}` : "Looking for related notes";
     case "list_tags":
       return "Looking at your tags";
     case "list_spaces":
@@ -233,6 +236,10 @@ export function describeActivity(e: AgentActivity): string {
       return `Adding to ${title}`;
     case "append_sheet_rows":
       return `Adding rows to ${title}`;
+    case "fold_notes": {
+      const n = Math.max(1, e.noteCount - 1);
+      return `Folding ${n} ${n === 1 ? "note" : "notes"} into ${title}`;
+    }
     case "tag_note":
       return `Tagging ${title} #${e.tag ?? ""}`;
     case "untag_note":
@@ -261,6 +268,7 @@ function describeAttempt(e: AgentActivity): string {
     "resources/read": "read a note",
     "resources/list": "list notes",
     suggest_space: "suggest a Space",
+    find_related: "find related notes",
     list_tags: "list tags",
     list_spaces: "list Spaces",
     create_note: "create a note",
@@ -268,6 +276,7 @@ function describeAttempt(e: AgentActivity): string {
     edit_note: "edit a note",
     append_to_note: "add to a note",
     append_sheet_rows: "add rows to a sheet",
+    fold_notes: "fold notes",
     tag_note: "tag a note",
     untag_note: "untag a note",
     add_to_space: "file a note",

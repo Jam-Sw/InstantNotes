@@ -53,7 +53,7 @@ describe("the launch prompt", () => {
     settings({ "diagnostics.crashReports": true, "diagnostics.lastPromptAt": "2026-10-12T08:00:00Z" });
     await launch();
     expect(toasts.items.map((t) => t.message)).toEqual([
-      "InstantNotes had a problem last time. Review the report?",
+      "New crash report",
     ]);
     expect(setSetting).toHaveBeenCalledWith("diagnostics.lastPromptAt", "2026-10-13T08:00:00Z");
     toasts.activate(toasts.items[0].id);

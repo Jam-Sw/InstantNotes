@@ -1,34 +1,45 @@
+use super::corpus::Doc;
 use super::*;
-use crate::classify::{self, Example, Features, Model, Params};
+use crate::classify::{Example, Features, Model, Params};
 use std::collections::{HashMap, HashSet};
 
 pub const DISMISSED_SETTING: &str = "graph.dismissed";
 
 pub const TAG_SUGGEST_SETTING: &str = "suggest.tags";
 
-struct Doc {
-    id: String,
-    title: String,
-    features: Features,
-    tags: Vec<String>,
-    spaces: Vec<String>,
+pub(super) enum DismissedValues {
+    Notes,
+    Workspaces,
 }
+
+pub(super) struct Dismissals {
+    pub(super) setting: &'static str,
+    pub(super) values: DismissedValues,
+}
+
+const SPACE_DISMISSALS: Dismissals = Dismissals {
+    setting: DISMISSED_SETTING,
+    values: DismissedValues::Workspaces,
+};
 
 impl Store {
     pub fn space_suggestions(&self) -> Result<Vec<SpaceSuggestion>> {
         let params = Params::default();
-        let docs = self.suggestion_docs(params, true)?;
+        let corpus = self.corpus()?;
+        let features: Vec<Features> = corpus.docs.iter().map(Doc::feature_map).collect();
         let spaces: HashMap<String, String> = self
             .query_rows("SELECT id, name FROM workspaces", |r| {
                 Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
             })?
             .into_iter()
             .collect();
-        let examples: Vec<Example<'_>> = docs
+        let examples: Vec<Example<'_>> = corpus
+            .docs
             .iter()
-            .filter(|d| !d.spaces.is_empty())
-            .map(|d| Example {
-                features: &d.features,
+            .zip(&features)
+            .filter(|(d, _)| !d.spaces.is_empty())
+            .map(|(d, features)| Example {
+                features,
                 classes: &d.spaces,
             })
             .collect();
@@ -36,10 +47,15 @@ impl Store {
         if model.class_count() < 2 {
             return Ok(Vec::new());
         }
-        let dismissed = self.dismissed_pairs()?;
+        let dismissed = self.dismissed_pairs(&SPACE_DISMISSALS)?;
         let mut out = Vec::new();
-        for doc in docs.iter().filter(|d| d.spaces.is_empty()) {
-            let Some(verdict) = model.classify(&doc.features) else {
+        for (doc, features) in corpus
+            .docs
+            .iter()
+            .zip(&features)
+            .filter(|(d, _)| d.spaces.is_empty())
+        {
+            let Some(verdict) = model.classify(features) else {
                 continue;
             };
             if dismissed.contains(&(doc.id.clone(), verdict.class.clone())) {
@@ -68,39 +84,29 @@ impl Store {
     }
 
     pub fn tag_suggestion(&self, note_id: &str) -> Result<Option<TagSuggestion>> {
-        let setting = self.get_setting(TAG_SUGGEST_SETTING)?;
-        let enabled = setting
-            .as_ref()
-            .and_then(|v| v.get("enabled"))
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true);
-        if !enabled {
+        let Some(show_at) = self.suggest_threshold(TAG_SUGGEST_SETTING)? else {
             return Ok(None);
-        }
+        };
         let params = Params {
-            show_at: setting
-                .as_ref()
-                .and_then(|v| v.get("showAt"))
-                .and_then(|v| v.as_f64())
-                .map_or(Params::default().show_at, |at| at.clamp(0.3, 0.9)),
+            show_at,
             ..Params::default()
         };
-        let docs = self.suggestion_docs(params, false)?;
-        let Some(target) = docs.iter().find(|d| d.id == note_id) else {
+        let corpus = self.corpus()?;
+        let Some(target) = corpus.docs.iter().find(|d| d.id == note_id) else {
             return Ok(None);
         };
-        let has: HashSet<&str> = target.tags.iter().map(String::as_str).collect();
-        let taught: Vec<(&Features, Vec<String>)> = docs
+        let has: HashSet<&str> = target.tags().collect();
+        let taught: Vec<(&Features, Vec<String>)> = corpus
+            .docs
             .iter()
             .filter(|d| d.id != note_id)
             .map(|d| {
                 let tags = d
-                    .tags
-                    .iter()
-                    .filter(|t| !has.contains(t.as_str()))
-                    .cloned()
+                    .tags()
+                    .filter(|t| !has.contains(t))
+                    .map(str::to_string)
                     .collect::<Vec<_>>();
-                (&d.features, tags)
+                (&*d.words, tags)
             })
             .filter(|(_, tags)| !tags.is_empty())
             .collect();
@@ -109,7 +115,7 @@ impl Store {
             .map(|(features, classes)| Example { features, classes })
             .collect();
         let model = Model::fit(&examples, params);
-        Ok(model.classify(&target.features).map(|v| TagSuggestion {
+        Ok(model.classify(&target.words).map(|v| TagSuggestion {
             tag: v.class,
             probability: v.probability,
             reasons: v.reasons,
@@ -119,35 +125,35 @@ impl Store {
     pub fn dismiss_space_suggestion(&mut self, note_id: &str, space_id: &str) -> Result<()> {
         self.fetch_note(note_id)?;
         self.require_workspace(space_id)?;
-        let mut map = self.pruned_dismissals()?;
-        let entry = map
-            .entry(note_id.to_string())
-            .or_insert_with(|| serde_json::Value::Array(Vec::new()));
-        let list = match entry.as_array_mut() {
-            Some(list) => list,
-            None => {
-                *entry = serde_json::Value::Array(Vec::new());
-                entry.as_array_mut().expect("just set")
-            }
-        };
-        if !list.iter().any(|v| v.as_str() == Some(space_id)) {
-            list.push(serde_json::Value::String(space_id.to_string()));
-        }
-        self.set_setting(DISMISSED_SETTING, serde_json::Value::Object(map))
+        self.dismiss_pair(&SPACE_DISMISSALS, note_id, space_id)
     }
 
     pub fn restore_space_suggestion(&mut self, note_id: &str, space_id: &str) -> Result<()> {
-        let mut map = self.pruned_dismissals()?;
-        if let Some(list) = map.get_mut(note_id).and_then(|v| v.as_array_mut()) {
-            list.retain(|v| v.as_str() != Some(space_id));
-        }
-        map.retain(|_, v| v.as_array().is_some_and(|l| !l.is_empty()));
-        self.set_setting(DISMISSED_SETTING, serde_json::Value::Object(map))
+        self.restore_pair(&SPACE_DISMISSALS, note_id, space_id)
     }
 
     pub(super) fn prune_space_dismissals(&mut self) -> Result<()> {
-        let map = self.pruned_dismissals()?;
-        self.set_setting(DISMISSED_SETTING, serde_json::Value::Object(map))
+        let map = self.pruned_dismissals(&SPACE_DISMISSALS)?;
+        self.set_setting(SPACE_DISMISSALS.setting, serde_json::Value::Object(map))
+    }
+
+    pub(super) fn suggest_threshold(&self, key: &str) -> Result<Option<f64>> {
+        let setting = self.get_setting(key)?;
+        let enabled = setting
+            .as_ref()
+            .and_then(|v| v.get("enabled"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        if !enabled {
+            return Ok(None);
+        }
+        Ok(Some(
+            setting
+                .as_ref()
+                .and_then(|v| v.get("showAt"))
+                .and_then(|v| v.as_f64())
+                .map_or(Params::default().show_at, |at| at.clamp(0.3, 0.9)),
+        ))
     }
 
     fn require_workspace(&self, space_id: &str) -> Result<()> {
@@ -167,17 +173,48 @@ impl Store {
         }
     }
 
-    fn pruned_dismissals(&self) -> Result<serde_json::Map<String, serde_json::Value>> {
+    pub(super) fn dismiss_pair(&mut self, d: &Dismissals, key: &str, value: &str) -> Result<()> {
+        let mut map = self.pruned_dismissals(d)?;
+        let entry = map
+            .entry(key.to_string())
+            .or_insert_with(|| serde_json::Value::Array(Vec::new()));
+        if !entry.is_array() {
+            *entry = serde_json::Value::Array(Vec::new());
+        }
+        if let Some(list) = entry.as_array_mut() {
+            if !list.iter().any(|v| v.as_str() == Some(value)) {
+                list.push(serde_json::Value::String(value.to_string()));
+            }
+        }
+        self.set_setting(d.setting, serde_json::Value::Object(map))
+    }
+
+    pub(super) fn restore_pair(&mut self, d: &Dismissals, key: &str, value: &str) -> Result<()> {
+        let mut map = self.pruned_dismissals(d)?;
+        if let Some(list) = map.get_mut(key).and_then(|v| v.as_array_mut()) {
+            list.retain(|v| v.as_str() != Some(value));
+        }
+        map.retain(|_, v| v.as_array().is_some_and(|l| !l.is_empty()));
+        self.set_setting(d.setting, serde_json::Value::Object(map))
+    }
+
+    fn pruned_dismissals(
+        &self,
+        d: &Dismissals,
+    ) -> Result<serde_json::Map<String, serde_json::Value>> {
         let notes: HashSet<String> = self
             .query_rows("SELECT id FROM notes", |r| r.get::<_, String>(0))?
             .into_iter()
             .collect();
-        let spaces: HashSet<String> = self
-            .query_rows("SELECT id FROM workspaces", |r| r.get::<_, String>(0))?
-            .into_iter()
-            .collect();
+        let values: HashSet<String> = match d.values {
+            DismissedValues::Notes => notes.clone(),
+            DismissedValues::Workspaces => self
+                .query_rows("SELECT id FROM workspaces", |r| r.get::<_, String>(0))?
+                .into_iter()
+                .collect(),
+        };
         let mut map: serde_json::Map<String, serde_json::Value> = self
-            .get_setting(DISMISSED_SETTING)?
+            .get_setting(d.setting)?
             .and_then(|v| v.as_object().cloned())
             .unwrap_or_default();
         map.retain(|id, _| notes.contains(id));
@@ -186,7 +223,7 @@ impl Store {
                 .as_array()
                 .into_iter()
                 .flatten()
-                .filter(|v| v.as_str().is_some_and(|id| spaces.contains(id)))
+                .filter(|v| v.as_str().is_some_and(|id| values.contains(id)))
                 .cloned()
                 .collect();
             *value = serde_json::Value::Array(kept);
@@ -195,89 +232,20 @@ impl Store {
         Ok(map)
     }
 
-    fn dismissed_pairs(&self) -> Result<HashSet<(String, String)>> {
+    pub(super) fn dismissed_pairs(&self, d: &Dismissals) -> Result<HashSet<(String, String)>> {
         let mut out = HashSet::new();
-        let Some(value) = self.get_setting(DISMISSED_SETTING)? else {
+        let Some(value) = self.get_setting(d.setting)? else {
             return Ok(out);
         };
         if let Some(map) = value.as_object() {
-            for (note_id, spaces) in map {
-                for space in spaces.as_array().into_iter().flatten() {
-                    if let Some(space_id) = space.as_str() {
-                        out.insert((note_id.clone(), space_id.to_string()));
+            for (key, values) in map {
+                for value in values.as_array().into_iter().flatten() {
+                    if let Some(value) = value.as_str() {
+                        out.insert((key.clone(), value.to_string()));
                     }
                 }
             }
         }
         Ok(out)
-    }
-
-    fn suggestion_docs(&self, params: Params, merge_tags: bool) -> Result<Vec<Doc>> {
-        const LIVE: &str = "n.is_deleted = 0 AND n.is_archived = 0";
-        let rows = self.query_rows(
-            &format!(
-                "SELECT n.id, n.title, n.body FROM notes n \
-                 WHERE {LIVE} ORDER BY n.updated_at DESC, n.id"
-            ),
-            |r| {
-                Ok((
-                    r.get::<_, String>(0)?,
-                    r.get::<_, String>(1)?,
-                    r.get::<_, String>(2)?,
-                ))
-            },
-        )?;
-        let index: HashMap<String, usize> = rows
-            .iter()
-            .enumerate()
-            .map(|(i, (id, _, _))| (id.clone(), i))
-            .collect();
-        let mut tags: Vec<Vec<(String, String)>> = vec![Vec::new(); rows.len()];
-        for (note_id, name, source) in self.query_rows(
-            &format!(
-                "SELECT e.note_id, t.name, e.source FROM note_tags e \
-                 JOIN tags t ON t.id = e.tag_id \
-                 JOIN notes n ON n.id = e.note_id WHERE {LIVE}"
-            ),
-            |r| {
-                Ok((
-                    r.get::<_, String>(0)?,
-                    r.get::<_, String>(1)?,
-                    r.get::<_, String>(2)?,
-                ))
-            },
-        )? {
-            if let Some(&i) = index.get(&note_id) {
-                tags[i].push((name, source));
-            }
-        }
-        let mut spaces: Vec<Vec<String>> = vec![Vec::new(); rows.len()];
-        for (note_id, space_id) in self.query_rows(
-            &format!(
-                "SELECT e.note_id, e.workspace_id FROM note_workspaces e \
-                 JOIN notes n ON n.id = e.note_id WHERE {LIVE}"
-            ),
-            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
-        )? {
-            if let Some(&i) = index.get(&note_id) {
-                spaces[i].push(space_id);
-            }
-        }
-        Ok(rows
-            .into_iter()
-            .zip(tags)
-            .zip(spaces)
-            .map(|(((id, title, body), tags), spaces)| Doc {
-                features: classify::features(
-                    &format!("{title}\n{body}"),
-                    if merge_tags { &tags } else { &[] },
-                    params,
-                ),
-                tags: tags.into_iter().map(|(name, _)| name).collect(),
-                id,
-                title,
-                spaces,
-            })
-            .collect())
     }
 }

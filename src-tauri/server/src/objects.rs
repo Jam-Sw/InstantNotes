@@ -1,3 +1,4 @@
+use crate::sessions::now_secs;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -131,10 +132,6 @@ pub fn valid_name(name: &str) -> bool {
         && name
             .bytes()
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-}
-
-fn now_secs() -> i64 {
-    crate::sessions::now_secs()
 }
 
 pub struct Store {
@@ -753,10 +750,7 @@ mod tests {
     use super::*;
 
     fn sha(bytes: &[u8]) -> String {
-        Sha256::digest(bytes)
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect()
+        instantnotes_core::sync::object::sha_hex(bytes)
     }
 
     fn name(n: u8) -> String {

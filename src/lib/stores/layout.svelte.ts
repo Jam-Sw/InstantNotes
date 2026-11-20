@@ -1,3 +1,4 @@
+import { getSetting, setSetting } from "$lib/api/client";
 export type WidthClass = "large" | "expanded" | "medium" | "compact";
 export type PaneState = "all" | "double" | "nav" | "detail";
 type LayoutMode = "phone" | "tablet" | "desktop";
@@ -8,6 +9,11 @@ export type PaneSpec = { min: number; def: number; max: number };
 export const NAV_PANE: PaneSpec = { min: 180, def: 220, max: 300 };
 export const LIST_PANE: PaneSpec = { min: 240, def: 300, max: 420 };
 export const EDITOR_MIN = 420;
+const NAV_WIDE_MAX = 400;
+const LIST_WIDE_MAX = 560;
+const KEY_PANE_MAX = "layout.paneMax";
+export type PaneMax = "default" | "wide";
+export const LAYOUT_DEFAULTS: { paneMax: PaneMax } = { paneMax: "default" };
 const KEY_STEP = 16;
 const RESIZE_SETTLE_MS = 160;
 
@@ -84,13 +90,37 @@ class LayoutState {
   touch = $state(false);
   pane = $state<Pane>("list");
   resizing = $state(false);
+  paneMax = $state<PaneMax>(LAYOUT_DEFAULTS.paneMax);
   onLeave: () => void = () => {};
 
   #pushed = false;
+  #paneMaxTouched = false;
   #settleTimer: ReturnType<typeof setTimeout> | undefined;
 
   get phone(): boolean {
     return this.mode === "phone";
+  }
+
+  get navPane(): PaneSpec {
+    return this.paneMax === "wide" ? { ...NAV_PANE, max: NAV_WIDE_MAX } : NAV_PANE;
+  }
+
+  get listPane(): PaneSpec {
+    return this.paneMax === "wide" ? { ...LIST_PANE, max: LIST_WIDE_MAX } : LIST_PANE;
+  }
+
+  initPaneMax(): Promise<void> {
+    return getSetting<string>(KEY_PANE_MAX)
+      .then((saved) => {
+        if (!this.#paneMaxTouched && (saved === "default" || saved === "wide")) this.paneMax = saved;
+      })
+      .catch(() => {});
+  }
+
+  setPaneMax(v: PaneMax): void {
+    this.#paneMaxTouched = true;
+    this.paneMax = v;
+    void setSetting(KEY_PANE_MAX, v);
   }
 
   init(win: Window = window): () => void {

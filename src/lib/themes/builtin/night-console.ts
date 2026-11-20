@@ -33,7 +33,7 @@ export const nightConsole: Theme = {
     accentSoft: "rgba(242, 179, 92, 0.12)",
     danger: "#ff9d95",
     tag: "#f5c583",
-    success: "#2e6b4a",
+    success: "#3f9468",
     warning: "#e27d3a",
     swatches: NIGHT_CONSOLE_SWATCHES.dark,
   },

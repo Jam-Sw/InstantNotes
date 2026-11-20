@@ -2794,7 +2794,7 @@ dependencies = [
 
 [[package]]
 name = "instantnotes"
-version = "0.11.1"
+version = "0.11.2"
 dependencies = [
  "chrono",
  "instantnotes-agents",
@@ -2803,6 +2803,7 @@ dependencies = [
  "keyring",
  "objc2",
  "objc2-app-kit",
+ "reqwest",
  "serde",
  "serde_json",
  "tauri",
@@ -2816,6 +2817,7 @@ dependencies = [
  "tokio",
  "uuid",
  "window-vibrancy",
+ "zip",
 ]
 
 [[package]]
@@ -2854,7 +2856,7 @@ dependencies = [
 
 [[package]]
 name = "instantnotes-server"
-version = "0.11.1"
+version = "0.11.2"
 dependencies = [
  "aws-lc-rs",
  "axum",
@@ -7654,6 +7656,7 @@ checksum = "caa8cd6af31c3b31c6631b8f483848b91589021b28fffe50adada48d4f4d2ed1"
 dependencies = [
  "arbitrary",
  "crc32fast",
+ "flate2",
  "indexmap 2.14.2",
  "memchr",
 ]

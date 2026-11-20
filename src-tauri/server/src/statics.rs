@@ -302,9 +302,9 @@ pub fn device_link(problem: Option<&str>) -> String {
 
 pub fn device_paired(allowed: bool) -> String {
     let line = if allowed {
-        "Allowed. You can close this page and return to InstantNotes."
+        "Device allowed"
     } else {
-        "Cancelled. Nothing was connected."
+        "Cancelled"
     };
     format!(
         r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>InstantNotes</title>

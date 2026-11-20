@@ -1,7 +1,16 @@
 {
   "name": "instantnotes",
-  "version": "0.11.1",
+  "version": "0.11.2",
   "description": "InstantNotes — instant capture, organized knowledge",
+  "author": "Jam-Sw",
+  "homepage": "https://github.com/Jam-Sw/InstantNotes",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Jam-Sw/InstantNotes.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Jam-Sw/InstantNotes/issues"
+  },
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -35,7 +44,11 @@
     "@tauri-apps/api": "^2.12.4",
     "@tauri-apps/plugin-dialog": "^2.8.3",
     "@tauri-apps/plugin-updater": "^2.14.0",
+    "complex.js": "^2.4.3",
     "d3-force-3d": "^3.0.6",
+    "ml-matrix": "^6.15.1",
+    "nspell": "^2.1.5",
+    "plotly.js-dist-min": "^4.2.0",
     "qrcode-generator": "^2.0.4",
     "rbush": "^4.0.1",
     "react": "^19.3.1",
@@ -49,6 +62,7 @@
     "@testing-library/svelte": "^5.4.2",
     "@types/d3-force": "^3.0.10",
     "@types/node": "^26.6.5",
+    "@types/nspell": "^2.1.6",
     "@types/rbush": "^4.0.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -58,5 +72,15 @@
     "typescript": "~6.0.3",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"
+  },
+  "overrides": {
+    "lodash-es": "^4.18.0",
+    "cookie": "^0.7.0",
+    "@excalidraw/excalidraw": {
+      "nanoid": "^3.3.18"
+    },
+    "@excalidraw/mermaid-to-excalidraw": {
+      "nanoid": "^5.1.16"
+    }
   }
 }

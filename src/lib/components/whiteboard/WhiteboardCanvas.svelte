@@ -184,7 +184,7 @@
 
 <div class="board-host" data-whiteboard bind:this={host}></div>
 {#if failed}
-  <p class="board-failed">This whiteboard couldn't load. Its drawing is safe and nothing was changed.</p>
+  <p class="board-failed">Whiteboard couldn't load</p>
 {/if}
 
 <style>

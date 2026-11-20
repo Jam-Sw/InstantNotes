@@ -88,3 +88,20 @@ describe("themeToVars", () => {
     expect(vars["--font-body"]).toBe(terminal.fonts.mono);
   });
 });
+
+describe("themeToVars tweaks", () => {
+  it("leaves the theme's own values when no tweak is given", () => {
+    const base = themeToVars(terminal, "dark");
+    expect(themeToVars(terminal, "dark", {})).toEqual(base);
+  });
+
+  it("scales density, replaces leading and recolours the accent", () => {
+    const vars = themeToVars(terminal, "dark", { density: 0.85, leading: "1.75", accent: "#ff0000" });
+    expect(vars["--density"]).toBe(String(terminal.metrics.density * 0.85));
+    expect(vars["--leading"]).toBe("1.75");
+    expect(vars["--accent"]).toBe("#ff0000");
+    expect(vars["--accent-text"]).toBe("#ff0000");
+    expect(vars["--focus"]).toBe("#ff0000");
+    expect(vars["--accent-soft"]).toContain("#ff0000");
+  });
+});

@@ -11,7 +11,7 @@ export async function exportVaultToFolder(): Promise<ExportResult> {
   try {
     dest = await open({ directory: true, multiple: false });
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Could not open the folder picker." };
+    return { ok: false, error: e instanceof Error ? e.message : "Folder picker failed" };
   }
   if (!dest || typeof dest !== "string") return { cancelled: true };
 
@@ -19,7 +19,7 @@ export async function exportVaultToFolder(): Promise<ExportResult> {
     await exportVault(dest);
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Could not export the vault." };
+    return { ok: false, error: e instanceof Error ? e.message : "Export failed" };
   }
 }
 
@@ -40,6 +40,6 @@ export async function exportArchiveDownload(): Promise<ExportResult> {
     URL.revokeObjectURL(url);
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Could not export the notes." };
+    return { ok: false, error: e instanceof Error ? e.message : "Export failed" };
   }
 }

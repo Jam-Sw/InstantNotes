@@ -113,8 +113,8 @@ beforeEach(() => {
 
 describe("SettingsSync provider choice", () => {
   it("shows Off when nothing syncs", async () => {
-    const { findByText, getByRole } = showing(VAULT_OFF, SERVER_OFF);
-    expect(await findByText("Your notes are on this device only.")).toBeTruthy();
+    const { getByRole } = showing(VAULT_OFF, SERVER_OFF);
+    await waitFor(() => expect((getByRole("radio", { name: "Off" }) as HTMLButtonElement).disabled).toBe(false));
     expect(selected(getByRole, "Off")).toBe(true);
   });
 
@@ -152,7 +152,6 @@ describe("SettingsSync provider choice", () => {
       expect(ask).toHaveBeenCalledWith(
         expect.objectContaining({
           title: "Stop syncing with your folder?",
-          body: "Your notes stay on this device.",
         }),
       ),
     );
@@ -188,7 +187,7 @@ describe("SettingsSync provider choice", () => {
 
     await waitFor(() => expect(disconnectSyncServer).toHaveBeenCalled());
     expect(ask.mock.calls[0][0]).toMatchObject({ title: "Stop syncing with notes.example.org?" });
-    expect(await findByText("Your notes are on this device only.")).toBeTruthy();
+    await waitFor(() => expect(selected(getByRole, "Off")).toBe(true));
   });
 
   it("keeps the folder card after the folder stops on its own", async () => {

@@ -39,6 +39,12 @@
   --divider: color-mix(in srgb, var(--border) 86%, var(--text));
   --select-bg: color-mix(in srgb, var(--accent) 18%, transparent);
 }
+:root[data-variant="light"] {
+  color-scheme: light;
+}
+:root[data-variant="dark"] {
+  color-scheme: dark;
+}
 html[data-chrome="overlay"] {
   --chrome-inset: 80px;
 }
@@ -92,7 +98,7 @@ html[data-chrome="overlay"] {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .live-dot[data-state="working"] {
+  :root:not([data-motion="full"]) .live-dot[data-state="working"] {
     animation: none;
   }
 }
@@ -127,12 +133,31 @@ html[data-chrome="overlay"] {
   background: color-mix(in srgb, var(--danger) 14%, transparent);
   color: var(--danger);
 }
+.card-btn {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--accent);
+  font-size: 13px;
+}
+.card-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.card-btn:disabled {
+  opacity: 0.5;
+}
+.card-btn.quiet {
+  margin-left: auto;
+  color: var(--text-secondary);
+}
 
 * {
   box-sizing: border-box;
+}
+html:not([data-scrollbars]) * {
   scrollbar-width: none;
 }
-*::-webkit-scrollbar {
+html:not([data-scrollbars]) *::-webkit-scrollbar {
   width: 0;
   height: 0;
 }
@@ -163,6 +188,9 @@ input,
 textarea {
   font-family: inherit;
   color: inherit;
+}
+input[type="range"] {
+  accent-color: var(--accent);
 }
 
 ::selection {
@@ -297,9 +325,13 @@ html[data-vibrancy][data-vibrancy-derived] .sidebar {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  [data-agent]::after {
+  :root:not([data-motion="full"]) [data-agent]::after {
     animation: none;
   }
+}
+:root[data-motion="off"] .live-dot[data-state="working"],
+:root[data-motion="off"] [data-agent]::after {
+  animation: none;
 }
 
 html[data-touch] {
@@ -318,13 +350,28 @@ html[data-touch] .nav-item {
 }
 html[data-touch] .space-tag-chip,
 html[data-touch] .filter-pill,
-html[data-touch] .action {
+html[data-touch] .action,
+html[data-touch] .related-action,
+html[data-touch] .related-pill {
+  min-height: 36px;
+}
+html[data-touch] .related-dismiss {
+  min-width: 36px;
   min-height: 36px;
 }
 html[data-touch] .icon-btn,
 html[data-touch] .fmt {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
+}
+html[data-touch] .pane-nav,
+html[data-touch] .list-toggle {
+  width: 44px;
+  height: 44px;
+}
+html[data-touch] .dot {
+  width: 26px;
+  height: 26px;
 }
 html[data-touch] .format-bar {
   height: 48px;
@@ -339,6 +386,9 @@ html[data-touch] .cmd-input {
 html[data-touch] .new-note {
   width: 40px;
 }
+html[data-touch] .new-control {
+  height: 40px;
+}
 html[data-touch] .new-kind {
   width: 28px;
 }
@@ -351,4 +401,26 @@ html[data-touch] .status-bar {
 }
 html[data-touch] .cmd-row kbd {
   display: none;
+}
+.slider-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.slider-val {
+  font-family: var(--font-meta);
+  font-size: 12px;
+  color: var(--text-secondary);
+  min-width: 44px;
+  text-align: right;
+}
+
+.more {
+  margin-top: 24px;
+}
+.more summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--text-secondary);
 }

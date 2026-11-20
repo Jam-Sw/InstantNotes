@@ -1,5 +1,20 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
+import { listPrefs } from "$lib/stores/list.svelte";
 import { formatExact, formatBytes, preview, sheetPreview, wordCount } from "./format";
+
+afterEach(() => {
+  listPrefs.previewChars = 90;
+});
+
+describe("preview length setting", () => {
+  it("caps preview and sheetPreview at the chosen length", () => {
+    listPrefs.previewChars = 40;
+    expect(preview("x".repeat(200))).toHaveLength(40);
+    expect(sheetPreview(`| ${"x".repeat(200)} |\n| --- |`)).toHaveLength(40);
+    listPrefs.previewChars = 300;
+    expect(preview("x".repeat(500))).toHaveLength(300);
+  });
+});
 
 describe("preview", () => {
   it("collapses whitespace and trims", () => {

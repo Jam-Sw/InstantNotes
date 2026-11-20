@@ -9,6 +9,7 @@ import {
   type QueuedEdit,
   type SaveState,
 } from "$lib/stores/library/save-queue.svelte";
+import { editorPrefs } from "$lib/stores/editor.svelte";
 import { appendRows, parseSheet, serializeSheet } from "$lib/sheet/model";
 
 export class StickyNote {
@@ -17,6 +18,7 @@ export class StickyNote {
   error = $state<string | null>(null);
 
   #queue = new SaveQueue({
+    delayMs: () => editorPrefs.autosaveMs,
     onPersisted: (id, updated) => {
       if (this.note?.id !== id) return;
       const { body, surfaceData, contentKind } = this.note;

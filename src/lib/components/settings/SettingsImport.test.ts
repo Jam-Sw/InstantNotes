@@ -1,7 +1,14 @@
 import { describe, it, expect, vi, afterEach, beforeEach, type Mock } from "vitest";
 import { render, fireEvent, cleanup, waitFor } from "@testing-library/svelte";
 import SettingsImport from "./SettingsImport.svelte";
-import { importStickies, openUrl, scanStickies } from "$lib/api/client";
+import {
+  importObsidian,
+  importStickies,
+  obsidianVaults,
+  openUrl,
+  scanObsidian,
+  scanStickies,
+} from "$lib/api/client";
 import { chooseStickiesFolder, PRIVACY_SETTINGS_URL } from "$lib/stickies-import";
 import type { StickiesScan, StickyPreview } from "$lib/api/types";
 
@@ -10,6 +17,16 @@ vi.mock("$lib/api/client", () => ({
   importStickies: vi.fn(),
   openUrl: vi.fn(),
   stickiesLocation: vi.fn(),
+  obsidianVaults: vi.fn(() => Promise.resolve([])),
+  scanObsidian: vi.fn(),
+  importObsidian: vi.fn(),
+  notionExports: vi.fn(() => Promise.resolve([])),
+  scanNotion: vi.fn(),
+  importNotion: vi.fn(),
+}));
+vi.mock("$lib/platform", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("$lib/platform")>()),
+  isMac: true,
 }));
 vi.mock("$lib/stickies-import", async (importOriginal) => ({
   ...(await importOriginal<typeof import("$lib/stickies-import")>()),
@@ -91,7 +108,7 @@ describe("Settings > Import", () => {
     await fireEvent.click(view.getByRole("button", { name: "Import 1 Sticky" }));
 
     expect(importStickies).toHaveBeenCalledWith(FOLDER, ["A"], "Desk");
-    expect(await view.findByText("Imported 1 sticky into Desk.")).toBeTruthy();
+    expect(await view.findByText("Imported 1 sticky into Desk")).toBeTruthy();
     await fireEvent.click(view.getByRole("button", { name: "Show Them" }));
     expect(onShowSpace).toHaveBeenCalledWith("ws-1");
   });
@@ -105,7 +122,7 @@ describe("Settings > Import", () => {
     await fireEvent.click(view.getByRole("button", { name: "Import 2 Stickies" }));
 
     expect(importStickies).toHaveBeenCalledWith(FOLDER, ["A", "B"], null);
-    expect(await view.findByText("Imported 2 stickies.")).toBeTruthy();
+    expect(await view.findByText("Imported 2 stickies")).toBeTruthy();
     expect(view.queryByRole("button", { name: "Show Them" })).toBeNull();
   });
 
@@ -121,7 +138,7 @@ describe("Settings > Import", () => {
     const view = page();
     await choose(view, { folder: FOLDER, readable: false, stickies: [] });
 
-    expect(await view.findByText(/didn't let InstantNotes read that folder/)).toBeTruthy();
+    expect(await view.findByText("No access to that folder")).toBeTruthy();
     await fireEvent.click(view.getByRole("button", { name: /Open Privacy/ }));
     expect(openUrl).toHaveBeenCalledWith(PRIVACY_SETTINGS_URL);
   });
@@ -129,7 +146,7 @@ describe("Settings > Import", () => {
   it("says where Stickies keeps its notes when a folder has none", async () => {
     const view = page();
     await choose(view, { folder: "/Users/me/Desktop", readable: true, stickies: [] });
-    expect(await view.findByText("There are no stickies in that folder.")).toBeTruthy();
+    expect(await view.findByText("No stickies in that folder")).toBeTruthy();
     expect(view.getByText(/com\.apple\.Stickies/)).toBeTruthy();
   });
 
@@ -140,5 +157,27 @@ describe("Settings > Import", () => {
     await waitFor(() => expect(chooseStickiesFolder).toHaveBeenCalled());
     expect(scanStickies).not.toHaveBeenCalled();
     expect(view.getByRole("button", { name: /Choose Stickies Folder/ })).toBeTruthy();
+  });
+
+  it("imports a vault Obsidian knows about in two clicks", async () => {
+    vi.mocked(obsidianVaults).mockResolvedValue(["/home/me/Notes Vault"]);
+    vi.mocked(scanObsidian).mockResolvedValue({
+      folder: "/home/me/Notes Vault",
+      readable: true,
+      notes: 3,
+      images: 1,
+      imported: 1,
+      titles: ["Plan", "Ideas"],
+    });
+    vi.mocked(importObsidian).mockResolvedValue({ imported: 2, skipped: 1, workspaceId: "ws-9" });
+    const view = page();
+    await fireEvent.click(await view.findByRole("button", { name: "Import Notes Vault" }));
+    expect(scanObsidian).toHaveBeenCalledWith("/home/me/Notes Vault");
+    expect(await view.findByText("Found 3 notes · 1 image · 1 already imported")).toBeTruthy();
+    await fireEvent.click(view.getByRole("button", { name: "Import 2 Notes" }));
+    expect(importObsidian).toHaveBeenCalledWith("/home/me/Notes Vault", "Obsidian");
+    expect(await view.findByText("Imported 2 notes into Obsidian · 1 already imported")).toBeTruthy();
+    await fireEvent.click(view.getByRole("button", { name: "Show Them" }));
+    expect(onShowSpace).toHaveBeenCalledWith("ws-9");
   });
 });

@@ -66,5 +66,5 @@ pub fn remove_tag_from_note(
 
 #[tauri::command(async)]
 pub fn tags_for_note(state: State<'_, AppState>, note_id: String) -> CmdResult<Vec<Tag>> {
-    Ok(locked(&state)?.tags_for_note(&note_id)?)
+    Ok(locked_reader(&state)?.tags_for_note(&note_id)?)
 }

@@ -15,9 +15,21 @@ type UpdateStatus =
 
 type DeltaState = "idle" | "loading" | "ready" | "unavailable";
 
-const RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+export type CheckInterval = "startup" | "6h" | "daily" | "never";
+
+const RECHECK_MS: Record<CheckInterval, number | null> = {
+  startup: null,
+  "6h": 6 * 60 * 60 * 1000,
+  daily: 24 * 60 * 60 * 1000,
+  never: null,
+};
 const FIRST_CHECK_DELAY_MS = 8_000;
 const KEY_LAST_CHECKED = "updates.lastCheckedAt";
+const KEY_INTERVAL = "updates.checkInterval";
+export const UPDATER_DEFAULTS: { checkInterval: CheckInterval } = { checkInterval: "6h" };
+
+const isInterval = (v: unknown): v is CheckInterval =>
+  typeof v === "string" && Object.hasOwn(RECHECK_MS, v);
 
 class UpdaterStore {
   status = $state<UpdateStatus>("idle");
@@ -30,11 +42,14 @@ class UpdaterStore {
   sizeDelta = $state<number | null>(null);
   deltaState = $state<DeltaState>("idle");
   lastCheckedAt = $state<string | null>(null);
+  checkInterval = $state<CheckInterval>(UPDATER_DEFAULTS.checkInterval);
   show: () => void = () => {};
 
   #update: Update | null = null;
   #timer: ReturnType<typeof setInterval> | null = null;
   #firstCheck: ReturnType<typeof setTimeout> | null = null;
+  #started = false;
+  #intervalTouched = false;
   #acknowledgedVersion: string | null = null;
   #announcedVersion: string | null = null;
 
@@ -52,17 +67,40 @@ class UpdaterStore {
   }
 
   start() {
-    if (isWeb || this.#timer) return;
+    if (isWeb || this.#started) return;
+    this.#started = true;
     void getSetting<string>(KEY_LAST_CHECKED)
       .then((at) => {
         if (typeof at === "string" && this.lastCheckedAt === null) this.lastCheckedAt = at;
       })
       .catch(() => {});
-    this.#timer = setInterval(() => void this.checkNow(), RECHECK_INTERVAL_MS);
-    this.#firstCheck = setTimeout(() => void this.checkNow(), FIRST_CHECK_DELAY_MS);
+    this.#firstCheck = setTimeout(() => {
+      if (this.checkInterval !== "never") void this.checkNow();
+    }, FIRST_CHECK_DELAY_MS);
+    void getSetting<string>(KEY_INTERVAL)
+      .then((saved) => {
+        if (!this.#intervalTouched && isInterval(saved)) this.checkInterval = saved;
+      })
+      .catch(() => {})
+      .finally(() => this.#schedule());
+  }
+
+  setCheckInterval(v: CheckInterval) {
+    this.#intervalTouched = true;
+    this.checkInterval = v;
+    void setSetting(KEY_INTERVAL, v).catch(() => {});
+    if (this.#started) this.#schedule();
+  }
+
+  #schedule() {
+    if (this.#timer) clearInterval(this.#timer);
+    this.#timer = null;
+    const ms = RECHECK_MS[this.checkInterval];
+    if (ms && this.#started) this.#timer = setInterval(() => void this.checkNow(), ms);
   }
 
   stop() {
+    this.#started = false;
     if (this.#timer) {
       clearInterval(this.#timer);
       this.#timer = null;
@@ -99,7 +137,7 @@ class UpdaterStore {
         this.error = e instanceof Error ? e.message : String(e);
         this.status = "error";
         toasts.show(
-          "Couldn't check for updates. Check your connection and try again.",
+          "Couldn't check for updates",
         );
       } else {
         this.status = "idle";

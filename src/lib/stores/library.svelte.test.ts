@@ -6,8 +6,11 @@ import {
   createNote,
   deleteWorkspace,
   destroyNotes,
+  foldNotes,
   getNote,
   getOrCreateWorkspace,
+  getSetting,
+  setSetting,
   listNotes,
   listTags,
   restoreNotes,
@@ -25,9 +28,11 @@ import {
   softDeleteNote,
   softDeleteNotes,
   tagsForNote,
+  undoFold,
   updateNote,
   workspacesForNote,
 } from "$lib/api/client";
+import type { NoteSnapshot } from "$lib/agent-activity";
 import { listen } from "@tauri-apps/api/event";
 import { EVENTS } from "$lib/api/events";
 import { UPDATE_NOTE_ID, UPDATE_SPACE_ID } from "$lib/update/space";
@@ -58,6 +63,8 @@ vi.mock("$lib/api/client", () => {
     restoreNotes: vi.fn(),
     setNotesFlags: vi.fn(),
     destroyNotes: vi.fn(),
+    foldNotes: vi.fn(),
+    undoFold: vi.fn(),
     listNotes: vi.fn(),
     countNotes: vi.fn().mockResolvedValue(0),
     searchNotes: vi.fn(),
@@ -81,6 +88,8 @@ vi.mock("$lib/api/client", () => {
     setWorkspaceColor: vi.fn(),
     setWorkspaceFlag: vi.fn(),
     workspaceTagSlices: vi.fn().mockResolvedValue([]),
+    getSetting: vi.fn().mockResolvedValue(undefined),
+    setSetting: vi.fn().mockResolvedValue(undefined),
   };
 });
 
@@ -105,6 +114,8 @@ const mockListWorkspaces = vi.mocked(listWorkspaces);
 const mockTagsForNote = vi.mocked(tagsForNote);
 const mockWorkspacesForNote = vi.mocked(workspacesForNote);
 const mockDestroyNotes = vi.mocked(destroyNotes);
+const mockFoldNotes = vi.mocked(foldNotes);
+const mockUndoFold = vi.mocked(undoFold);
 const mockSoftDeleteNote = vi.mocked(softDeleteNote);
 const mockSoftDeleteNotes = vi.mocked(softDeleteNotes);
 const mockDeleteWorkspace = vi.mocked(deleteWorkspace);
@@ -185,6 +196,8 @@ beforeEach(() => {
   mockWorkspacesForNote.mockReset().mockResolvedValue([]);
   mockDestroyNotes.mockReset();
   mockDestroyNotes.mockResolvedValue(undefined);
+  mockFoldNotes.mockReset();
+  mockUndoFold.mockReset();
   mockSoftDeleteNote.mockReset();
   mockSoftDeleteNotes.mockReset();
   mockSoftDeleteNotes.mockResolvedValue(undefined);
@@ -267,7 +280,7 @@ describe("save queue", () => {
     expect(mockUpdateNote).toHaveBeenCalledTimes(2);
     expect(library.saveState).toBe("failed");
     expect(library.error).toBe(
-      "Your note couldn't be saved. Please try again.",
+      "Note not saved",
     );
   });
 });
@@ -305,7 +318,7 @@ describe("flushPendingEdits", () => {
 
     expect(library.saveState).toBe("failed");
     expect(library.error).toBe(
-      "Your note couldn't be saved. Please try again.",
+      "Note not saved",
     );
   });
 
@@ -671,6 +684,62 @@ function mkWorkspace(id: string, name: string): WorkspaceWithCount {
   };
 }
 
+describe("reopen last note", () => {
+  it("remembers opened notes and reopens the last one at startup only when on", async () => {
+    const library = await load();
+    const { listPrefs } = await import("$lib/stores/list.svelte");
+    await selectNote(library, "n1");
+    expect(setSetting).not.toHaveBeenCalledWith("list.lastNote", "n1");
+    await library.reopenLast();
+    expect(getSetting).not.toHaveBeenCalledWith("list.lastNote");
+
+    listPrefs.reopenLast = true;
+    await selectNote(library, "n2");
+    expect(setSetting).toHaveBeenLastCalledWith("list.lastNote", "n2");
+  });
+
+  it("opens the stored note when nothing is selected, and skips one in the trash", async () => {
+    const { listPrefs } = await import("$lib/stores/list.svelte");
+    listPrefs.reopenLast = true;
+    vi.mocked(getSetting).mockResolvedValueOnce("n3");
+    mockGetNote.mockResolvedValueOnce(mkNote("n3", { isDeleted: true }));
+    const library = await load();
+    await library.reopenLast();
+    expect(library.selected).toBeNull();
+
+    vi.mocked(getSetting).mockResolvedValueOnce("n4");
+    mockGetNote.mockResolvedValueOnce(mkNote("n4")).mockResolvedValueOnce(mkNote("n4"));
+    await library.reopenLast();
+    expect(library.selected?.id).toBe("n4");
+  });
+});
+
+describe("list sort preference", () => {
+  it("sends the chosen sort to listNotes and omits it at the defaults", async () => {
+    const library = await load();
+    const { listPrefs } = await import("$lib/stores/list.svelte");
+    await library.refresh();
+    expect(mockListNotes).toHaveBeenLastCalledWith({ bodyChars: 512 });
+
+    listPrefs.sortBy = "title";
+    listPrefs.sortOrder = "asc";
+    await library.refresh();
+    expect(mockListNotes).toHaveBeenLastCalledWith({
+      sortBy: "title",
+      sortOrder: "asc",
+      bodyChars: 512,
+    });
+
+    listPrefs.previewChars = 300;
+    await library.refresh();
+    expect(mockListNotes).toHaveBeenLastCalledWith({
+      sortBy: "title",
+      sortOrder: "asc",
+      bodyChars: 1200,
+    });
+  });
+});
+
 describe("scoped tag filter (chips inside a workspace)", () => {
   it("composes with the workspace filter, toggles off, and resets on switch", async () => {
     const library = await load();
@@ -680,32 +749,32 @@ describe("scoped tag filter (chips inside a workspace)", () => {
 
     library.selectWorkspace("ws1");
     await vi.advanceTimersByTimeAsync(0);
-    expect(mockListNotes).toHaveBeenLastCalledWith({ workspaceId: "ws1", bodyChars: 2048 });
+    expect(mockListNotes).toHaveBeenLastCalledWith({ workspaceId: "ws1", bodyChars: 512 });
 
     library.toggleScopedTag("t-school");
     await vi.advanceTimersByTimeAsync(0);
     expect(mockListNotes).toHaveBeenLastCalledWith({
       workspaceId: "ws1",
       tagIds: ["t-school"],
-      bodyChars: 2048,
+      bodyChars: 512,
     });
 
     library.toggleScopedTag("t-school");
     await vi.advanceTimersByTimeAsync(0);
-    expect(library.scopedTagId).toBeNull();
-    expect(mockListNotes).toHaveBeenLastCalledWith({ workspaceId: "ws1", bodyChars: 2048 });
+    expect(library.nav.scopedTagId).toBeNull();
+    expect(mockListNotes).toHaveBeenLastCalledWith({ workspaceId: "ws1", bodyChars: 512 });
 
     library.toggleScopedTag("t-school");
     await vi.advanceTimersByTimeAsync(0);
     library.selectWorkspace("ws2");
-    expect(library.scopedTagId).toBeNull();
+    expect(library.nav.scopedTagId).toBeNull();
   });
 
   it("is inert outside a workspace and never leaks into the global tag filter", async () => {
     const library = await load();
     library.toggleScopedTag("t-anything");
     await vi.advanceTimersByTimeAsync(0);
-    expect(library.scopedTagId).toBeNull();
+    expect(library.nav.scopedTagId).toBeNull();
 
     mockListWorkspaceTags.mockResolvedValue([mkTagWithCount("t-x", "x")]);
     library.selectWorkspace("ws1");
@@ -715,8 +784,8 @@ describe("scoped tag filter (chips inside a workspace)", () => {
 
     library.setTagFilter("t-global");
     await vi.advanceTimersByTimeAsync(0);
-    expect(library.scopedTagId).toBeNull();
-    expect(mockListNotes).toHaveBeenLastCalledWith({ tagIds: ["t-global"], bodyChars: 2048 });
+    expect(library.nav.scopedTagId).toBeNull();
+    expect(mockListNotes).toHaveBeenLastCalledWith({ tagIds: ["t-global"], bodyChars: 512 });
   });
 
   it("drops a scoped tag that vanished from the workspace's visible notes", async () => {
@@ -728,13 +797,13 @@ describe("scoped tag filter (chips inside a workspace)", () => {
     await vi.advanceTimersByTimeAsync(0);
     library.toggleScopedTag("t-school");
     await vi.advanceTimersByTimeAsync(0);
-    expect(library.scopedTagId).toBe("t-school");
+    expect(library.nav.scopedTagId).toBe("t-school");
 
     mockListWorkspaceTags.mockResolvedValue([]);
     await library.refresh();
     await vi.advanceTimersByTimeAsync(0);
-    expect(library.scopedTagId).toBeNull();
-    expect(mockListNotes).toHaveBeenLastCalledWith({ workspaceId: "ws1", bodyChars: 2048 });
+    expect(library.nav.scopedTagId).toBeNull();
+    expect(mockListNotes).toHaveBeenLastCalledWith({ workspaceId: "ws1", bodyChars: 512 });
   });
 });
 
@@ -750,7 +819,7 @@ describe("workspace delete with undo", () => {
 
     const { toasts } = await import("$lib/stores/toasts.svelte");
     expect(toasts.items).toHaveLength(1);
-    expect(toasts.items[0].message).toBe('Deleted "Movies" - notes are kept');
+    expect(toasts.items[0].message).toBe('Deleted "Movies"');
     expect(toasts.items[0].action?.label).toBe("Undo");
 
     mockGetOrCreateWorkspace.mockResolvedValue(mkWorkspace("ws-new", "Movies"));
@@ -774,8 +843,8 @@ describe("workspace delete with undo", () => {
     mockListWorkspaces.mockResolvedValue([]);
     mockDeleteWorkspace.mockResolvedValue([]);
     await library.removeWorkspace("ws1");
-    expect(library.activeWorkspaceId).toBeNull();
-    expect(library.scopedTagId).toBeNull();
+    expect(library.nav.activeWorkspaceId).toBeNull();
+    expect(library.nav.scopedTagId).toBeNull();
   });
 
   it("a partial undo (a member was destroyed meanwhile) reports what it restored", async () => {
@@ -795,7 +864,7 @@ describe("workspace delete with undo", () => {
 
     expect(toasts.items).toHaveLength(1);
     expect(toasts.items[0].message).toBe(
-      'Restored "Movies" without 1 of 2 notes.',
+      'Restored "Movies", 1 of 2 notes missing',
     );
   });
 });
@@ -817,7 +886,7 @@ describe("workspace rename", () => {
     const result = await library.renameWorkspace("ws1", "Beta");
     expect(result).toEqual({
       ok: false,
-      message: "That name is already in use.",
+      message: "Name already in use",
     });
   });
 });
@@ -828,7 +897,7 @@ describe("revisit mode (open-loop resurfacing)", () => {
     library.selectRevisit();
     await vi.advanceTimersByTimeAsync(0);
     const filter = mockListNotes.mock.lastCall?.[0];
-    expect(filter).toEqual({ revisit: true, bodyChars: 2048 });
+    expect(filter).toEqual({ revisit: true, bodyChars: 512 });
   });
 
   it("keeps the count in lockstep, and opening a note burns it down live", async () => {
@@ -859,24 +928,24 @@ describe("revisit mode (open-loop resurfacing)", () => {
     mockGetNote.mockResolvedValue(mkNote("new1"));
     library.selectRevisit();
     await library.newNote();
-    expect(library.revisitMode).toBe(false);
+    expect(library.nav.revisitMode).toBe(false);
     await vi.advanceTimersByTimeAsync(0);
   });
 
   it("leaves revisit mode when any other view is selected", async () => {
     const library = await load();
     library.selectRevisit();
-    expect(library.revisitMode).toBe(true);
+    expect(library.nav.revisitMode).toBe(true);
     library.selectWorkspace("ws1");
-    expect(library.revisitMode).toBe(false);
+    expect(library.nav.revisitMode).toBe(false);
 
     library.selectRevisit();
     library.setTagFilter("t1");
-    expect(library.revisitMode).toBe(false);
+    expect(library.nav.revisitMode).toBe(false);
 
     library.selectRevisit();
     library.setStatusFilter("archived");
-    expect(library.revisitMode).toBe(false);
+    expect(library.nav.revisitMode).toBe(false);
     await vi.advanceTimersByTimeAsync(0);
   });
 });
@@ -1089,9 +1158,9 @@ describe("graph view", () => {
     const library = await load();
     library.selectWorkspace("ws1");
     library.selectGraph();
-    expect(library.graphMode).toBe(true);
-    expect(library.activeWorkspaceId).toBeNull();
-    expect(library.revisitMode).toBe(false);
+    expect(library.nav.graphMode).toBe(true);
+    expect(library.nav.activeWorkspaceId).toBeNull();
+    expect(library.nav.revisitMode).toBe(false);
     await vi.advanceTimersByTimeAsync(0);
   });
 
@@ -1106,7 +1175,7 @@ describe("graph view", () => {
     ]) {
       library.selectGraph();
       go();
-      expect(library.graphMode).toBe(false);
+      expect(library.nav.graphMode).toBe(false);
     }
     await vi.advanceTimersByTimeAsync(0);
   });
@@ -1115,7 +1184,7 @@ describe("graph view", () => {
     const library = await load();
     library.selectGraph();
     await selectNote(library, "n1");
-    expect(library.graphMode).toBe(false);
+    expect(library.nav.graphMode).toBe(false);
     expect(library.selected?.id).toBe("n1");
   });
 
@@ -1125,7 +1194,7 @@ describe("graph view", () => {
     mockGetNote.mockResolvedValue(mkNote("new1"));
     library.selectGraph();
     await library.newNote();
-    expect(library.graphMode).toBe(false);
+    expect(library.nav.graphMode).toBe(false);
   });
 });
 
@@ -1156,7 +1225,7 @@ describe("the update Space (synthetic)", () => {
     library.selectWorkspace(UPDATE_SPACE_ID);
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(library.activeWorkspaceId).toBe(UPDATE_SPACE_ID);
+    expect(library.nav.activeWorkspaceId).toBe(UPDATE_SPACE_ID);
     expect(mockListNotes).not.toHaveBeenCalled();
     expect(library.notes).toEqual([]);
   });
@@ -1186,7 +1255,7 @@ describe("the update Space (synthetic)", () => {
 
     await library.newNote();
 
-    expect(library.activeWorkspaceId).toBeNull();
+    expect(library.nav.activeWorkspaceId).toBeNull();
     expect(mockAddNoteToWorkspace).not.toHaveBeenCalled();
   });
 });
@@ -1453,7 +1522,7 @@ describe("openLinked", () => {
     expect(library.selected).toBeNull();
     expect(unlisten).toHaveBeenCalledTimes(1);
     const { toasts } = await import("$lib/stores/toasts.svelte");
-    expect(toasts.items.at(-1)?.message).toBe("That note isn't on this device yet.");
+    expect(toasts.items.at(-1)?.message).toBe("Note not on this device yet");
   });
 });
 
@@ -1526,5 +1595,122 @@ describe("space and tag colours", () => {
     mockSetWorkspaceColor.mockRejectedValue(new ApiError("VALIDATION_ERROR", "bad colour"));
     await library.colorWorkspace("w1", "blue");
     expect(library.error).not.toBeNull();
+  });
+});
+
+describe("folding notes", () => {
+  function snapshot(id: string): NoteSnapshot {
+    return {
+      id,
+      title: `Note ${id}`,
+      titleIsAuto: true,
+      body: "",
+      isPinned: false,
+      isArchived: false,
+      isDeleted: false,
+      deletedAt: null,
+      updatedAt: "2026-01-01T00:00:00Z",
+      tags: [],
+      spaces: [],
+    };
+  }
+
+  const outcome = {
+    note: mkNote("n1", { body: "kept\n\nfrom n2" }),
+    foldedIds: ["n2"],
+    before: [snapshot("n1"), snapshot("n2")],
+  };
+
+  it("foldIds saves the open note's pending edit first, folds, and Undo restores the snapshot", async () => {
+    const library = await load();
+    await selectNote(library, "n1");
+    mockGetNote.mockImplementation(async (id) => mkNote(id));
+    mockUpdateNote.mockResolvedValue(mkNote("n1", { body: "kept" }));
+    mockFoldNotes.mockResolvedValue(outcome);
+
+    library.editBody("kept");
+    await library.foldIds(["n1", "n2"]);
+
+    expect(mockUpdateNote).toHaveBeenCalledWith("n1", {
+      body: "kept",
+      expectedUpdatedAt: "2026-01-01T00:00:00Z",
+    });
+    expect(mockFoldNotes).toHaveBeenCalledWith("n1", ["n2"]);
+    expect(mockUpdateNote.mock.invocationCallOrder[0]).toBeLessThan(
+      mockFoldNotes.mock.invocationCallOrder[0],
+    );
+    expect(library.selected?.id).toBe("n1");
+
+    const { toasts } = await import("$lib/stores/toasts.svelte");
+    expect(toasts.items[0].message).toBe("Folded 1 note into “Note n1”");
+    expect(toasts.items[0].action?.label).toBe("Undo");
+
+    mockUndoFold.mockResolvedValue(mkNote("n1"));
+    toasts.activate(toasts.items[0].id);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockUndoFold).toHaveBeenCalledWith(outcome.before);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(mockUpdateNote).toHaveBeenCalledTimes(1);
+  });
+
+  it("Undo leaves a target edited after the fold as it is", async () => {
+    const library = await load();
+    await selectNote(library, "n1");
+    mockGetNote.mockImplementation(async (id) => mkNote(id));
+    mockFoldNotes.mockResolvedValue(outcome);
+    await library.foldIds(["n1", "n2"]);
+
+    mockGetNote.mockImplementation(async (id) => mkNote(id, { updatedAt: "2026-01-02T00:00:00Z" }));
+    const { toasts } = await import("$lib/stores/toasts.svelte");
+    toasts.activate(toasts.items[0].id);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(mockUndoFold).not.toHaveBeenCalled();
+    expect(toasts.items.at(-1)?.message).toBe("Couldn't undo fold: note changed");
+  });
+
+  it("a target edit that fails to save aborts the fold and surfaces the error", async () => {
+    const library = await load();
+    await selectNote(library, "n1");
+    mockGetNote.mockImplementation(async (id) => mkNote(id));
+    mockUpdateNote.mockRejectedValue(new ApiError("STORAGE_ERROR", "disk full"));
+
+    library.editBody("doomed");
+    await library.foldIds(["n1", "n2"]);
+
+    expect(mockFoldNotes).not.toHaveBeenCalled();
+    expect(library.error).toBeTruthy();
+    expect(library.saveState).toBe("failed");
+  });
+
+  it("a source edit that fails to save is dropped so the fold still goes ahead", async () => {
+    const library = await load();
+    await selectNote(library, "n2");
+    mockGetNote.mockImplementation(async (id) => mkNote(id));
+    mockUpdateNote.mockRejectedValue(new ApiError("STORAGE_ERROR", "disk full"));
+    mockFoldNotes.mockResolvedValue(outcome);
+
+    library.editBody("lost with the fold");
+    await library.foldIds(["n1", "n2"]);
+
+    expect(mockFoldNotes).toHaveBeenCalledWith("n1", ["n2"]);
+    expect(library.selected?.id).toBe("n1");
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(mockUpdateNote).toHaveBeenCalledTimes(1);
+  });
+
+  it("foldIntoSelected refuses anything but a document target and updates the open note", async () => {
+    const library = await load();
+    await selectNote(library, "w1", { contentKind: "whiteboard" });
+    expect(await library.foldIntoSelected("n2")).toBe(false);
+    expect(mockFoldNotes).not.toHaveBeenCalled();
+
+    await selectNote(library, "n1");
+    mockFoldNotes.mockResolvedValue(outcome);
+    expect(await library.foldIntoSelected("n2", "Note n2")).toBe(true);
+    expect(mockFoldNotes).toHaveBeenCalledWith("n1", ["n2"]);
+    expect(library.selected?.body).toBe("kept\n\nfrom n2");
+    const { toasts } = await import("$lib/stores/toasts.svelte");
+    expect(toasts.items.at(-1)?.message).toBe("Folded “Note n2” into this note");
   });
 });

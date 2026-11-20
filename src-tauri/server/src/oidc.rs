@@ -1,4 +1,4 @@
-use crate::sessions::{Logins, Person};
+use crate::sessions::{now_secs, Logins, Person};
 use base64::Engine;
 use jsonwebtoken::jwk::{Jwk, JwkSet};
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Header, Validation};
@@ -155,13 +155,6 @@ pub(crate) fn encode(value: &str) -> String {
         }
     }
     out
-}
-
-fn now_secs() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
 }
 
 fn pick<'a>(set: &'a JwkSet, header: &Header) -> Option<&'a Jwk> {

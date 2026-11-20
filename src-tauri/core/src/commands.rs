@@ -342,6 +342,48 @@ pub fn dispatch(
             )?;
             Value::Null
         }
+        "related_notes" => {
+            let passage: Option<String> = opt(args, "passage")?;
+            let limit: Option<usize> = opt(args, "limit")?;
+            out(store.related_notes(
+                &arg::<String>(args, "noteId")?,
+                passage.as_deref(),
+                limit.unwrap_or(crate::store::RELATED_DEFAULT_LIMIT),
+            )?)?
+        }
+        "dismiss_related_note" => {
+            store.dismiss_related_note(
+                &arg::<String>(args, "noteId")?,
+                &arg::<String>(args, "relatedId")?,
+            )?;
+            Value::Null
+        }
+        "restore_related_note" => {
+            store.restore_related_note(
+                &arg::<String>(args, "noteId")?,
+                &arg::<String>(args, "relatedId")?,
+            )?;
+            Value::Null
+        }
+        "fold_notes" => {
+            let outcome = store.fold_notes(
+                &arg::<String>(args, "intoId")?,
+                &arg::<Vec<String>>(args, "sourceIds")?,
+            )?;
+            changes.push(note_change(&outcome.note, origin));
+            changes.push(tags_changed());
+            changes.push(workspaces_changed());
+            out(outcome)?
+        }
+        "undo_fold" => {
+            let note = store.undo_fold(&arg::<Vec<crate::store::activity::NoteSnapshot>>(
+                args, "before",
+            )?)?;
+            changes.push(note_change(&note, origin));
+            changes.push(tags_changed());
+            changes.push(workspaces_changed());
+            out(note)?
+        }
         "library_stats" => {
             let mut stats = out(store.library_stats()?)?;
             let files = attachment_sizes(store, place, false).unwrap_or_default();

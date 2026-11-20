@@ -17,6 +17,9 @@ import { HrSpec } from "./constructs/hr";
 import { TaskSpec } from "./constructs/task";
 import { ImageSpec } from "./constructs/image";
 import { TagSpec } from "./constructs/tags";
+import { PluginSpec } from "./constructs/plugin";
+import { pluginConfig, pluginField } from "./plugins";
+import calc from "../../plugins/calc";
 
 function makeScanner(): ConstructScanner {
   return new ConstructScanner(
@@ -32,7 +35,7 @@ function makeScanner(): ConstructScanner {
       new TaskSpec(),
       new ImageSpec((p) => `asset://${p}`),
     ],
-    [new TagSpec()],
+    [new TagSpec(), new PluginSpec()],
   );
 }
 
@@ -43,6 +46,8 @@ function stateOf(doc: string): EditorState {
       markdown({ base: markdownLanguage, extensions: [highlightExtension] }),
       linkPrefsField,
       attachmentsBaseField,
+      pluginField,
+      pluginConfig.of({ plugins: [calc], prefs: {} }),
     ],
   });
   ensureSyntaxTree(state, doc.length, 5000);
@@ -97,6 +102,16 @@ const CORPUS = [
   "| 1 | 2 |",
   "",
   "![alt](attachments/pic.png)",
+  "",
+  "price `=2*3` inline",
+  "",
+  "```calc",
+  "x = 1 + 1",
+  "```",
+  "",
+  "| n | =A1 |",
+  "| - | - |",
+  "| 2 | =sum(above) |",
 ].join("\n");
 
 describe("kernel invariants", () => {
@@ -194,6 +209,12 @@ describe("construct parity", () => {
 
   it("folds the heading prefix", () => {
     expect(hiddenTexts("# Title\n\nbody", [{ from: 9, to: 9 }])).toEqual(["# "]);
+  });
+
+  it("folds an inline formula and a table formula behind their results, keeps the fence lines", () => {
+    expect(hiddenTexts("a `=2*3` b")).toEqual(["`", "=2*3", "`"]);
+    expect(hiddenTexts("| n |\n| - |\n| =1+1 |")).toEqual(["=1+1"]);
+    expect(hiddenTexts("```calc\n1+1\n```", [{ from: 20, to: 20 }])).toEqual(["```", "```"]);
   });
 
   it("folds highlight marks", () => {

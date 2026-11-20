@@ -108,5 +108,5 @@ pub fn workspaces_for_note(
     state: State<'_, AppState>,
     note_id: String,
 ) -> CmdResult<Vec<Workspace>> {
-    Ok(locked(&state)?.workspaces_for_note(&note_id)?)
+    Ok(locked_reader(&state)?.workspaces_for_note(&note_id)?)
 }

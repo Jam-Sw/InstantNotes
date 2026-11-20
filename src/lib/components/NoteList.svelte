@@ -2,7 +2,8 @@
   import { library, type StatusFilter } from "$lib/stores/library.svelte";
   import { agents } from "$lib/stores/agents.svelte";
   import { formatDate, formatExact, preview, sheetPreview } from "$lib/format";
-  import { captureShortcut, modKey, shiftKey } from "$lib/platform";
+  import { modKey, shiftKey } from "$lib/platform";
+  import { captureKeys } from "$lib/stores/capture-keys.svelte";
   import { isWeb } from "$lib/api/runtime";
   import { parseHighlightSegments } from "$lib/highlight";
   import { confirmDialog } from "$lib/stores/confirm.svelte";
@@ -30,15 +31,15 @@
   ];
 
   const groups = $derived(
-    library.revisitMode ? null : groupNotes(library.notes, new Date()),
+    library.nav.revisitMode ? null : groupNotes(library.notes, new Date()),
   );
 
   const syntheticNotes = $derived(
-    isUpdateSpaceId(library.activeWorkspaceId)
+    isUpdateSpaceId(library.nav.activeWorkspaceId)
       ? updateSpace.notes
-      : isAgentsSpaceId(library.activeWorkspaceId)
+      : isAgentsSpaceId(library.nav.activeWorkspaceId)
         ? agentsSpace.notes
-        : isMergeSpaceId(library.activeWorkspaceId)
+        : isMergeSpaceId(library.nav.activeWorkspaceId)
           ? mergeSpace.notes
           : null,
   );
@@ -49,9 +50,9 @@
       ? (library.searchResults[0]?.noteId ?? null)
       : null,
   );
-  const workspaceName = $derived(library.workspaces.find((w) => w.id === library.activeWorkspaceId)?.name);
-  const tagName = $derived(library.tags.find((t) => t.id === library.activeTagId)?.name);
-  const scopedTagName = $derived(library.workspaceTags.find((t) => t.id === library.scopedTagId)?.name);
+  const workspaceName = $derived(library.workspaces.find((w) => w.id === library.nav.activeWorkspaceId)?.name);
+  const tagName = $derived(library.tags.find((t) => t.id === library.nav.activeTagId)?.name);
+  const scopedTagName = $derived(library.workspaceTags.find((t) => t.id === library.nav.scopedTagId)?.name);
 
   async function onSearchKey(e: KeyboardEvent) {
     if (e.isComposing || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
@@ -96,26 +97,35 @@
     try {
       await contexting.copyIds(contextTargets(id));
     } catch {
-      toasts.show("Couldn't copy the context. Try again, or open the note and copy it.");
+      toasts.show("Couldn't copy context");
     }
   }
 
   function rowMenuItems(id: string, trashed: boolean) {
-    const count = contextTargets(id).length;
+    const targets = contextTargets(id);
+    const count = targets.length;
     const items = [
       { label: count > 1 ? `Copy context (${count} notes)` : "Copy context", run: () => void copyContext(id) },
     ];
     if (trashed) {
       items.push({
         label: count > 1 ? `Restore ${count} notes` : "Restore",
-        run: () => void library.restoreIds(contextTargets(id)),
+        run: () => void library.restoreIds(targets),
       });
-    } else if (!isWeb) {
-      items.push(
-        library.isSticky(id)
-          ? { label: "Bring back from sticky", run: () => void library.popIn(id) }
-          : { label: "Open as sticky", run: () => void library.popOut(id) },
-      );
+    } else {
+      if (count > 1 && library.canFoldIds(targets)) {
+        items.push({
+          label: `Fold ${count} notes into one`,
+          run: () => void library.foldIds(targets),
+        });
+      }
+      if (!isWeb) {
+        items.push(
+          library.isSticky(id)
+            ? { label: "Bring back from sticky", run: () => void library.popIn(id) }
+            : { label: "Open as sticky", run: () => void library.popOut(id) },
+        );
+      }
     }
     return items;
   }
@@ -133,7 +143,6 @@
   async function confirmEmptyTrash() {
     const ok = await confirmDialog.ask({
       title: "Empty the Trash?",
-      body: "All notes in Trash will be permanently deleted. This action cannot be undone.",
       confirmLabel: "Empty Trash",
       tone: "danger",
     });
@@ -175,8 +184,8 @@
       <button class="new-note" title={`New note (${modKey}N)`} onclick={() => library.newNote()}>＋</button>
       <button
         class="new-kind"
-        title="Choose what to create"
-        aria-label="Choose what to create"
+        title="New…"
+        aria-label="New…"
         aria-haspopup="menu"
         aria-expanded={newMenu !== null}
         onclick={() => (newMenu ? (newMenu = null) : openNewMenu())}
@@ -185,12 +194,12 @@
       </button>
     </div>
   </div>
-  {#if library.activeWorkspaceId && !library.searchResults && library.workspaceTags.length > 0}
+  {#if library.nav.activeWorkspaceId && !library.searchResults && library.workspaceTags.length > 0}
     <div class="space-tags" role="group" aria-label="Filter this space by tag">
       {#each library.workspaceTags as tag (tag.id)}
         <button
           class="space-tag-chip"
-          class:on={library.scopedTagId === tag.id}
+          class:on={library.nav.scopedTagId === tag.id}
           title={`${tag.usageCount} note${tag.usageCount === 1 ? "" : "s"} in this space`}
           onclick={() => library.toggleScopedTag(tag.id)}
         >
@@ -199,12 +208,12 @@
       {/each}
     </div>
   {/if}
-  {#if !library.activeWorkspaceId && !library.activeTagId && !library.revisitMode && !library.searchResults}
+  {#if !library.nav.activeWorkspaceId && !library.nav.activeTagId && !library.nav.revisitMode && !library.searchResults}
     <div class="status-filter">
       {#each statusFilters as f (f.id)}
         <button
           class="filter-pill"
-          class:active={library.statusFilter === f.id}
+          class:active={library.nav.statusFilter === f.id}
           onclick={() => library.setStatusFilter(f.id)}
         >
           {f.label}
@@ -212,7 +221,7 @@
       {/each}
     </div>
   {/if}
-  {#if library.statusFilter === "trash" && library.notes.length > 0 && !library.searchResults}
+  {#if library.nav.statusFilter === "trash" && library.notes.length > 0 && !library.searchResults}
     <div class="trash-bar">
       <button class="action danger" onclick={confirmEmptyTrash}>Empty Trash</button>
     </div>
@@ -268,12 +277,12 @@
         </button>
       {:else}
         <div class="empty-state">
-          {#if isMergeSpaceId(library.activeWorkspaceId)}
-            Nothing left to review.
+          {#if isMergeSpaceId(library.nav.activeWorkspaceId)}
+            Nothing to review
           {:else if agents.access === "off"}
-            Agent access is off. Nothing can connect until you turn it on in Settings.
+            Agent access is off
           {:else}
-            No agent has connected yet. Connect one from Settings › Agents.
+            No agent connected
           {/if}
         </div>
       {/each}
@@ -286,7 +295,7 @@
           class:selected={library.isSelected(note.id)}
           onclick={(e) => rowClick(e, note.id)}
           oncontextmenu={(e) => {
-            if (isSyntheticSpaceId(library.activeWorkspaceId)) return;
+            if (isSyntheticSpaceId(library.nav.activeWorkspaceId)) return;
             e.preventDefault();
             rowMenu = { x: e.clientX, y: e.clientY, id: note.id, trashed: note.isDeleted };
           }}
@@ -326,32 +335,27 @@
       {/snippet}
       {#if library.notes.length === 0}
         <div class="empty-state">
-          {#if library.revisitMode}
+          {#if library.nav.revisitMode}
             <p class="empty-title">All caught up</p>
-            <p class="empty-hint">Every capture has been seen.</p>
-          {:else if library.activeWorkspaceId && library.scopedTagId}
+          {:else if library.nav.activeWorkspaceId && library.nav.scopedTagId}
             <p class="empty-title">No {scopedTagName ? `#${scopedTagName} ` : ""}notes in this space</p>
-            <button class="action" onclick={() => library.toggleScopedTag(library.scopedTagId!)}>
+            <button class="action" onclick={() => library.toggleScopedTag(library.nav.scopedTagId!)}>
               Show the whole space
             </button>
-          {:else if library.activeWorkspaceId}
+          {:else if library.nav.activeWorkspaceId}
             <p class="empty-title">Nothing in {workspaceName ?? "this space"} yet</p>
-            <p class="empty-hint">New notes land in this space while you're in it.</p>
             <button class="action primary" onclick={() => void library.newNote()}>New note</button>
-          {:else if library.activeTagId}
+          {:else if library.nav.activeTagId}
             <p class="empty-title">No notes tagged #{tagName ?? "this tag"}</p>
-            <p class="empty-hint">New notes written here get the tag.</p>
             <button class="action primary" onclick={() => void library.newNote()}>New note</button>
-          {:else if library.statusFilter === "trash"}
+          {:else if library.nav.statusFilter === "trash"}
             <p class="empty-title">Trash is empty</p>
-            <p class="empty-hint">Deleted notes wait here until you restore them or delete them for good.</p>
-          {:else if library.statusFilter === "archived"}
+          {:else if library.nav.statusFilter === "archived"}
             <p class="empty-title">Nothing archived</p>
-            <p class="empty-hint">Archive a note to keep it without it filling your list.</p>
           {:else}
             <p class="empty-title">No notes yet</p>
             {#if !layout.touch && !isWeb}
-              <p class="empty-hint">Press <kbd>{captureShortcut}</kbd> anywhere to capture a thought, or start one here.</p>
+              <p class="empty-hint">Capture anywhere: <kbd>{captureKeys.label}</kbd></p>
             {/if}
             <button class="action primary" onclick={() => void library.newNote()}>New note</button>
           {/if}
@@ -515,6 +519,8 @@
     text-align: left;
     padding: 9px 10px 10px;
     border-radius: var(--radius);
+    content-visibility: auto;
+    contain-intrinsic-size: auto 60px;
   }
   .note-row:hover {
     background: var(--bg-hover);

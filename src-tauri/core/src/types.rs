@@ -83,6 +83,7 @@ pub struct CreateNoteInput {
 pub struct ImportItem {
     pub source_id: String,
     pub body: String,
+    pub tags: Vec<String>,
     pub created_at: std::time::SystemTime,
     pub updated_at: std::time::SystemTime,
 }
@@ -263,4 +264,34 @@ pub struct TagSuggestion {
 pub struct SuggestionReason {
     pub label: String,
     pub kind: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RelatedNote {
+    pub note_id: String,
+    pub title: String,
+    pub excerpt: String,
+    pub content_kind: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub last_opened_at: Option<String>,
+    pub score: f64,
+    pub reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RelatedPair {
+    pub note_id: String,
+    pub note_title: String,
+    pub related: RelatedNote,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct FoldOutcome {
+    pub note: Note,
+    pub folded_ids: Vec<String>,
+    pub before: Vec<crate::store::activity::NoteSnapshot>,
 }
