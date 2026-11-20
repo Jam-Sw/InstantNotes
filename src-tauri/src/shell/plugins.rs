@@ -120,12 +120,13 @@ mod tests {
 
     #[test]
     fn only_absolute_dictionary_and_text_files_are_read() {
-        assert!(validate_text_path("/usr/share/hunspell/en_US.dic").is_ok());
-        assert!(validate_text_path("/usr/share/hunspell/en_US.AFF").is_ok());
+        let abs = |tail: &str| format!("{}{tail}", if cfg!(windows) { "C:\\" } else { "/" });
+        assert!(validate_text_path(&abs("usr/share/hunspell/en_US.dic")).is_ok());
+        assert!(validate_text_path(&abs("usr/share/hunspell/en_US.AFF")).is_ok());
         assert!(validate_text_path("relative/en_US.dic").is_err());
-        assert!(validate_text_path("/home/me/.ssh/id_ed25519").is_err());
-        assert!(validate_text_path("/home/me/notes.db").is_err());
-        assert!(plugin_read_text("/nonexistent/en_US.dic".into()).is_err());
+        assert!(validate_text_path(&abs("home/me/.ssh/id_ed25519")).is_err());
+        assert!(validate_text_path(&abs("home/me/notes.db")).is_err());
+        assert!(plugin_read_text(abs("nonexistent/en_US.dic")).is_err());
     }
 
     #[test]
